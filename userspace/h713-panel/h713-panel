@@ -7,8 +7,10 @@ page, opened on a phone over the projector's own Wi-Fi or in a browser over
 the LAN, with the vendor's "Projection Settings" and "Display settings" entries
 in our own style.  NOTHING IS DECIDED HERE - every button is one existing
 command of this project (h713-warp, h713-keystone, h713-focus, h713-autofocus,
-h713-tv) and this file only chooses which one and reads the first `ok`/`error`
-line of the answer back to the page.  The browser never names a command: it
+h713-tv, h713-power, h713-remote-pair, h713-wifi, ...) or one `key = value` line
+of a configuration file in /etc/h713, and this file only chooses which one and
+reads the first `ok`/`error` line of the answer back to the page.  The browser
+never names a command: it
 names a verb out of COMMANDS, its arguments are checked against that table, and
 the argument vector goes to subprocess without a shell, so a hole in the page
 cannot become a hole in the projector.  Since 05.10.2026 the page asks for a
@@ -18,7 +20,8 @@ then whoever reached port 8080 could move the focus motor; on a LAN that was
 everybody.
 
   h713-panel [--port 8080] [--address ADDR] [--tools DIR] [--page PATH]
-             [--password-file PATH] [--no-auth] [--show-password]
+             [--password-file PATH] [--no-auth] [--show-password] [--etc DIR]
+  h713-panel --rollback-wifi [--etc DIR]     # what the Wi-Fi fall-back timer runs
 """
 
 from __future__ import annotations
@@ -34,6 +37,7 @@ import secrets
 import subprocess
 import sys
 import threading
+import time
 
 HERE = os.path.dirname(os.path.realpath(__file__))
 PAGE_PATH = os.path.join(HERE, "page.html")
@@ -42,6 +46,11 @@ THERMAL_DIR, DEFAULT_ADDRESS = "/sys/class/thermal", "0.0.0.0"
 DEFAULT_PORT = 8080
 PASSWORD_FILE = "/etc/h713/panel.env"   # password=... ; root, 0600; made at the first start
 REALM = "HY310 settings"
+ETC = "/etc/h713"                      # keys.conf osd.conf tv.conf wifi.env panel.env
+HOSTS_FILE, HOSTNAME_FILE = "/etc/hosts", "/etc/hostname"
+TIMEOUT_SLOW_S = 60                    # bluez forgetting a bond; h713-wifi waiting for the radio
+ROLLBACK_UNIT, ROLLBACK_S = "h713-panel-wifi-rollback", 120   # the Wi-Fi fall-back timer
+PAIR_WINDOW_S = 60                     # how long the page waits for a remote to pair
 TIMEOUT_S, TIMEOUT_LONG_S = 30, 120    # the autofocus walks a motor
 LOCK_WAIT_S = 5.0                      # how long a second button press waits
 MAX_BODY = 4096                        # a request is a verb and four words
@@ -53,6 +62,7 @@ PRESETS = ("standard", "cinema", "vivid", "game", "computer", "hdr",
            "energy_saving", "custom")
 ASPECTS = ("auto", "proportional", "full", "16:9", "4:3")   # not "zoom": it stops the picture (kernel 0185)
 PICTURE_CONTROLS = ("brightness", "contrast", "saturation", "hue", "sharpness")
+QUALITY_CONTROLS = ("tnr", "snr", "dci", "black")    # 0..3: Off Low Middle High (h713-tv.md)
 AFTER_MOVE = ("off", "keystone", "keystone+focus")
 # The optional hardware (boards/README.md, FEATURES) as `h713-features status`
 # names it, and what each after-move choice needs of it.  The page hides the
@@ -63,8 +73,11 @@ AFTER_MOVE_NEEDS = {"keystone": ("accelerometer",),
 # h713-warp's projection modes: how the picture is mirrored for the mount.
 # The corners keep their wall names in every mode (the warp flips underneath).
 MODES = ("front", "rear", "ceiling", "rear-ceiling")
-SPECIALS = ("status", "controls", "picture_set", "after_move",
-            "screen_zoom")  # Panel.do_*
+SPECIALS = ("status", "controls", "picture_set", "after_move", "screen_zoom",
+            "settings", "report", "remote", "remote_repair", "conf_set",
+            "wifi_set", "wifi_confirm", "hostname_set",
+            "panel_password")  # Panel.do_*
+READS = ("settings", "report", "remote")   # read only: no lock, they may take seconds
 NUDGE_STEPS = (1, 10, 50)   # what one press of the pad may be worth
 
 
@@ -89,6 +102,7 @@ def _choice(*names):
             raise Refused("error \"%s\" is not one of %s"
                           % (_tame(text), " ".join(names)))
         return text
+    check.spec = ("choice", list(names))      # what the page draws it with
     return check
 
 
@@ -103,11 +117,56 @@ def _number(low, high, step=1):
             raise Refused("error \"%s\" is not a whole number %d..%d in "
                           "steps of %d" % (_tame(value), low, high, step))
         return str(number)
+    check.spec = ("number", low, high, step)
+    return check
+
+
+def _decimal(low, high, step):
+    """A number in steps of `step` (scale 0.1, seconds 0.5), written as %g."""
+    def check(value):
+        try:
+            number = float(value)
+            if isinstance(value, bool) or not low <= number <= high \
+                    or abs(number / step - round(number / step)) > 1e-6:
+                raise ValueError("out of range")
+        except (TypeError, ValueError):
+            raise Refused("error \"%s\" is not a number %g..%g in steps of %g"
+                          % (_tame(value), low, high, step))
+        return "%g" % number
+    check.spec = ("number", low, high, step)
+    return check
+
+
+CTRL = re.compile(r"[\x00-\x1f\x7f]")
+
+
+def _text(name, low, high):
+    """A word for wifi.env: bytes low..high, no control character (a newline
+    would be a second line of the file), no quote or backslash (h713-wifi
+    refuses both).  The refusal never repeats the value: it may be the password."""
+    def check(value):
+        text = value if isinstance(value, str) else ""
+        if not low <= len(text.encode("utf-8")) <= high or CTRL.search(text) \
+                or '"' in text or "\\" in text:
+            raise Refused("error %s needs %d..%d bytes, no control character, quote "
+                          "or backslash" % (name, low, high))
+        return text
+    return check
+
+
+def _pattern(name, regex, valid=lambda text: True):
+    def check(value):
+        text = value if isinstance(value, str) else ""
+        if not re.fullmatch(regex, text) or not valid(text):
+            raise Refused("error %s is not a valid %s" % (_tame(text), name))
+        return text
     return check
 
 
 WARP, KEY, FOCUS, AUTOF, TV = ("h713-warp", "h713-keystone", "h713-focus",
                                "h713-autofocus", "h713-tv")
+REMOTE, POWER, OSD, LOGS, WIFI = ("h713-remote-pair", "h713-power", "h713-osd",
+                                  "h713-logs", "h713-wifi")
 CORNER, AXIS, ON_OFF = _choice(*CORNERS), _choice(*AXES), _choice("on", "off")
 # A nudge is one of the pad's steps either way; a drag sends PER_MILLE.
 STEP = _choice(*[str(sign * n) for n in NUDGE_STEPS for sign in (1, -1)])
@@ -132,15 +191,64 @@ COMMANDS = {
     "focus": (FOCUS, (), (_choice("up", "down"), _choice("5", "20")), T),
     "autofocus": (AUTOF, ("run",), (), LONG),
     "warp": (WARP, ("ctl",), (ON_OFF,), T),
+    "edge": (WARP, ("ctl", "edge"), (_number(0, 64),), T),
+    "pattern": (WARP, ("ctl", "test"), (_choice("grid", "border"),), T),
     # Picture
     "preset": (TV, ("ctl", "preset"), (_choice(*PRESETS),), T),
     "aspect": (TV, ("ctl", "aspect"), (_choice(*ASPECTS),), T),
     "save": (TV, ("ctl", "save"), (), T),
+    "save_off": (TV, ("ctl", "save", "off"), (), T),
+    "resync": (TV, ("ctl", "resync"), (), T),
+    "replug": (TV, ("ctl", "replug"), (), T),     # about a second of console
     # Sound
     "volume": (TV, ("ctl", "volume"), (_number(0, 100),), T),
     "mute": (TV, ("ctl", "mute"), (ON_OFF,), T),
     "audio": (TV, ("ctl", "audio"), (_choice("auto", "on", "off"),), T),
+    # Power: h713-power's own keys of power.conf (it checks them again)
+    "power_default": (POWER, ("set", "default"), (_choice("standby", "poweroff"),), T),
+    "power_long": (POWER, ("set", "long_s"), (_number(1, 10),), T),
+    "power_remote": (POWER, ("set", "remote"), (ON_OFF,), T),
+    "power_refused": (POWER, ("set", "refused"), (_choice("poweroff", "log"),), T),
+    # The page asks "are you sure" before it sends either; systemctl only queues the job.
+    "reboot": ("systemctl", ("reboot",), (), T),
+    "poweroff": ("systemctl", ("poweroff",), (), T),
+    # System: the journal in RAM or on /data; the change is due at the next restart
+    "logs": (LOGS, (), (_choice("volatile", "persistent"),), T),
 }
+
+# The standing settings of the other daemons: file in ETC -> key -> check.  A
+# check also describes itself (.spec) and that is how the page draws a form.
+CONF = {
+    "keys": ("keys.conf", {"volume_step": _number(1, 20),
+                           "focus_steps": _number(1, 100)}),
+    "osd": ("osd.conf", {"place": _choice("bottom", "top-right", "center"),
+                         "look": _choice("pill", "bare"),
+                         "scale": _decimal(0.5, 2, 0.1),
+                         "seconds": _decimal(0.5, 10, 0.5)}),
+    "tv": ("tv.conf", {"start": _choice("auto", "manual", "last"),
+                       "preset": _choice(*(PRESETS + ("last",))),
+                       "edid_prefer": _choice("panel", "file")}),
+}
+CONF_DEFAULTS = {"keys": {"volume_step": "5", "focus_steps": "20"},
+                 "osd": {"place": "bottom", "look": "pill", "scale": "1", "seconds": "2.5"}}
+OLD_WORDS = {"manuell": "manual", "zuletzt": "last"}     # tv.conf start = ...
+# Read-only reports (Diagnostics, Power, Wi-Fi): the tool's own text, as it is.
+REPORTS = {"hdcp": (TV, ("ctl", "hdcp")), "features": ("h713-features", ("status",)),
+           "keys": ("h713-keys", ("status",)), "osd": (OSD, ("ctl", "status")),
+           "power": (POWER, ("status",)), "logs": (LOGS, ("status",)),
+           "wifi": (WIFI, ("status",))}
+# wifi.env, in the order the page shows it.  Every value is checked here as well as by
+# `h713-wifi check`, which has the last word.
+IPV4 = _pattern("IPv4 address", r"(\d{1,3}\.){3}\d{1,3}",
+                lambda text: all(int(part) <= 255 for part in text.split(".")))
+WIFI_KEYS = {"mode": _choice("ap", "sta", "off"), "ssid": _text("ssid", 1, 32),
+             "password": _text("password", 8, 63),
+             "country": _pattern("country code", "[A-Z]{2}"),
+             "band": _choice("2.4", "5"),
+             "channel": _choice(*([str(n) for n in range(1, 14)] + ["36", "40", "44", "48"])),
+             "ap_ip": IPV4, "ap_dhcp_start": IPV4, "ap_dhcp_end": IPV4}
+HOSTNAME = _pattern("host name (RFC 1123, 1..63 letters, digits, hyphens)",
+                    "[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?")
 
 # "label   value", the shape every status of this project prints: labels carry
 # spaces ("keystone by"), so two spaces is the seam and an indented
@@ -243,6 +351,61 @@ def set_conf_key(path, key, value):
     os.replace(path + ".new", path)
 
 
+def write_file(path, data, mode=0o600):
+    """`data` into a .new file (fsynced), renamed over `path`: after a power
+    cut the old file or the new one stands there, never half of one."""
+    fd = os.open(path + ".new", os.O_WRONLY | os.O_CREAT | os.O_TRUNC, mode)
+    with os.fdopen(fd, "wb") as handle:
+        handle.write(data)
+        handle.flush()
+        os.fsync(handle.fileno())
+    os.replace(path + ".new", path)
+
+
+def read_conf(path):
+    """`key = value` of a configuration file as a dictionary: comments cut,
+    the last line of a key wins - as the daemons read them."""
+    found = {}
+    for line in (read_text(path) or "").splitlines():
+        key, equals, value = line.split("#", 1)[0].partition("=")
+        if key.strip() and equals:
+            found[key.strip()] = value.strip()
+    return found
+
+
+def read_env(text):
+    """wifi.env: `key=value`, only a line that BEGINS with # is a comment
+    (a password may hold one), nothing is trimmed - h713-wifi parses it so."""
+    found = {}
+    for line in (text or "").splitlines():
+        if line and not line.startswith("#") and "=" in line:
+            key, _, value = line.partition("=")
+            found[key] = value.rstrip("\r")
+    return found
+
+
+def env_with(text, updates):
+    """wifi.env with `key=value` lines replaced, comments and order kept, a
+    missing key appended.  No spaces around the = : h713-wifi takes them for
+    part of the key, which is what set_conf_key's `key = value` would do."""
+    lines, left = (text or "").splitlines(), dict(updates)
+    for index, line in enumerate(lines):
+        key = line.partition("=")[0]
+        if "=" in line and not line.startswith("#") and key in left:
+            lines[index] = "%s=%s" % (key, left.pop(key))
+    return "\n".join(lines + ["%s=%s" % kv for kv in left.items()]) + "\n"
+
+
+def hosts_with(text, name):
+    """/etc/hosts with its 127.0.1.1 line (Debian's own name for this host)
+    pointing at `name`; appended when there is none."""
+    lines, done = (text or "").splitlines(), False
+    for index, line in enumerate(lines):
+        if re.match(r"127\.0\.1\.1\s", line):
+            lines[index], done = "127.0.1.1\t" + name, True
+    return "\n".join(lines + ([] if done else ["127.0.1.1\t" + name])) + "\n"
+
+
 def lacking(after_move, present):
     """The hardware an after-move choice needs and this board does not have."""
     return [n for n in AFTER_MOVE_NEEDS.get(after_move, ()) if present.get(n) is False]
@@ -263,24 +426,41 @@ class Panel(object):
     """The verbs, and the lock that keeps two browsers off one focus motor."""
 
     def __init__(self, tools=None, keystone_conf=KEYSTONE_CONF,
-                 unit=KEYSTONE_UNIT, thermal=THERMAL_DIR):
+                 unit=KEYSTONE_UNIT, thermal=THERMAL_DIR, etc=ETC,
+                 hosts=HOSTS_FILE, hostname_file=HOSTNAME_FILE,
+                 password_file=None, selfpath=None):
         self.tools, self.keystone_conf = tools, keystone_conf
         self.unit, self.thermal = unit, thermal
-        self.lock, self.ranges = threading.Lock(), {}
+        self.etc, self.hosts, self.hostname_file = etc, hosts, hostname_file
+        self.password_file = password_file or self.p("panel.env")
+        self.selfpath = selfpath or os.path.realpath(__file__)   # the fall-back timer runs this file
+        self.lock, self.ranges, self.server = threading.Lock(), {}, None
 
-    def run(self, name, words, timeout):
-        """One tool, one argument vector, no shell, ever."""
+    def p(self, name):
+        return os.path.join(self.etc, name)
+
+    def execute(self, name, words, timeout):
+        """One tool, one argument vector, no shell, ever: (exit code, output),
+        the code None and a message when it did not run or did not answer."""
         argv = [os.path.join(self.tools, name) if self.tools else name]
         try:
             done = subprocess.run(argv + list(words), stdout=subprocess.PIPE,
                                   stderr=subprocess.STDOUT, timeout=timeout,
                                   universal_newlines=True)
         except subprocess.TimeoutExpired:
-            return False, "error %s %s did not answer within %d s" % (
-                name, " ".join(words), timeout), ""
+            return None, "error %s %s did not answer within %d s" % (
+                name, " ".join(words), timeout)
         except OSError as problem:
-            return False, "error %s: %s" % (name, problem), ""
-        return first_line(done.stdout, done.returncode) + (done.stdout or "",)
+            return None, "error %s: %s" % (name, problem)
+        return done.returncode, done.stdout or ""
+
+    def run(self, name, words, timeout):
+        """`execute`, read the way every ctl of this project answers:
+        (ok, the first ok/error line, the whole output)."""
+        code, out = self.execute(name, words, timeout)
+        if code is None:
+            return False, out, ""
+        return first_line(out, code) + (out,)
 
     def control_ranges(self, refresh=False):
         """`h713-tv ctl list` as {control: {value, min, max}}: what the
@@ -317,6 +497,10 @@ class Panel(object):
         return {"ok": True, "line": "ok controls", "steps": NUDGE_STEPS,
                 "controls": [dict(blank, name=n, **ranges.get(n, {}))
                              for n in PICTURE_CONTROLS],
+                "quality": [dict(dict(blank, max=3), name=n, **ranges.get(n, {}))
+                            for n in QUALITY_CONTROLS],
+                "conf": dict((n, dict((k, c.spec) for k, c in checks.items()))
+                             for n, (_, checks) in CONF.items()),
                 "presets": PRESETS, "aspects": ASPECTS, "modes": MODES,
                 "after_move": [v for v in AFTER_MOVE if not lacking(v, present)],
                 "corners": CORNERS, "features": present}
@@ -325,9 +509,10 @@ class Panel(object):
         """`h713-tv ctl set CONTROL VALUE`, the range out of `ctl list`."""
         if len(args) != 2:
             raise Refused("error a control and a value were expected")
-        name = _choice(*PICTURE_CONTROLS)(args[0])
+        name = _choice(*PICTURE_CONTROLS, *QUALITY_CONTROLS)(args[0])
         span = self.control_ranges().get(name) or {}
-        value = _number(span.get("min", 0), span.get("max", 100))(args[1])
+        value = _number(span.get("min", 0),
+                        span.get("max", 3 if name in QUALITY_CONTROLS else 100))(args[1])
         ok, line, _ = self.run(TV, ("ctl", "set", name, value), T)
         return {"ok": ok, "line": line}
 
@@ -370,6 +555,224 @@ class Panel(object):
         return {"ok": True, "line": "ok after_move = %s, %s restarted"
                 % (value, self.unit)}
 
+    def tv_instance(self):
+        """The h713-tv instance that runs (h713-tv@video3 ...): the number is
+        whatever the receiver got, so it is asked for, never assumed."""
+        for line in self.execute("systemctl", ("list-units", "--plain", "--no-legend",
+                                               "h713-tv@*.service"), T)[1].splitlines():
+            found = re.match(r"\s*(h713-tv@video\d+\.service)\b", line)
+            if found:
+                return found.group(1)
+        return None
+
+    def do_conf_set(self, args):
+        """One `key = value` of keys.conf, osd.conf or tv.conf.  The first two
+        are read again by their daemons when the file changes; h713-tv reads
+        tv.conf once at its start, so its instance is restarted."""
+        if len(args) != 3:
+            raise Refused("error a file, a key and a value were expected")
+        name = _choice(*CONF)(args[0])
+        fname, checks = CONF[name]
+        key = _choice(*checks)(args[1])
+        value = checks[key](args[2])
+        try:
+            set_conf_key(self.p(fname), key, value)
+        except OSError as problem:
+            return no("error %s could not be written (%s)" % (self.p(fname), problem))
+        said = "ok %s: %s = %s" % (fname, key, value)
+        if name != "tv":
+            return {"ok": True, "line": said}
+        unit = self.tv_instance()
+        if unit is None:
+            return {"ok": True, "line": said + " (h713-tv is not running; it applies at its next start)"}
+        ok, line, _ = self.run("systemctl", ("restart", unit), TIMEOUT_S)
+        if not ok:
+            return no("error %s is written, but %s did not restart (%s)" % (fname, unit, line))
+        return {"ok": True, "line": said + ", " + unit + " restarted"}
+
+    def do_report(self, args):
+        """A read-only tool's own text (hdcp, features, keys, osd, power, logs, wifi)."""
+        if len(args) != 1:
+            raise Refused("error one of %s was wanted" % " ".join(REPORTS))
+        tool, words = REPORTS[_choice(*REPORTS)(args[0])]
+        code, out = self.execute(tool, words, T)
+        if code is None:
+            return no(out)
+        return {"ok": code == 0, "line": first_line(out, code)[1], "text": out[:4000]}
+
+    def do_remote(self, args):
+        """`h713-remote-pair status`: "ADDR NAME connected|bonded, not
+        connected" per bonded remote, or "no remote bonded" (exit 1).  The
+        address stays here; the page gets the name."""
+        code, out = self.execute(REMOTE, ("status",), TIMEOUT_S)
+        if code is None or code > 1:
+            return no(out if code is None else first_line(out, code)[1])
+        found = re.findall(r"^[0-9A-Fa-f:]{17} (.+?) (connected|bonded, not connected)$",
+                           out, re.M)
+        state = ("connected" if any(w == "connected" for _, w in found)
+                 else "bonded" if found else "none")
+        return {"ok": True, "line": "ok remote " + state, "state": state,
+                "name": found[0][0] if found else ""}
+
+    def do_remote_repair(self, args):
+        """Forget the bond, then show the hint on the projector.  The running
+        h713-remote-pair.service scans while no remote is bonded and pairs the
+        remote that is put into pairing mode (TODO 2.54); the page waits and
+        asks `remote`.  Exit 1 without a word from forget: nothing was bonded."""
+        code, out = self.execute(REMOTE, ("forget",), TIMEOUT_SLOW_S)
+        if code is None or code > 1 or (code == 1 and out.strip()):
+            return no(out if code is None else first_line(out, code)[1])
+        said = ("ok no remote was paired, so there was nothing to forget"
+                if code else "ok the paired remote is forgotten")
+        shown, why, _ = self.run(OSD, ("ctl", "pair"), TIMEOUT_S)
+        return {"ok": True, "forgot": code == 0, "hint": shown, "seconds": PAIR_WINDOW_S,
+                "line": said + "; hold LEFT + RIGHT on the remote" +
+                ("" if shown else " (no hint on the projector: %s)" % why)}
+
+    def hostname(self):
+        return (read_text(self.hostname_file) or "").strip()
+
+    def wifi_pending(self):
+        """Seconds left to keep the new Wi-Fi settings, None when none wait."""
+        try:
+            age = time.time() - os.stat(self.p("wifi.env.prev")).st_mtime
+        except OSError:
+            return None
+        return max(0, int(ROLLBACK_S - age))
+
+    def do_settings(self, args):
+        """What the forms show: the three conf files over their defaults, the
+        power policy, the soft edge, the host name and the Wi-Fi - without its
+        password, which this page never sends back."""
+        values = {}
+        for name, (fname, checks) in CONF.items():
+            have = read_conf(self.p(fname))
+            values[name] = dict((k, have.get(k, CONF_DEFAULTS.get(name, {}).get(k)))
+                                for k in checks)
+        values["tv"]["start"] = OLD_WORDS.get(values["tv"]["start"], values["tv"]["start"])
+        text = self.run(POWER, ("status",), T)[2]
+        power = re.search(r"^config: (.*)$", text, re.M)
+        edge = re.match(r"ok edge (\d+)", self.run(WARP, ("ctl", "edge"), T)[1])
+        wifi = read_env(read_text(self.p("wifi.env")))
+        return {"ok": True, "line": "ok settings", "conf": values, "power_text": text[:2000],
+                "power": dict(re.findall(r"(\w+) = ([\w.]+)", power.group(1))) if power else {},
+                "edge": int(edge.group(1)) if edge else None, "hostname": self.hostname(),
+                "wifi": dict([(k, wifi.get(k, "")) for k in WIFI_KEYS if k != "password"]
+                             + [("has_password", bool(wifi.get("password")))]),
+                "wifi_pending": self.wifi_pending()}
+
+    def do_wifi_set(self, args):
+        """wifi.env from the form, with a way back.  The new file is checked by
+        `h713-wifi check` before anything is touched; then the old one is kept
+        as wifi.env.prev, a timer (systemd-run, outside this unit) is set that
+        puts it back after ROLLBACK_S, and only then does h713-wifi restart.
+        The page cannot be sure to hear the answer - on the access point the
+        network goes away under it - so `wifi_confirm` is the only way to keep
+        the change.  An empty password means: unchanged."""
+        form = args[0] if len(args) == 1 and isinstance(args[0], dict) else None
+        if form is None or not set(form) <= set(WIFI_KEYS):
+            raise Refused("error the form is one object with the fields of wifi.env")
+        if self.wifi_pending() is not None:
+            return no("error an earlier change still waits for its confirmation")
+        env = self.p("wifi.env")
+        old = read_bytes(env)
+        if old is None:
+            return no("error %s is missing" % env)
+        new = dict((k, WIFI_KEYS[k](v)) for k, v in form.items() if k != "password" or v != "")
+        candidate, secret = env + ".next", new.get("password", "")
+        write_file(candidate, env_with(old.decode("utf-8", "replace"), new).encode("utf-8"))
+        code, out = self.execute(WIFI, ("check", candidate), T)
+        if code != 0:
+            os.remove(candidate)
+            said = re.search(r"ERROR: (.*)", out or "")
+            return no("error " + (said.group(1) if said else (out.strip() or "h713-wifi check failed"))
+                      .replace(secret or "\0", "***"))
+        write_file(env + ".prev", old)
+        started, why, _ = self.run("systemd-run", (
+            "--quiet", "--collect", "--unit=" + ROLLBACK_UNIT, "--on-active=%d" % ROLLBACK_S,
+            self.selfpath, "--rollback-wifi", "--etc", self.etc), T)
+        if not started:
+            os.remove(candidate)
+            os.remove(env + ".prev")
+            return no("error the fall-back timer could not be set (%s) - nothing was changed" % why)
+        os.replace(candidate, env)
+        ok, line, _ = self.run("systemctl", ("restart", WIFI + ".service"), LONG)
+        if not ok:
+            self.run("systemctl", ("stop", ROLLBACK_UNIT + ".timer"), T)
+            self.rollback_wifi()
+            return no("error h713-wifi did not restart (%s) - the old settings are back"
+                      % line.replace(secret or "\0", "***"))
+        return {"ok": True, "pending": ROLLBACK_S,
+                "line": "ok Wi-Fi settings applied - keep them within %d s or the old ones come back"
+                        % ROLLBACK_S}
+
+    def do_wifi_confirm(self, args):
+        """Keep the new Wi-Fi settings: cancel the timer, drop the old file."""
+        if self.wifi_pending() is None:
+            return no("error no Wi-Fi change is waiting for its confirmation")
+        ok, line, _ = self.run("systemctl", ("stop", ROLLBACK_UNIT + ".timer"), T)
+        if not ok:
+            return no("error the fall-back could not be cancelled (%s)" % line)
+        os.remove(self.p("wifi.env.prev"))
+        return {"ok": True, "line": "ok Wi-Fi settings kept"}
+
+    def rollback_wifi(self):
+        """The old wifi.env back and h713-wifi restarted: what the timer runs
+        (`h713-panel --rollback-wifi`), and what a failed restart calls.  No
+        wifi.env.prev means the change was confirmed: nothing to do."""
+        if not os.path.exists(self.p("wifi.env.prev")):
+            print("h713-panel: no Wi-Fi change is waiting")
+            return 0
+        os.replace(self.p("wifi.env.prev"), self.p("wifi.env"))
+        ok, line, _ = self.run("systemctl", ("restart", WIFI + ".service"), LONG)
+        print("h713-panel: the old Wi-Fi settings are back; %s" % line)
+        return 0 if ok else 1
+
+    def do_hostname_set(self, args):
+        """`hostnamectl set-hostname` (systemd-hostnamed writes /etc/hostname,
+        outside this unit's sandbox) and the 127.0.1.1 line of /etc/hosts."""
+        if len(args) != 1:
+            raise Refused("error a host name was expected")
+        name = HOSTNAME(args[0]).lower()
+        ok, line, _ = self.run("hostnamectl", ("set-hostname", name), T)
+        if not ok:
+            return no("error the host name was not set (%s)" % line)
+        try:
+            # in place: ReadWritePaths= can name this one file, not its directory,
+            # and a file can only be renamed over where its directory is writable
+            with open(self.hosts, "r+b") as handle:
+                data = hosts_with(handle.read().decode("utf-8", "replace"), name).encode("utf-8")
+                handle.seek(0)
+                handle.write(data)
+                handle.truncate()
+                handle.flush()
+                os.fsync(handle.fileno())
+        except OSError as problem:
+            return no("error the host name is %s, but %s could not be written (%s)"
+                      % (name, self.hosts, problem))
+        return {"ok": True, "line": "ok host name %s (a new login shows it)" % name}
+
+    def do_panel_password(self, args):
+        """The page's own password: the current one is asked for again, the new
+        one replaces it in panel.env and in the running door at once."""
+        if len(args) != 2 or not all(isinstance(a, str) for a in args):
+            raise Refused("error the current and the new password were expected")
+        want = getattr(self.server, "password", None)
+        if want is None:
+            return no("error this page runs without a password (--no-auth)")
+        if not hmac.compare_digest(args[0].encode(), want.encode()):
+            return no("error the current password is not right")
+        new = args[1]
+        if not 8 <= len(new) <= 64 or CTRL.search(new) or new != new.strip():
+            raise Refused("error the new password needs 8..64 characters, no control "
+                          "character and no space at either end")
+        try:
+            write_password(self.password_file, new)
+        except OSError as problem:
+            return no("error %s could not be written (%s)" % (self.password_file, problem))
+        self.server.password = new
+        return {"ok": True, "line": "ok password changed - the browser asks for the new one"}
+
     def do_status(self, args):
         """Three statuses and the thermal zones, every three seconds."""
         warp, tv, keystone = [
@@ -396,6 +799,7 @@ class Panel(object):
                 "picture": tv.get("picture", "-"),
                 "audio": tv.get("audio", "-"),
                 "aspect": (tv.get("format") or "-").split()[0],
+                "wifi_pending": self.wifi_pending(),
                 "keystone_by": (keystone.get("keystone by") or "-").split()[0],
                 "after_move": (keystone.get("after a move") or "-").split()[0],
                 "reference": {"ideal": "ideal", "file": "set",
@@ -412,9 +816,11 @@ class Panel(object):
         if verb not in SPECIALS and verb not in COMMANDS:
             return no("error \"%s\" is not a verb of this page" % _tame(verb))
         # A status may never wait behind a running autofocus: it says "busy",
-        # and the page keeps its numbers.  A command waits LOCK_WAIT_S.
-        if not (self.lock.acquire(True, LOCK_WAIT_S) if verb != "status"
-                else self.lock.acquire(False)):
+        # and the page keeps its numbers.  A command waits LOCK_WAIT_S.  What only
+        # reads (READS) takes no lock: it may take seconds and moves nothing.
+        locked = verb not in READS
+        if locked and not (self.lock.acquire(True, LOCK_WAIT_S) if verb != "status"
+                           else self.lock.acquire(False)):
             return no("error the projector is busy with the command before "
                       "this one", busy=True)
         try:
@@ -429,8 +835,11 @@ class Panel(object):
             return {"ok": ok, "line": line}
         except Refused as refusal:
             return no(str(refusal))
+        except OSError as problem:        # a disk that is full, a file that is gone
+            return no("error %s" % problem)
         finally:
-            self.lock.release()
+            if locked:
+                self.lock.release()
 
 
 class Handler(http.server.BaseHTTPRequestHandler):
@@ -484,6 +893,12 @@ class Handler(http.server.BaseHTTPRequestHandler):
         if self.path.split("?")[0] != "/api":
             self._send(404, self.PLAIN, b"not this page\n")
             return
+        # The browser sends the password with a form posted from any other site
+        # too; a header of our own cannot be set by one.
+        if self.headers.get("X-Requested-With") != "h713-panel":
+            self._send(200, self.JSON, json.dumps(
+                no("error that is not a request this page makes")).encode("utf-8"))
+            return
         try:
             length = int(self.headers.get("Content-Length") or 0)
             if length > MAX_BODY:
@@ -511,6 +926,7 @@ class Handler(http.server.BaseHTTPRequestHandler):
 def serve(panel, page, address=DEFAULT_ADDRESS, port=DEFAULT_PORT, password=None):
     server = http.server.ThreadingHTTPServer((address, port), Handler)
     server.panel, server.page, server.password = panel, page, password
+    panel.server = server          # the password page changes the door's password
     return server
 
 
@@ -526,16 +942,18 @@ def read_password(path):
     return None
 
 
+def write_password(path, pw):
+    write_file(path, ("# h713-panel: the settings page asks for this password (any user name).\n"
+                      "# Shown once in the journal when it was made; `h713-panel --show-password` prints it.\n"
+                      "password=%s\n" % pw).encode("utf-8"))
+
+
 def make_password(path):
     """A fresh password into `path` (root, 0600), returned.  secrets.token_urlsafe(9)
     gives twelve characters, enough for a door on a home network and short
     enough to type from a photo of the console."""
     pw = secrets.token_urlsafe(9)
-    fd = os.open(path, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
-    with os.fdopen(fd, "w", encoding="utf-8") as fh:
-        fh.write("# h713-panel: the settings page asks for this password (any user name).\n"
-                 "# Shown once in the journal when it was made; `h713-panel --show-password` prints it.\n"
-                 "password=%s\n" % pw)
+    write_password(path, pw)
     return pw
 
 
@@ -558,7 +976,12 @@ def main(argv=None):
     add("--page", default=PAGE_PATH, metavar="PATH", help="the HTML page")
     add("--tools", metavar="DIR", help="the h713 tools; default $PATH")
     add("--keystone-conf", default=KEYSTONE_CONF, metavar="PATH")
+    add("--etc", default=ETC, metavar="DIR", help="keys.conf osd.conf tv.conf wifi.env (default %s)" % ETC)
+    add("--rollback-wifi", action="store_true",
+        help="put wifi.env.prev back and restart h713-wifi (the fall-back timer runs this)")
     args = parser.parse_args(argv)
+    if args.rollback_wifi:
+        return Panel(args.tools, etc=args.etc).rollback_wifi()
     password = None
     if args.show_password:
         pw = read_password(args.password_file)
@@ -587,7 +1010,8 @@ def main(argv=None):
         sys.stderr.write("error %s is missing -- the page is one file beside "
                          "this one\n" % args.page)
         return 2
-    server = serve(Panel(args.tools, args.keystone_conf), page, args.address,
+    server = serve(Panel(args.tools, args.keystone_conf, etc=args.etc,
+                         password_file=args.password_file), page, args.address,
                    args.port, password)
     sys.stderr.write("ok h713-panel on http://%s:%d/ -- %s\n"
                      % (args.address, args.port,

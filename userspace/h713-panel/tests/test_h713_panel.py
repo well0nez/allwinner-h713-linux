@@ -23,6 +23,7 @@ import os
 import re
 import shutil
 import stat
+import subprocess
 import sys
 import tempfile
 import threading
@@ -128,6 +129,13 @@ class Fakes(object):
             handle.write(("\n".join(lines) + "\n").encode("utf-8"))
         os.chmod(path, stat.S_IRWXU)
         return path
+
+    def script(self, name, body):
+        """A tool with its own logic: `body` is shell, its calls are logged too."""
+        path = os.path.join(self.dir, name)
+        with open(path, "wb") as handle:
+            handle.write(("#!/bin/sh\necho \"%s $*\" >> \"%s\"\n%s\n" % (name, self.log, body)).encode("utf-8"))
+        os.chmod(path, stat.S_IRWXU)
 
     def calls(self):
         if not os.path.exists(self.log):
@@ -256,8 +264,8 @@ class VerbTest(unittest.TestCase):
         self.assertEqual(self.fake.calls(), [])
 
     def test_unknown_verbs_and_shapes_are_refused(self):
-        for request in ({"verb": "reboot"}, {"verb": "run"},
-                        {"verb": "do_status"}, {"verb": None},
+        for request in ({"verb": "rpc"}, {"verb": "run"}, {"verb": "focus_command"},
+                        {"verb": "ssh_keys"}, {"verb": "do_status"}, {"verb": None},
                         {"verb": "warp", "args": "on"},
                         {"verb": "warp", "args": [1, 2, 3, 4, 5]},
                         ["warp", "on"], "warp"):
@@ -522,7 +530,8 @@ class HttpTest(unittest.TestCase):
     def post(self, body):
         request = urllib.request.Request(
             "http://127.0.0.1:%d/api" % self.port, data=body,
-            headers={"Content-Type": "application/json"})
+            headers={"Content-Type": "application/json",
+                     "X-Requested-With": "h713-panel"})
         answer = urllib.request.urlopen(request, timeout=10)
         return json.loads(answer.read().decode("utf-8"))
 
@@ -545,16 +554,12 @@ class HttpTest(unittest.TestCase):
         self.assertEqual(self.fake.calls(), ["h713-warp ctl on"])
 
     def test_junk_is_refused(self):
-        for body in (b"not json", b"[]", b'{"verb": "reboot"}',
+        for body in (b"not json", b"[]", b'{"verb": "rpc"}',
                      b'{"verb": "warp", "args": ["on; reboot"]}',
                      b'{"verb": "volume", "args": ["50"]}' + b" " * 8000):
             answer = self.post(body)
             self.assertFalse(answer["ok"], body)
         self.assertEqual(self.fake.calls(), [])
-
-
-if __name__ == "__main__":
-    sys.exit(not unittest.main(exit=False).result.wasSuccessful())
 
 
 class AuthTests(unittest.TestCase):
@@ -617,3 +622,527 @@ class AuthTests(unittest.TestCase):
         self.assertGreaterEqual(len(pw), 12)
         if POSIX:
             self.assertEqual(stat.S_IMODE(os.stat(path).st_mode), 0o600)
+
+
+# ---- the settings pages (11.10.2026): conf files, remote, power, Wi-Fi, host name, password ----
+
+WIFI_ENV = """# /etc/h713/wifi.env - a comment that has to survive
+mode=ap
+ssid=h713
+password=magcubic
+band=2.4
+channel=6
+country=DE
+ap_ip=192.168.4.1
+ap_dhcp_start=192.168.4.10
+ap_dhcp_end=192.168.4.100
+"""
+POWER_STATUS = """config: default = poweroff, long_s = 3, ignore_s = 2, remote = on, refused = poweroff
+mem_sleep: s2idle [deep]
+a short press now: power-off (power.conf says short = poweroff)"""
+TV_UNITS = "h713-tv@video3.service loaded active running HY310: HDMI input (video3) on the video plane"
+LISTING = "h713-tv@*.service"
+
+
+class Bench(unittest.TestCase):
+    """A panel on a temporary /etc/h713, /etc/hosts and /etc/hostname, with the fake tools."""
+
+    def setUp(self):
+        self.fake = Fakes()
+        self.etc = os.path.join(self.fake.dir, "etc")
+        os.makedirs(self.etc)
+        self.hosts = os.path.join(self.fake.dir, "hosts")
+        self.hostname = os.path.join(self.fake.dir, "hostname")
+        for name in ("h713-warp", "h713-tv", "h713-osd", "h713-wifi", "h713-logs", "systemctl",
+                     "systemd-run", "hostnamectl", "h713-keys", "h713-features"):
+            self.fake.tool(name)
+        self.fake.tool("h713-power", {"status": POWER_STATUS})
+        self.fake.tool("h713-warp", {"ctl edge": "ok edge 4"})
+        self.panel = panel.Panel(
+            tools=self.fake.dir, etc=self.etc, hosts=self.hosts, hostname_file=self.hostname,
+            selfpath="/usr/local/lib/h713-panel/h713-panel", keystone_conf=os.path.join(self.etc, "ks.conf"),
+            thermal=os.path.join(self.fake.dir, "thermal"))
+
+    def tearDown(self):
+        self.fake.close()
+
+    def call(self, verb, args=None):
+        return self.panel.call({"verb": verb, "args": args or []})
+
+    def put(self, name, text, base=None):
+        with open(os.path.join(base or self.etc, name), "wb") as handle:
+            handle.write(text.encode("utf-8"))
+
+    def get(self, name, base=None):
+        with open(os.path.join(base or self.etc, name), "rb") as handle:
+            return handle.read().decode("utf-8")
+
+
+class NewVerbTest(Bench):
+    def test_the_plain_verbs_are_one_command_each(self):
+        for verb, args, expected in (
+                ("save_off", [], "h713-tv ctl save off"),
+                ("resync", [], "h713-tv ctl resync"),
+                ("replug", [], "h713-tv ctl replug"),
+                ("edge", [64], "h713-warp ctl edge 64"),
+                ("edge", [0], "h713-warp ctl edge 0"),
+                ("pattern", ["grid"], "h713-warp ctl test grid"),
+                ("pattern", ["border"], "h713-warp ctl test border"),
+                ("power_default", ["standby"], "h713-power set default standby"),
+                ("power_long", [5], "h713-power set long_s 5"),
+                ("power_remote", ["off"], "h713-power set remote off"),
+                ("power_refused", ["log"], "h713-power set refused log"),
+                ("logs", ["persistent"], "h713-logs persistent"),
+                ("logs", ["volatile"], "h713-logs volatile"),
+                ("reboot", [], "systemctl reboot"),
+                ("poweroff", [], "systemctl poweroff")):
+            self.fake.forget()
+            answer = self.call(verb, args)
+            self.assertTrue(answer["ok"], (verb, answer))
+            self.assertEqual(self.fake.calls(), [expected])
+
+    def test_refused_values_start_nothing_and_write_nothing(self):
+        for verb, args in (
+                ("edge", [65]), ("edge", [-1]), ("edge", ["4; reboot"]), ("pattern", ["mask"]),
+                ("power_default", ["suspend"]), ("power_long", [0]), ("power_long", [11]),
+                ("power_remote", ["maybe"]), ("power_refused", ["$(id)"]), ("logs", ["syslog"]),
+                ("report", ["rpc"]), ("report", []), ("picture_set", ["rpc", 1]),
+                ("conf_set", ["tv", "edid", "block1"]), ("conf_set", ["tv", "focus_command", "x"]),
+                ("conf_set", ["keys", "volume_step", 21]), ("conf_set", ["keys", "volume_step", 0]),
+                ("conf_set", ["keys", "focus_steps", 101]), ("conf_set", ["keys", "focus_steps", "5; x"]),
+                ("conf_set", ["osd", "scale", 2.5]), ("conf_set", ["osd", "scale", 0.4]),
+                ("conf_set", ["osd", "scale", 0.55]), ("conf_set", ["osd", "seconds", 0.4]),
+                ("conf_set", ["osd", "seconds", 11]), ("conf_set", ["osd", "seconds", "nan"]),
+                ("conf_set", ["osd", "place", "left"]), ("conf_set", ["osd", "look", True]),
+                ("conf_set", ["tv", "start", "auto; reboot"]), ("conf_set", ["tv", "preset", "$(id)"]),
+                ("conf_set", ["tv", "edid_prefer", "block1"]), ("conf_set", ["ssh", "key", "x"]),
+                ("conf_set", ["keys", "volume_step"]),
+                ("hostname_set", ["a.b"]), ("hostname_set", ["-a"]), ("hostname_set", ["a_b"]),
+                ("hostname_set", ["a" * 64]), ("hostname_set", [""]), ("hostname_set", ["a b"]),
+                ("hostname_set", ["a\nb"]), ("hostname_set", [5]),
+                ("panel_password", ["only one"]), ("remote_repair", ["x"] * 5)):
+            answer = self.call(verb, args)
+            self.assertFalse(answer["ok"], (verb, args, answer))
+            self.assertTrue(answer["line"].startswith("error"), answer)
+        self.assertEqual(self.fake.calls(), [])
+        self.assertEqual(os.listdir(self.etc), [])
+        self.assertFalse(os.path.exists(self.hosts))
+
+    def test_the_quality_controls_go_through_ctl_set_in_their_range(self):
+        for name, value in (("tnr", 3), ("black", 0)):
+            self.fake.forget()
+            self.assertTrue(self.call("picture_set", [name, value])["ok"])
+            self.assertEqual(self.fake.calls()[-1], "h713-tv ctl set %s %d" % (name, value))
+        self.fake.forget()
+        for name, value in (("tnr", 4), ("snr", -1), ("dci", "2; reboot")):
+            self.assertFalse(self.call("picture_set", [name, value])["ok"])
+        self.assertFalse([c for c in self.fake.calls() if " set " in c])
+
+    def test_controls_carry_the_quality_controls_and_the_forms(self):
+        self.fake.tool("h713-tv", {"ctl list": TV_LIST + "\n  tnr                        2  (0..3)\n  black                      1  menu 0..3"})
+        answer = self.call("controls")
+        found = dict((c["name"], c) for c in answer["quality"])
+        self.assertEqual(sorted(found), ["black", "dci", "snr", "tnr"])
+        self.assertEqual((found["tnr"]["value"], found["tnr"]["max"]), (2, 3))
+        self.assertEqual(found["dci"]["max"], 3)                      # not listed: the fallback
+        self.assertEqual(list(answer["conf"]["keys"]["volume_step"]), ["number", 1, 20, 1])
+        self.assertEqual(json.loads(json.dumps(answer["conf"]["osd"]["place"])), ["choice", ["bottom", "top-right", "center"]])
+        self.assertNotIn("focus_command", json.dumps(answer))
+        self.assertNotIn("block1", json.dumps(answer))
+
+    def test_conf_set_keeps_comments_and_other_keys(self):
+        self.put("keys.conf", "# keys\nvolume_step = 5   # the old step\nfocus_steps = 20\n")
+        self.assertTrue(self.call("conf_set", ["keys", "volume_step", 7])["ok"])
+        self.assertEqual(self.get("keys.conf"), "# keys\nvolume_step = 7   # the old step\nfocus_steps = 20\n")
+        self.assertTrue(self.call("conf_set", ["osd", "scale", 1.5])["ok"])
+        self.assertTrue(self.call("conf_set", ["osd", "seconds", "2.5"])["ok"])
+        self.assertEqual(self.get("osd.conf"), "scale = 1.5\nseconds = 2.5\n")
+        self.assertFalse(os.path.exists(os.path.join(self.etc, "osd.conf.new")))
+        self.assertEqual(self.fake.calls(), [])           # keys and osd read their file again by themselves
+
+    def test_tv_conf_restarts_the_instance_it_finds(self):
+        self.fake.tool("systemctl", {"list-units --plain --no-legend " + LISTING: TV_UNITS})
+        self.put("tv.conf", "start = last\n")
+        answer = self.call("conf_set", ["tv", "preset", "last"])
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(self.get("tv.conf"), "start = last\npreset = last\n")
+        self.assertEqual(self.fake.calls(), ["systemctl list-units --plain --no-legend " + LISTING,
+                                             "systemctl restart h713-tv@video3.service"])
+        self.assertIn("h713-tv@video3.service restarted", answer["line"])
+
+    def test_tv_conf_without_a_running_instance(self):
+        answer = self.call("conf_set", ["tv", "edid_prefer", "panel"])
+        self.assertTrue(answer["ok"], answer)
+        self.assertIn("applies at its next start", answer["line"])
+        self.assertEqual(self.get("tv.conf"), "edid_prefer = panel\n")
+        self.assertFalse([c for c in self.fake.calls() if "restart" in c])
+
+    def test_settings_read_the_files_and_never_the_password(self):
+        self.put("keys.conf", "volume_step = 9\n")
+        self.put("tv.conf", "start = zuletzt\npreset = cinema\n")
+        self.put("wifi.env", WIFI_ENV)
+        self.put("osd.conf", "place = center\n")
+        with open(self.hostname, "w") as handle:
+            handle.write("hy310\n")
+        answer = self.call("settings")
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(answer["conf"]["keys"], {"volume_step": "9", "focus_steps": "20"})
+        self.assertEqual(answer["conf"]["tv"], {"start": "last", "preset": "cinema", "edid_prefer": None})
+        self.assertEqual(answer["conf"]["osd"]["place"], "center")
+        self.assertEqual(answer["conf"]["osd"]["look"], "pill")
+        self.assertEqual(answer["power"], {"default": "poweroff", "long_s": "3", "ignore_s": "2",
+                                           "remote": "on", "refused": "poweroff"})
+        self.assertEqual((answer["edge"], answer["hostname"]), (4, "hy310"))
+        self.assertEqual(answer["wifi"]["ssid"], "h713")
+        self.assertTrue(answer["wifi"]["has_password"])
+        self.assertIsNone(answer["wifi_pending"])
+        self.assertNotIn("magcubic", json.dumps(answer))
+        self.assertNotIn("password", answer["wifi"])
+
+    def test_reports_are_the_tools_own_text(self):
+        self.fake.tool("h713-tv", {"ctl hdcp": "hdcp version 1.4\nauthenticated yes"})
+        answer = self.call("report", ["hdcp"])
+        self.assertTrue(answer["ok"])
+        self.assertIn("authenticated yes", answer["text"])
+        for name, expected in (("features", "h713-features status"), ("keys", "h713-keys status"),
+                               ("osd", "h713-osd ctl status"), ("power", "h713-power status"),
+                               ("logs", "h713-logs status"), ("wifi", "h713-wifi status")):
+            self.fake.forget()
+            self.assertTrue(self.call("report", [name])["ok"], name)
+            self.assertEqual(self.fake.calls(), [expected])
+        self.assertFalse(panel.Panel(tools=os.path.join(self.fake.dir, "nothing")).call(
+            {"verb": "report", "args": ["hdcp"]})["ok"])
+
+    def test_nothing_the_owner_excluded_is_in_the_tables(self):
+        everything = json.dumps([list(panel.COMMANDS), list(panel.SPECIALS), list(panel.REPORTS),
+                                 [(f, list(k)) for f, (_, k) in panel.CONF.items()]])
+        for word in ("rpc", "focus_command", "block1", "ssh", "authorized"):
+            self.assertNotIn(word, everything)
+        # the volume is never kept through a restart: no verb writes it into a file
+        self.assertEqual([k for _, (_, keys) in panel.CONF.items() for k in keys if "vol" in k], ["volume_step"])
+
+
+class RemoteTest(Bench):
+    def remote(self, forget_code=0, forget_out="ok forgot 00:11:22:33:44:55", status_code=0,
+               status_out="00:11:22:33:44:55 BLE_X_RMC connected"):
+        self.fake.script("h713-remote-pair", 'case "$1" in\n  forget) cat <<\'END\'\n%s\nEND\n  exit %d ;;\n'
+                         '  status) cat <<\'END\'\n%s\nEND\n  exit %d ;;\nesac' %
+                         (forget_out, forget_code, status_out, status_code))
+
+    def test_the_state_of_the_remote(self):
+        for out, code, state, name in (
+                ("00:11:22:33:44:55 BLE_X_RMC connected", 0, "connected", "BLE_X_RMC"),
+                ("00:11:22:33:44:55 BLE_X_RMC bonded, not connected", 0, "bonded", "BLE_X_RMC"),
+                ("no remote bonded", 1, "none", "")):
+            self.remote(status_out=out, status_code=code)
+            answer = self.call("remote")
+            self.assertTrue(answer["ok"], answer)
+            self.assertEqual((answer["state"], answer["name"]), (state, name))
+            self.assertNotIn("00:11", json.dumps(answer))               # the address stays here
+        self.remote(status_out="error: no Bluetooth controller", status_code=2)
+        self.assertFalse(self.call("remote")["ok"])
+
+    def test_repair_forgets_and_shows_the_hint(self):
+        self.remote()
+        answer = self.call("remote_repair")
+        self.assertTrue(answer["ok"] and answer["forgot"] and answer["hint"], answer)
+        self.assertEqual(answer["seconds"], panel.PAIR_WINDOW_S)
+        self.assertEqual(self.fake.calls(), ["h713-remote-pair forget", "h713-osd ctl pair"])
+        self.assertIn("LEFT + RIGHT", answer["line"])
+
+    def test_repair_with_no_remote_paired_is_a_plain_sentence(self):
+        self.remote(forget_code=1, forget_out="")             # forget: exit 1 and not a word
+        answer = self.call("remote_repair")
+        self.assertTrue(answer["ok"], answer)
+        self.assertFalse(answer["forgot"])
+        self.assertIn("no remote was paired, so there was nothing to forget", answer["line"])
+        self.assertEqual(self.fake.calls(), ["h713-remote-pair forget", "h713-osd ctl pair"])
+
+    def test_repair_stops_when_bluez_refuses(self):
+        self.remote(forget_code=2, forget_out="error: forget 00:11:22:33:44:55: no answer")
+        answer = self.call("remote_repair")
+        self.assertFalse(answer["ok"])
+        self.assertIn("no answer", answer["line"])
+        self.assertEqual(self.fake.calls(), ["h713-remote-pair forget"])    # no hint for a bond still there
+
+    def test_a_missing_hint_is_said_not_fatal(self):
+        self.remote()
+        self.fake.script("h713-osd", 'echo "error unknown: volume N | mute on|off N"\nexit 1')
+        answer = self.call("remote_repair")
+        self.assertTrue(answer["ok"], answer)
+        self.assertFalse(answer["hint"])
+        self.assertIn("no hint on the projector", answer["line"])
+
+    def test_a_slow_read_does_not_hold_the_motor_lock(self):
+        self.assertTrue(self.panel.lock.acquire(False))        # a command is running
+        try:
+            self.remote()
+            self.assertTrue(self.call("remote")["ok"])
+            self.assertTrue(self.call("settings")["ok"])
+            self.assertTrue(self.call("report", ["hdcp"])["ok"])
+        finally:
+            self.panel.lock.release()
+
+
+class WifiTest(Bench):
+    FORM = {"mode": "sta", "ssid": "Home net", "password": "s3cret-pass#1", "country": "DE"}
+
+    def setUp(self):
+        Bench.setUp(self)
+        self.put("wifi.env", WIFI_ENV)
+        self.env = os.path.join(self.etc, "wifi.env")
+
+    def apply(self, form=None):
+        return self.call("wifi_set", [form if form is not None else self.FORM])
+
+    def test_apply_keeps_the_old_file_sets_the_timer_and_restarts(self):
+        answer = self.apply()
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(answer["pending"], panel.ROLLBACK_S)
+        new = self.get("wifi.env")
+        for line in ("mode=sta", "ssid=Home net", "password=s3cret-pass#1", "band=2.4", "channel=6"):
+            self.assertIn("\n" + line + "\n", "\n" + new)
+        self.assertTrue(new.startswith("# /etc/h713/wifi.env - a comment that has to survive\n"))
+        self.assertEqual(self.get("wifi.env.prev"), WIFI_ENV)
+        self.assertEqual(stat.S_IMODE(os.stat(self.env).st_mode), 0o600)
+        self.assertEqual(stat.S_IMODE(os.stat(self.env + ".prev").st_mode), 0o600)
+        self.assertEqual(self.fake.calls(), [
+            "h713-wifi check %s.next" % self.env,
+            "systemd-run --quiet --collect --unit=h713-panel-wifi-rollback --on-active=120 "
+            "/usr/local/lib/h713-panel/h713-panel --rollback-wifi --etc " + self.etc,
+            "systemctl restart h713-wifi.service"])
+        self.assertFalse(os.path.exists(self.env + ".next"))
+        self.assertNotIn("s3cret", json.dumps(answer))
+        self.assertLessEqual(self.call("status")["wifi_pending"], panel.ROLLBACK_S)
+        self.assertEqual(self.call("settings")["wifi"]["mode"], "sta")
+
+    def test_an_empty_password_means_unchanged(self):
+        self.assertTrue(self.apply({"ssid": "Other", "password": ""})["ok"])
+        new = panel.read_env(self.get("wifi.env"))
+        self.assertEqual((new["ssid"], new["password"]), ("Other", "magcubic"))
+
+    def test_the_password_is_never_sent_back(self):
+        # even a check that quotes it in its refusal
+        self.fake.script("h713-wifi", 'echo "h713-wifi: ERROR: password s3cret-pass#1 is wrong" >&2\nexit 1')
+        answer = self.apply()
+        self.assertFalse(answer["ok"])
+        self.assertNotIn("s3cret", json.dumps(answer))
+        # and a refusal of the password itself says nothing of it
+        answer = self.apply({"password": "short"})
+        self.assertFalse(answer["ok"])
+        self.assertNotIn("short", answer["line"])
+        for verb in ("settings", "status"):
+            self.assertNotIn("magcubic", json.dumps(self.call(verb)))
+
+    def test_a_check_that_fails_touches_nothing(self):
+        self.fake.script("h713-wifi", 'echo "h713-wifi: ERROR: band=5 allows only 36, 40, 44, 48" >&2\nexit 1')
+        answer = self.apply({"band": "5", "channel": "6"})
+        self.assertFalse(answer["ok"])
+        self.assertIn("band=5 allows only", answer["line"])
+        self.assertEqual(self.get("wifi.env"), WIFI_ENV)
+        self.assertEqual(sorted(os.listdir(self.etc)), ["wifi.env"])
+        self.assertEqual(len(self.fake.calls()), 1)               # the check, no timer, no restart
+
+    def test_values_that_could_break_the_file_are_refused_before_any_process(self):
+        for form in ({"mode": "mesh"}, {"ssid": "a\nmode=off"}, {"ssid": "a\rb"}, {"ssid": ""},
+                     {"ssid": "x" * 33}, {"ssid": 'a"b'}, {"ssid": "a\\b"}, {"password": "1234567"},
+                     {"password": "12345678\nmode=off"}, {"password": "p" * 64}, {"country": "de"},
+                     {"country": "DEU"}, {"band": "6"}, {"channel": "14"}, {"channel": "37"},
+                     {"ap_ip": "300.1.1.1"}, {"ap_ip": "1.1.1"}, {"ap_dhcp_end": "1.1.1.1\n2"},
+                     {"foo": "bar"}, {"mode": 1}, {"ssid": ["x"]}):
+            answer = self.apply(form)
+            self.assertFalse(answer["ok"], form)
+            self.assertTrue(answer["line"].startswith("error"), answer)
+        for args in ([], ["mode=off"], [{}, {}]):
+            self.assertFalse(self.call("wifi_set", args)["ok"])
+        self.assertEqual(self.fake.calls(), [])
+        self.assertEqual(self.get("wifi.env"), WIFI_ENV)
+
+    def test_no_timer_no_change(self):
+        self.fake.tool("systemd-run", code=1)
+        answer = self.apply()
+        self.assertFalse(answer["ok"])
+        self.assertIn("nothing was changed", answer["line"])
+        self.assertEqual(self.get("wifi.env"), WIFI_ENV)
+        self.assertEqual(sorted(os.listdir(self.etc)), ["wifi.env"])
+        self.assertFalse([c for c in self.fake.calls() if "restart" in c])
+
+    def test_a_restart_that_fails_puts_the_old_file_back(self):
+        self.fake.script("systemctl", 'case "$*" in "restart h713-wifi.service") echo "Job failed"; exit 1;; esac')
+        answer = self.apply()
+        self.assertFalse(answer["ok"])
+        self.assertIn("the old settings are back", answer["line"])
+        self.assertEqual(self.get("wifi.env"), WIFI_ENV)
+        self.assertFalse(os.path.exists(self.env + ".prev"))
+        self.assertIn("systemctl stop h713-panel-wifi-rollback.timer", self.fake.calls())
+
+    def test_a_waiting_change_blocks_the_next_and_confirm_keeps_it(self):
+        self.assertTrue(self.apply()["ok"])
+        self.assertIn("waits for its confirmation", self.apply({"ssid": "Third"})["line"])
+        self.fake.forget()
+        answer = self.call("wifi_confirm")
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(self.fake.calls(), ["systemctl stop h713-panel-wifi-rollback.timer"])
+        self.assertFalse(os.path.exists(self.env + ".prev"))
+        self.assertEqual(panel.read_env(self.get("wifi.env"))["ssid"], "Home net")
+        self.assertIsNone(self.call("status")["wifi_pending"])
+        self.assertFalse(self.call("wifi_confirm")["ok"])           # nothing waits any more
+
+    def test_a_confirm_that_cannot_stop_the_timer_keeps_the_fall_back(self):
+        self.assertTrue(self.apply()["ok"])
+        self.fake.tool("systemctl", code=1)
+        self.assertFalse(self.call("wifi_confirm")["ok"])
+        self.assertTrue(os.path.exists(self.env + ".prev"))
+
+    def test_the_fall_back_restores_the_old_file(self):
+        self.assertTrue(self.apply()["ok"])
+        self.fake.forget()
+        self.assertEqual(self.panel.rollback_wifi(), 0)
+        self.assertEqual(self.get("wifi.env"), WIFI_ENV)
+        self.assertFalse(os.path.exists(self.env + ".prev"))
+        self.assertEqual(self.fake.calls(), ["systemctl restart h713-wifi.service"])
+        self.fake.forget()
+        self.assertEqual(self.panel.rollback_wifi(), 0)            # confirmed or done: nothing to do
+        self.assertEqual(self.fake.calls(), [])
+
+    def test_the_command_the_timer_runs_is_this_file(self):
+        """systemd-run starts `h713-panel --rollback-wifi --etc DIR`: run it just so."""
+        self.assertTrue(self.apply()["ok"])
+        self.fake.forget()
+        done = subprocess.run([sys.executable, TOOL, "--rollback-wifi", "--etc", self.etc,
+                               "--tools", self.fake.dir], stdout=subprocess.PIPE, universal_newlines=True)
+        self.assertEqual(done.returncode, 0, done.stdout)
+        self.assertEqual(self.get("wifi.env"), WIFI_ENV)
+        self.assertEqual(self.fake.calls(), ["systemctl restart h713-wifi.service"])
+
+
+class HostnameTest(Bench):
+    def test_the_name_goes_to_hostnamectl_and_to_127_0_1_1(self):
+        self.put("hosts", "127.0.0.1\tlocalhost\n127.0.1.1\thy310\n::1\tlocalhost ip6-localhost\n", self.fake.dir)
+        answer = self.call("hostname_set", ["Proj-1"])
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(self.fake.calls(), ["hostnamectl set-hostname proj-1"])
+        self.assertEqual(self.get("hosts", self.fake.dir),
+                         "127.0.0.1\tlocalhost\n127.0.1.1\tproj-1\n::1\tlocalhost ip6-localhost\n")
+
+    def test_a_hosts_file_without_the_line_gets_one(self):
+        self.put("hosts", "127.0.0.1\tlocalhost\n", self.fake.dir)
+        self.assertTrue(self.call("hostname_set", ["a"])["ok"])
+        self.assertEqual(self.get("hosts", self.fake.dir), "127.0.0.1\tlocalhost\n127.0.1.1\ta\n")
+        self.assertTrue(self.call("hostname_set", ["x" * 63])["ok"])
+
+    def test_hostnamectl_that_fails_leaves_hosts_alone(self):
+        self.put("hosts", "127.0.1.1\told\n", self.fake.dir)
+        self.fake.tool("hostnamectl", code=1)
+        self.assertFalse(self.call("hostname_set", ["new"])["ok"])
+        self.assertEqual(self.get("hosts", self.fake.dir), "127.0.1.1\told\n")
+
+
+class PasswordTest(unittest.TestCase):
+    def setUp(self):
+        self.tmp = tempfile.mkdtemp()
+        self.file = os.path.join(self.tmp, "panel.env")
+        panel.write_password(self.file, "old-password")
+        self.panel = panel.Panel(tools=self.tmp, etc=self.tmp, password_file=self.file)
+        self.server = panel.serve(self.panel, b"<html>h713 panel</html>", "127.0.0.1", 0,
+                                  password="old-password")
+        self.thread = threading.Thread(target=self.server.serve_forever, daemon=True)
+        self.thread.start()
+        self.port = self.server.server_address[1]
+
+    def tearDown(self):
+        self.server.shutdown()
+        self.thread.join(5)
+        self.server.server_close()
+        shutil.rmtree(self.tmp, ignore_errors=True)
+
+    def change(self, *args):
+        return self.panel.call({"verb": "panel_password", "args": list(args)})
+
+    def code(self, password):
+        request = urllib.request.Request("http://127.0.0.1:%d/" % self.port)
+        request.add_header("Authorization", "Basic " + base64.b64encode(("x:" + password).encode()).decode())
+        try:
+            return urllib.request.urlopen(request, timeout=10).getcode()
+        except urllib.error.HTTPError as problem:
+            return problem.code
+
+    def test_the_new_password_replaces_the_old_in_the_file_and_at_the_door(self):
+        answer = self.change("old-password", "new pass: 12")
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(panel.read_password(self.file), "new pass: 12")
+        self.assertEqual(stat.S_IMODE(os.stat(self.file).st_mode), 0o600)
+        self.assertEqual((self.code("old-password"), self.code("new pass: 12")), (401, 200))
+        self.assertNotIn("new pass", json.dumps(answer))
+
+    def test_refusals_change_nothing(self):
+        for args in (("wrong", "new-password-1"), ("old-password", "short"), ("old-password", "p" * 65),
+                     ("old-password", " leading-space"), ("old-password", "tab\there-1234"),
+                     ("old-password",), ("old-password", 12345678)):
+            self.assertFalse(self.change(*args)["ok"], args)
+        self.assertEqual(panel.read_password(self.file), "old-password")
+        self.assertEqual(self.code("old-password"), 200)
+
+    def test_no_password_in_force_means_nothing_to_change(self):
+        self.server.password = None
+        self.assertFalse(self.change("x", "new-password-1")["ok"])
+        self.assertFalse(panel.Panel(etc=self.tmp).call({"verb": "panel_password", "args": ["a", "b" * 9]})["ok"])
+
+
+class PageTest(unittest.TestCase):
+    def setUp(self):
+        with open(PAGE, "rb") as handle:
+            self.page = handle.read().decode("utf-8")
+
+    def test_six_tabs_and_their_sections(self):
+        for name in ("projection", "picture", "sound", "remote", "network", "system"):
+            self.assertIn('id="tab-%s"' % name, self.page)
+            self.assertIn('class="screen%s" id="%s"' % (" on" if name == "projection" else "", name), self.page)
+            self.assertIn('"%s"' % name, self.page.split("function show(")[1].split("}")[0])
+
+    def test_what_cannot_be_taken_back_asks_first(self):
+        for verb in ("reboot", "poweroff", "replug", "save_off"):
+            self.assertRegex(self.page, r"ask\('[^']+', '%s'\)" % verb)
+        self.assertIn("window.confirm(", self.page.split("function wifiApply")[1])
+        self.assertIn("Forget and re-pair", self.page)                # the mockup's second state
+        for text in ("Hold LEFT + RIGHT on the remote", "searching", "Re-pair remote", "always on"):
+            self.assertIn(text, self.page)
+
+    def test_the_page_never_fills_a_password_and_never_names_what_stays_out(self):
+        self.assertNotIn("wifi.password", self.page)
+        self.assertNotIn(".password =", self.page)
+        for word in ("focus_command", "rpc", "block1", "authorized", "ssh-"):
+            self.assertNotIn(word, self.page)
+        self.assertIn('"X-Requested-With": "h713-panel"', self.page)
+
+    def test_no_dash_characters(self):
+        for path in (PAGE, TOOL, os.path.join(HERE, "test_h713_panel.py")):
+            with open(path, "rb") as handle:
+                text = handle.read().decode("utf-8")
+            self.assertNotIn(chr(0x2014), text, path)
+            self.assertNotIn(chr(0x2013), text, path)
+
+
+class CrossSiteTest(unittest.TestCase):
+    def test_a_post_without_the_pages_header_is_refused(self):
+        fake = Fakes()
+        fake.tool("h713-warp")
+        server = panel.serve(panel.Panel(tools=fake.dir), b"x", "127.0.0.1", 0)
+        thread = threading.Thread(target=server.serve_forever, daemon=True)
+        thread.start()
+        try:
+            request = urllib.request.Request("http://127.0.0.1:%d/api" % server.server_address[1],
+                                             data=b'{"verb": "warp", "args": ["on"]}',
+                                             headers={"Content-Type": "text/plain"})
+            answer = json.loads(urllib.request.urlopen(request, timeout=10).read().decode("utf-8"))
+            self.assertFalse(answer["ok"])
+            self.assertEqual(fake.calls(), [])
+        finally:
+            server.shutdown()
+            thread.join(5)
+            server.server_close()
+            fake.close()
+
+
+if __name__ == "__main__":
+    sys.exit(not unittest.main(exit=False).result.wasSuccessful())

@@ -1,196 +1,521 @@
 <!DOCTYPE html>
-<!-- The page h713-panel serves: an instrument, not a template. Dark grey, one
-     accent for "selected" and "active", flat rectangles, tabular numbers, an
-     8 px grid, no image, no font and no script from anywhere else. -->
+<!-- The page h713-panel serves: a dark, plain instrument panel. One section at
+     a time, the device state always in the header, every control one real
+     verb of the tool. No image, font or script from anywhere else. -->
 <html lang="en">
 <head>
 <meta charset="utf-8">
 <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
 <meta name="color-scheme" content="dark">
+<meta name="theme-color" content="#131313">
 <title>h713 panel</title>
 <style>
 :root {
-  --bg: #121212; --face: #181818; --sunk: #0e0e0e; --line: #2b2b2b; --ink: #d8d8d8;
-  --dim: #8b8b8b; --accent: #e08c2c; --u: 8px;
-  --mono: ui-monospace, "SFMono-Regular", Menlo, Consolas, monospace;
+  --bg: #131313; --panel: #1a1a1a; --raised: #232323; --sunk: #0d0d0d;
+  --line: #2a2a2a; --line2: #383838;
+  --ink: #e8e5df; --dim: #a09a8e; --faint: #8a8478;
+  --accent: #e08c2c; --accent-dim: #2a2114;
+  --ok: #46b45e; --warn: #d8a428; --crit: #e5534b;
+  --u: 8px; --r: 10px;
+  --mono: ui-monospace, "SF Mono", Menlo, Consolas, monospace;
 }
 * { box-sizing: border-box; }
 html, body { margin: 0; background: var(--bg); color: var(--ink); }
-body { font: 15px/1.4 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
-       padding: var(--u); overflow-wrap: anywhere; }
-.num, #strip b { font-family: var(--mono); font-variant-numeric: tabular-nums; }
-h1, h2, h3 { text-transform: uppercase; letter-spacing: .16em; color: var(--dim);
-             font-weight: 600; font-size: 11px; }
-h1 { font-size: 13px; margin: 0 0 var(--u); }
-h2 { margin: 0 0 var(--u); padding-bottom: var(--u); border-bottom: 1px solid var(--line); }
-h3 { margin: calc(2 * var(--u)) 0 var(--u); }
-#strip { display: flex; flex-wrap: wrap; gap: 0 var(--u); font-size: 12px;
-         border: 1px solid var(--line); background: var(--sunk); padding: var(--u);
-         color: var(--dim); margin-bottom: var(--u); }
-#strip span { white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
-#strip span + span { border-left: 1px solid var(--line); padding-left: var(--u); }
-#strip b { color: var(--ink); font-weight: 500; }
-#strip b.on { color: var(--accent); }
-section { border: 1px solid var(--line); background: var(--face); padding: var(--u);
-          margin-bottom: var(--u); }
-.row { display: flex; flex-wrap: wrap; gap: var(--u); }
-.row > *, nav button, #steps button { flex: 1 1 auto; }
-button { min-height: 48px; padding: var(--u) calc(1.5 * var(--u)); background: #1f1f1f;
-         color: var(--ink); border: 1px solid var(--line); border-radius: 0;
-         font: inherit; font-size: 14px; cursor: pointer; }
-button:hover { background: #262626; } button:focus-visible { outline: 2px solid var(--accent); }
-button:active { background: var(--accent); color: #101010; border-color: var(--accent); }
-button[aria-pressed="true"] { color: var(--accent); border-color: var(--accent);
-                              background: #201a12; }
-button.wide { flex: 1 1 100%; } label span { float: right; color: var(--ink); font-family: var(--mono); }
-label { display: block; font-size: 12px; color: var(--dim); letter-spacing: .06em;
-        margin: var(--u) 0 0; }
-input[type=range] { width: 100%; height: 40px; accent-color: var(--accent); background: none; }
-#keystone { display: flex; flex-wrap: wrap; gap: var(--u); align-items: flex-start; }
-#quad { flex: 1 1 280px; min-width: 0; max-width: 460px; background: var(--sunk);
-        border: 1px solid var(--line); touch-action: none; display: block; }
-#steps { display: flex; gap: 4px; margin: 4px 0 var(--u); }
-#keystone > div { flex: 0 0 176px; } #dpad button { min-height: 52px; padding: 0; }
+body { font: 15px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
+       overflow-wrap: anywhere; }
+::selection { background: #4d3a1a; color: #ffe9cf; }
+:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; border-radius: 4px; }
+::-webkit-scrollbar { width: 10px; height: 10px; }
+::-webkit-scrollbar-thumb { background: #333333; border-radius: 5px; }
+::-webkit-scrollbar-track { background: transparent; }
+input, select, button { accent-color: var(--accent); caret-color: var(--accent); }
+.num { font-family: var(--mono); font-variant-numeric: tabular-nums; }
+h2 { font-size: 17px; font-weight: 650; letter-spacing: .01em; margin: 0 0 2px; }
+h3 { font-size: 12px; font-weight: 600; letter-spacing: .08em; text-transform: uppercase;
+     color: var(--faint); margin: 22px 0 6px; }
+.help { font-size: 12.5px; color: var(--dim); margin: 4px 0 0; max-width: 70ch; }
+.help b { color: var(--ink); font-weight: 550; }
+[hidden] { display: none !important; }   /* .row and .chips are flex: hidden has to win */
+
+/* header */
+header { position: sticky; top: 0; z-index: 5; background: rgba(16,16,16,.92);
+         border-bottom: 1px solid var(--line); padding: 12px 18px;
+         display: flex; flex-wrap: wrap; gap: 8px 16px; align-items: baseline; }
+#brand { font-size: 15px; font-weight: 700; letter-spacing: .02em; white-space: nowrap; }
+#brand span { color: var(--faint); font-weight: 500; }
+#strip { display: flex; flex-wrap: wrap; gap: 4px 6px; min-width: 0; }
+.chip { font-size: 11.5px; color: var(--dim); background: var(--panel);
+        border: 1px solid var(--line); border-radius: 999px; padding: 2px 9px;
+        white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 100%; }
+.chip b { color: var(--ink); font-weight: 550; font-family: var(--mono);
+          font-variant-numeric: tabular-nums; }
+.chip b.ok { color: var(--ok); } .chip b.warn { color: var(--warn); }
+.chip b.crit { color: var(--crit); } .chip b.on { color: var(--accent); }
+
+/* the Wi-Fi take-back banner */
+#pending { background: #241d0d; border-bottom: 1px solid #54401a; color: var(--ink);
+           padding: 10px 18px; font-size: 13.5px; display: flex; gap: 12px;
+           align-items: center; flex-wrap: wrap; }
+#pending b { color: var(--warn); font-family: var(--mono); }
+
+/* navigation: a scrollable row on the phone, a rail on the desktop */
+nav { display: flex; gap: 4px; overflow-x: auto; padding: 10px 12px 2px; }
+nav button { min-height: 42px; padding: 0 14px; white-space: nowrap; flex: 0 0 auto;
+             background: none; border: 1px solid transparent; border-radius: 8px;
+             color: var(--dim); font: inherit; font-size: 14px; cursor: pointer;
+             display: inline-flex; align-items: center; gap: 8px; }
+nav button svg { width: 15px; height: 15px; stroke: currentColor; fill: none;
+                 stroke-width: 1.6; stroke-linecap: round; stroke-linejoin: round; }
+nav button:hover { color: var(--ink); background: var(--panel); }
+nav button[aria-pressed="true"] { color: var(--ink); background: var(--panel);
+                                  border-color: var(--line2); }
+
+/* content */
+main { padding: 14px 14px 20px; max-width: 980px; }
+.screen { display: none; }
+.screen.on { display: block; animation: in .18s cubic-bezier(0, 0, .2, 1); }
+@keyframes in { from { opacity: 0; transform: translateY(4px); } }
+@media (prefers-reduced-motion: reduce) { .screen.on { animation: none; } }
+.card { background: var(--panel); border: 1px solid var(--line); border-radius: var(--r);
+        padding: 16px 18px 18px; margin-bottom: 16px; }
+.card > h2 + .help { margin-top: 2px; }
+.row { display: flex; flex-wrap: wrap; gap: 8px; }
+.btnrow { display: flex; flex-wrap: wrap; gap: 8px; margin-top: 14px; }
+.btnrow > button, .row > button { flex: 0 0 auto; }
+hr { border: 0; border-top: 1px solid var(--line); margin: 14px 0; }
+
+/* controls */
+button { min-height: 44px; padding: 0 16px; background: var(--raised); color: var(--ink);
+         border: 1px solid var(--line2); border-radius: 8px; font: inherit;
+         font-size: 14px; cursor: pointer; transition: background .12s ease-out; }
+button:hover { background: #2b2b2b; }
+button:active { background: #343434; }
+button[aria-pressed="true"] { background: var(--accent-dim); border-color: var(--accent);
+                              color: #f2c896; }
+button.primary { background: var(--accent); border-color: var(--accent); color: #1a1208;
+                 font-weight: 600; }
+button.primary:hover { background: #eb9c3f; }
+button.danger { color: #ffb4ae; border-color: #5c312e; }
+button.danger:hover { background: #33201e; }
+button:disabled { opacity: .45; cursor: default; }
+label { display: flex; justify-content: space-between; gap: 12px; font-size: 13px;
+        color: var(--dim); margin: 14px 0 2px; max-width: 70ch; }
+label b { color: var(--ink); font-weight: 500; font-family: var(--mono);
+          font-variant-numeric: tabular-nums; }
+input[type=range] { width: 100%; height: 30px; margin: 0; background: none; }
+button.mini { min-height: 30px; padding: 0 8px; font-size: 13px; border-radius: 6px; }
+.seg { display: inline-flex; gap: 3px; background: var(--sunk); border: 1px solid var(--line2);
+       border-radius: 8px; padding: 3px; flex-wrap: wrap; }
+.seg button { min-height: 34px; border: none; background: none; padding: 0 14px;
+              font-size: 13.5px; border-radius: 6px; }
+.seg button[aria-pressed="true"] { background: var(--accent); color: #1a1208; }
+details.why { font-size: 12.5px; color: var(--dim); margin-top: 10px; max-width: 70ch; }
+details.why summary { cursor: pointer; color: var(--faint); }
+details.why p { margin: 6px 0 0; }
+details.why[open] summary { color: var(--dim); }
+.sliders { display: grid; gap: 0 28px; grid-template-columns: 1fr; }
+@media (min-width: 720px) { .sliders { grid-template-columns: 1fr 1fr; } }
+.sfield { min-width: 0; }
+.sliders label { margin: 8px 0 0; }
+.qrow { display: flex; align-items: center; gap: 10px; margin-top: 8px; }
+.qrow .qname { flex: 0 0 88px; font-size: 13px; color: var(--dim); }
+.qrow .row { flex: 1 1 auto; margin: 0; }
+.qrow .row > button { flex: 1 1 0; padding: 0 8px; }
+input[type=text], input[type=password], input[type=number], select {
+  min-height: 42px; padding: 0 10px; background: var(--sunk); color: var(--ink);
+  border: 1px solid var(--line2); border-radius: 8px; font: inherit; font-size: 14px; }
+input[type=number] { font-family: var(--mono); }
+.form-grid { display: grid; gap: 10px 16px; grid-template-columns: 1fr; margin-top: 8px; }
+.form-grid label { margin: 0; align-items: center; }
+.form-grid input, .form-grid select { width: 100%; max-width: 320px; }
+@media (min-width: 640px) { .form-grid { grid-template-columns: 1fr 1fr; } }
+pre { background: var(--sunk); border: 1px solid var(--line); border-radius: 8px;
+      padding: 10px 12px; font: 12px/1.5 var(--mono); color: var(--dim);
+      overflow-x: auto; white-space: pre-wrap; margin: 10px 0 0; }
+footer { position: sticky; bottom: 0; background: var(--sunk); border-top: 1px solid var(--line);
+         padding: 10px 18px; font: 12.5px/1.4 var(--mono); color: var(--dim);
+         min-height: 36px; }
+footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
+
+/* keystone */
+#keystone { display: flex; flex-wrap: wrap; gap: 12px; align-items: flex-start; }
+#quad { flex: 1 1 300px; min-width: 0; max-width: 520px; background: var(--sunk);
+        border: 1px solid var(--line); border-radius: var(--r); touch-action: none; display: block; }
+#keystone > div { flex: 0 0 200px; }
 #dpad { display: grid; grid-template-columns: repeat(3, 1fr); gap: 4px; }
+#dpad button { min-height: 50px; padding: 0; }
 #dpad button:nth-child(1) { grid-area: 1/2; } #dpad button:nth-child(2) { grid-area: 2/1; }
 #dpad button:nth-child(3) { grid-area: 2/3; } #dpad button:nth-child(4) { grid-area: 3/2; }
-#steps button { min-height: 40px; padding: 0; font-family: var(--mono); }
-.edge { fill: none; stroke: #333; stroke-width: 1; stroke-dasharray: 3 3; }
-.shape { fill: rgba(224, 140, 44, .07); stroke: var(--accent); stroke-width: 1.5; }
-.grab { fill: #1f1f1f; stroke: var(--ink); stroke-width: 1.5; cursor: grab; }
-.tag { fill: var(--dim); font-size: 10px; font-family: var(--mono); }
-.corners { display: grid; grid-template-columns: repeat(auto-fit, minmax(200px, 1fr)); gap: 4px 12px;
-           margin: 8px 0 2px; max-width: 460px; font-family: var(--mono);
-           font-variant-numeric: tabular-nums; font-size: 13px; color: var(--dim); }
-.corners button { text-align: left; padding: 4px 8px; white-space: nowrap; }
-.corners button b { color: var(--ink); font-weight: 600; margin-right: 6px; }
-.corners button.sel { color: var(--accent); }
-.corners button.sel b { color: var(--accent); }
+#steps { display: flex; gap: 4px; margin-top: 4px; }
+#steps button { flex: 0 1 auto; min-height: 34px; padding: 0 12px; font-family: var(--mono);
+                font-size: 13px; white-space: nowrap; }
+.edge { fill: none; stroke: #3d3d3d; stroke-width: 1; stroke-dasharray: 3 3; }
+.shape { fill: rgba(224, 140, 44, .08); stroke: var(--accent); stroke-width: 1.5; }
+.grab { fill: var(--raised); stroke: var(--ink); stroke-width: 1.5; cursor: grab; }
+.tag { fill: var(--faint); font-size: 10px; font-family: var(--mono); }
+.corners { display: grid; grid-template-columns: repeat(auto-fit, minmax(210px, 1fr));
+           gap: 8px 12px; margin: 14px 0 0; font-size: 13.5px; }
+.corners button { text-align: left; padding: 8px 12px; min-height: 40px; white-space: nowrap;
+                  background: var(--sunk); }
+.corners button b { font-weight: 600; margin-right: 8px; font-family: var(--mono); }
+.corners button.sel, .corners button.sel b { color: var(--accent); border-color: var(--accent); }
 .grab.sel { fill: var(--accent); stroke: var(--accent); } .tag.sel { fill: var(--accent); }
-nav { display: flex; gap: var(--u); margin-bottom: var(--u); }
-.screen { display: none; } .screen.on { display: block; }
-footer { position: sticky; bottom: 0; background: var(--sunk); padding: var(--u);
-         border: 1px solid var(--line); font-size: 12px; font-family: var(--mono);
-         color: var(--dim); }
-footer.ok { color: var(--ink); } footer.bad { color: var(--accent); }
-.help { font-size: 12px; color: var(--dim); margin: 4px 0 0; } .help b { color: var(--ink); font-weight: 500; }
-[hidden] { display: none !important; }   /* .row is flex: hidden has to win */
+
 @media (min-width: 900px) {
-  body { max-width: 1440px; margin: 0 auto; padding: calc(2 * var(--u)); }
-  nav { display: none; } .screen { display: block; } section { margin-bottom: 0; }
-  main { display: grid; gap: var(--u); align-items: start;
-         grid-template-columns: 2fr 1fr 1fr; }
+  body { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: auto 1fr auto;
+         min-height: 100vh; }
+  header { grid-column: 1 / 3; }
+  nav { flex-direction: column; gap: 2px; padding: 14px 10px; overflow: visible;
+        border-right: 1px solid var(--line); align-self: start;
+        position: sticky; top: 57px; }
+  nav button { width: 100%; justify-content: flex-start; }
+  footer { grid-column: 1 / 3; }
+  main { padding: 18px 22px; }
   button { min-height: 40px; }
 }
 </style>
 </head>
 <body>
-<h1>h713 panel</h1>
-<div id="strip"></div>
 
-<nav>
-  <button onclick="show('projection')" id="tab-projection" aria-pressed="true">Projection</button>
-  <button onclick="show('picture')" id="tab-picture" aria-pressed="false">Picture</button>
-  <button onclick="show('sound')" id="tab-sound" aria-pressed="false">Sound</button>
+<header>
+  <div id="brand">h713 panel <span>settings</span></div>
+  <div id="strip" class="chips"></div>
+</header>
+<div id="pending" hidden>
+  <span>Wi-Fi settings are on trial - they come back by themselves in <b id="pending-s">120</b> s
+    unless you keep them.</span>
+  <button onclick="act('wifi_confirm')">Keep these settings</button>
+</div>
+
+<nav aria-label="sections">
+  <button onclick="show('projection')" id="tab-projection" aria-pressed="true">
+    <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M12 18v3M8 21h8"/></svg>Projection</button>
+  <button onclick="show('picture')" id="tab-picture" aria-pressed="false">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg>Picture</button>
+  <button onclick="show('sound')" id="tab-sound" aria-pressed="false">
+    <svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>Sound</button>
+  <button onclick="show('remote')" id="tab-remote" aria-pressed="false">
+    <svg viewBox="0 0 24 24"><rect x="8" y="3" width="8" height="18" rx="2"/><path d="M12 7h.01M10 12h4M10 16h4"/></svg>Remote</button>
+  <button onclick="show('network')" id="tab-network" aria-pressed="false">
+    <svg viewBox="0 0 24 24"><path d="M5 12a7 7 0 0 1 14 0M8 14a4 4 0 0 1 8 0"/><circle cx="12" cy="17" r="1.5"/></svg>Network</button>
+  <button onclick="show('system')" id="tab-system" aria-pressed="false">
+    <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="3"/><path d="M12 2v3M12 19v3M2 12h3M19 12h3M4.9 4.9l2.1 2.1M17 17l2.1 2.1M19.1 4.9L17 7M7 17l-2.1 2.1"/></svg>System</button>
 </nav>
 
 <main>
+
+<!-- ============ projection ============ -->
 <section class="screen on" id="projection">
-  <h2>Keystone</h2>
-  <p class="help" id="absent" hidden></p>
-  <div id="keystone" onkeydown="padKey(event)">
-    <svg id="quad" viewBox="0 0 360 216" role="group" aria-label="the four corners">
-      <rect class="edge" x="20" y="18" width="320" height="180"></rect>
-      <polygon class="shape" id="shape" points=""></polygon>
-      <g id="handles"></g>
-    </svg>
-    <div>
-      <div id="dpad">
-        <button onclick="nudge('y', -1)" aria-label="up">&#9650;</button><button
-          onclick="nudge('x', -1)" aria-label="left">&#9664;</button><button
-          onclick="nudge('x', 1)" aria-label="right">&#9654;</button><button
-          onclick="nudge('y', 1)" aria-label="down">&#9660;</button>
+  <div class="card">
+    <h2>Picture shape</h2>
+    <p class="help">Make the projected picture square and as large as your wall allows. Drag a corner,
+      or move the picked corner with the arrows.</p>
+    <p class="help" id="absent" hidden></p>
+    <div id="keystone" onkeydown="padKey(event)">
+      <svg id="quad" viewBox="0 0 360 216" role="group" aria-label="the four corners">
+        <rect class="edge" x="20" y="18" width="320" height="180"></rect>
+        <polygon class="shape" id="shape" points=""></polygon>
+        <g id="handles"></g>
+      </svg>
+      <div>
+        <div id="dpad">
+          <button onclick="nudge('y', -1)" aria-label="up">&#9650;</button><button
+            onclick="nudge('x', -1)" aria-label="left">&#9664;</button><button
+            onclick="nudge('x', 1)" aria-label="right">&#9654;</button><button
+            onclick="nudge('y', 1)" aria-label="down">&#9660;</button>
+        </div>
+        <div id="steps"></div>
+        <p class="help">How far one press moves the corner.</p>
       </div>
-      <div id="steps"></div>
+    </div>
+    <div id="corners" class="corners" aria-label="the corners' values"></div>
+    <div class="btnrow">
+      <button onclick="maskToggle()" id="mask-toggle">Show alignment mask</button>
+      <button onclick="act('keystone_now')" data-needs="accelerometer">Straighten picture</button>
+      <button onclick="act('keystone_res')">Reset shape</button>
+    </div>
+    <details class="why">
+      <summary>What is the mask? What does "straighten" do?</summary>
+      <p>The mask puts a calibration picture on the wall (grey field, frame, circle) so you can aim a
+        corner with nothing plugged in. "Straighten picture" reads the projector's tilt sensor and
+        squares the picture once.</p>
+    </details>
+    <label for="zoom">Picture size on the wall <b id="zoom-v">100 %</b></label>
+    <input type="range" id="zoom" min="50" max="100" step="5" value="100" oninput="show_v('zoom', ' %')"
+           onchange="act('screen_zoom', [+this.value])">
+  </div>
+
+  <div class="card">
+    <h2>Mounting</h2>
+    <p class="help">Where the projector stands. The picture is mirrored or flipped to suit - the corner
+      names above stay as the audience sees them.</p>
+    <div class="seg" id="modes"></div>
+    <h3 data-needs="accelerometer">After the projector was moved</h3>
+    <div class="seg" id="after" data-needs="accelerometer"></div>
+    <p class="help" data-needs="accelerometer">What to redo automatically after a move. This uses the
+      tilt sensor - and, for sharpening, the camera and the focus motor.</p>
+    <h3 data-needs="accelerometer">Level reference</h3>
+    <button onclick="act('keystone_ref')" data-needs="accelerometer">Level reference</button>
+    <details class="why" data-needs="accelerometer">
+      <summary>What is a level reference?</summary>
+      <p>The straighten function already corrects against the ideal level pose (0, 0, 1 g), shown as
+        <b>ref ideal</b> in the header. Put the projector on a surface a spirit level has passed and press
+        the button: it stores the pose the sensor reads there, which refines the ideal by the sensor's own
+        mounting offset - the header then says <b>ref set</b>. <b>ref refused</b> means the stored file no
+        longer matches the axis map; the ideal applies until the button is pressed again.</p>
+    </details>
+  </div>
+
+  <div class="card">
+    <h2>Sharpness</h2>
+    <p class="help" data-needs="focus-motor">Moves the lens in small steps. Try the small ones first;
+      the motor is slow on purpose.</p>
+    <div class="row">
+      <button class="mini" onclick="act('focus', ['down', '20'])" data-needs="focus-motor">-20</button><button
+        class="mini" onclick="act('focus', ['down', '5'])" data-needs="focus-motor">-5</button>
+      <button class="mini" onclick="act('focus', ['up', '5'])" data-needs="focus-motor">+5</button><button
+        class="mini" onclick="act('focus', ['up', '20'])" data-needs="focus-motor">+20</button>
+      <button onclick="act('autofocus')" data-needs="camera focus-motor">Find focus automatically</button>
     </div>
   </div>
-  <div id="corners" class="corners" aria-label="the corners' values"></div>
-  <div class="row" style="margin-top:8px">
-    <button onclick="mask(true)" id="mask-on">Mask on</button><button
-      onclick="mask(false)" id="mask-off">Mask off</button>
-    <button onclick="act('keystone_now')" data-needs="accelerometer">Auto now</button><button
-      onclick="act('keystone_res')">Reset</button>
-  </div>
-  <label for="zoom">Zoom (the projection area) <span id="zoom-v" class="num">100 %</span></label>
-  <input type="range" id="zoom" min="50" max="100" step="5" value="100" oninput="show_v('zoom', ' %')"
-         onchange="act('screen_zoom', [+this.value])">
-  <h3>Mode</h3>
-  <div class="row" id="modes"></div>
-  <label>the mount: rear mirrors left-right, ceiling turns the picture over; the corners above
-    are named as the audience sees them in every mode</label>
-  <h3 data-needs="accelerometer">After a move</h3>
-  <div class="row" id="after" data-needs="accelerometer"></div>
-  <h3 data-needs="focus-motor">Focus</h3>
-  <div class="row">
-    <button onclick="act('focus', ['down', '20'])" data-needs="focus-motor">-20</button><button
-      onclick="act('focus', ['down', '5'])" data-needs="focus-motor">-5</button>
-    <button onclick="act('focus', ['up', '5'])" data-needs="focus-motor">+5</button><button
-      onclick="act('focus', ['up', '20'])" data-needs="focus-motor">+20</button>
-    <button onclick="act('keystone_ref')" data-needs="accelerometer">Level reference</button><button
-      onclick="act('autofocus')" data-needs="camera focus-motor">Autofocus now</button>
-  </div>
-  <p class="help" data-needs="accelerometer"><b>Level reference</b> is optional: the automatic already corrects against the ideal level
-    pose (0, 0, 1 g), shown as <b>ref ideal</b> above. Pressed with the projector on a surface a spirit level
-    has passed, it stores the pose the sensor reads there, which refines the ideal by the sensor's own mounting
-    offset - the strip then says <b>ref set</b>. <b>ref refused</b>: the stored file no longer matches the axis map
-    in keystone.conf; the ideal applies until the button is pressed again.</p>
-  <h3>Warp</h3>
-  <div class="row">
-    <button id="warp-on" onclick="act('warp', ['on'])">Warp on</button>
-    <button id="warp-off" onclick="act('warp', ['off'])">Warp off</button>
+
+  <div class="card">
+    <h2>Expert</h2>
+    <p class="help">Only if something looks wrong. Everything here also works the way it is.</p>
+    <div class="btnrow" style="margin-top:4px">
+      <button onclick="act('warp', [ST.warp === 'on' ? 'off' : 'on'])" id="warp-toggle">GPU warp</button>
+      <button onclick="act('pattern', ['grid'])" id="pat-grid">Grid</button>
+      <button onclick="act('pattern', ['border'])" id="pat-border">Border</button>
+      <button onclick="mask(false)" id="pat-off">Test off</button>
+    </div>
+    <p class="help">GPU warp is the engine behind picture shape and size - leave it on. Grid and border
+      put a test pattern on the wall.</p>
+    <label for="edge">Soft edge (fade out the frame border) <b id="edge-v">0</b></label>
+    <input type="range" id="edge" min="0" max="64" step="1" value="0" oninput="show_v('edge', '')"
+           onchange="act('edge', [+this.value])">
   </div>
 </section>
 
+<!-- ============ picture ============ -->
 <section class="screen" id="picture">
-  <h2>Picture</h2>
-  <h3>Preset</h3>
-  <div class="row" id="presets"></div>
-  <div id="sliders"></div>
-  <h3>Aspect</h3>
-  <div class="row" id="aspects"></div>
-  <div class="row" style="margin-top:8px"><button class="wide"
-    onclick="act('save')">Save picture settings</button></div>
+  <div class="card">
+    <h2>Picture</h2>
+    <p class="help">The look of the picture: brightness, colours, motion smoothing.</p>
+    <h3>Preset</h3>
+    <div class="seg" id="presets"></div>
+    <p class="help">One tap sets several values at once. Use cinema for movies, game for consoles.</p>
+    <h3>Controls</h3>
+    <div id="sliders" class="sliders"></div>
+    <div id="quality"></div>
+    <h3>Aspect</h3>
+    <div class="seg" id="aspects"></div>
+    <p class="help">How the source is fitted onto the panel. Leave it on auto unless the picture is
+      distorted.</p>
+    <div class="btnrow">
+      <button class="primary" onclick="act('save')">Save picture settings</button>
+      <button onclick="ask('Revert the picture to the last saved settings?', 'save_off')">Revert to saved</button>
+    </div>
+    <details class="why">
+      <summary>What exactly is saved? What does brightness do?</summary>
+      <p>Save writes the nine values, the preset and the aspect to the device, so they come back after a
+        reboot. Nothing here is written until you press it. <b>Brightness</b> is the black level on this
+        hardware, not a lamp control - on bright content you will see nothing move; the lamp is not
+        adjustable.</p>
+    </details>
+  </div>
 </section>
 
+<!-- ============ sound ============ -->
 <section class="screen" id="sound">
-  <h2>Sound</h2>
-  <label for="vol">Volume <span id="vol-v" class="num">50</span></label>
-  <input type="range" id="vol" min="0" max="100" step="1" value="50" oninput="show_v('vol', '')"
-         onchange="act('volume', [+this.value])">
-  <h3>Mute</h3>
-  <div class="row">
-    <button onclick="act('mute', ['on'])">Mute on</button>
-    <button onclick="act('mute', ['off'])">Mute off</button>
-  </div>
-  <h3>Audio</h3>
-  <div class="row">
-    <button onclick="act('audio', ['auto'])">Auto</button>
-    <button onclick="act('audio', ['on'])">On</button><button
-      onclick="act('audio', ['off'])">Off</button>
+  <div class="card">
+    <h2>Sound</h2>
+    <p class="help">The projector's own speaker.</p>
+    <label for="vol">Volume <b id="vol-v">50</b></label>
+    <input type="range" id="vol" min="0" max="100" step="1" value="50" oninput="show_v('vol', '')"
+           onchange="act('volume', [+this.value])">
+    <h3>Mute</h3>
+    <div class="seg" role="group" aria-label="mute">
+      <button onclick="act('mute', ['on'])" id="m-on">On</button>
+      <button onclick="act('mute', ['off'])" id="m-off">Off</button>
+    </div>
+    <h3>When does the speaker play?</h3>
+    <div class="seg" role="group" aria-label="audio policy">
+      <button onclick="act('audio', ['auto'])" id="a-auto">with the picture</button>
+      <button onclick="act('audio', ['on'])" id="a-on">always on</button>
+      <button onclick="act('audio', ['off'])" id="a-off">never</button>
+    </div>
+    <p class="help">"with the picture" follows the source: sound when a picture is shown.</p>
   </div>
 </section>
+
+<!-- ============ remote ============ -->
+<section class="screen" id="remote">
+  <div class="card">
+    <h2>Remote control</h2>
+    <p class="help">State: <b id="remote-state">reading...</b></p>
+    <h3>Re-pair remote</h3>
+    <p class="help">Put the remote into pairing mode: <b>Hold LEFT + RIGHT on the remote</b> until its
+      light blinks. The projector scans for it as soon as no remote is bonded, and shows the same hint
+      on the wall.</p>
+    <div class="btnrow">
+      <button onclick="repair()">Forget and re-pair</button>
+    </div>
+    <p class="help" id="pair-line" hidden></p>
+    <h3>Remote keys</h3>
+    <div id="conf-keys"></div>
+    <p class="help">What one press of the remote's volume rocker and focus keys is worth.</p>
+  </div>
+  <div class="card">
+    <h2>On the wall</h2>
+    <p class="help">What the projector draws on the wall while you use the remote - for example the
+      volume bar.</p>
+    <div id="conf-osd"></div>
+  </div>
+</section>
+
+<!-- ============ network ============ -->
+<section class="screen" id="network">
+  <div class="card">
+    <h2>Wi-Fi</h2>
+    <p class="help">Where the projector gets its network. A change goes live at once - if you lose the
+      connection, the old settings come back by themselves after <b>120 s</b>.</p>
+    <details class="why">
+      <summary>Why do I have to keep the settings by hand?</summary>
+      <p>On the access point the network goes away under the browser the moment the new settings apply,
+        so the page cannot be sure to hear your answer. That is why the change is on trial: press
+        "Keep these settings" in the yellow banner while you still see the page, or the tool puts the
+        previous settings back.</p>
+    </details>
+    <div class="form-grid">
+      <label>Mode
+        <select id="w-mode"><option value="ap">access point</option><option value="sta">join a Wi-Fi</option><option value="off">off (wire only)</option></select></label>
+      <label>Network name (SSID) <input type="text" id="w-ssid" maxlength="32" autocomplete="off"></label>
+      <label>Password <input type="password" id="w-password" maxlength="63" autocomplete="new-password"
+        placeholder=""></label>
+      <label>Country code <input type="text" id="w-country" maxlength="2" style="text-transform:uppercase" autocomplete="off"></label>
+      <label>Band
+        <select id="w-band"><option value="2.4">2.4 GHz</option><option value="5">5 GHz</option></select></label>
+      <label>Channel
+        <select id="w-channel"></select></label>
+      <label>AP address <input type="text" id="w-ap_ip" autocomplete="off"></label>
+      <label>DHCP range start <input type="text" id="w-ap_dhcp_start" autocomplete="off"></label>
+      <label>DHCP range end <input type="text" id="w-ap_dhcp_end" autocomplete="off"></label>
+    </div>
+    <div class="btnrow">
+      <button class="primary" onclick="wifiApply()">Apply Wi-Fi settings</button>
+      <button onclick="loadNetwork()">Reload</button>
+    </div>
+    <p class="help" id="w-has-password" hidden>A password is stored. Leave the field empty to keep it.</p>
+  </div>
+  <div class="card">
+    <h2>Host name</h2>
+    <p class="help">The name the projector has in your network (letters, digits, hyphens).</p>
+    <div class="form-grid">
+      <label>Name <input type="text" id="hostname" maxlength="63" autocomplete="off"></label>
+    </div>
+    <div class="btnrow">
+      <button onclick="var v=id('hostname').value.trim(); act('hostname_set', [v])">Set host name</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>Wi-Fi status</h2>
+    <div class="btnrow" style="margin-top:0">
+      <button onclick="loadReport('wifi', 'wifi-report')">Read status</button>
+    </div>
+    <pre id="wifi-report">not read yet</pre>
+  </div>
+</section>
+
+<!-- ============ system ============ -->
+<section class="screen" id="system">
+  <div class="card">
+    <h2>Power &amp; restart</h2>
+    <p class="help">What the physical power button does, whether the projector may be woken by remote -
+      and the switch to restart or shut it down from here.</p>
+    <div class="form-grid">
+      <label>Power button does
+        <select id="p-default" onchange="act('power_default', [this.value])"><option value="standby">standby</option><option value="poweroff">power off</option></select></label>
+      <label>Long press after (seconds)
+        <input type="number" id="p-long" min="1" max="10" step="1" onchange="act('power_long', [+this.value])"></label>
+      <label>Remote wakes the projector
+        <select id="p-remote" onchange="act('power_remote', [this.value])"><option value="on">always on</option><option value="off">off</option></select></label>
+      <label>Power button while frozen
+        <select id="p-refused" onchange="act('power_refused', [this.value])"><option value="poweroff">force power off</option><option value="log">log only</option></select></label>
+    </div>
+    <h3>Restart</h3>
+    <div class="row">
+      <button class="danger" onclick="ask('Restart the projector now?', 'reboot')">Reboot</button>
+      <button class="danger" onclick="ask('Shut the projector down now?', 'poweroff')">Power off</button>
+    </div>
+    <p class="help">Both ask once more before they do anything.</p>
+  </div>
+  <div class="card">
+    <h2>Troubleshooting</h2>
+    <p class="help">Noise, no signal or a frozen picture: try these first. The reports below are read
+      only - nothing here changes the projector.</p>
+    <div class="btnrow" style="margin-top:4px">
+      <button onclick="act('resync')">Re-sync signal</button>
+      <button onclick="ask('Replug the HDMI link? The picture drops for about a second.', 'replug')">Replug HDMI</button>
+    </div>
+    <h3>Reports</h3>
+    <div class="row" id="reports">
+      <button onclick="loadReport('features', 'report-out')">Features</button>
+      <button onclick="loadReport('hdcp', 'report-out')">HDCP</button>
+      <button onclick="loadReport('keys', 'report-out')">Keys</button>
+      <button onclick="loadReport('osd', 'report-out')">OSD</button>
+      <button onclick="loadReport('logs', 'report-out')">Logs</button>
+      <button onclick="loadReport('power', 'report-out')">Power</button>
+    </div>
+    <pre id="report-out">pick a report</pre>
+    <h3>Journal storage</h3>
+    <div class="seg">
+      <button onclick="act('logs', ['volatile'])">In RAM, clears at reboot</button>
+      <button onclick="act('logs', ['persistent'])">On disk, kept</button>
+    </div>
+  </div>
+  <div class="card">
+    <h2>At boot</h2>
+    <p class="help">What the projector shows and offers to the source when it starts up.</p>
+    <div id="conf-tv"></div>
+  </div>
+  <div class="card">
+    <h2>Access</h2>
+    <p class="help">The password for this page. Anyone on the network needs it to change anything.</p>
+    <div class="form-grid">
+      <label>Current password <input type="password" id="pw-old" autocomplete="current-password"></label>
+      <label>New password (8..64) <input type="password" id="pw-new" autocomplete="new-password"></label>
+    </div>
+    <div class="btnrow">
+      <button onclick="var o=id('pw-old').value, n=id('pw-new').value;
+        act('panel_password', [o, n]).then(function(){ id('pw-old').value = id('pw-new').value = ''; })">Change password</button>
+    </div>
+    <p class="help">The browser asks for the new one on the next request.</p>
+  </div>
+</section>
+
 </main>
 
 <footer id="line">ready</footer>
+
 <script>
 "use strict";
 /* The panel in the diagram: 320 x 180 at (20, 18) of the 360 x 216 viewBox. */
 var X0 = 20, Y0 = 18, W = 320, H = 180;
 var ROW = {tl: "tr", tr: "tl", bl: "br", br: "bl"};   /* the x partner */
 var COL = {tl: "bl", bl: "tl", tr: "br", br: "tr"};   /* and the y partner */
+/* plain words for the values the tools speak in code */
+var CORNER_NAME = {tl: "Top left", tr: "Top right", bl: "Bottom left", br: "Bottom right"};
+var STEP_NAME = {1: "fine", 10: "medium", 50: "coarse"};
+var MODE_NAME = {front: "on a shelf", rear: "from behind a screen",
+                 ceiling: "at the ceiling", "rear-ceiling": "at the ceiling, from behind"};
+var AFTER_NAME = {off: "do nothing", keystone: "straighten the picture",
+                  "keystone+focus": "straighten + sharpen"};
 var ST = {}, KS = {}, CORNER = "tl", STEP = 10, BUSY = false;
 var DRAG = null, LAST = 0, FLYING = false, PENDING = null;
-var FEAT = {};   /* h713-features through "controls": false = not present on this board */
+var FEAT = {};      /* h713-features through "controls": false = not present on this board */
+var CONF = {};      /* the form specs of keys.conf, osd.conf, tv.conf, out of "controls" */
+var PEND_UNTIL = 0; /* the Wi-Fi trial: wall clock when it ends, 0 when none waits */
+var PAIR_TIMER = null, PEND_TIMER = null;
 function id(name) { return document.getElementById(name); }
 function say(text, kind) { var f = id("line"); f.textContent = text; f.className = kind || ""; }
 function esc(text) { var d = document.createElement("div"); d.textContent = text; return d.innerHTML; }
@@ -203,12 +528,14 @@ function limit(corner, axis) {
     ? 1000 - val((axis === "x" ? ROW : COL)[corner] + "_" + axis) : known;
 }
 function api(verb, args) {
-  return fetch("/api", {method: "POST", headers: {"Content-Type": "application/json"},
+  return fetch("/api", {method: "POST",
+                        headers: {"Content-Type": "application/json",
+                                  "X-Requested-With": "h713-panel"},
                         body: JSON.stringify({verb: verb, args: args || []})})
     .then(function (r) { return r.json(); })
     .catch(function () { return {ok: false, line: "error the projector is not answering"}; });
 }
-/* Every button lands here: one verb, then the status is read again. */
+/* Every moving button lands here: one verb, then the status is read again. */
 function act(verb, args) {
   if (BUSY) { say("error one command at a time", "bad"); return Promise.resolve(); }
   BUSY = true; say("... " + verb, "");
@@ -217,9 +544,12 @@ function act(verb, args) {
     return refresh().then(function () { if (verb === "preset") { return syncSliders(); } });
   });
 }
-/* A preset sets the nine values behind the sliders: read them again and move
-   the sliders, except one the hand is on. Only after a preset - the read is
-   nine firmware questions, not something to poll. */
+/* What cannot be taken back asks first. */
+function ask(text, verb, args) {
+  if (window.confirm(text)) { act(verb, args || []); }
+}
+/* A preset moves the nine values behind the sliders: read them again, except
+   one the hand is on. */
 function syncSliders() {
   return api("controls").then(function (c) {
     (c.controls || []).forEach(function (t) {
@@ -234,10 +564,29 @@ function press(name, on) {
   if (b) { b.setAttribute("aria-pressed", String(!!on)); }
 }
 function show(name) {
-  ["projection", "picture", "sound"].forEach(function (n) {
+  /* the section names here, one per section, are the switch itself */
+  ["projection", "picture", "sound", "remote", "network", "system"].forEach(function (n) {
     id(n).classList.toggle("on", n === name);
     press("tab-" + n, n === name);
   });
+  if (name === "network") { loadNetwork(); }
+  if (name === "remote") { loadRemote(); }
+  if (name === "system") { loadSystem(); }
+}
+/* Wi-Fi goes live at once and is kept only on confirmation: on the access
+   point the network goes away under the browser, so the tool sets a 120 s
+   fall-back timer - the form is one object, an empty password means unchanged. */
+function wifiApply() {
+  var form = {mode: id("w-mode").value, ssid: id("w-ssid").value.trim(),
+              country: id("w-country").value.trim().toUpperCase(),
+              band: id("w-band").value, channel: id("w-channel").value,
+              ap_ip: id("w-ap_ip").value.trim(),
+              ap_dhcp_start: id("w-ap_dhcp_start").value.trim(),
+              ap_dhcp_end: id("w-ap_dhcp_end").value.trim()};
+  var secret = id("w-password").value;
+  if (secret) { form["password"] = secret; }   /* empty field: unchanged */
+  if (!window.confirm("Apply these Wi-Fi settings? Keep them within 120 s or the previous ones come back.")) { return; }
+  act("wifi_set", [form]);
 }
 function show_v(name, unit) { id(name + "-v").textContent = id(name).value + unit; }
 function has(name) { return FEAT[name] !== false; }   /* unknown: keep the control */
@@ -277,11 +626,10 @@ function drawQuad() {
   });
   id("handles").innerHTML = marks;
   /* the numbers live under the drawing, not in it: two labels in one line
-     collided as soon as a corner was pulled far (Marco, 23.09.) */
+     collided as soon as a corner was pulled far */
   id("corners").innerHTML = ["tl", "tr", "bl", "br"].map(function (c) {
     return '<button class="' + (c === CORNER ? "sel" : "") + '" onclick="pick(\'' + c +
-      '\')"><b>' + c + "</b>x " + val(c + "_x") + "/" + limit(c, "x") + "&nbsp;&nbsp;y " +
-      val(c + "_y") + "/" + limit(c, "y") + "</button>";
+      '\')"><b>' + CORNER_NAME[c] + "</b> " + val(c + "_x") + " · " + val(c + "_y") + "</button>";
   }).join("");
 }
 function masked() { return !!ST.pattern && ST.pattern.indexOf("mask") === 0; }
@@ -295,9 +643,8 @@ function grab(event, corner) {
   var svg = id("quad");
   event.preventDefault();
   if (corner !== CORNER) { pick(corner); }
-  /* the handles are redrawn on every move, so the circle under the pointer
-     is replaced at once; the svg stays, so it holds the capture and the
-     handlers (the desktop drag died after the first move because of that) */
+  /* the handles are redrawn on every move, so the svg stays the capture
+     holder - a handler on the circle dies with its redraw */
   DRAG = corner;
   try { svg.setPointerCapture(event.pointerId); } catch (e) {}
   svg.onpointermove = move;
@@ -332,9 +679,7 @@ function push(corner) {
     if (PENDING) { var next = PENDING; PENDING = null; push(next); }
   });
 }
-/* The arrows are WALL directions (left, right, up, down); the values are
-   insets, positive inward. So a right corner pulled to the right is a smaller
-   x inset, a bottom corner pushed down a smaller y inset. */
+/* The arrows are WALL directions; the values are insets, positive inward. */
 function nudge(axis, sign) {
   var flip = axis === "x" ? (CORNER[1] === "r" ? -1 : 1) : (CORNER[0] === "b" ? -1 : 1);
   act("nudge", [CORNER, axis, sign * flip * STEP]);
@@ -355,27 +700,62 @@ function setStep(step) {
   drawQuad();
 }
 function mask(on) { act(on ? "mask_on" : "mask_off", on ? [CORNER] : []); }
+function maskToggle() { mask(!masked()); }
 function bit(label, value, mark) {
-  return "<span>" + esc(label) + " <b class='" + (mark || "") + "'>" + esc(String(value)) + "</b></span>";
+  return '<span class="chip">' + esc(label) + " <b class='" + (mark || "") + "'>" +
+    esc(String(value)) + "</b></span>";
 }
 function draw() {
   var temps = (ST.temperatures || []).map(function (t) { return t.name + " " + t.c + " C"; });
-  id("strip").innerHTML = bit("signal", ST.signal || "-") + bit("picture", ST.picture || "-") +
-    bit("warp", ST.warp || "-", ST.warp === "on" ? "on" : "") + bit("mask", ST.pattern || "-") +
+  var hottest = (ST.temperatures || []).reduce(function (m, t) { return Math.max(m, t.c); }, 0);
+  id("strip").innerHTML = bit("signal", ST.signal || "-") +
+    bit("warp", ST.warp || "-", ST.warp === "on" ? "ok" : "") +
+    bit("mask", (ST.pattern || "-").split(" ")[0], masked() ? "on" : "") +
     bit("mode", ST.mode || "-", ST.mode && ST.mode !== "front" ? "on" : "") +
-    bit("keystone", ST.keystone_by || "-") +
-    (has("accelerometer") ? bit("ref", ST.reference || "-", ST.reference === "set" ? "on" : "") : "") +
-    bit("temp", temps.length ? temps.join("  ") : "-") +
+    bit("keystone", ST.keystone_by || "-", ST.keystone_by === "auto" ? "on" : "") +
+    (has("accelerometer") ? bit("ref", ST.reference || "-", ST.reference === "set" ? "ok" :
+                                (ST.reference === "refused" ? "warn" : "")) : "") +
+    bit("zoom", (ST.screen_zoom || 100) + " %") +
+    (temps.length ? bit("temp", temps.join("  "), hottest >= 70 ? "crit" :
+                        hottest >= 60 ? "warn" : "") : "") +
     bit("gpu", ST.fps === null || ST.fps === undefined ? "-" : ST.fps + " fps");
   if (!DRAG) { KS = ST.keystone || {}; drawQuad(); }
-  press("warp-on", ST.warp === "on"); press("warp-off", ST.warp === "off");
-  /* the firmware zoom is the ring path's; under the warp it only cuts the capture */
-
-  press("mask-on", masked()); press("mask-off", !masked());
+  press("warp-toggle", ST.warp === "on");
+  press("mask-toggle", masked());
+  press("pat-grid", ST.pattern === "grid"); press("pat-border", ST.pattern === "border");
+  press("pat-off", !ST.pattern || ST.pattern === "-" || ST.pattern.indexOf("off") === 0);
   (ST.after_move_list || []).forEach(function (v) { press("am-" + v, ST.after_move === v); });
   (ST.modes_list || []).forEach(function (v) { press("md-" + v, ST.mode === v); });
+  /* sound: the audio status line tells the policy and the mute state */
+  var policy = /\((auto|on|off)\)/.exec(ST.audio || "");
+  press("a-auto", policy && policy[1] === "auto");
+  press("a-on", policy && policy[1] === "on");
+  press("a-off", policy && policy[1] === "off");
+  var muted = /^muted/.exec(ST.audio || "");
+  press("m-on", !!muted); press("m-off", !muted);
   if (document.activeElement !== id("zoom") && ST.screen_zoom) {
     id("zoom").value = ST.screen_zoom; show_v("zoom", " %");
+  }
+  /* the volume slider follows the device, except while the hand is on it */
+  var vol = /volume (\d+)/.exec(ST.audio || "");
+  if (vol && document.activeElement !== id("vol")) {
+    id("vol").value = vol[1]; show_v("vol", "");
+  }
+  /* the Wi-Fi trial: the server counts the seconds, the page counts the wall clock */
+  if (ST.wifi_pending !== null && ST.wifi_pending !== undefined) {
+    if (!PEND_UNTIL || PEND_UNTIL - Date.now() > ST.wifi_pending * 1000 + 5000) {
+      PEND_UNTIL = Date.now() + ST.wifi_pending * 1000;
+    }
+    id("pending").hidden = false;
+    if (!PEND_TIMER) {
+      PEND_TIMER = window.setInterval(function () {
+        var left = Math.max(0, Math.round((PEND_UNTIL - Date.now()) / 1000));
+        id("pending-s").textContent = left;
+        if (!left) { id("pending").hidden = true; }
+      }, 500);
+    }
+  } else {
+    PEND_UNTIL = 0; id("pending").hidden = true;
   }
 }
 function refresh() {
@@ -386,33 +766,160 @@ function refresh() {
   });
 }
 
+/* One `key = value` form of keys.conf, osd.conf or tv.conf, drawn from the
+   checks' own specs and filled from "settings".  Keys get plain words. */
+var CONF_LABELS = {start: "picture at boot", preset: "preset at boot",
+                   edid_prefer: "EDID source", place: "position", look: "style",
+                   scale: "size", seconds: "show for (seconds)",
+                   volume_step: "volume step", focus_steps: "focus step"};
+function confCard(file, mount) {
+  var specs = (CONF[file] || {}), values = (CUR.conf || {})[file] || {};
+  var html = '<div class="form-grid">';
+  Object.keys(specs).forEach(function (key) {
+    var spec = specs[key], v = values[key], field;
+    if (spec[0] === "choice") {
+      field = "<select id=\"cf-" + file + "-" + key + "\">" + spec[1].map(function (o) {
+        return '<option value="' + esc(o) + '"' + (o === v ? " selected" : "") + ">" +
+          esc(o) + "</option>";
+      }).join("") + "</select>";
+    } else {
+      field = '<input type="number" id="cf-' + file + "-" + key + '" min="' + spec[1] +
+        '" max="' + spec[2] + '" step="' + spec[3] + '" value="' + esc(v === undefined ? "" : v) + '">';
+    }
+    html += "<label>" + esc(CONF_LABELS[key] || key.replace(/_/g, " ")) + field + "</label>";
+  });
+  html += "</div>";
+  id(mount).innerHTML = html;
+  Object.keys(specs).forEach(function (key) {
+    id("cf-" + file + "-" + key).onchange = function (e) {
+      act("conf_set", [file, key, e.target.value]);
+    };
+  });
+}
+var CUR = {};   /* the last "settings" answer, what the forms are filled from */
+
+function loadSettings() {
+  return api("settings").then(function (s) {
+    if (!s.ok) { say(s.line, "bad"); return; }
+    CUR = s;
+    id("edge").value = s.edge === null || s.edge === undefined ? 0 : s.edge;
+    show_v("edge", "");
+    confCard("keys", "conf-keys"); confCard("osd", "conf-osd"); confCard("tv", "conf-tv");
+    /* power policy */
+    var power = s.power || {};
+    if (power.default) { id("p-default").value = power.default; }
+    if (power.long_s) { id("p-long").value = power.long_s; }
+    if (power.remote) { id("p-remote").value = power.remote; }
+    if (power.refused) { id("p-refused").value = power.refused; }
+    /* network */
+    var w = s.wifi || {};
+    id("w-mode").value = w.mode || "ap";
+    id("w-ssid").value = w.ssid || "";
+    id("w-country").value = (w.country || "").toUpperCase();
+    id("w-band").value = w.band || "2.4";
+    if (w.channel) { id("w-channel").value = w.channel; }
+    id("w-ap_ip").value = w.ap_ip || "";
+    id("w-ap_dhcp_start").value = w.ap_dhcp_start || "";
+    id("w-ap_dhcp_end").value = w.ap_dhcp_end || "";
+    id("w-password").value = "";
+    id("w-has-password").hidden = !w.has_password;
+    id("hostname").value = s.hostname || "";
+  });
+}
+function loadNetwork() { loadSettings().then(function () { }); }
+function loadSystem() { loadSettings().then(function () { }); }
+function loadReport(name, mount) {
+  id(mount).textContent = "reading...";
+  api("report", [name]).then(function (r) {
+    id(mount).textContent = r.text ? r.text.replace(/\n+$/, "") : r.line;
+  });
+}
+/* The remote: state first, and while a repair runs, the page asks every few
+   seconds until the remote shows up or the window is over. */
+function loadRemote() {
+  api("remote").then(function (r) {
+    if (!r.ok) { id("remote-state").textContent = r.line; return; }
+    id("remote-state").textContent =
+      r.state === "connected" ? ("connected" + (r.name ? " - " + r.name : "")) :
+      r.state === "bonded" ? "bonded, not connected" : "no remote bonded";
+  });
+}
+function repair() {
+  act("remote_repair").then(function () {
+    var line = id("pair-line"), left = 60;
+    line.hidden = false; line.textContent = "searching for the remote - " + left + " s left";
+    if (PAIR_TIMER) { window.clearInterval(PAIR_TIMER); }
+    PAIR_TIMER = window.setInterval(function () {
+      left -= 4;
+      api("remote").then(function (r) {
+        if (r.ok && r.state !== "none") {
+          window.clearInterval(PAIR_TIMER); PAIR_TIMER = null; line.hidden = true;
+          id("remote-state").textContent =
+            r.state === "connected" ? ("connected" + (r.name ? " - " + r.name : "")) :
+            "bonded, not connected";
+          say("ok the remote is paired", "ok");
+        } else if (left <= 0) {
+          window.clearInterval(PAIR_TIMER); PAIR_TIMER = null; line.hidden = true;
+          line.textContent = "no remote showed up - put it into pairing mode and try again";
+          line.hidden = false;
+        } else {
+          line.textContent = "searching for the remote - " + left + " s left";
+        }
+      });
+    }, 4000);
+  });
+}
 function build() {     /* the page draws itself from the tool's own lists */
   return api("controls").then(function (c) {
     if (!c.ok) { say(c.line, "bad"); return; }
     ST.steps = c.steps || [10]; ST.after_move_list = c.after_move || [];
-    ST.modes_list = c.modes || [];
+    ST.modes_list = c.modes || []; CONF = c.conf || {};
     FEAT = c.features || {}; features();
     id("steps").innerHTML = ST.steps.map(function (s) {
-      return '<button id="st-' + s + '" onclick="setStep(' + s + ')">' + s + "</button>"; }).join("");
+      return '<button id="st-' + s + '" onclick="setStep(' + s + ')">' +
+        (STEP_NAME[s] || s) + "</button>"; }).join("");
     [["after", c.after_move, "after_move", "am-"], ["presets", c.presets, "preset", ""],
      ["aspects", c.aspects, "aspect", ""], ["modes", c.modes, "mode", "md-"]].forEach(function (g) {
+      var names = g[0] === "after" ? AFTER_NAME : (g[0] === "modes" ? MODE_NAME : null);
       id(g[0]).innerHTML = (g[1] || []).map(function (v) {
         return "<button " + (g[3] ? 'id="' + g[3] + v + '" ' : "") + "onclick=\"act('" +
-               g[2] + "', ['" + v + "'])\">" + esc(v) + "</button>";
+               g[2] + "', ['" + v + "'])\">" + esc((names && names[v]) || v) + "</button>";
       }).join("");
     });
     id("sliders").innerHTML = (c.controls || []).map(function (t) {
       var n = t.name, v = t.value === null || t.value === undefined ? t.min : t.value;
-      return '<label for="s-' + n + '">' + esc(n) + ' <span id="s-' + n + '-v">' + v +
-        '</span></label><input type="range" id="s-' + n + '" min="' + t.min + '" max="' +
-        t.max + '" step="1" value="' + v + '" oninput="show_v(\'s-' + n +
-        "', '')\" onchange=\"act('picture_set', ['" + n + "', +this.value])\">";
+      return '<div class="sfield"><label for="s-' + n + '">' + esc(n) + ' <b id="s-' + n + '-v">' + v +
+        '</b></label><input type="range" id="s-' + n + '" min="' + t.min + '" max="' + t.max +
+        '" step="1" value="' + v + '" oninput="show_v(\'s-' + n +
+        "', '')\" onchange=\"act('picture_set', ['" + n + "', +this.value])\"></div>";
     }).join("");
+    /* tnr snr dci black: one tight row each, Off Low Middle High */
+    id("quality").innerHTML = (c.quality || []).length
+      ? "<h3>Enhancement</h3>" + (c.quality || []).map(function (t) {
+          return '<div class="qrow"><span class="qname">' + esc(t.name) + '</span><div class="row">' +
+            [0, 1, 2, 3].map(function (i) {
+              return '<button class="mini" id="q-' + t.name + '-' + i +
+                '" onclick="act(\'picture_set\', [\'' + t.name + "', " + i + '])">' +
+                ["off", "low", "middle", "high"][i] + "</button>";
+            }).join("") + "</div></div>";
+        }).join("")
+      : "";
+    (c.quality || []).forEach(function (t) {
+      var v = t.value === null || t.value === undefined ? 0 : t.value;
+      [0, 1, 2, 3].forEach(function (i) { press("q-" + t.name + "-" + i, i === v); });
+    });
+    var channels = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12, 13, 36, 40, 44, 48];
+    id("w-channel").innerHTML = channels.map(function (n) {
+      return '<option value="' + n + '">' + n + "</option>"; }).join("");
     setStep(ST.steps.indexOf(10) >= 0 ? 10 : ST.steps[0]);
   });
 }
 
-build().then(refresh); window.setInterval(refresh, 3000);
+build().then(function () { refresh(); loadSettings(); });
+/* a hash opens a section directly: the page address plus #picture */
+var OPEN = (location.hash || "").slice(1);
+if (OPEN && OPEN !== "projection" && id(OPEN)) { show(OPEN); }
+window.setInterval(refresh, 3000);
 </script>
 </body>
 </html>
