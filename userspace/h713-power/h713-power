@@ -15,7 +15,8 @@ after a resume the key itself woke is that same press and is ignored. If this se
 power-off is back (docs/subsystems/standby.md).
 A standby parks the display MIPS and nothing in the kernel starts it again: when the projector stays on
 after a standby (or a refused one) and sun50i-h713-mips says parked, h713-mips-restart brings the picture
-back. While it runs a short press does nothing, a long one still powers off.
+back. While it runs a short press does nothing, a long one still powers off; after 120 s it counts as hung and a
+short press counts again.
 The power-off itself is crust's on a board whose crust says it can (the arisc driver's build2 bit 24): the
 rails off, about 0.3 W, the key or the remote wakes into a fresh boot (doku/188); else the power-on gate.
 `h713-power set default standby|poweroff` (and the other keys of power.conf) changes the policy for the next
@@ -228,6 +229,12 @@ def mips_state():
 
 
 restart = None                                   # the running h713-mips-restart, None when there is none
+restart_since = 0.0                              # time.monotonic() of its start
+restart_hung = False                             # its hang is logged once
+# How long a short press waits for h713-mips-restart. It takes seconds - the receiver's probe, then up to 60 s for
+# its node - and a run past this hangs in the kernel (a write to the restart file, a bind): the press counts again
+# instead of being ignored until the next boot (TODO 5.14, review U6).
+RESTART_HANG_S = 120
 
 
 def picture_back():
@@ -235,7 +242,11 @@ def picture_back():
 
     It runs beside the key loop and takes seconds (the receiver's probe alone, then up to 60 s for its node):
     the key stays alive meanwhile. A refused standby is asked too, the park may have come before the refusal."""
-    global restart
+    global restart, restart_since, restart_hung
+    if restart is not None and restart.poll() is None:
+        # one that hangs (restarting() let the key go) is never joined by a second on the same driver
+        log("h713-mips-restart from %.0f s ago still runs: no second one" % (time.monotonic() - restart_since), "<4>")
+        return
     state = mips_state()
     if state != "parked":
         log("the display MIPS is %s: no restart" % (state or "not known (no sun50i-h713-mips driver)"),
@@ -244,18 +255,26 @@ def picture_back():
     log("the display MIPS is parked: h713-mips-restart")
     try:
         restart = subprocess.Popen(MIPS_RESTART)
+        restart_since, restart_hung = time.monotonic(), False
     except OSError as e:
         log("h713-mips-restart cannot start (%s): no picture until it runs" % e.strerror, "<4>")
 
 
 def restarting():
-    """True while h713-mips-restart runs; its end is logged once."""
-    global restart
+    """True while h713-mips-restart runs, for RESTART_HANG_S at most; its hang and its end are logged once."""
+    global restart, restart_hung
     if restart is None:
         return False
     rc = restart.poll()
     if rc is None:
-        return True
+        took = time.monotonic() - restart_since
+        if took <= RESTART_HANG_S:
+            return True
+        if not restart_hung:
+            restart_hung = True
+            log("h713-mips-restart hangs since %.0f s: the picture is not coming back, a short press counts again"
+                % took, "<4>")
+        return False
     restart = None
     if rc:
         log("h713-mips-restart ended with %d: the picture may not be back (journal: h713-mips-restart)" % rc, "<4>")

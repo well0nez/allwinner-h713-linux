@@ -302,12 +302,42 @@ class AfterTheStandby(unittest.TestCase):
         class Running:
             def poll(self):
                 return None
-        m.restart = Running()
+        m.restart, m.restart_since = Running(), time.monotonic()     # started just now, as picture_back() does
         m.act("short", m.config()[0])
         self.assertFalse(os.path.exists(r.log))
         m.act("long", m.config()[0])
         with open(r.log) as f:
             self.assertEqual(f.read().split(), ["poweroff"])
+
+    def test_a_restart_that_hangs_lets_the_short_press_go_after_the_limit(self):
+        # TODO 5.14 U6: a hung h713-mips-restart no longer swallows every short press until the next boot
+        import contextlib
+        import io
+        m, r = load(), Root(mips="parked")
+        m.ROOT, m.SYSTEMCTL = r.dir, [r.p("systemctl")]
+        m.MIPS_RESTART, m.RESTART_HANG_S = ["sleep", "30"], 0.3
+        out = io.StringIO()
+        try:
+            with contextlib.redirect_stdout(out):
+                m.picture_back()
+                first = m.restart
+                self.assertTrue(m.restarting())                       # within the limit: still coming back
+                m.act("short", m.config()[0])
+                self.assertFalse(os.path.exists(r.log))               # ignored, as before
+                time.sleep(0.5)
+                self.assertFalse(m.restarting())                      # past the limit: the key counts again
+                self.assertFalse(m.restarting())
+                m.picture_back()                                      # no second restart beside the hung one
+                self.assertIs(m.restart, first)
+                m.act("short", m.config()[0])
+            with open(r.log) as f:
+                self.assertEqual(f.read().split(), ["suspend"])
+            text = out.getvalue()
+            self.assertEqual(text.count("h713-mips-restart hangs since"), 1, text)
+            self.assertIn("still runs: no second one", text)
+        finally:
+            m.restart.kill()
+            m.restart.wait()
 
     def test_status_names_the_mips_state(self):
         r = Root(mips="parked")

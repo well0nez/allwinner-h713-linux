@@ -74,7 +74,9 @@ nothing in the kernel starts it again: after the resume the wall would stay on t
 projector stays on after a standby - or after a refused one with `refused = log`, the park may have come
 before the refusal - and the driver `sun50i-h713-mips` says `parked`, h713-power starts
 `h713-mips-restart`. It runs beside the key loop; until it ends a short press does nothing (it is logged),
-a press held for `long_s` still powers off. A MIPS that is `running` is left alone; with no driver bound
+a press held for `long_s` still powers off. A run past 120 s hangs in the kernel: h713-power says so once
+("h713-mips-restart hangs since N s"), a short press counts again, and no second restart is started beside
+the hung one (TODO 5.14, review U6). A MIPS that is `running` is left alone; with no driver bound
 the tool says so as a warning.
 
 ```
