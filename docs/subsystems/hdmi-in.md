@@ -36,7 +36,8 @@ finished one to three frames earlier, hold it every fourth to fifth frame and sk
 path shows every frame. The answer, since the evening of 11.10.2026: the display driver no longer follows
 the firmware's pointers at all - it takes the slot from the capture's own write index (`INCAP +0xa0c`,
 kernel patch 0255, `ring_select`), so a 1080p60 source is shown frame for frame, 59.70 of 60 over a
-minute, the missing one being what a 59.71 Hz panel cannot show of a 60.00 Hz source; 1080p50 and 1080p30
+minute, the missing one being what a 59.71 Hz panel cannot show of a 60.00 Hz source (the HY310's own 1080p panel
+runs at 59.42 Hz and skips 0.57 frames a second of a 60.00 Hz source in bypass, measured 12.10.2026, `doku/207`); 1080p50 and 1080p30
 each frame once ([display.md](display.md)). The source keeps sending its native 1080p and the firmware's
 scaler does the rest. `h713-tv` can still put the panel's own CTA timing first in the EDID it publishes
 (`edid_prefer = panel` in `tv.conf`: a 720p panel then offers 1280x720p60 first, 1920x1080p60 second, the

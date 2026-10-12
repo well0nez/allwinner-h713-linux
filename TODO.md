@@ -1,7 +1,7 @@
 # TODO — die eine Liste
 
 **Die einzige Todo-Liste dieses Projekts.** Neue Punkte hierher; erledigte nach §10 — nicht löschen.
-Changelog ist [RELEASES.md](RELEASES.md). `known-issues.md` und `ROADMAP.md` beschreiben dem Leser,
+Changelog ist [RELEASES.md](RELEASES.md). Letzter Handoff: `doku/207` (12.10. abends, HY310 auf `main`). `known-issues.md` und `ROADMAP.md` beschreiben dem Leser,
 was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2026 aus `doku/151`.
 
 ## 1 Release — in dieser Reihenfolge

@@ -43,10 +43,32 @@ Bus-Hänger, Watchdog-Reset 16,9 s nach "back from system suspend" (UART-Mitschn
 (`doku/203`). Mit `h713_gate=0` fing sich die Box selbst. Regel in `referenz/irrwege.md`: Register der TV-Domäne erst nach
 "picture path back" lesen; der Beobachter startet seitdem danach.
 
-## 4 Handoff
+## 4 Handoff (12.10.2026, ~20:00)
 
-**`main`: dieser Commit** (TODO, doku/207; davor db558e3 = TODO 2.5/2.9), nicht gepusht; alles seit 234282c ungepusht.
-**HY310:** `main` db558e3 komplett aus dem Abbild, `h713_gate=1`, `short = standby`, Warp an, Quelle ThinkPad 1080p60, Journal
-flüchtig (`geraete.md` 12.10. ~19:10). **G-EU:** unverändert (`doku/206` §3), aus/unerreichbar.
-**Offen aus der Reihe:** 2.42 (Ohr, Stock-Vergleich), 2.28 (CEC), 2.49 Last-Test, 2.34 ohne Prio. **Nächstes:** 7.19, dann 1.1a
-(der Bauweg ist heute durchgespielt), 1.6/1.7a/1.7 mit Marcos Ja.
+**`main`: 4fc1284 + dieser Commit** (TODO, doku/207, docs hdmi-in; davor db558e3 = TODO 2.5/2.9, 4ac5e17 = doku/205/206), **nicht
+gepusht** - alles seit 234282c ist ungepusht, Reihenfolge beim Push in `TODO.md` §1 (1.6 Forks zuerst, 1.7a Prüfung, 1.7 `main`).
+
+**Geräte:**
+- **HY310** (`.131`, UART-ESP `.224`): `main` db558e3 **komplett aus dem Abbild** `hy310main1` (FIT `c7f8f850`, h713-tv `74df3200`,
+  h713-warp `d123adac`, crust 54e4a08, Module aus dem Baum, nichts in `updates/`); `/etc/h713`, Bluetooth-Bund und Hostschlüssel
+  (`SBcCAf…`) vom Vorstand; `h713_gate=1`, `power.conf short = standby`, Warp an (Keystone `tl 283,0 tr 112,263 bl 224,28 br 45,0`),
+  Journal flüchtig; Quelle **ThinkPad** HDMI-2 1080p60, dort steht `Content Protection = Desired` von der 2.26-Reihe. FEL-Kabel
+  steckt vermutlich noch (Marco). Messskripte liegen in `/root` (`zustand.sh`, `anzeige.py`, `messe-warp.py`, `s3-foto.py`,
+  `ebene-wach.py`, `reg-a7.py`, Kamera) - Testmaterial, nicht Teil des Abbilds; `/dev/shm` geleert.
+- **HY300PRO-G-EU** (`.245`, UART-ESP `.105`, Sonoff `.179`): unverändert seit `doku/206` §3 (Kernel 234282c + 0260-0262 in
+  `updates/`, `h713_gate=0`), heute Abend nicht erreichbar (aus).
+
+**Paket `arbeit/hy310-main-20261012/`:** `BERICHT.md`, `install.sh`, `skripte/`, `laeufe/`, `fotos/`, Sicherung
+`sicherung-hy310main1/`. Worktree `repo/` auf `versuch/hy310-main` = `main` db558e3 **ohne eigene Commits**, aber mit 5,2 GB
+(Abbild 1,2 GB, Bauverzeichnis 4 GB inkl. Kernelbaum 6531a386 - brauchbar für Schnell-Deploys bis 1.1a). Entscheidung Marco:
+jetzt löschen oder nach 1.1a; der Worktree geht dann mit `git worktree remove`.
+
+**Was die Reihe gezeigt hat** (§1): 2.36 und 2.62 zu; 2.22 nicht reproduziert; 2.26 kein Desired-Stall am HY310; Bluetooth 11/11
+mit 0256; Panel des HY310 59,42 Hz. **Offen aus der Reihe:** 2.42 (Ohr, Stock-Vergleich = `restore-stock`), 2.28 (CEC-Quelle +
+`HostHDMIMAP` offline), 2.49 Last-Test (Warp + WLAN + Mikro), 2.34 ohne Prio (Marco) - nächster Schritt dort stünde in §2.
+**Gelernt:** §3 (TV-Domäne nie über den Standby beobachten); die Box-Kamera sieht den Projektionsrand nicht; der Mint-Sperrbildschirm
+ist als Testbild für Farberkennung unbrauchbar.
+
+**Nächstes, in Reihenfolge:** 7.19 (Doku-Runde, vor dem Neubau) → 1.1a (Bauweg heute durchgespielt: frischer Worktree, Submodul-Köpfe
+aus dem Haupt-Klon holen, `CRUST_SRC`, `--standby`, Release-Version statt `v0.0-…`) → 1.6/1.7a/1.7 nur mit Marcos Ja je Push → 1.8/1.9.
+Daneben, wenn Marco am Gerät ist: 2.65 (IR nach Kaltstart mit Gate 1, jetzt am HY310 möglich), 2.52 (Eingangstaste, Fokusrichtung).
