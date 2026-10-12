@@ -40,25 +40,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10. provoziert** (G-EU, ein `install`-Hänger in modprobe.d, `arbeit/remote-reihe-20261012/` H): `timeout 30` greift, aber
         systemd wartete danach 90 s auf den hängenden Rest der cgroup - Boot fertig nach 2 min 15 s, ssh ab 127 s. Mit `TimeoutStopSec=10`
         (`c809c23`, in `main`): ssh ab 46 s, fertig nach 54 s. Ins Abbild mit 1.1a
-- [ ] 1.4 HY300 Pro G-EU (`boards/hy200-qz713df-a1`): Boot, Bild, HDCP 1.4 mit geteiltem Satz, 2.2 (Marco 06.10.:
-      später). Dazu Bluetooth dort: erster Attach nach Kaltstart hängt an `0x1003`, 245-Byte-Schreibvorgänge kommen
-      unvollständig an (FB-BTRESET 9.3, RTS/CTS?); `h713-bt-reset` auf dem Board noch nie probiert
-      - **09./10.10. nachts (`doku/182`):** Testabbild `geucrust1` mit crust installiert, crust läuft, HDMI/EDID/HDCP-1.4-Schlüssel
-        gut; MIPS-Reload war schwarz -> Ursache LCD-Panel braucht Stromzyklus (PF6), Behebung im MIPS-Treiber + PF6 in der
-        Pin-Tabelle, 3/3 per Schnell-Deploy. Offen: Patches in die Serie, `geucrust2` mit `--standby` (build-all erlaubt es
-        nur bestätigten Boards; PB5 bleibt im Standby an), HDCP-Paar, HDCP 2.2, Ton, Standby am HY300
-      - **10.10. nachts (`doku/184`):** `geucrust2` (0246-0248, `--standby`) installiert und gemessen: Reload 3/3, Standby per RTC,
-        Taste und Fernbedienung (BLE schläft ein, IR weckt), HDCP-1.4-Paar und nach Standby, HDCP 2.2 mit zwei Neuverhandlungen,
-        Ton nach Standby gehört. In `main` (`63fd053`, crust-Spiegel `01bdbfb`). Offen: Watt im Standby (Marco: heute nicht),
-        `h713-bt-reset`, 2.33-2.37; ob die Variante `verified` heißt, entscheidet Marco
-      - **10.10. früh:** komplettes Abbild aus `main` 4767f6f gebaut (`arbeit/geu-main-20261010/`, `v0.0-geumain1-TEST`,
-        reproducible: yes, 273 Patches) und per FEL installiert (Bluetooth-Kopplung mitgesichert, Fernbedienung bleibt gekoppelt);
-        bootet, 0 failed, crust läuft, PB5 beim Board-Manager. **Noch nicht** darauf gemessen: Ton (ThinkPad an HDMI), ein Standby
-        mit Lüfter aus, ein Reload - als Kurztest beim nächsten Einschalten; dazu Watt im Standby
-      - 11.10.: läuft `main` 8f2c992 + Einblendungsfix als Schnell-Deploy; IR, Bluetooth, Einblendungen, Standby per RTC (Bild nach
-        6,5 s, DSP im 2. Versuch) gemessen (`doku/195`). Offen bleiben: Watt im Standby, `h713-bt-reset`, ob die Variante `verified`
-        heißt (Marco)
-      - **11.10. abends (Marco):** der G-EU (`projector05061226`) wird **verified**
 - [ ] 1.6 Forks pushen (Stand 09.10. 20:xx, nach der HDCP-Härtung `doku/180`): U-Boot `h713-hy310` +11 (Kopf `7b1ea388da0d`, lokal
       Zweig `versuch/hdcp-haertung-uboot`: 0096 crust-Ablage, 0097 Gate-Zeile, 0098-0100 HDCP), TF-A `sun50i-h713` +25 (Kopf
       `5a7806892`, lokal `versuch/hdcp-haertung-tfa`: 0007-0027 Standby, 0028-0030 HDCP und Kommentar), sunxi-tools gleich;
@@ -133,20 +114,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Aufwachen geht die Ebene im Bypass auf **volle** Ringplätze (3 Läufe, `ebene-wach.py`), der erste Warp-Puffer ist beim Flip
         gefenct (afbd nutzt `drm_atomic_helper_commit`). Offen: Inhalt des ersten Warp-Puffers (nicht über `/dev/mem` lesbar), die
         Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
-- [ ] 2.38 **Ausschalten mit OSD** (Marco 10.10. abends): ein Druck auf Power (Gerät oder Fernbedienung) blendet auf afbd ein
-      "Ausschalten in 15 s" mit "Standby" daneben; ein zweiter Druck schaltet sofort aus, links/rechts + OK wählt, Zurück bricht
-      ab, nach 15 s gilt `power.conf` `short`; ein langer Druck (3 s) schaltet ohne OSD aus. Rückfall: stirbt der Dienst, schaltet
-      logind aus. Braucht das afbd-OSD (Marcos Plan) und die IR-Belegung 2.35 (dann auch mit der IR-Fernbedienung, Pfeiltasten
-      9.9). h713-power bekommt dafür eine Zwischenstufe "Aus angefordert" mit Schnittstelle zum Wählen und Abbrechen
-      - 10.10. abends: der OSD-Weg (Texturen im Warp, `osd = on`) entsteht im Paket `arbeit/warp-konsole-20261010/` - Version 1
-        nur Lautstärke, Stumm, Fokus; die Bauweise muss dieses Element später ohne Umbau aufnehmen (`doku/189` §5)
-      - **11.10.: überholt** - die Einblendungen laufen über `h713-osd` auf Kanal 2 (2.43, `doku/193`), nicht im Warp. Für dieses
-        Element fehlen noch: Text (eine Schrift für "Ausschalten in 15 s"), eine Auswahl (links/rechts, OK) in `libh713osd`, und
-        die Zwischenstufe in h713-power; die IR-Belegung (2.35) ist da
-      - **11.10. abends entschieden (Marco):** Standby **und** Aus werden angeboten, Auswahl links/rechts, OK bestätigt, Zurück
-        bricht ab, ein zweiter Druck führt die Auswahl sofort aus, 3 s halten = aus ohne Einblendung; nach 15 s gilt die Vorgabe
-        `default = poweroff|standby` in `power.conf` (ersetzt `short`, Vorgabe poweroff). Standby nur, wo er gerade geht (crust
-        bereit); ohne Signal sofort wie heute. h713-power kommt auf jedes Abbild. Erst 2-3 Mockups (`osd-mockup`), Text vorerst nicht
 - [ ] 2.42 **Netzteil fiept auch im Aus über crust** (Marco 10.10. abends, HY310, Lauf `hy2`): im Standby fiept es leise (2.31),
       im Aus über crust ebenso. Mit dem Stock-Abzug gegenhalten (Stock-Android aus: fiept es da auch?) - erst dann ist es ein Befund
       über unser System oder über das Netzteil bei kleiner Last
@@ -221,6 +188,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       in CLOCK_MONOTONIC wie das Journal, dazu Augen an der Wand
       - Marco 12.10.: vielleicht hat der ThinkPad wieder nichts gesendet (wie die Stillstände mit `rustdesk --server`, `referenz/geraete.md`)
         - nicht sicher; **den Test nach dem Release wiederholen**, dann mit einer zweiten Quelle (Fire TV) als Gegenprobe
+
+- [ ] 2.70 **Watt im Standby am HY300PRO-G-EU** (aus 1.4, 12.10.): mit crust, Lüfter aus (PB5 beim Board-Manager) - mit dem
+      Messgerät an der Steckdose; am HY310 zum Vergleich der Wert aus `doku/188`
+- [ ] 2.71 **`h713-bt-reset` am HY300PRO-G-EU** (aus 1.4, 12.10.): dort nie probiert; ein Warmstart mit und ohne den Reset vorab,
+      `hci0` UP RUNNING beim 1. Versuch zählen (wie 2.49 am HY310)
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -1270,3 +1242,40 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
       mit der der Installer eine unbekannte Firmware ablehnt
       - **12.10. erledigt** (39c2c17, in `main`): die vier Texte nennen ein Issue mit der Zeile und die Adresse; README-Absatz unter
         "Boards"; 5 Tests
+- [x] 1.4 HY300 Pro G-EU (`boards/hy200-qz713df-a1`): Boot, Bild, HDCP 1.4 mit geteiltem Satz, 2.2 (Marco 06.10.:
+      später). Dazu Bluetooth dort: erster Attach nach Kaltstart hängt an `0x1003`, 245-Byte-Schreibvorgänge kommen
+      unvollständig an (FB-BTRESET 9.3, RTS/CTS?); `h713-bt-reset` auf dem Board noch nie probiert
+      - **09./10.10. nachts (`doku/182`):** Testabbild `geucrust1` mit crust installiert, crust läuft, HDMI/EDID/HDCP-1.4-Schlüssel
+        gut; MIPS-Reload war schwarz -> Ursache LCD-Panel braucht Stromzyklus (PF6), Behebung im MIPS-Treiber + PF6 in der
+        Pin-Tabelle, 3/3 per Schnell-Deploy. Offen: Patches in die Serie, `geucrust2` mit `--standby` (build-all erlaubt es
+        nur bestätigten Boards; PB5 bleibt im Standby an), HDCP-Paar, HDCP 2.2, Ton, Standby am HY300
+      - **10.10. nachts (`doku/184`):** `geucrust2` (0246-0248, `--standby`) installiert und gemessen: Reload 3/3, Standby per RTC,
+        Taste und Fernbedienung (BLE schläft ein, IR weckt), HDCP-1.4-Paar und nach Standby, HDCP 2.2 mit zwei Neuverhandlungen,
+        Ton nach Standby gehört. In `main` (`63fd053`, crust-Spiegel `01bdbfb`). Offen: Watt im Standby (Marco: heute nicht),
+        `h713-bt-reset`, 2.33-2.37; ob die Variante `verified` heißt, entscheidet Marco
+      - **10.10. früh:** komplettes Abbild aus `main` 4767f6f gebaut (`arbeit/geu-main-20261010/`, `v0.0-geumain1-TEST`,
+        reproducible: yes, 273 Patches) und per FEL installiert (Bluetooth-Kopplung mitgesichert, Fernbedienung bleibt gekoppelt);
+        bootet, 0 failed, crust läuft, PB5 beim Board-Manager. **Noch nicht** darauf gemessen: Ton (ThinkPad an HDMI), ein Standby
+        mit Lüfter aus, ein Reload - als Kurztest beim nächsten Einschalten; dazu Watt im Standby
+      - 11.10.: läuft `main` 8f2c992 + Einblendungsfix als Schnell-Deploy; IR, Bluetooth, Einblendungen, Standby per RTC (Bild nach
+        6,5 s, DSP im 2. Versuch) gemessen (`doku/195`). Offen bleiben: Watt im Standby, `h713-bt-reset`, ob die Variante `verified`
+        heißt (Marco)
+      - **11.10. abends (Marco):** der G-EU (`projector05061226`) wird **verified**
+      - **12.10. nachts erledigt (Marco):** verified seit 11.10.; die zwei Reste stehen als 2.70 (Watt im Standby) und 2.71
+        (`h713-bt-reset` am G-EU) in §2
+- [x] 2.38 **Ausschalten mit OSD** (Marco 10.10. abends): ein Druck auf Power (Gerät oder Fernbedienung) blendet auf afbd ein
+      "Ausschalten in 15 s" mit "Standby" daneben; ein zweiter Druck schaltet sofort aus, links/rechts + OK wählt, Zurück bricht
+      ab, nach 15 s gilt `power.conf` `short`; ein langer Druck (3 s) schaltet ohne OSD aus. Rückfall: stirbt der Dienst, schaltet
+      logind aus. Braucht das afbd-OSD (Marcos Plan) und die IR-Belegung 2.35 (dann auch mit der IR-Fernbedienung, Pfeiltasten
+      9.9). h713-power bekommt dafür eine Zwischenstufe "Aus angefordert" mit Schnittstelle zum Wählen und Abbrechen
+      - 10.10. abends: der OSD-Weg (Texturen im Warp, `osd = on`) entsteht im Paket `arbeit/warp-konsole-20261010/` - Version 1
+        nur Lautstärke, Stumm, Fokus; die Bauweise muss dieses Element später ohne Umbau aufnehmen (`doku/189` §5)
+      - **11.10.: überholt** - die Einblendungen laufen über `h713-osd` auf Kanal 2 (2.43, `doku/193`), nicht im Warp. Für dieses
+        Element fehlen noch: Text (eine Schrift für "Ausschalten in 15 s"), eine Auswahl (links/rechts, OK) in `libh713osd`, und
+        die Zwischenstufe in h713-power; die IR-Belegung (2.35) ist da
+      - **11.10. abends entschieden (Marco):** Standby **und** Aus werden angeboten, Auswahl links/rechts, OK bestätigt, Zurück
+        bricht ab, ein zweiter Druck führt die Auswahl sofort aus, 3 s halten = aus ohne Einblendung; nach 15 s gilt die Vorgabe
+        `default = poweroff|standby` in `power.conf` (ersetzt `short`, Vorgabe poweroff). Standby nur, wo er gerade geht (crust
+        bereit); ohne Signal sofort wie heute. h713-power kommt auf jedes Abbild. Erst 2-3 Mockups (`osd-mockup`), Text vorerst nicht
+      - **12.10. nachts erledigt (Marco):** der 15-s-Countdown mit Auswahl Standby/Aus ist seit 386ad38 auf jedem Abbild (h713-power,
+        h713-osd), am G-EU am 11.10. benutzt; ein Text in der Einblendung wäre ein neuer Punkt
