@@ -42,11 +42,14 @@ exit 0
 """
 LOGGER = '#!/bin/sh\necho "logger $*" >> "$H713_ROOT/events"\n'
 KEYTOOL = r"""#!/bin/sh
-# stand-in for h713-hdcp-key --bind DEV: binds DEV unless key-rc says 1, exits with key-rc (0 default)
+# stand-in for h713-hdcp-key --bind DEV: binds DEV unless key-rc says 1, exits with key-rc (0 default). The real
+# bind write returns after the probe, so the stand-in waits until the fake kernel has taken it, as systemctl does.
 R=$H713_ROOT
 echo "hdcp-key $*" >> "$R/events"
 rc=0; [ ! -e "$R/key-rc" ] || rc=$(cat "$R/key-rc")
 [ "$rc" = 1 ] || echo "$2" > "$R/sys/bus/platform/drivers/sun50i-h713-hdmirx/bind"
+: > "$R/sync.$$"
+while [ -e "$R/sync.$$" ]; do sleep 0.005; done
 exit "$rc"
 """
 
