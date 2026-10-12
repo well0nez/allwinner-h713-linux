@@ -450,6 +450,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
           abgeschaltet war, niemand baut den DSP neu auf: Bild an, Ton weg. **Entschieden (Marco): Wurzel im Kernel** - `msp_resume`
           liest Routerwort und Taktbit des Audio-Top und baut bei intakter Insel selbst neu auf. Schritt 3; nachstellbar mit
           `pm_test=devices`
+        - **12.10. nachts, Schritt 3 auf `versuch/kernel`** (`arbeit/kernel-20261012/`): Kernel `0263` (CC-1), `0264` (CC-3), `0265`
+          (CC-6), `0266` (msp misst den Stromverlust), `CONFIG_PM_DEBUG=y`; gebaut, W=1 ohne Warnung. **Schritt 4 TF-A** auf dem Fork-Zweig
+          `versuch/wdog-readback` 287dca2fe (TFA-R2-2, `arbeit/tfa-wdog-20261012/`): BL31 gebaut, gleich groß wie der unveränderte Kopf,
+          nur die zwei Texte anders; nicht gespiegelt. Alles im Testabbild `runde5x1` (Zweig `versuch/testabbild`)
+        - **12.10. 23:00-23:21 Teil A am HY310** (`arbeit/testabbild-20261012/MESSPLAN.md`, Ergebnis dort): `runde5x1` installiert;
+          Arbeitskopie gelöscht, Abzug gehört dem Nutzer, `v4l2-ctl` da, Hostname, `pm_test=devices` -> DSP neu aufgebaut (0266),
+          10/10 Standbys (DSP 10/10 im 1. Versuch), U5 per Bind-Mount bestanden, 5/5 Warmstarts. CC-3 nicht beobachtbar.
+          **Offen Teil B mit Marco:** zweiter Tastendruck (U2), Ton, Panel ansehen, ARISC hin/zurück, R_WDOG nach Aus über crust
 - [ ] 5.15 **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
       braucht den veröffentlichten Fork (1.6)
       - 12.10. geprüft: `build-all.sh` sucht schon in `mainline/external/crust` (Z. 181), es fehlt nur das Submodul; `well0nez/crust`
