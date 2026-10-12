@@ -1,7 +1,7 @@
 From 95ca48dbeb0aeb5669700a44a74c162180606ca8 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:48:31 +0200
-Subject: [PATCH 13/31] allwinner: h713: SYSTEM_SUSPEND only with contract 5
+Subject: [PATCH 13/32] allwinner: h713: SYSTEM_SUSPEND only with contract 5
  and crust's acceptance
 
 sunxi_system_suspend_possible() looked for crust's magic, the running bit

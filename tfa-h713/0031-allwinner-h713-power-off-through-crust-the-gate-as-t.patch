@@ -1,7 +1,7 @@
 From 1dd0373449df6239b7c13a8d7b40f0eb2d656532 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 11:18:32 +0200
-Subject: [PATCH 31/31] allwinner: h713: power off through crust, the gate as
+Subject: [PATCH 31/32] allwinner: h713: power off through crust, the gate as
  the fallback
 
 SYSTEM_OFF still writes "GATE" into RTC GP5 first, then asks crust

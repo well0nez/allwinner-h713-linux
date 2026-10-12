@@ -1,7 +1,7 @@
 From 4c1bd8c6a2b99c29b71b1df8af9e1ebec733aff7 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Mon, 5 Oct 2026 11:15:08 +0200
-Subject: [PATCH 06/31] allwinner: h713: an EL3 service that hands the receiver
+Subject: [PATCH 06/32] allwinner: h713: an EL3 service that hands the receiver
  its HDCP 1.4 key set
 
 The projector's HDCP 1.4 key set is chip-bound ciphertext in its own secure storage.

@@ -1,7 +1,7 @@
 From 5a7806892303705f13a10b06f63528d6a78c1ae9 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Fri, 9 Oct 2026 18:57:00 +0200
-Subject: [PATCH 30/31] allwinner: h713: say where a refused system suspend's
+Subject: [PATCH 30/32] allwinner: h713: say where a refused system suspend's
  reset ends
 
 Since kernel 0245 Linux writes "STBY" into RTC GP5 at the start of a

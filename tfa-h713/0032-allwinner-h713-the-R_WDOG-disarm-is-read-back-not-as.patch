@@ -1,0 +1,77 @@
+From 287dca2fe892e9a911dbcdffc071e5995fac1a99 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Mon, 12 Oct 2026 22:06:29 +0200
+Subject: [PATCH 32/32] allwinner: h713: the R_WDOG disarm is read back, not
+ assumed
+
+sunxi_r_wdog_check() wrote CTRL and MODE and said "fed and stopped" with
+the read-back only as a hex number at the end of the line: a key this
+revision does not take, or a gated R_ clock, would leave the watchdog
+armed, the box would reset every 16 s, and every boot would log "stopped".
+Now MODE is read back; "fed and stopped" is said only when bit 0 is clear.
+Else: fed and written once more, an ERROR line with both reads, and when
+it is still armed, bit 15 of the word (SCP_RWDOG_DISARM_FAILED) goes into
+P_RWDOG and event 3's detail, where the kernel reads it. Review of
+09.10.2026, TFA-R2-2 (arbeit/review-r2-20261009/FUNDE.md).
+
+Built with the release flags (BL31_IN_DRAM=1, SUNXI_SYSTEM_SUSPEND=1,
+clang 20): 57468 bytes, the same as the unchanged head built the same
+way; the strings differ in the two texts and the build time only. Not
+measured at the device: a cold start, a warm start and a power-off through
+crust, the watchdog line in each (step 7 of the 5.x round).
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+ plat/allwinner/common/sunxi_pm.c              | 23 +++++++++++++++++--
+ .../sun50i_h713/include/sunxi_mmap.h          |  2 ++
+ 2 files changed, 23 insertions(+), 2 deletions(-)
+
+diff --git a/plat/allwinner/common/sunxi_pm.c b/plat/allwinner/common/sunxi_pm.c
+index bedec9562..aaba1a799 100644
+--- a/plat/allwinner/common/sunxi_pm.c
++++ b/plat/allwinner/common/sunxi_pm.c
+@@ -93,10 +93,29 @@ static uint32_t sunxi_r_wdog_check(void)
+ 	uint32_t sta = mmio_read_32(H713_R_WDOG_STA);
+ 
+ 	if ((mode & SCP_RWDOG_ARMED) != 0U) {
++		uint32_t now;
++
+ 		mmio_write_32(H713_R_WDOG_CTRL, 0x14af);
+ 		mmio_write_32(H713_R_WDOG_MODE, SUNXI_WDOG_KEY);
+-		NOTICE("PSCI: R_WDOG found armed (MODE 0x%x STA 0x%x), fed and stopped: MODE 0x%x\n",
+-		       mode, sta, mmio_read_32(H713_R_WDOG_MODE));
++		now = mmio_read_32(H713_R_WDOG_MODE);
++		if ((now & SCP_RWDOG_ARMED) == 0U) {
++			NOTICE("PSCI: R_WDOG found armed (MODE 0x%x STA 0x%x), fed and stopped\n",
++			       mode, sta);
++		} else {
++			/*
++			 * Read back, not assumed: a key that this revision does
++			 * not take, or a gated R_ clock, leaves it armed, and
++			 * the box would reset every 16 s with "stopped" in the
++			 * log each time. Once more, and the word says it.
++			 */
++			mmio_write_32(H713_R_WDOG_CTRL, 0x14af);
++			mmio_write_32(H713_R_WDOG_MODE, SUNXI_WDOG_KEY);
++			now = mmio_read_32(H713_R_WDOG_MODE);
++			ERROR("PSCI: R_WDOG still armed after the disarm (MODE 0x%x STA 0x%x), fed and written again: MODE 0x%x\n",
++			      mode, sta, now);
++			if ((now & SCP_RWDOG_ARMED) != 0U)
++				mode |= SCP_RWDOG_DISARM_FAILED;
++		}
+ 	}
+ 	return (sta & 0xffffU) << 16 | (mode & 0xffffU);
+ }
+diff --git a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+index 2e3771f96..0c647d5fc 100644
+--- a/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
++++ b/plat/allwinner/sun50i_h713/include/sunxi_mmap.h
+@@ -132,6 +132,8 @@
+ #define SCP_SH_P_RWDOG			0x2e0	/* R_WDOG STA << 16 | MODE at start */
+ /* An R_WDOG "found armed": MODE bit 0, in P_RWDOG too - the kernel's rule. */
+ #define SCP_RWDOG_ARMED			BIT(0)
++/* ...and still armed after two disarms: in P_RWDOG and event 3's detail. */
++#define SCP_RWDOG_DISARM_FAILED		BIT(15)
+ #define SCP_SH_P_GP5			0x2e4	/* RTC GP5 at BL31 start */
+ #define SCP_SH_P_TFA_WORD		0x2e8
+ #define SCP_SH_P_NET_CONFIRM		0x2ec

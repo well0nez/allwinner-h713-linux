@@ -1,7 +1,7 @@
 From 827994aab2b4136b0b2f7de973e9d6b07919c145 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 02:25:26 +0200
-Subject: [PATCH 08/31] allwinner: h713: PSCI SYSTEM_SUSPEND through the ARISC
+Subject: [PATCH 08/32] allwinner: h713: PSCI SYSTEM_SUSPEND through the ARISC
  (plan 104 H1)
 
 FB-STANDBY tfa-0001 (27.09.2026), rebased by crust-20261007 onto 4c1bd8c6 after

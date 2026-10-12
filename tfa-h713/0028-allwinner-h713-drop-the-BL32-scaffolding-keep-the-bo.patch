@@ -1,7 +1,7 @@
 From 4f7e073c7fb2b5c7bcb78e3189ef1def7104114b Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:19:09 +0200
-Subject: [PATCH 28/31] allwinner: h713: drop the BL32 scaffolding, keep the
+Subject: [PATCH 28/32] allwinner: h713: drop the BL32 scaffolding, keep the
  boot watchdog
 
 There is no secure payload on this platform: SPD stays "none", BL31 enters

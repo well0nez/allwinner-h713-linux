@@ -1,7 +1,7 @@
 From 72998570456b5a244674f0b0dba8f6fb2a256d23 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:53:11 +0200
-Subject: [PATCH 07/31] allwinner: h713: start an SCP firmware the SPL staged
+Subject: [PATCH 07/32] allwinner: h713: start an SCP firmware the SPL staged
  in DRAM, without SCPI
 
 Step 2 of the crust load model (FB-CRUST, crust-20261007): U-Boot's FIT

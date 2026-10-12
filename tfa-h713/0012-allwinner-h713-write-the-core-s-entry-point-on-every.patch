@@ -1,7 +1,7 @@
 From eed0e6cd8a47e2890cc0760d47a3ffbb39237812 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 17:46:12 +0200
-Subject: [PATCH 12/31] allwinner: h713: write the core's entry point on every
+Subject: [PATCH 12/32] allwinner: h713: write the core's entry point on every
  CPU_ON
 
 TF-A programmed ALT_RVBAR for all cores once, in plat_setup_psci_ops, and
