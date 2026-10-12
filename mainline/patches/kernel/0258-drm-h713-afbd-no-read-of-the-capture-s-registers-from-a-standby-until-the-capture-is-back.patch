@@ -1,0 +1,73 @@
+drm: h713: afbd: no read of the capture's registers from a standby until the capture is back
+
+0255 takes the slot to show from the capture's own write index (INCAP
++0xa0c), read in the vsync interrupt. On the way back from a standby to RAM
+that interrupt runs long before the parked display MIPS is restarted
+(h713-mips-restart, from userspace), and the capture block is unclocked
+then: the read hung the bus, nothing printed after "display clocks
+restored", and the SoC watchdog reset the box 16.4 s into crust's phase
+"resuming" - three times of three on the HY300PRO-G-EU (TODO 2.64,
+doku/203). With ring_select=0, which reads only the AFBD's own flip
+pointers, the same standby came back.
+
+The suspend to RAM now marks the capture's registers as not to be read;
+the vsync path falls back to the flip pointers until the capture driver,
+bound again on the running MIPS, registers its flip notifier. Measured on
+the G-EU, standby by RTC with ring_select=1: back, the picture after 5.5 s,
+59.70 of 60 frames shown afterwards (the capture index in use again).
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -355,6 +355,14 @@
+ 	bool vsync_irq_on;	/* what the last update wrote to that bit */
+ 	u32 rgb_ctrl_active;
+ 	bool standby_idle;	/* the suspend below idled the engine */
++	/*
++	 * The capture's registers may be read (h713_afbd_pick_slots()). Not from
++	 * a standby to RAM until the capture driver registers its flip notifier
++	 * again: on the way back the vsync interrupt runs long before the parked
++	 * MIPS is restarted, and a read from the unclocked capture block hangs
++	 * the bus - the watchdog reset 16.4 s into "resuming" (TODO 2.64).
++	 */
++	bool incap_live;
+ 	u32 video_ctrl_idle;
+ 	u32 video_c_stride_idle;
+ 	u32 selector_rgb;
+@@ -892,8 +900,11 @@
+ 
+ 	spin_lock_irqsave(&h713_afbd_flip_lock, flags);
+ 	h713_afbd_flip_users++;
+-	if (h713_afbd_flip_dev)
++	if (h713_afbd_flip_dev) {
++		/* the capture driver binds only on a running MIPS (h713-mips-restart) */
++		WRITE_ONCE(h713_afbd_flip_dev->incap_live, true);
+ 		h713_afbd_vsync_irq_update(h713_afbd_flip_dev);
++	}
+ 	spin_unlock_irqrestore(&h713_afbd_flip_lock, flags);
+ 
+ 	return 0;
+@@ -1074,7 +1085,7 @@
+ 		return;
+ 
+ 	spin_lock_irqsave(&h->ring_lock, flags);
+-	if (h->incap && READ_ONCE(ring_select) == 1) {
++	if (h->incap && READ_ONCE(h->incap_live) && READ_ONCE(ring_select) == 1) {
+ 		ok = h713_afbd_pick_slots(h, &done, &next);
+ 	} else {
+ 		ok = h713_afbd_read_ring(h, &done.y, &done.c);
+@@ -2443,6 +2454,7 @@
+ 			 h->incap);
+ 		h->incap = NULL;
+ 	}
++	h->incap_live = true;	/* U-Boot started the MIPS, the capture runs */
+ 
+ 	/*
+ 	 * Source 0's VideoInfo record is fetched by the same 32-bit DMA master
+@@ -2688,6 +2700,8 @@
+ 	h->standby_idle = false;
+ 	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+ 		return 0;
++	/* the MIPS is parked and the capture block goes unclocked: pointers only */
++	WRITE_ONCE(h->incap_live, false);
+ 	ret = drm_mode_config_helper_suspend(&h->drm);
+ 	if (ret)
+ 		return ret;

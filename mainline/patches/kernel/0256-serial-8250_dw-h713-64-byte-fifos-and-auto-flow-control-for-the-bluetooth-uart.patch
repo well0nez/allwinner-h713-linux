@@ -1,0 +1,57 @@
+serial: 8250_dw: h713: 64-byte FIFOs and auto flow control for the Bluetooth UART
+
+The H713's UARTs read 0 from the DesignWare component parameter register.
+8250_dw then takes them for 16-byte 16550As and leaves RTS/CTS to software:
+the auto flow control bit in MCR stays clear (read back on the
+HY300PRO-G-EU, 11.10.2026: MCR 0x0b, CPR 0). At 1.5 MBd to the Bluetooth
+controller on UART1 the receive FIFO overran under load - "Frame reassembly
+failed (-84/-90)" and unexpected HCI events on the HY310, writes of 245
+bytes arriving cut on the G-EU (TODO 2.49).
+
+A compatible for the H713 with the CPR value the core does not report:
+64-byte FIFOs, as the vendor's device tree gives them
+(sunxi,uart-fifosize = <0x40>), and the auto flow control mode. With
+CRTSCTS the core now drives RTS from its FIFO level and holds the
+transmitter on CTS itself. UART1 carries the compatible; the console on
+UART0 stays as it was.
+--- a/drivers/tty/serial/8250/8250_dw.c
++++ b/drivers/tty/serial/8250/8250_dw.c
+@@ -936,6 +936,19 @@
+ 	.usr_reg = DW_UART_USR,
+ };
+ 
++/*
++ * The H713's UARTs read 0 from CPR. Without it the port is a 16-byte 16550A
++ * and RTS/CTS stay in software - at 1.5 MBd to the Bluetooth controller the
++ * receive FIFO overran under load (-84/-90 from hci_uart). The vendor's tree
++ * gives them 64-byte FIFOs (sunxi,uart-fifosize), and MCR bit 5 (AFCE) is
++ * the hardware flow control of the DesignWare core.
++ */
++static const struct dw8250_platform_data dw8250_sun50i_h713_data = {
++	.usr_reg = DW_UART_USR,
++	.quirks = DW_UART_QUIRK_CPR_VALUE,
++	.cpr_value = 0x00040010,	/* FIFO_MODE 4 (64 bytes), AFCE_MODE (8250_dwlib.c) */
++};
++
+ static const struct dw8250_platform_data dw8250_octeon_3860_data = {
+ 	.usr_reg = OCTEON_UART_USR,
+ 	.quirks = DW_UART_QUIRK_OCTEON,
+@@ -964,6 +977,7 @@
+ 
+ static const struct of_device_id dw8250_of_match[] = {
+ 	{ .compatible = "snps,dw-apb-uart", .data = &dw8250_dw_apb },
++	{ .compatible = "allwinner,sun50i-h713-uart", .data = &dw8250_sun50i_h713_data },
+ 	{ .compatible = "cavium,octeon-3860-uart", .data = &dw8250_octeon_3860_data },
+ 	{ .compatible = "marvell,armada-38x-uart", .data = &dw8250_armada_38x_data },
+ 	{ .compatible = "renesas,rzn1-uart", .data = &dw8250_renesas_rzn1_data },
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -767,7 +767,7 @@
+ 
+ 		/* === UART1 — Bluetooth HCI transport === */
+ 		uart1: serial@2500400 {
+-			compatible = "snps,dw-apb-uart";
++			compatible = "allwinner,sun50i-h713-uart", "snps,dw-apb-uart";
+ 			reg = <0x02500400 0x400>;
+ 			interrupts = <GIC_SPI 1 IRQ_TYPE_LEVEL_HIGH>;
+ 			reg-shift = <2>;

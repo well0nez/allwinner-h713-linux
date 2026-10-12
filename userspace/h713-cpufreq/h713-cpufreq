@@ -28,8 +28,12 @@
 #    of their time busy as before - at the lowest clock instead of half the time at the highest. A
 #    job completion still runs at once: the cores are idle, and the GPU's work per frame is 1.8 ms
 #    at 696 MHz, 4.3 ms at 288 (the out-fence measured it), against a 16.7 ms frame; 0 frames were
-#    dropped in either run. The kernel's own way would be CONFIG_UCLAMP_TASK and
-#    sched_util_clamp_min_rt_default (TODO 2.60); until then this is the place.
+#    dropped in either run.
+#
+#    Since the kernel has CONFIG_UCLAMP_TASK (TODO 2.60) the kernel's own way is taken instead:
+#    sched_util_clamp_min_rt_default = 0 - real-time tasks get no minimum clock, and the interrupt
+#    threads keep SCHED_FIFO (they still run before any normal task). The clock still rises with
+#    real load, up to 1296 MHz. A kernel without uclamp gets the chrt above, as before.
 #
 # Waits up to 30 s for each of the two to appear (cpufreq-dt and panfrost probe after the root file
 # system), says what it did, never fails the boot.
@@ -42,6 +46,13 @@ if [ -w "$R" ]; then
 	echo 20000 > "$R" && echo "schedutil rate_limit_us 20000 (was the kernel's 462)"
 else
 	echo "warning: $R not there after 30 s - the kernel's 462 us stay"
+fi
+
+U=/proc/sys/kernel/sched_util_clamp_min_rt_default
+if [ -w "$U" ]; then
+	was=$(cat "$U")
+	echo 0 > "$U" && echo "sched_util_clamp_min_rt_default 0 (was $was): no real-time boost of the CPU clock, the interrupt threads stay SCHED_FIFO"
+	exit 0
 fi
 
 gpu_threads() {

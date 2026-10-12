@@ -1,0 +1,74 @@
+soc: sunxi: h713-arisc: a power off through crust is reported as info, not as a warning
+
+After every power off through crust the next boot warned twice: the record
+of the previous run ("crust in phase poweroff ... R_WDOG 0x00010001") and
+TF-A's event "R_WDOG found armed". Both are the way back: crust holds the
+board in phase 7 and returns through the R_WDOG it armed on purpose
+(doku/190 §2, TODO 2.40).
+
+The record of a run that ended in phase poweroff with no cause, no error
+bits, no exception and no TF-A event other than finding the R_WDOG armed is
+now an info line, and so is TF-A's R_WDOG event after it. Anything else in
+phase poweroff still warns. The phase gets its name in the contract's enum.
+--- a/include/linux/soc/sunxi/h713-crust-contract.h
++++ b/include/linux/soc/sunxi/h713-crust-contract.h
+@@ -137,7 +137,7 @@
+ enum h713_phase {
+ 	H713_PHASE_OFF, H713_PHASE_PRESLEEP, H713_PHASE_CPU_OP,
+ 	H713_PHASE_SLEEP, H713_PHASE_RESUMING, H713_PHASE_RELEASED,
+-	H713_PHASE_RESET,
++	H713_PHASE_RESET, H713_PHASE_POWEROFF,
+ };
+ 
+ #define H713_SB_NET_ARMED	(1U << 4)
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -443,6 +443,7 @@
+ 	u32			err_seen;	/* error bits already reported */
+ 	u32			cnt_seen[2];	/* CNT0, CNT1[15:0] reported */
+ 	u32			tfa_seen;	/* TF-A's word last reported */
++	bool			prev_poweroff;	/* the previous run ended in a power off through crust */
+ 	const u8		*image;		/* crust's image, for a reload */
+ 	size_t			image_size;
+ 	unsigned int		reloads;
+@@ -1235,6 +1236,7 @@
+ 		return false;
+ 	}
+ 	crust_wr(a, hdr | H713_P_REPORTED, H713_P_HDR);
++	a->prev_poweroff = false;
+ 
+ 	sb = p_word(w, P_OF_K(H713_SB_STATE));
+ 	err = p_word(w, P_OF_K(H713_ERR));
+@@ -1250,6 +1252,20 @@
+ 			p_word(w, P_OF_K(H713_CYCLE)));
+ 		return boot;
+ 	}
++	/*
++	 * A power off through crust: crust holds the board in phase 7 and comes
++	 * back through the R_WDOG, armed on purpose - that is the way back, not
++	 * a fault (TODO 2.40). Out of order only with a cause, error bits, an
++	 * exception or a TF-A event other than finding that R_WDOG armed.
++	 */
++	a->prev_poweroff = h713_sb_phase(sb) == H713_PHASE_POWEROFF && !h713_sb_cause(sb) &&
++			   !err && !exc && (!h713_tfa_event(tfa) ||
++					    h713_tfa_event(tfa) == H713_TFA_RWDOG_FOUND);
++	if (a->prev_poweroff) {
++		dev_info(a->dev, "previous run (record of %s): powered off through crust, back by the R_WDOG (0x%08x), cycle %u\n",
++			 boot ? "TF-A" : "Linux", rwdog, p_word(w, P_OF_K(H713_CYCLE)));
++		return boot;
++	}
+ 	dev_warn(a->dev, "previous run (record of %s): crust in phase %s, step 0x%x, cause %u (%s), err 0x%x (detail 0x%08x, data 0x%08x), %u ms in the phase, reset path 0x%x, exception 0x%08x, cycle %u; TF-A word 0x%08x, R_WDOG 0x%08x, GP5 0x%08x\n",
+ 		 boot ? "TF-A" : "Linux",
+ 		 crust_phase(sb), p_word(w, P_OF_D(H713_DIAG_STEP)),
+@@ -3238,6 +3254,11 @@
+ 			if (h713_tfa_detail(w) & BIT(i))
+ 				n += scnprintf(failed + n, sizeof(failed) - n,
+ 					       " %s", checks[i]);
++	if (h713_tfa_event(w) == H713_TFA_RWDOG_FOUND && a->prev_poweroff) {
++		dev_info(a->dev, "TF-A: R_WDOG found armed after the power off through crust, as meant (word 0x%08x)\n",
++			 w);
++		return;
++	}
+ 	dev_warn(a->dev, "TF-A: %s (word 0x%08x)%s%s\n",
+ 		 events[h713_tfa_event(w) < ARRAY_SIZE(events) ?
+ 			h713_tfa_event(w) : 0], w,

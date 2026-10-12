@@ -579,3 +579,7 @@
 0253-media-sunxi-cir-h713-drop-0021-s-vendor-register-values.patch
 0254-media-rc-keymaps-the-h713-projectors-stock-ir-remote-and-its-map-on-the-hy310.patch
 0255-drm-h713-afbd-the-capture-slot-from-the-capture-s-own-index-not-the-firmware-s-flip-pointers.patch
+0256-serial-8250_dw-h713-64-byte-fifos-and-auto-flow-control-for-the-bluetooth-uart.patch
+0257-soc-sunxi-h713-arisc-a-power-off-through-crust-is-reported-as-info-not-as-a-warning.patch
+0258-drm-h713-afbd-no-read-of-the-capture-s-registers-from-a-standby-until-the-capture-is-back.patch
+0259-soc-sunxi-cpu_comm-the-software-spinlocks-as-the-vendor-and-the-firmware-run-them.patch
