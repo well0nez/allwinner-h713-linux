@@ -293,7 +293,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - Marco dazu (12.10. nachts): **die vielen Optionen sind gewollt** ("find ich geil"), aber gruppiert, **jede Gruppe ein
         eigenes Menü**, nicht zusammengewürfelt; das Design der Agentenfassung ist "abgrundtief schlecht". Ursprünglich gemeint war
         nur der eine Knopf "Fernbedienung neu koppeln" - der Rest ist der Wunsch "alles, was nur per Kommandozeile geht, ins Panel"
-- [ ] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
+- [x] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
       Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
       tty1 und erscheinen, sobald die Konsole sichtbar wird. Erst nachweisen (Taste drücken, `/dev/vcs1` lesen), dann entscheiden:
       die Fernbedienungs-Geräte vom VT fernhalten oder den getty auf tty1 ändern
@@ -303,6 +303,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `hy310 login: ^[[A^[[D`. **Marco entschieden: vorerst Weg 2** - das Login auf tty1 neu starten, wenn die Konsole sichtbar wird, aber
         nur wenn dort niemand angemeldet ist (getty noch am Prompt). Nicht an HDMI koppeln: die Fernbedienung soll später den Desktop
         bedienen; die Trennung Fernbedienung/VT (EVIOCGRAB + Power über uinput) gehört zum Desktop
+      - **12.10. abends umgesetzt** (h713-tv, in `main`): `console_restore()` liest tty1; steht hinter dem letzten "login:" etwas, bekommt
+        der agetty SIGTERM (getty@tty1 startet neu), sonst nichts. Am G-EU gemessen: Tasten eingespeist → `ctl off` → Prompt sauber,
+        Journalzeile "getty restarted"; sauberer Prompt → kein Neustart
 - [ ] 2.66 **Nach dem Standby zweimal 0 Bilder/s gezeigt, obwohl h713-tv "plane on" meldet** (12.10., G-EU, 20 Standbys per RTC,
       Quelle ThinkPad, `arbeit/remote-reihe-20261012/` C): `anzeige.py` 4 s, ~10 s nach ssh, in st6 und st18 0,00 Wechsel/s, die anderen
       18 bei 59,6-59,8; der jeweils nächste Standby wieder normal. Ungeklärt, ob zu früh gemessen (Skript- und Journalzeit gingen über die
