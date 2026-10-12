@@ -123,9 +123,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10.** (`arbeit/remote-reihe-20261012/` G): `atoi`, Client ohne Zeilenende (500 ms -> keine Lücke über 20 ms) und die Texte in
         `main` (`62d1887`), am G-EU gemessen. `evaluate()` bei -ENOLCK gebaut (Zweig `versuch/warp-reste` `f089cdd`), aber in 9 Versuchen
         nie ausgelöst (HDCP-Neuanforderung wirft den Warp gar nicht ab) - nicht in `main`. Offen: `check` halbiert fps, Musterwechsel
-- [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
-- [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
+- [x] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
+      - **12.10. (Marco): längst gelöst** - die blasse Wand am HY300 war das LVDS mit 6 Bit (`doku/137`, U-Boot `2de0cc8`, in `main`);
+        die Lampe ist auf HY310 und HY300 auch unter Stock nicht dimmbar (06.10.). Nichts mehr zu messen
+- [x] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
       Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
+      - **12.10. (Marco): gestrichen** - die Automatik gegen die Ideal-Pose ist seit 26.09. so gebaut wie Stock gegen `GsInitXYZ`
+        (`docs/tools/h713-keystone.md`); eine eigene Messreihe dafür ist "zum jetzigen Zeitpunkt und auch generell unnötig"
 - [ ] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
       100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
 - [ ] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
