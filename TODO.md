@@ -108,11 +108,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
       (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
       Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
-- [ ] 2.4f Keystone für Ringe mit unausgerichtetem Pitch (SD- und PC-Modi): Warp braucht einen 64-aligned Import
+- [x] 2.4f Keystone für Ringe mit unausgerichtetem Pitch (SD- und PC-Modi): Warp braucht einen 64-aligned Import
       - 12.10. (`arbeit/wurzeln-20261012/` §5): betrifft 800x600 (Pitch 800), 720x576/720x480 (720), 1280x1024 (912). Weg A (Ring 64-ausgerichtet
         anlegen) **geht nicht**: INCAP schreibt nach einem Override von `+0x924` weiter mit dem alten Pitch, auch nach Enable aus/an, und die Firmware
         setzt den Wert bei jedem Umbau neu (Pitch = Breite auf 16). Bleibt Weg B: linearer Import im Warp (Textur 2048 breit, Shader adressiert
         `y·pitch + x`, bilinear von Hand), ~+1 ms GPU, ~ein halber Tag. Entscheidung Marco
+      - **12.10. abends entschieden (Marco): bleibt so** - "die Auflösung nimmt eh niemand"; Bild ohne Trapez, der Warp sagt es im Status.
+        Festgehalten in `docs/tools/h713-warp.md` "Limits" und `docs/known-issues.md`; Weg B steht hier als Entwurf, falls es doch gebraucht wird
 - [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12) — **erledigt 05.10.:** `ctl status` wirft den Warp ab
       (Frist 1000 ms), Journal-Spam ohne Signal, `test mask` markiert tl, Firmware-Zoom im Warp-Commit
       (h713-tv-0001 + 0183). **Offen:** laxe `atoi`-Prüfung bei zoom/edge, `check` halbiert fps

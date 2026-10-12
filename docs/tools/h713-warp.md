@@ -100,6 +100,19 @@ Every one of these leaves a picture on the wall; that is the rule.
 
 ## Limits
 
+**Modes whose ring the GPU cannot import stay without keystone - by decision (12.10.2026).** The display
+firmware lays the capture ring out with a line pitch of the ring's width rounded up to 16 bytes, and sets it
+again at every rebuild of its capture chain (`VIncap_ConfigDownScaler`; overwriting the INCAP rowbyte from our
+side changes nothing, measured 12.10.2026 in `arbeit/wurzeln-20261012`); panfrost imports a linear dma-buf
+as a 2D texture only with a pitch that is a multiple of 64. Rings whose width is not a multiple of 64 are
+therefore refused at the import: 800x600 (pitch 800), 720x576 and 720x480 (720), 1280x1024 (912, the
+firmware scales it to 900 wide). In those modes the warp stays in bypass, `ctl status` says so (`R8 + GR88
+import of a capture slot: egl 0x3003`), and `h713-tv` shows the plain picture - nothing is cropped or
+guessed. The one way around it on our side would be importing the slot as a flat buffer and addressing it
+in the shader (a second render path, about a millisecond more GPU per frame); it was not built, because
+nobody runs a projector at these modes - a source at 1080p, 720p, 1366x768, 1360x768, 1024x768, 1280x800,
+1440x900, 1600x1200 or 640x480 is warped. If the need comes, TODO 2.4f holds the design.
+
 The warp and the video plane are **mutually exclusive** - while the warp is on, the picture comes from the GPU
 and `h713-tv ctl zoom` is refused with a pointer to `h713-warp ctl zoom`. The warp adds no frame of latency
 since 11.10.2026 (kernel 0255, `hold off`): the slot handed on at a vsync is finished and is drawn at once;
