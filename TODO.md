@@ -439,8 +439,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
           `sleep.conf` und Drop-ins aus, `build-rootfs.sh` lehnt fremde Drop-ins ab). Dabei gefunden und behoben (Marco: behalten):
           `check-crust.py` verlangte ohne `--standby`, dass `h713-power` fehlt - seit 2.38 ist es auf jedem Abbild, jeder Bau ohne
           `--standby` wäre in Schritt 10 gescheitert
-        - **nicht besprochen:** der Rest aus 5.16 (msp bleibt auf "error", wenn ein Standby zwischen `msp_suspend` und dem Park
-          abbricht) - erst prüfen, ob das nach `0243`/`0262` noch gilt, dann Marco fragen
+        - **12.10. abends, Schritt 2 auf `versuch/dienste`** (`arbeit/dienste-20261012/`, nicht in `main` bis zur Gerätemessung):
+          U2 (243ef22, über `pm_wakeup_irq`, braucht `CONFIG_PM_DEBUG`), U6 (6f5db52, 120 s), U5 (495b1c8 + 68ba120), U3 (169e98a);
+          Rechner-Tests grün, Gegenproben gegen die alten Fassungen scheitern
+        - **Rest aus 5.16, zweitgeprüft 12.10. abends:** gilt noch, und **U2 macht ihn zum Normalfall** - der zweite Tastendruck beim
+          Einschlafen bricht am Anfang von `suspend_late` ab, vor dem Park; `msp_resume` setzt blind `error`, obwohl `pd_tvfe` nie
+          abgeschaltet war, niemand baut den DSP neu auf: Bild an, Ton weg. **Entschieden (Marco): Wurzel im Kernel** - `msp_resume`
+          liest Routerwort und Taktbit des Audio-Top und baut bei intakter Insel selbst neu auf. Schritt 3; nachstellbar mit
+          `pm_test=devices`
 - [ ] 5.15 **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
       braucht den veröffentlichten Fork (1.6)
       - 12.10. geprüft: `build-all.sh` sucht schon in `mainline/external/crust` (Z. 181), es fehlt nur das Submodul; `well0nez/crust`
