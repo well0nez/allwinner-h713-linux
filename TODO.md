@@ -34,6 +34,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 1.2b **Reinstall über unser Layout verwirft `/etc/h713`** (wifi.env → AP-Modus, warp.conf, keystone,
       tvconfig): der Installer soll die Nutzer-Einstellungen wie die 44 Herstellerdateien zurücklesen und
       übernehmen — oder `build-all.sh --wifi-env` ist Pflicht. Bis dahin: Sicherung vorher (`/root/pre-v096`)
+      - 12.10. aus 5.18: dazu einen vom Nutzer geänderten Hostnamen (`/etc/hostname`) mitnehmen
 - [ ] 1.3 **WLAN-Timeouts verifizieren** (`82cb57e`): im Abbild drin, 5 Boots je ~9 s bis Finished — der Hängefall
       (Funk absichtlich verklemmen) ist noch nicht provoziert
       - **12.10. provoziert** (G-EU, ein `install`-Hänger in modprobe.d, `arbeit/remote-reihe-20261012/` H): `timeout 30` greift, aber
@@ -326,6 +327,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - Marco dazu (12.10. nachts): **die vielen Optionen sind gewollt** ("find ich geil"), aber gruppiert, **jede Gruppe ein
         eigenes Menü**, nicht zusammengewürfelt; das Design der Agentenfassung ist "abgrundtief schlecht". Ursprünglich gemeint war
         nur der eine Knopf "Fernbedienung neu koppeln" - der Rest ist der Wunsch "alles, was nur per Kommandozeile geht, ins Panel"
+      - 12.10. aus 5.18: der Hostname gehört zu den Einstellungen, die im Panel änderbar sein sollen
 - [x] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
       Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
       tty1 und erscheinen, sobald die Konsole sichtbar wird. Erst nachweisen (Taste drücken, `/dev/vcs1` lesen), dann entscheiden:
@@ -390,6 +392,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       ~−150 µs CPU, +25 % GPU (1,8 → ~2,3 ms). Nur mit Augen an der Wand und T1-Tests; vorher 2.60
       - **11.10. geparkt:** nach 2.60 läuft die CPU fast immer bei 480 MHz, Gewinn ~0,5 Prozentpunkte gegen mehr GPU-Last und das Kantenrisiko von `versuch/warp-einpass`; wieder aufmachen, wenn die Warp-CPU nachweislich stört
 - [ ] 3.5 `Reserve0_a/b` und `private` von einem **unangetasteten** Gerät abziehen (bei uns überschrieben) (aus `61`)
+- [ ] 5.1 ST3-RESTORE F1: Schema-Feld `layout.disk_sectors_from = unit|image` statt Heuristik
+      - **12.10. geparkt (Marco):** die Heuristik `_size_is_a_units` (`h713-install`) arbeitet und ist getestet; betrifft nur
+        `restore-stock` auf fremden Boards. Wieder aufmachen, wenn ein Profil sie falsch beantwortet
 
 ## 4 Boards und Fremdgeräte
 
@@ -397,19 +402,39 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 5 Installer und Werkzeuge
 
-- [ ] 5.1 ST3-RESTORE F1: Schema-Feld `layout.disk_sectors_from = unit|image` statt Heuristik
 - [ ] 5.11 `h713-install` löscht seine Arbeitskopie (`image-filled.img`, im Abzugsordner oder `--work-copy`) nie; sie enthält die
       geräteeigenen Dateien. Nach bestandenem Rückvergleich löschen, außer `--keep-work-copy` (08.10., `doku/170`)
       - 10.10.: sie entsteht außerdem **für alle lesbar** (`0644`, root, weil `h713-install` unter sudo läuft) - Arbeitskopie und
         Abzug mit `0600` anlegen, ihre Ordner `0700`. Die eigenen Sicherungsskripte schrieben das Archiv mit den privaten
         Host-Schlüsseln und `wifi.env` ebenso mit `0664` (behoben: `chmod 600`, `umask 077` im Installationsskript)
+      - **12.10. entschieden (Marco, Durchsicht 5.x):** keine Rechte-Verschärfung ("übertrieben" - das Backup ist seins, er
+        entscheidet). Stattdessen: Abzug, Ordner und alles, was `h713-install` anlegt, gehören **dem Nutzer, der sudo aufgerufen hat**
+        (`SUDO_USER`), statt root. Die Arbeitskopie (1,2 GB je Installation, der Linux-Teil des Abbilds mit den eingefüllten
+        Gerätedateien) wird **nach bestandenem Rückvergleich gelöscht**; scheitert er, bleibt sie liegen; `--work-copy DATEI` behält
+        sie (keine neue Option)
 - [ ] 5.12 `v4l2-ctl` (Paket `v4l-utils`) ins Rootfs: zum Lesen der HDMI-RX-Steuerungen am Gerät fehlte es (Marco 08.10., klein)
+      - **12.10. entschieden (Marco):** das Debian-Paket `v4l-utils` in `packages.txt` (kein eigener Bau); die Ausschlusszeile
+        "gstreamer1.0-*, mpv, ffmpeg, v4l-utils" so ändern, dass nur cstengers Video-Laufzeit draußen bleibt
 - [ ] 5.14 **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
       Zeitüberschreitung öffnet die Aufrufe), CC-3..CC-6, U2 (abgebrochener Standby zählt als verweigert), U3..U6 (hdcp-key-Reste,
       Sperre, kein Zeitlimit für den Neustart), TFA-R2-1/2 (Zeitgutschrift ab Überlauf, R_WDOG-Meldung), CR-3 (50 ms ohne WFI-
       Prüfung), CR-4 (MIPS_DROP zählt Aux-Abweisungen), B2/B4 (Standby-Abbild nur per Text erkennbar, spätere sleep-Drop-ins), KM-3/4
+      - **12.10. gegen den heutigen Code geprüft und entschieden (Marco, Durchsicht 5.x):** keiner der Funde ist nebenbei behoben.
+        - **abgehakt:** B2 (überholt - der Standby kommt experimentell ins Release, 2.29/3.3), CR-4 (im Review widerlegt, Absicht und so
+          beschriftet), KM-4 (der Test liegt nur im alten Paket, nicht im Repo)
+        - **jetzt:** das Banner in `build-all.sh` mit `--standby` ("not a release before TODO 3.3", C1, kein Ton, Wecken ungemessen -
+          alles überholt); CC-3 (Meldung nennt -ENODEV, Aufrufer bekommen -EBUSY); TFA-R2-2 (R_WDOG zurücklesen, Text nur bei Erfolg
+          "stopped") **vor dem Push 1.6**; U2 (Abbruch durch Weck-Ereignis -> anbleiben, nur echte Verweigerung schaltet aus,
+          `last_failed_errno`); U5 (scheitert `h713-hdcp-key`, den Empfänger einfach binden - Bild ohne HDCP 2.2 statt keins); U6
+          (Zeitgrenze 120 s für h713-mips-restart); CC-1; CC-6; U3; B4
+        - **nach dem Release:** CC-4, CC-5, U4, CR-3, KM-3
+        - **gestrichen:** TFA-R2-1 (falsche Zeitgutschrift erst nach 49,7 Tagen Schlaf am Stück)
+        - **nicht besprochen:** der Rest aus 5.16 (msp bleibt auf "error", wenn ein Standby zwischen `msp_suspend` und dem Park
+          abbricht) - erst prüfen, ob das nach `0243`/`0262` noch gilt, dann Marco fragen
 - [ ] 5.15 **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
       braucht den veröffentlichten Fork (1.6)
+      - 12.10. geprüft: `build-all.sh` sucht schon in `mainline/external/crust` (Z. 181), es fehlt nur das Submodul; `well0nez/crust`
+        gibt es auf GitHub noch nicht. Vorschlag: vorbereiten, Commit erst mit dem Push 1.6 - **Entscheidung Marco offen**
 - [ ] 5.16 **Reste der Doku-Runde 09.10.** (`2f7875f`, Entwürfe und Notizen in `arbeit/doku-r2-20261009/*/NOTIZEN.md`):
       Commit-Texte beim nächsten Serienumbau - `0231` nennt V10 "three times in a row" (nicht belegt, `doku/176` §1), `0240`
       sagt "not yet measured" (gemessen, `doku/173`), `0243` sagt "until a reboot" (siehe 3.3); Lüfterdrehzahl 4860
@@ -421,6 +446,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - Ton bis zum Neustart weg; gehört zu 5.14.
       - 11.10. nachts erledigt (`77c8920`): 720p+Warp in `known-issues` (durch 0183 behoben), Lüfterdrehzahl, ARISC-Größe; R_WDOG
         stand schon in `standby.md`. Offen: die Commit-Texte (nächster Serienumbau), `docs/uboot/README.md` (nach 1.6)
+      - **12.10. (Marco: ok):** die Commit-Texte von `0231` (1 Stelle), `0240` (1), `0243` (2) jetzt mit dem Kernel-Paket;
+        `docs/uboot/README.md` Z. 65-66 (nennt noch den Kopf `7b1ea388da0d`, heute `61ea018712c8`, und "unveröffentlicht") nach 1.6
 - [ ] 5.17 **`build-all.sh` muss nach einem Abbruch weiterbauen können** (Marco 09.10.: "nicht entwicklerfreundlich"). Anlass:
       G-EU-Testbau 09.10. stieg in Schritt 7 (Rootfs) aus, nach ~25 min Kernel/Mesa/Sysroot; danach lief alles von vorn, und
       eine Kommentaränderung im Gerätebaum-Patch kostete den Kernel noch einmal. Heute gibt es `--skip-bl31/-uboot/-kernel/
@@ -451,7 +478,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         6. Messen: ein Lauf abbrechen (z. B. in Schritt 7), neu starten -> nur ab 7 gebaut, Abbild bytegleich zu einem Lauf
            von vorn; eine Kommentaränderung in einem DTS-Patch -> nur Kernel(-DTB) und Folgeschritte; ein unverändertes
            Zweitlauf -> nichts gebaut, Abbild bytegleich. Den Installer auf dem Gerät (`h713-install`) fasst das nicht an.
-- [ ] 5.18 **Hostname je Board** (Marco 10.10. nachts: der HY300PRO-G-EU meldet sich im Netz als `hy310`). Heute fest im
+      - **12.10. (Marco, Durchsicht 5.x): nach dem Release, aber unbedingt.** Geprüft: noch nicht angefangen (die vier `--skip-*`
+        stehen, kein `stempel/`). Vorschlag dazu: Punkt 5 (Kernel teilweise inkrementell) zurückstellen - der riskante Teil, und den
+        häufigsten Fall fängt der Kernel-Cache über den Eingabe-Hash schon ab
+- [x] 5.18 **Hostname je Board** (Marco 10.10. nachts: der HY300PRO-G-EU meldet sich im Netz als `hy310`). Heute fest im
       Rootfs: `rootfs/overlay/etc/hostname` = `hy310`, `rootfs/overlay/etc/hosts` `127.0.1.1 hy310`, dazu der Rückfall
       `hy310` in `h713-wifi` (DNS-Name im Zugangspunkt-Modus). Jedes Board heißt also `hy310`, zwei Boxen im selben Netz
       kollidieren. Vorschlag: das Abbild wird ohnehin je Board gebaut - ein Feld `HOSTNAME` in `board.env` (sonst der Name
@@ -462,9 +492,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `hy200-qz713df-a1`). Getrennt davon, nicht in diesem Zug: die Partitionsnamen `hy310-boot`/`hy310-rootfs` gelten
       für alle Boards (Layout v4, `root=PARTLABEL=…`) - umbenennen wäre eine Layout-Änderung
       - **11.10. abends (Marco):** Namen `hy310`, `hy300pro` (G-EU), `hy300proplus`, sonst der Board-Ordner; im Panel änderbar
+      - **12.10. geschlossen (Marco, Durchsicht 5.x):** umgesetzt in `234282c` (seit 11.10. in `main`, `doku/202` §9): `HOSTNAME_BOARD`
+        (variant.env vor board.env, sonst `BOARD_ID`), `install-projekt.sh` schreibt `/etc/hostname` und `/etc/hosts` und weist
+        ungültige Namen ab, `h713-wifi` fällt auf `h713` zurück. Am G-EU als `hy300pro` noch nicht gesehen - mit dessen nächstem
+        Abbild. Reste: "im Panel änderbar" -> 2.54, "bei Neuinstallation mitnehmen" -> 1.2b
 - [ ] 5.19 **`boards/check.sh` urteilt über alte Gerätebäume**: es liest `mainline/build/out/<dtb>.dtb` des Checkouts; in
       `repo-neu` liegen die vom 05.10. (vor crust), daher am 10.10. zwei falsche FAILs (hy310, hy200-qz713df-a1 "device tree
       names h713-arisc.bin"); im frisch gebauten Worktree grün. Den DTB nur mit passendem Kernelbaum-Stempel werten, sonst "note"
+      - 12.10. nachgestellt: dieselben zwei FAILs. **Entschieden (Marco): kein Hash** - den DTB-Teil aus `check.sh` (Prüfung 9)
+        streichen. Ob Gerätebaum und Firmware zusammenpassen, prüft `build-all.sh` Schritt 10 (`check-crust.py`) am frisch gebauten
+        Abbild; `check.sh` prüft nur die Quellen (`board.env`, crust-Konfiguration vorhanden)
 - [ ] 5.20 **ARISC-Wahl: Anzeige im Installer und Umschalter `h713-arisc`** (Entscheidung 1.1b, Marco 10.10. abends). Eigenes
       Paket `arbeit/arisc-wahl-<datum>/`, **nach** dem G-EU-Abbild `geuaus1` und seinen Kurztests. Ziel: crust bleibt die
       Vorgabe, die Hersteller-Firmware ist ohne Neuinstallation erreichbar, und jeder sieht, welche läuft.
@@ -493,6 +530,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       7. **Später (eigenes Paket, nur mit Besitzerbericht und Registerbeweis):** crust ohne Standby für fremde Boards - nur Aus
          und der HDMI-Vertrag, die Pins (PL6, PB5, PL3, Taste) aus `standby_param` des eigenen Stock-Gerätebaums; dann hätten
          auch sie 0,3 W im Aus, ohne dass wir ihr DRAM kennen
+      - **12.10. (Marco, Durchsicht 5.x): schlank umsetzen** - Kernel-Option, `h713-arisc status|set vendor|crust` (`status` liest die
+        Zustandsdatei aus `0205`, die es schon gibt), die Zeile im Installer, Doku; **ohne** die Install-Option `--arisc vendor` (keine
+        neuen Parameter). Geprüft: die Hersteller-Datei ist bei jeder Installation Pflicht (`vendorfiles.py` `REQUIRED_FILES`), die
+        Weigerung in 2. trifft also kaum je zu. **Gemessen wird erst, wenn die übrigen besprochenen 5.x-Punkte fertig sind** (Marco)
+- [ ] 5.23 **Unbekannte Android-Firmware -> Issue** (Marco 12.10.): wer ein Gerät mit einer Hersteller-Firmware hat, die der Installer
+      nicht kennt, soll ein Issue aufmachen, damit wir das Profil ergänzen können. Ein Satz im README und derselbe Hinweis in der Meldung,
+      mit der der Installer eine unbekannte Firmware ablehnt
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
@@ -576,6 +620,8 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 9.13 Webpanel-Konzept (aus 5.10): Ecke/Kante, Seitenverhältnis, Undo/Redo, Vorschau = Warp (`61` Z. 555ff) - Marco 06.10.:
       erst einmal geschoben
 - [ ] 9.14 Automatischer Standby, wenn lange kein Signal kommt (aus 2.29; Marco 09.10.: Userspace, erst viel später)
+- [ ] 9.15 **Eigenständiges Update-Werkzeug** (Marco 12.10., ganz spät, nach dem Release): ein neues Abbild mit dem Abzug einspielen,
+      den der Nutzer ohnehin hat (groß oder klein), ohne den ganzen Installer-Lauf
 
 ## 10 Erledigt — aus `61` und `144` gestrichen, damit es nicht wieder auftaucht
 
