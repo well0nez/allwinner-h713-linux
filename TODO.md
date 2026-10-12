@@ -1,7 +1,7 @@
 # TODO — die eine Liste
 
 **Die einzige Todo-Liste dieses Projekts.** Neue Punkte hierher; erledigte nach §10 — nicht löschen.
-Changelog ist [RELEASES.md](RELEASES.md). Letzter Handoff: `doku/207` (12.10. abends, HY310 auf `main`). `known-issues.md` und `ROADMAP.md` beschreiben dem Leser,
+Changelog ist [RELEASES.md](RELEASES.md). Letzter Handoff: `doku/208` (12.10. nachts, 5.x-Runde, Testabbild `runde5x1` am HY310). `known-issues.md` und `ROADMAP.md` beschreiben dem Leser,
 was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2026 aus `doku/151`.
 
 ## 1 Release — in dieser Reihenfolge
@@ -112,13 +112,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
       (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
       Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
-- [x] 2.4f Keystone für Ringe mit unausgerichtetem Pitch (SD- und PC-Modi): Warp braucht einen 64-aligned Import
-      - 12.10. (`arbeit/wurzeln-20261012/` §5): betrifft 800x600 (Pitch 800), 720x576/720x480 (720), 1280x1024 (912). Weg A (Ring 64-ausgerichtet
-        anlegen) **geht nicht**: INCAP schreibt nach einem Override von `+0x924` weiter mit dem alten Pitch, auch nach Enable aus/an, und die Firmware
-        setzt den Wert bei jedem Umbau neu (Pitch = Breite auf 16). Bleibt Weg B: linearer Import im Warp (Textur 2048 breit, Shader adressiert
-        `y·pitch + x`, bilinear von Hand), ~+1 ms GPU, ~ein halber Tag. Entscheidung Marco
-      - **12.10. abends entschieden (Marco): bleibt so** - "die Auflösung nimmt eh niemand"; Bild ohne Trapez, der Warp sagt es im Status.
-        Festgehalten in `docs/tools/h713-warp.md` "Limits" und `docs/known-issues.md`; Weg B steht hier als Entwurf, falls es doch gebraucht wird
 - [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12) — **erledigt 05.10.:** `ctl status` wirft den Warp ab
       (Frist 1000 ms), Journal-Spam ohne Signal, `test mask` markiert tl, Firmware-Zoom im Warp-Commit
       (h713-tv-0001 + 0183). **Offen:** laxe `atoi`-Prüfung bei zoom/edge, `check` halbiert fps
@@ -127,37 +120,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10.** (`arbeit/remote-reihe-20261012/` G): `atoi`, Client ohne Zeilenende (500 ms -> keine Lücke über 20 ms) und die Texte in
         `main` (`62d1887`), am G-EU gemessen. `evaluate()` bei -ENOLCK gebaut (Zweig `versuch/warp-reste` `f089cdd`), aber in 9 Versuchen
         nie ausgelöst (HDCP-Neuanforderung wirft den Warp gar nicht ab) - nicht in `main`. Offen: `check` halbiert fps, Musterwechsel
-- [x] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
-      - **12.10. (Marco): längst gelöst** - die blasse Wand am HY300 war das LVDS mit 6 Bit (`doku/137`, U-Boot `2de0cc8`, in `main`);
-        die Lampe ist auf HY310 und HY300 auch unter Stock nicht dimmbar (06.10.). Nichts mehr zu messen
-- [x] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
-      Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
-      - **12.10. (Marco): gestrichen** - die Automatik gegen die Ideal-Pose ist seit 26.09. so gebaut wie Stock gegen `GsInitXYZ`
-        (`docs/tools/h713-keystone.md`); eine eigene Messreihe dafür ist "zum jetzigen Zeitpunkt und auch generell unnötig"
-- [x] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
-      100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
-      - 12.10. abends (HY310, `main` db558e3, `arbeit/hy310-main-20261012/`): 2 von 1927, 0 von 11230 nach 12 min, 3 von 238 direkt
-        nach einem Warp-Start - normal, nur beobachten
-      - **12.10. abends erledigt (Marco):** beobachtet, normal - zu
-- [x] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
-      Plattenzugriff (ls /boot, dmesg ueber Shell, Konsolen-Login), ssh/uptime antworten - Kernel 0184 frisch gebootet,
-      Ursache offen, nach Stromzyklus alles normal, keine mmc-Fehler im Log. Beobachten. *Überholt (11.10.):* "Journal ist persistent" - stimmt nicht, `10-h713.conf` hat `Storage=volatile`, siehe 1.2a
-      - **12.10. abends** (HY310 auf `main` db558e3): 5 Warmstarts, je bei 151 s fünf Plattenzugriffe mit Zeitlimit (ls /boot, dmesg,
-        Datei lesen, schreiben+sync, journalctl) - 5/5 sofort, 0 mmc-Fehlerzeilen (`arbeit/hy310-main-20261012/laeufe/warmstart-reihe.txt`)
-      - **12.10. abends erledigt (Marco):** nicht reproduziert; wieder öffnen, wenn ein Hänger auftritt
-- [x] 2.26 **HDCP 1.4 nach einem Moduswechsel der Quelle** (`doku/170` §3): fordert der ThinkPad (i915) sofort beim Modeset an,
-      bleibt er auf `Desired`; 2 s später angefordert steht `Enabled` nach 5 s. Mit der Hersteller-ARISC-Firmware und dem
-      Fire-TV-Stick vergleichen (Auflösungswechsel), erst dann entscheiden, ob der Empfänger früher bereit sein muss
-      - 10.10. (G-EU, crust, `doku/184`): auch nach Neustart und Standby der Box fragt i915 nicht von selbst neu an (`Desired`),
-        mit neuer Anfrage sofort `Enabled`; der Fire-TV-Stick (2.2) verhandelte nach jedem Neustecken von selbst neu
-      - **12.10. abends gemessen (HY310, `main` db558e3, ThinkPad i915, `hdcp-verzoegerung.sh`):** Moduswechsel 1080p50 -> 1080p60, Anforderung
-        nach d s: d=0 **Enabled nach 3,06 s**, d=0,5 bis 3 nach 1,14-1,21 s. "Bleibt auf Desired" tritt am HY310 nicht auf; der Vergleich
-        mit der Hersteller-ARISC-Firmware braucht 5.20
-      - **12.10. abends erledigt (Marco):** am HY310 kein Stall; am G-EU war es das Verhalten der Quelle (i915 fragt nicht von selbst neu an), kein Fehler bei uns
 - [ ] 2.28 **Physische Adresse im HDMI-VSDB** (war 2.26 auf `versuch/crust-release`, Commit 9d95b89): crust schreibt für Port 0/1/2 1.0.0.0 / 2.0.0.0 / 3.0.0.0, der Blob 0.0.0.0 /
       2.0.0.0 / 0.2.0.0 (gemessen 07.10., `doku/163`). Von Belang nur für CEC und AV-Receiver in einer Kette. Offen: die
       Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen
-
 
 - [ ] 2.34 **Grüner Streifen auf der Konsole** (Marco 10.10. nachts): kurz nach dem Booten links, nach dem Aufwachen aus dem
       Standby rechts, geht von selbst weg; HY310 und HY300PRO-G-EU. Ursache offen (Marco: DRAM? - ein alter Bildspeicher-Inhalt,
@@ -168,17 +133,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Aufwachen geht die Ebene im Bypass auf **volle** Ringplätze (3 Läufe, `ebene-wach.py`), der erste Warp-Puffer ist beim Flip
         gefenct (afbd nutzt `drm_atomic_helper_commit`). Offen: Inhalt des ersten Warp-Puffers (nicht über `/dev/mem` lesbar), die
         Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
-- [x] 2.36 **HDCP-2.2-Beweis am G-EU ohne `SKE_SEND_EKS`-Zeile**: gleiche `display.bin` wie der HY310 (`16c74a28...`), aber im
-      Firmware-Log (Abbild-Stufe, `h713_disp init` ohne `elog=`) nur "HDCP Process cost tick". Klären, ob die HY310-Zeile vom
-      05.10. aus einer höheren Log-Stufe kam; `referenz/messregeln.md` HDCP 2.2 danach nachziehen. Bis dahin: Bit LINK 0x422 +
-      neue Sitzung je Neustecken
-      - **10.10. Cloud-RE C (`doku/187`): geklärt aus dem Listing.** `MsgHandle_SKE_SEND_EKS` ist nur der Funktionsname des
-        Log-Aufrufs; die Format-Maske (`0xA7`, fest beim Start) druckt Funktionsnamen auf keiner Stufe. Die Zeile
-        `HDCP Process cost tick` (Stufe 1, einzige Stelle) **ist** der SKE_Send_Eks-Beweis - am G-EU also erbracht. Die HY310-Zeile
-        vom 05.10. war zusammengesetzt. Messregel, `docs/subsystems/hdcp.md` und h713-tv-README korrigiert. Rest: Gegenprobe am Gerät
-        (`0x4B48BE84` liest `0xA7`), dann schließen
-      - **12.10. abends erledigt:** Gegenprobe am HY310 - `0x4B48BE84` = `0x000000A7`, alle fünf Masken `0xA7`, `fmt_set[0]` = 0
-        (`arbeit/hy310-main-20261012/skripte/reg-a7.py`, vor und nach der Neuinstallation)
 - [ ] 2.38 **Ausschalten mit OSD** (Marco 10.10. abends): ein Druck auf Power (Gerät oder Fernbedienung) blendet auf afbd ein
       "Ausschalten in 15 s" mit "Standby" daneben; ein zweiter Druck schaltet sofort aus, links/rechts + OK wählt, Zurück bricht
       ab, nach 15 s gilt `power.conf` `short`; ein langer Druck (3 s) schaltet ohne OSD aus. Rückfall: stirbt der Dienst, schaltet
@@ -193,26 +147,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         bricht ab, ein zweiter Druck führt die Auswahl sofort aus, 3 s halten = aus ohne Einblendung; nach 15 s gilt die Vorgabe
         `default = poweroff|standby` in `power.conf` (ersetzt `short`, Vorgabe poweroff). Standby nur, wo er gerade geht (crust
         bereit); ohne Signal sofort wie heute. h713-power kommt auf jedes Abbild. Erst 2-3 Mockups (`osd-mockup`), Text vorerst nicht
-- [x] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
-      über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
-      Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung
-      - 11.10. abends: Kernel-Patch `0257` gebaut und am G-EU installiert (`versuch/kernel-abend`); noch nicht gemessen - braucht ein
-        Aus über crust und den Start danach
-      - **12.10. gemessen** (`doku/204`): nach Aus über crust beide Zeilen als Info - erledigt
-- [x] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
-      höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
-      - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf
-        (`snd_alsa_trid` ohne PM-Haken); seine TVFE-Einschaltfolge (`tvtop_tvfe_enable`) hat drei Pausen von 10-15 ms, Takte mit
-        festen Raten und am Ende `0x06700000 := 0x003003ff` (TVFE-Top) - bei uns nicht drin. Kandidat für die Fehlversuche, nicht belegt
-      - **10.10. zu C1 (B):** der Stock-Kernel schaltet die **TVCAP-Domäne im Standby nie ab** (`tv303_pm_domains`: Eintrag
-        `pd_tvcap` ganz Null, im ELF nachgelesen); MIPS-Park schon in `suspend`, ohne Wartezeiten. Versuch, wenn Standby wieder
-        dran ist: TVCAP im Systemschlaf an lassen, dann prüfen, ob der INCAP-Stopp vor dem Suspend noch nötig ist
-      - 11.10. G-EU (`doku/195` Stufe 8): ein Standby, DSP im **2. Versuch**
-      - 12.10. G-EU, 20 Standbys (`arbeit/remote-reihe-20261012/` C): 17 x im 1., 2 x im 2., **1 x im 3. Versuch** - an der Grenze
-      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0262`, in `main` 8ac1226): nicht der Insel-Start (Selbsttest 52/52 sofort), sondern
-        das eine 50-ms-Lesen von `0x00EE` an einer Blockgrenze des Patch-Downloads (`msp_kick`) brach den Download ab; der DSP beantwortet die nächste
-        Anfrage sofort. Jetzt wird bis zur 500-ms-Frist des Aufwachrufs weitergefragt. 30 Standbys, Ton 30 x im 1. Versuch, 5 verspätete Rufe
-        abgefangen. Die TVFE-Folge des Herstellers (`re-auftrag/BERICHT.md` §3) ist dokumentiert, nicht übernommen - nicht die Ursache
 - [ ] 2.42 **Netzteil fiept auch im Aus über crust** (Marco 10.10. abends, HY310, Lauf `hy2`): im Standby fiept es leise (2.31),
       im Aus über crust ebenso. Mit dem Stock-Abzug gegenhalten (Stock-Android aus: fiept es da auch?) - erst dann ist es ein Befund
       über unser System oder über das Netzteil bei kleiner Last
@@ -224,63 +158,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 11.10.: vorbereitet - Zeichnen (`libh713osd`) und Ausgabe (`h713-osd` + Kanal in `h713-tv`) sind getrennt, die Matrix eine
         Bibliothek (`libh713geom`); `docs/architecture.md` "The display stack". Der Desktop selbst steht aus
 
-- [x] 2.60 **CONFIG_UCLAMP_TASK statt chrt** (11.10. abends, `doku/201`): der Kernel-Weg gegen den RT-Takt-Boost ist
-      `CONFIG_UCLAMP_TASK` + `kernel.sched_util_clamp_min_rt_default` (dann bleiben die Panfrost-IRQ-Threads FIFO und schedutil
-      ignoriert sie trotzdem). Kernelconfig im Patchspiegel, Bau, Messung wie `h713-cpufreq` (m30/m31), dann das chrt im Skript weg
-      - 11.10. abends: Kernel mit `CONFIG_UCLAMP_TASK` gebaut, `h713-cpufreq` schreibt `sched_util_clamp_min_rt_default = 0`
-        ("was 1024"), am G-EU aktiv. Die Messreihe wie m30/m31 steht aus; nicht in `main` bis 2.63 geklärt ist
-      - **12.10. erledigt** (`doku/204`): in `main` (a27f245); gemessen mit Warp an, auch mit bewegtem Bild: 86-87 % bei 480 MHz,
-        ~3 Wechsel/s (Zwangsboost 35/s, alte chrt-Lösung 4-6/s), unter Last sofort 100 % bei 1296 MHz, 59,7 fps
-- [x] 2.62 **HY310 mit 0255 und dem Warp aus `doku/201` nachmessen** (11.10., Handoff `doku/201` §7; HY310 offline, Marco: nach
-      hinten): `anzeige.py`, `ctl trace 30 gpu`, `messe-warp.py`; dazu die Panel-Hz des HY310 (nie gemessen) und 2.49 dort
-      - **12.10. abends erledigt** (HY310 auf `main` db558e3, `arbeit/hy310-main-20261012/laeufe/2.62.txt`): Warp an 59,43 Wechsel/s, Quelle
-        60,02/s, **Panel 59,42 Hz**, 0 Sprünge; fps 59,5, 0 stale/late/drop; CPU warp 9,8 % (alle 4,6 %) bei 100 % 480 MHz, GPU 432 MHz 76 %;
-        GPU 6,2 ms je Bild (1080p, submit bis Fence), draw 1,09 ms CPU. Bypass: 0,57 Sprünge/s (Takt 59,42 zu 60,02, wie `doku/200`)
-- [x] 2.63 **HY300PRO-G-EU: nach einem Warmstart stirbt der MIPS beim Anmelden der Routinen - wieder** (11.10. ~23:50, Kernel
-      `versuch/kernel-abend`): Linux übernimmt beim Warmstart den laufenden MIPS ("adopting the live shared region"), meldet seine
-      Routinen an, der MIPS kopiert dafür seine Routinentabelle unter Sperre 2 neu und stirbt dabei (wie `doku/72`). Sperre 2 bleibt
-      `refcnt=1 thread=0xff` stehen, `SpinUnLock(2): no thread_id, skipping`, jedes Öffnen von video0 endet in "the callbacks cannot
-      be registered (-16)", h713-tv stirbt dreimal, systemd gibt auf: Lampe an, Wand dunkel, Panel und Quelle in Ordnung (Konsole
-      sichtbar). `h713-mips-restart` von Hand holt das Bild in 3,4 s zurück, ein Kaltstart auch. Offen: warum der MIPS beim Resync
-      stirbt; ob es seit UCLAMP (2.60, langsamerer Takt beim Boot) häufiger ist - Kontrollversuch Warmstarts alter/neuer Kernel;
-      danach entweder die Ursache oder als Rückfall h713-mips-restart, wenn h713-tv am blockierten Empfänger scheitert
-      - **12.10. nachts (Marco): die Ursache als eigener Offline-Auftrag**, getrennt zu übergeben: Auftrag mit Fragen, Quellen
-        (IDA-Datenbanken `display.bin`, `mcu_comm_dev.ko`, `doku/72`, `re/notes/`), Journalauszügen und Lieferform liegt lokal in
-        `arbeit/mips-sperre-20261012/AUFTRAG.md`. Frage: wie nimmt der MIPS Sperre 2 (`spinLock(2,quick)`), und warum schließen sich
-        sein Weg und unser Nachbau (`cpu_comm_hw.c`) beim Warmstart nicht aus. Bis dahin das Sicherheitsnetz (h713-tv-rescue)
-      - **12.10. behoben** (`doku/203`): Kernel `0259` - die Sperren wie Firmware und Herstellertreiber (Byte 0 kritisch, Byte 1
-        Besitzer), dazu Freigabe von Sperren, die ein früherer ARM-Lauf hinterließ. 12/12 Warmstarts sauber mit dem Serienkernel.
-- [x] 2.64 **HY300PRO-G-EU: Standby kam nicht zurück** (11.10. 21:24, Auswahl Standby in der Ausschalt-Einblendung): 15,5 s
-      geschlafen, "back from system suspend", sofort danach Reset ins dunkle Gate ("a standby did not finish", crust Phase
-      resuming, ohne Ursache). Linux schreibt beim Aufwachen nichts auf die UART, das Journal war flüchtig - keine Spur. Der folgende
-      Warmstart blieb dunkel, ohne Sperr-Meldungen (anders als 2.63). Seit 23:3x ist das Journal am G-EU dauerhaft (`h713-logs
-      persistent`, zurück: `h713-logs volatile`); nächster Versuch mit `echo N > /sys/module/printk/parameters/console_suspend`
-      - **12.10. behoben** (`doku/203`): afbd `0258` - nach einem Standby kein Lesen von `INCAP +0xa0c` (0255), bis der
-        HDMI-Empfänger neu gebunden ist; vorher Bus-Hänger, Watchdog nach 16,4 s, 3/3. Danach 15/15 Standbys zurück (Warp an, 60 s,
-        fünf hintereinander, `ctl off`), 59,6-59,8 fps. Offen: Wecken per Taste/IR (Marco)
 - [ ] 2.65 **Frage (Marco 12.10.): weckt IR auch aus dem Aus über crust, wie aus dem Standby?** Am HY310 bestanden (`doku/190`: Taste,
       IR, Selbstwecken), am G-EU "Taste oder Fernbedienung weckt" (`doku/188`). Mit dem Kernel aus `main` 234282c am G-EU nachmessen,
       je einmal: Standby -> IR-Power; Aus über crust -> IR-Power; dabei 2.40 (`0257`) im Log des Starts danach ansehen (Info statt
       Warnung). Braucht Marco vor Ort (IR)
       - 12.10.: IR weckt aus dem Aus über crust (Marco, `doku/204`). **Offen, Marcos eigentliche Frage:** IR nach einem Kaltstart,
         wenn das Gate (`h713_gate=1`) auf die Taste wartet - der G-EU steht derzeit auf Gate 0, HY310 auf 1
-- [x] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
-      `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
-      `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
-      H4-Datenstrom auf der UART (1,5 MBd, Flusssteuerung) kommt zerstückelt an. Dazu passt 1.4 (G-EU: 245-Byte-Schreibvorgänge
-      unvollständig, RTS/CTS?). Ursache offen; zuerst prüfen, ob es mit Last (Warp, WLAN) zusammenfällt. Dabei aufgefallen: am HY310
-      ist zurzeit **keine Fernbedienung gekoppelt** (`h713-remote-pair status`: no remote bonded) - 11.10. neu gekoppelt (der erste
-      Versuch kam im Scan nicht vor, der zweite klappte; `doku/193` §3)
-      - 11.10. G-EU (`doku/195`): kein HCI-Fehler im dmesg eines Boots mit Kopplung, Tasten, Maus und Mikro-Ton
-      - 11.10. abends (Marco): im Betrieb Timeouts, nach dem Boot kommt Bluetooth nicht immer hoch. Verdacht (nicht gemessen):
-        8250_dw ohne `UART_CAP_AFE` - RTS/CTS nur in Software. Erst lesen: MCR +0x10 Bit 5, CPR +0xF4, `/proc/tty/driver/serial`
-      - **11.10. abends gemessen:** UART1 `MCR.AFCE = 0`, `CPR = 0` - die Flusssteuerung lief in Software. Kernel-Patch `0256`
-        (Kompatibel `allwinner,sun50i-h713-uart`, CPR-Wert mit 64-Byte-FIFO und AFCE, `DW_UART_QUIRK_CPR_VALUE`): danach `MCR = 0x2b`,
-        `AFCE = 1`. Erster BT-Start nach einem Warmstart beim ersten Versuch (vorher zweimal nach 8 s ohne Antwort, Neustart der
-        Unit). Offen: mehr Starts zählen, Last-Test; der Patch liegt auf `versuch/kernel-abend` (`arbeit/kernel-abend-20261011/`)
-      - **12.10. abends (HY310, `main` db558e3 mit 0256):** 5 Warmstarts + 6 Standbys, Bluetooth 11/11 beim 1. Versuch, 0 HCI-Fehlerzeilen.
-        Offen nur noch der Last-Test (Warp + WLAN + Mikro)
-      - **12.10. abends erledigt (Marco):** 0256 in `main` und im HY310-Abbild, 11/11 sauber; der Last-Test steht bei 9.12
 - [ ] 2.51 **Mikrofon der Fernbedienung hörbar machen** (11.10., `doku/193` §3): per Bluetooth kommt beim Halten ein Tonstrom
       (60-Byte-HID-Berichte, ~63/s, ~3,8 kB/s), Format unbekannt - kein IMA-ADPCM, kein fester Kopf, komprimiert. Codec aus der
       Sprach-App/dem Audio-HAL der Stock-Firmware bestimmen, dann `CONFIG_HIDRAW` und ein Dekoder in Userspace. Nicht dringend
@@ -331,19 +214,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Fassung vom 11.10.) ist auf `versuch/panel-redesign` (e7598aa, `arbeit/panel-redesign-20261012/`) mit Unit und Doku der Referenz;
         gelesen, 72 Tests grün. Im Testabbild `runde5x1` zum **Ansehen** - nach `main` erst nach Marcos Ja. Offen: `docs/guides/settings-page.md`
       - 12.10. aus 5.18: der Hostname gehört zu den Einstellungen, die im Panel änderbar sein sollen
-- [x] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
-      Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
-      tty1 und erscheinen, sobald die Konsole sichtbar wird. Erst nachweisen (Taste drücken, `/dev/vcs1` lesen), dann entscheiden:
-      die Fernbedienungs-Geräte vom VT fernhalten oder den getty auf tty1 ändern
-      - 11.10. nachts: `sunxi-ir` hängt am Handler `kbd` (`/proc/bus/input/devices`), die Tasten gehen also ans VT; der Weg ins
-        Login-Feld selbst ist nicht gemessen (braucht eine gedrückte Taste)
-      - **12.10. nachgewiesen** (`arbeit/remote-reihe-20261012/` E): KEY_UP/KEY_LEFT in `sunxi-ir` eingespeist -> `/dev/vcs1` zeigt
-        `hy310 login: ^[[A^[[D`. **Marco entschieden: vorerst Weg 2** - das Login auf tty1 neu starten, wenn die Konsole sichtbar wird, aber
-        nur wenn dort niemand angemeldet ist (getty noch am Prompt). Nicht an HDMI koppeln: die Fernbedienung soll später den Desktop
-        bedienen; die Trennung Fernbedienung/VT (EVIOCGRAB + Power über uinput) gehört zum Desktop
-      - **12.10. abends umgesetzt** (h713-tv, in `main`): `console_restore()` liest tty1; steht hinter dem letzten "login:" etwas, bekommt
-        der agetty SIGTERM (getty@tty1 startet neu), sonst nichts. Am G-EU gemessen: Tasten eingespeist → `ctl off` → Prompt sauber,
-        Journalzeile "getty restarted"; sauberer Prompt → kein Neustart
 - [ ] 2.66 **Nach dem Standby zweimal 0 Bilder/s gezeigt, obwohl h713-tv "plane on" meldet** (12.10., G-EU, 20 Standbys per RTC,
       Quelle ThinkPad, `arbeit/remote-reihe-20261012/` C): `anzeige.py` 4 s, ~10 s nach ssh, in st6 und st18 0,00 Wechsel/s, die anderen
       18 bei 59,6-59,8; der jeweils nächste Standby wieder normal. Ungeklärt, ob zu früh gemessen (Skript- und Journalzeit gingen über die
@@ -351,36 +221,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       in CLOCK_MONOTONIC wie das Journal, dazu Augen an der Wand
       - Marco 12.10.: vielleicht hat der ThinkPad wieder nichts gesendet (wie die Stillstände mit `rustdesk --server`, `referenz/geraete.md`)
         - nicht sicher; **den Test nach dem Release wiederholen**, dann mit einer zweiten Quelle (Fire TV) als Gegenprobe
-- [x] 2.67 **Warmstart: die Sperre 2 bleibt wieder liegen, ohne vorherigen Absturz** (12.10., G-EU, `warm14` von 20 mit dem Kernel aus
-      `main` 234282c, `arbeit/remote-reihe-20261012/laeufe/warm14-journal.txt`): `SpinUnLock(2): no thread_id`, dann `routine spinlock 2
-      not free after AddInRoutine (owner=0 refcnt=1 thread=0xff)`, 22 x "callbacks cannot be registered (-16)"; `h713-tv-rescue` holte das
-      Bild nach 4,46 s. Anders als `doku/203` §1: kein abgestürzter Lauf davor, und `0259` fand beim Übernehmen keine ARM-Sperre ("free
-      lock carried" fehlt) - die Sperre entstand erst bei `AddInRoutine`. `0259` deckt also nicht alles ab (1 aus 20; doku/203 0 aus 12).
-      Ursache offline klären (wie `arbeit/mips-sperre-20261012/`), das Netz bleibt bis dahin
-      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0261`, in `main` 8ac1226): die Ursache war **PID 255** - unser Treiber schrieb die
-        Prozess-ID als Thread-Wort der Sperre, und 0xff ist die Markierung "frei" (Firmware: unteres Byte, wir: ganzes Wort); h713-tv bekommt
-        diese PID in ~1 von 20 Warmstarts. L2T-Spur zeigt es Schritt für Schritt (zweimal reproduziert). Fix: `tgid << 8 | 1`. 50 Warmstarts ohne
-        Treffer, Netz (`h713-tv-rescue`) griff nie mehr
-- [x] 2.68 **Warp: nach einem Moduswechsel bleibt die alte Ringgröße stehen** (12.10., G-EU, Quelle ThinkPad, Warp an,
-      `arbeit/remote-reihe-20261012/` J Befund 3): in 2 von 4 Durchläufen durch 14 Modi meldete der Treiber (`G_FMT`) nach dem Wechsel
-      weiter die Größe des vorigen Modus - einmal 1152x720 für 720x576/720x480/640x480, einmal 640x480 für 1280x720, 17 s lang bis zum
-      nächsten Wechsel; der Warp importiert dann diese Größe. Ohne Warp nicht gesehen (h713-tv baut seinen Puffer selbst neu). Vermutung,
-      nicht geprüft: der Ring-Record der Firmware wird nicht neu veröffentlicht, solange der Warp das Panel hält (vgl. Prüfstand 05.10.
-      2.1/`0183`). Widerlegt: im Warp das Format einmal je Sekunde neu lesen hilft nicht (G_FMT selbst ist veraltet; Zweig
-      `versuch/warp-reste` `52eff45`). Offen: an der Wand ansehen (unscharf oder verschert?), dann die Ursache im Treiber/Record
-      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0260` + h713-warp, in `main` 8ac1226): INCAP folgt dem Record erst mit dem Umbau
-        der Capture-Kette, ohne Ereignis; der Treiber beobachtet INCAP (100 ms) und meldet `SOURCE_CHANGE`; der Warp fragt `QUERY_DV_TIMINGS` selbst
-        (G_FMT bleibt unter einer laufenden Queue stehen) und baut je Ereignis neu. 0 von 48 Wechseln (vorher 5 von 30)
-- [x] 2.69 **Die Firmware legt für manche PC-Modi einen Ring an, der höher ist als das Panel** (12.10., G-EU, `arbeit/remote-reihe-20261012/`
-      J Befund 2): 1280x1024 -> Ring 912x728 ("by the rowbyte"), 1360x768 -> einmal 1280x722, einmal 1280x720 (dieselbe Quelle); h713-tv weist
-      "larger than the panel 1280x720" ab, die Konsole bleibt. **Marco: nicht beschneiden** - entweder richtig rechnen oder ablehnen
-      (wie heute); die Ursache lösen: warum rechnet die
-      Firmware eine Höhe über 720 (Seitenverhältnis gehalten, Ausrichtung?), was Stock mit derselben Quelle tut, wo im Treiber
-      (`hdmirx`, "the firmware scales") oder in `display.bin` die Ringgröße entsteht
-      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0260`, in `main` 8ac1226): die 728 waren **unsere** Formel (Höhe aus dem
-        Seitenverhältnis); die Firmware skaliert auf das Panel, begrenzt durch beide Seiten, und schreibt Breite/Höhe nach INCAP `+0x86c/+0x870`
-        (Slot-Füllhöhe gemessen: 720 Zeilen; Listing `CalcWinSize`). Der Treiber liest sie jetzt, unplausibel → `-ENOLCK`. 1280x1024 → 900x720,
-        1360x768 → 1274x720, 1366x768 → 1280x718; alle 14 Modi mit Bild. **Augen an der Wand (Marco, 12.10. abends): 1280x1024 und 1360x768 komplett**
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -509,28 +349,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10. (Marco, Durchsicht 5.x): nach dem Release, aber unbedingt.** Geprüft: noch nicht angefangen (die vier `--skip-*`
         stehen, kein `stempel/`). Vorschlag dazu: Punkt 5 (Kernel teilweise inkrementell) zurückstellen - der riskante Teil, und den
         häufigsten Fall fängt der Kernel-Cache über den Eingabe-Hash schon ab
-- [x] 5.18 **Hostname je Board** (Marco 10.10. nachts: der HY300PRO-G-EU meldet sich im Netz als `hy310`). Heute fest im
-      Rootfs: `rootfs/overlay/etc/hostname` = `hy310`, `rootfs/overlay/etc/hosts` `127.0.1.1 hy310`, dazu der Rückfall
-      `hy310` in `h713-wifi` (DNS-Name im Zugangspunkt-Modus). Jedes Board heißt also `hy310`, zwei Boxen im selben Netz
-      kollidieren. Vorschlag: das Abbild wird ohnehin je Board gebaut - ein Feld `HOSTNAME` in `board.env` (sonst der Name
-      des Board-Ordners), `build-rootfs.sh` schreibt `/etc/hostname` und `/etc/hosts` daraus, `h713-wifi` nimmt
-      `/etc/hostname` ohne festen Rückfall, `boards/check.sh` prüft das Feld (gültiger Hostname). Der Installer setzt nichts
-      selbst, nimmt aber bei einer Neuinstallation einen vom Nutzer geänderten Namen mit (gehört zu 1.2b: `/etc/h713` und
-      Host-Schlüssel sichern). Namen je Board mit Marco festlegen (Packungsname, z. B. `hy300pro`, statt
-      `hy200-qz713df-a1`). Getrennt davon, nicht in diesem Zug: die Partitionsnamen `hy310-boot`/`hy310-rootfs` gelten
-      für alle Boards (Layout v4, `root=PARTLABEL=…`) - umbenennen wäre eine Layout-Änderung
-      - **11.10. abends (Marco):** Namen `hy310`, `hy300pro` (G-EU), `hy300proplus`, sonst der Board-Ordner; im Panel änderbar
-      - **12.10. geschlossen (Marco, Durchsicht 5.x):** umgesetzt in `234282c` (seit 11.10. in `main`, `doku/202` §9): `HOSTNAME_BOARD`
-        (variant.env vor board.env, sonst `BOARD_ID`), `install-projekt.sh` schreibt `/etc/hostname` und `/etc/hosts` und weist
-        ungültige Namen ab, `h713-wifi` fällt auf `h713` zurück. Am G-EU als `hy300pro` noch nicht gesehen - mit dessen nächstem
-        Abbild. Reste: "im Panel änderbar" -> 2.54, "bei Neuinstallation mitnehmen" -> 1.2b
-- [x] 5.19 **`boards/check.sh` urteilt über alte Gerätebäume**: es liest `mainline/build/out/<dtb>.dtb` des Checkouts; in
-      `repo-neu` liegen die vom 05.10. (vor crust), daher am 10.10. zwei falsche FAILs (hy310, hy200-qz713df-a1 "device tree
-      names h713-arisc.bin"); im frisch gebauten Worktree grün. Den DTB nur mit passendem Kernelbaum-Stempel werten, sonst "note"
-      - 12.10. nachgestellt: dieselben zwei FAILs. **Entschieden (Marco): kein Hash** - den DTB-Teil aus `check.sh` (Prüfung 9)
-        streichen. Ob Gerätebaum und Firmware zusammenpassen, prüft `build-all.sh` Schritt 10 (`check-crust.py`) am frisch gebauten
-        Abbild; `check.sh` prüft nur die Quellen (`board.env`, crust-Konfiguration vorhanden)
-      - **12.10. erledigt** (d78e089, in `main`): mit den DTBs vom 05.10. grün (vorher 2 FAILs), falsche Konfiguration 1 FAIL
 - [ ] 5.20 **ARISC-Wahl: Anzeige im Installer und Umschalter `h713-arisc`** (Entscheidung 1.1b, Marco 10.10. abends). Eigenes
       Paket `arbeit/arisc-wahl-<datum>/`, **nach** dem G-EU-Abbild `geuaus1` und seinen Kurztests. Ziel: crust bleibt die
       Vorgabe, die Hersteller-Firmware ist ohne Neuinstallation erreichbar, und jeder sieht, welche läuft.
@@ -566,11 +384,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10. nachts gebaut** (`arbeit/kernel-20261012/`, `versuch/kernel`): Kernel `0267` (`firmware=vendor|crust`, `firmware_from=`),
         `h713-arisc status|set` (7 Tests), `h713-mkimage --arisc` + Tabellenschlüssel `arisc`, Schlusszeile von `h713-install`, Doku. Im
         Testabbild `runde5x1`; die Messung hin und zurück kommt zuletzt
-- [x] 5.23 **Unbekannte Android-Firmware -> Issue** (Marco 12.10.): wer ein Gerät mit einer Hersteller-Firmware hat, die der Installer
-      nicht kennt, soll ein Issue aufmachen, damit wir das Profil ergänzen können. Ein Satz im README und derselbe Hinweis in der Meldung,
-      mit der der Installer eine unbekannte Firmware ablehnt
-      - **12.10. erledigt** (39c2c17, in `main`): die vier Texte nennen ein Issue mit der Zeile und die Adresse; README-Absatz unter
-        "Boards"; 5 Tests
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
@@ -591,7 +404,6 @@ Register -, nicht das Verhalten; die Einschätzung "eher überholt" in `doku/175
 `5a7806892`, U-Boot `7b1ea388da0d`), Spiegel und `main`; per FEL am HY310 gemessen: T0 (12 s Watchdog, kein BL32, 4 CPUs),
 T1/T2 das Paar aus der Ablage (Desired, dann Enabled nach 2 s), T3 zweite Übergabe im selben Boot abgewiesen, T4 Verschluss
 ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 (fremder Watchdog) nicht gelaufen.
-
 
 ## 7 Dokumentation und Repo
 
@@ -1269,3 +1081,192 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
       und der Stillstand-Poweroff greift erst, wenn der Tacho einmal Drehung gemeldet hat. Am Gerät nie gemessen (Test B7, `doku/134`:
       Lüfterstecker unzugänglich). Neu auf die Serie setzen und einen Weg finden, den Stillstand ohne Stecker vorzutäuschen
       - **11.10. geschlossen (Marco):** der Stillstand-Poweroff (0159/0159a/0211) ist verifiziert und gilt als funktionierend; die zwei FB-SAFETY-Extras (harter Rückfall, erst nach gesehener Drehung scharf) entfallen
+
+### Aus den Abschnitten 1-9 hierher verschoben (12.10.2026 nachts; Nummern bleiben, Verweise gelten weiter)
+
+- [x] 2.4f Keystone für Ringe mit unausgerichtetem Pitch (SD- und PC-Modi): Warp braucht einen 64-aligned Import
+      - 12.10. (`arbeit/wurzeln-20261012/` §5): betrifft 800x600 (Pitch 800), 720x576/720x480 (720), 1280x1024 (912). Weg A (Ring 64-ausgerichtet
+        anlegen) **geht nicht**: INCAP schreibt nach einem Override von `+0x924` weiter mit dem alten Pitch, auch nach Enable aus/an, und die Firmware
+        setzt den Wert bei jedem Umbau neu (Pitch = Breite auf 16). Bleibt Weg B: linearer Import im Warp (Textur 2048 breit, Shader adressiert
+        `y·pitch + x`, bilinear von Hand), ~+1 ms GPU, ~ein halber Tag. Entscheidung Marco
+      - **12.10. abends entschieden (Marco): bleibt so** - "die Auflösung nimmt eh niemand"; Bild ohne Trapez, der Warp sagt es im Status.
+        Festgehalten in `docs/tools/h713-warp.md` "Limits" und `docs/known-issues.md`; Weg B steht hier als Entwurf, falls es doch gebraucht wird
+- [x] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
+      - **12.10. (Marco): längst gelöst** - die blasse Wand am HY300 war das LVDS mit 6 Bit (`doku/137`, U-Boot `2de0cc8`, in `main`);
+        die Lampe ist auf HY310 und HY300 auch unter Stock nicht dimmbar (06.10.). Nichts mehr zu messen
+- [x] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
+      Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
+      - **12.10. (Marco): gestrichen** - die Automatik gegen die Ideal-Pose ist seit 26.09. so gebaut wie Stock gegen `GsInitXYZ`
+        (`docs/tools/h713-keystone.md`); eine eigene Messreihe dafür ist "zum jetzigen Zeitpunkt und auch generell unnötig"
+- [x] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
+      100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
+      - 12.10. abends (HY310, `main` db558e3, `arbeit/hy310-main-20261012/`): 2 von 1927, 0 von 11230 nach 12 min, 3 von 238 direkt
+        nach einem Warp-Start - normal, nur beobachten
+      - **12.10. abends erledigt (Marco):** beobachtet, normal - zu
+- [x] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
+      Plattenzugriff (ls /boot, dmesg ueber Shell, Konsolen-Login), ssh/uptime antworten - Kernel 0184 frisch gebootet,
+      Ursache offen, nach Stromzyklus alles normal, keine mmc-Fehler im Log. Beobachten. *Überholt (11.10.):* "Journal ist persistent" - stimmt nicht, `10-h713.conf` hat `Storage=volatile`, siehe 1.2a
+      - **12.10. abends** (HY310 auf `main` db558e3): 5 Warmstarts, je bei 151 s fünf Plattenzugriffe mit Zeitlimit (ls /boot, dmesg,
+        Datei lesen, schreiben+sync, journalctl) - 5/5 sofort, 0 mmc-Fehlerzeilen (`arbeit/hy310-main-20261012/laeufe/warmstart-reihe.txt`)
+      - **12.10. abends erledigt (Marco):** nicht reproduziert; wieder öffnen, wenn ein Hänger auftritt
+- [x] 2.26 **HDCP 1.4 nach einem Moduswechsel der Quelle** (`doku/170` §3): fordert der ThinkPad (i915) sofort beim Modeset an,
+      bleibt er auf `Desired`; 2 s später angefordert steht `Enabled` nach 5 s. Mit der Hersteller-ARISC-Firmware und dem
+      Fire-TV-Stick vergleichen (Auflösungswechsel), erst dann entscheiden, ob der Empfänger früher bereit sein muss
+      - 10.10. (G-EU, crust, `doku/184`): auch nach Neustart und Standby der Box fragt i915 nicht von selbst neu an (`Desired`),
+        mit neuer Anfrage sofort `Enabled`; der Fire-TV-Stick (2.2) verhandelte nach jedem Neustecken von selbst neu
+      - **12.10. abends gemessen (HY310, `main` db558e3, ThinkPad i915, `hdcp-verzoegerung.sh`):** Moduswechsel 1080p50 -> 1080p60, Anforderung
+        nach d s: d=0 **Enabled nach 3,06 s**, d=0,5 bis 3 nach 1,14-1,21 s. "Bleibt auf Desired" tritt am HY310 nicht auf; der Vergleich
+        mit der Hersteller-ARISC-Firmware braucht 5.20
+      - **12.10. abends erledigt (Marco):** am HY310 kein Stall; am G-EU war es das Verhalten der Quelle (i915 fragt nicht von selbst neu an), kein Fehler bei uns
+- [x] 2.36 **HDCP-2.2-Beweis am G-EU ohne `SKE_SEND_EKS`-Zeile**: gleiche `display.bin` wie der HY310 (`16c74a28...`), aber im
+      Firmware-Log (Abbild-Stufe, `h713_disp init` ohne `elog=`) nur "HDCP Process cost tick". Klären, ob die HY310-Zeile vom
+      05.10. aus einer höheren Log-Stufe kam; `referenz/messregeln.md` HDCP 2.2 danach nachziehen. Bis dahin: Bit LINK 0x422 +
+      neue Sitzung je Neustecken
+      - **10.10. Cloud-RE C (`doku/187`): geklärt aus dem Listing.** `MsgHandle_SKE_SEND_EKS` ist nur der Funktionsname des
+        Log-Aufrufs; die Format-Maske (`0xA7`, fest beim Start) druckt Funktionsnamen auf keiner Stufe. Die Zeile
+        `HDCP Process cost tick` (Stufe 1, einzige Stelle) **ist** der SKE_Send_Eks-Beweis - am G-EU also erbracht. Die HY310-Zeile
+        vom 05.10. war zusammengesetzt. Messregel, `docs/subsystems/hdcp.md` und h713-tv-README korrigiert. Rest: Gegenprobe am Gerät
+        (`0x4B48BE84` liest `0xA7`), dann schließen
+      - **12.10. abends erledigt:** Gegenprobe am HY310 - `0x4B48BE84` = `0x000000A7`, alle fünf Masken `0xA7`, `fmt_set[0]` = 0
+        (`arbeit/hy310-main-20261012/skripte/reg-a7.py`, vor und nach der Neuinstallation)
+- [x] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
+      über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
+      Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung
+      - 11.10. abends: Kernel-Patch `0257` gebaut und am G-EU installiert (`versuch/kernel-abend`); noch nicht gemessen - braucht ein
+        Aus über crust und den Start danach
+      - **12.10. gemessen** (`doku/204`): nach Aus über crust beide Zeilen als Info - erledigt
+- [x] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
+      höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
+      - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf
+        (`snd_alsa_trid` ohne PM-Haken); seine TVFE-Einschaltfolge (`tvtop_tvfe_enable`) hat drei Pausen von 10-15 ms, Takte mit
+        festen Raten und am Ende `0x06700000 := 0x003003ff` (TVFE-Top) - bei uns nicht drin. Kandidat für die Fehlversuche, nicht belegt
+      - **10.10. zu C1 (B):** der Stock-Kernel schaltet die **TVCAP-Domäne im Standby nie ab** (`tv303_pm_domains`: Eintrag
+        `pd_tvcap` ganz Null, im ELF nachgelesen); MIPS-Park schon in `suspend`, ohne Wartezeiten. Versuch, wenn Standby wieder
+        dran ist: TVCAP im Systemschlaf an lassen, dann prüfen, ob der INCAP-Stopp vor dem Suspend noch nötig ist
+      - 11.10. G-EU (`doku/195` Stufe 8): ein Standby, DSP im **2. Versuch**
+      - 12.10. G-EU, 20 Standbys (`arbeit/remote-reihe-20261012/` C): 17 x im 1., 2 x im 2., **1 x im 3. Versuch** - an der Grenze
+      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0262`, in `main` 8ac1226): nicht der Insel-Start (Selbsttest 52/52 sofort), sondern
+        das eine 50-ms-Lesen von `0x00EE` an einer Blockgrenze des Patch-Downloads (`msp_kick`) brach den Download ab; der DSP beantwortet die nächste
+        Anfrage sofort. Jetzt wird bis zur 500-ms-Frist des Aufwachrufs weitergefragt. 30 Standbys, Ton 30 x im 1. Versuch, 5 verspätete Rufe
+        abgefangen. Die TVFE-Folge des Herstellers (`re-auftrag/BERICHT.md` §3) ist dokumentiert, nicht übernommen - nicht die Ursache
+- [x] 2.60 **CONFIG_UCLAMP_TASK statt chrt** (11.10. abends, `doku/201`): der Kernel-Weg gegen den RT-Takt-Boost ist
+      `CONFIG_UCLAMP_TASK` + `kernel.sched_util_clamp_min_rt_default` (dann bleiben die Panfrost-IRQ-Threads FIFO und schedutil
+      ignoriert sie trotzdem). Kernelconfig im Patchspiegel, Bau, Messung wie `h713-cpufreq` (m30/m31), dann das chrt im Skript weg
+      - 11.10. abends: Kernel mit `CONFIG_UCLAMP_TASK` gebaut, `h713-cpufreq` schreibt `sched_util_clamp_min_rt_default = 0`
+        ("was 1024"), am G-EU aktiv. Die Messreihe wie m30/m31 steht aus; nicht in `main` bis 2.63 geklärt ist
+      - **12.10. erledigt** (`doku/204`): in `main` (a27f245); gemessen mit Warp an, auch mit bewegtem Bild: 86-87 % bei 480 MHz,
+        ~3 Wechsel/s (Zwangsboost 35/s, alte chrt-Lösung 4-6/s), unter Last sofort 100 % bei 1296 MHz, 59,7 fps
+- [x] 2.62 **HY310 mit 0255 und dem Warp aus `doku/201` nachmessen** (11.10., Handoff `doku/201` §7; HY310 offline, Marco: nach
+      hinten): `anzeige.py`, `ctl trace 30 gpu`, `messe-warp.py`; dazu die Panel-Hz des HY310 (nie gemessen) und 2.49 dort
+      - **12.10. abends erledigt** (HY310 auf `main` db558e3, `arbeit/hy310-main-20261012/laeufe/2.62.txt`): Warp an 59,43 Wechsel/s, Quelle
+        60,02/s, **Panel 59,42 Hz**, 0 Sprünge; fps 59,5, 0 stale/late/drop; CPU warp 9,8 % (alle 4,6 %) bei 100 % 480 MHz, GPU 432 MHz 76 %;
+        GPU 6,2 ms je Bild (1080p, submit bis Fence), draw 1,09 ms CPU. Bypass: 0,57 Sprünge/s (Takt 59,42 zu 60,02, wie `doku/200`)
+- [x] 2.63 **HY300PRO-G-EU: nach einem Warmstart stirbt der MIPS beim Anmelden der Routinen - wieder** (11.10. ~23:50, Kernel
+      `versuch/kernel-abend`): Linux übernimmt beim Warmstart den laufenden MIPS ("adopting the live shared region"), meldet seine
+      Routinen an, der MIPS kopiert dafür seine Routinentabelle unter Sperre 2 neu und stirbt dabei (wie `doku/72`). Sperre 2 bleibt
+      `refcnt=1 thread=0xff` stehen, `SpinUnLock(2): no thread_id, skipping`, jedes Öffnen von video0 endet in "the callbacks cannot
+      be registered (-16)", h713-tv stirbt dreimal, systemd gibt auf: Lampe an, Wand dunkel, Panel und Quelle in Ordnung (Konsole
+      sichtbar). `h713-mips-restart` von Hand holt das Bild in 3,4 s zurück, ein Kaltstart auch. Offen: warum der MIPS beim Resync
+      stirbt; ob es seit UCLAMP (2.60, langsamerer Takt beim Boot) häufiger ist - Kontrollversuch Warmstarts alter/neuer Kernel;
+      danach entweder die Ursache oder als Rückfall h713-mips-restart, wenn h713-tv am blockierten Empfänger scheitert
+      - **12.10. nachts (Marco): die Ursache als eigener Offline-Auftrag**, getrennt zu übergeben: Auftrag mit Fragen, Quellen
+        (IDA-Datenbanken `display.bin`, `mcu_comm_dev.ko`, `doku/72`, `re/notes/`), Journalauszügen und Lieferform liegt lokal in
+        `arbeit/mips-sperre-20261012/AUFTRAG.md`. Frage: wie nimmt der MIPS Sperre 2 (`spinLock(2,quick)`), und warum schließen sich
+        sein Weg und unser Nachbau (`cpu_comm_hw.c`) beim Warmstart nicht aus. Bis dahin das Sicherheitsnetz (h713-tv-rescue)
+      - **12.10. behoben** (`doku/203`): Kernel `0259` - die Sperren wie Firmware und Herstellertreiber (Byte 0 kritisch, Byte 1
+        Besitzer), dazu Freigabe von Sperren, die ein früherer ARM-Lauf hinterließ. 12/12 Warmstarts sauber mit dem Serienkernel.
+- [x] 2.64 **HY300PRO-G-EU: Standby kam nicht zurück** (11.10. 21:24, Auswahl Standby in der Ausschalt-Einblendung): 15,5 s
+      geschlafen, "back from system suspend", sofort danach Reset ins dunkle Gate ("a standby did not finish", crust Phase
+      resuming, ohne Ursache). Linux schreibt beim Aufwachen nichts auf die UART, das Journal war flüchtig - keine Spur. Der folgende
+      Warmstart blieb dunkel, ohne Sperr-Meldungen (anders als 2.63). Seit 23:3x ist das Journal am G-EU dauerhaft (`h713-logs
+      persistent`, zurück: `h713-logs volatile`); nächster Versuch mit `echo N > /sys/module/printk/parameters/console_suspend`
+      - **12.10. behoben** (`doku/203`): afbd `0258` - nach einem Standby kein Lesen von `INCAP +0xa0c` (0255), bis der
+        HDMI-Empfänger neu gebunden ist; vorher Bus-Hänger, Watchdog nach 16,4 s, 3/3. Danach 15/15 Standbys zurück (Warp an, 60 s,
+        fünf hintereinander, `ctl off`), 59,6-59,8 fps. Offen: Wecken per Taste/IR (Marco)
+- [x] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
+      `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
+      `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
+      H4-Datenstrom auf der UART (1,5 MBd, Flusssteuerung) kommt zerstückelt an. Dazu passt 1.4 (G-EU: 245-Byte-Schreibvorgänge
+      unvollständig, RTS/CTS?). Ursache offen; zuerst prüfen, ob es mit Last (Warp, WLAN) zusammenfällt. Dabei aufgefallen: am HY310
+      ist zurzeit **keine Fernbedienung gekoppelt** (`h713-remote-pair status`: no remote bonded) - 11.10. neu gekoppelt (der erste
+      Versuch kam im Scan nicht vor, der zweite klappte; `doku/193` §3)
+      - 11.10. G-EU (`doku/195`): kein HCI-Fehler im dmesg eines Boots mit Kopplung, Tasten, Maus und Mikro-Ton
+      - 11.10. abends (Marco): im Betrieb Timeouts, nach dem Boot kommt Bluetooth nicht immer hoch. Verdacht (nicht gemessen):
+        8250_dw ohne `UART_CAP_AFE` - RTS/CTS nur in Software. Erst lesen: MCR +0x10 Bit 5, CPR +0xF4, `/proc/tty/driver/serial`
+      - **11.10. abends gemessen:** UART1 `MCR.AFCE = 0`, `CPR = 0` - die Flusssteuerung lief in Software. Kernel-Patch `0256`
+        (Kompatibel `allwinner,sun50i-h713-uart`, CPR-Wert mit 64-Byte-FIFO und AFCE, `DW_UART_QUIRK_CPR_VALUE`): danach `MCR = 0x2b`,
+        `AFCE = 1`. Erster BT-Start nach einem Warmstart beim ersten Versuch (vorher zweimal nach 8 s ohne Antwort, Neustart der
+        Unit). Offen: mehr Starts zählen, Last-Test; der Patch liegt auf `versuch/kernel-abend` (`arbeit/kernel-abend-20261011/`)
+      - **12.10. abends (HY310, `main` db558e3 mit 0256):** 5 Warmstarts + 6 Standbys, Bluetooth 11/11 beim 1. Versuch, 0 HCI-Fehlerzeilen.
+        Offen nur noch der Last-Test (Warp + WLAN + Mikro)
+      - **12.10. abends erledigt (Marco):** 0256 in `main` und im HY310-Abbild, 11/11 sauber; der Last-Test steht bei 9.12
+- [x] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
+      Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
+      tty1 und erscheinen, sobald die Konsole sichtbar wird. Erst nachweisen (Taste drücken, `/dev/vcs1` lesen), dann entscheiden:
+      die Fernbedienungs-Geräte vom VT fernhalten oder den getty auf tty1 ändern
+      - 11.10. nachts: `sunxi-ir` hängt am Handler `kbd` (`/proc/bus/input/devices`), die Tasten gehen also ans VT; der Weg ins
+        Login-Feld selbst ist nicht gemessen (braucht eine gedrückte Taste)
+      - **12.10. nachgewiesen** (`arbeit/remote-reihe-20261012/` E): KEY_UP/KEY_LEFT in `sunxi-ir` eingespeist -> `/dev/vcs1` zeigt
+        `hy310 login: ^[[A^[[D`. **Marco entschieden: vorerst Weg 2** - das Login auf tty1 neu starten, wenn die Konsole sichtbar wird, aber
+        nur wenn dort niemand angemeldet ist (getty noch am Prompt). Nicht an HDMI koppeln: die Fernbedienung soll später den Desktop
+        bedienen; die Trennung Fernbedienung/VT (EVIOCGRAB + Power über uinput) gehört zum Desktop
+      - **12.10. abends umgesetzt** (h713-tv, in `main`): `console_restore()` liest tty1; steht hinter dem letzten "login:" etwas, bekommt
+        der agetty SIGTERM (getty@tty1 startet neu), sonst nichts. Am G-EU gemessen: Tasten eingespeist → `ctl off` → Prompt sauber,
+        Journalzeile "getty restarted"; sauberer Prompt → kein Neustart
+- [x] 2.67 **Warmstart: die Sperre 2 bleibt wieder liegen, ohne vorherigen Absturz** (12.10., G-EU, `warm14` von 20 mit dem Kernel aus
+      `main` 234282c, `arbeit/remote-reihe-20261012/laeufe/warm14-journal.txt`): `SpinUnLock(2): no thread_id`, dann `routine spinlock 2
+      not free after AddInRoutine (owner=0 refcnt=1 thread=0xff)`, 22 x "callbacks cannot be registered (-16)"; `h713-tv-rescue` holte das
+      Bild nach 4,46 s. Anders als `doku/203` §1: kein abgestürzter Lauf davor, und `0259` fand beim Übernehmen keine ARM-Sperre ("free
+      lock carried" fehlt) - die Sperre entstand erst bei `AddInRoutine`. `0259` deckt also nicht alles ab (1 aus 20; doku/203 0 aus 12).
+      Ursache offline klären (wie `arbeit/mips-sperre-20261012/`), das Netz bleibt bis dahin
+      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0261`, in `main` 8ac1226): die Ursache war **PID 255** - unser Treiber schrieb die
+        Prozess-ID als Thread-Wort der Sperre, und 0xff ist die Markierung "frei" (Firmware: unteres Byte, wir: ganzes Wort); h713-tv bekommt
+        diese PID in ~1 von 20 Warmstarts. L2T-Spur zeigt es Schritt für Schritt (zweimal reproduziert). Fix: `tgid << 8 | 1`. 50 Warmstarts ohne
+        Treffer, Netz (`h713-tv-rescue`) griff nie mehr
+- [x] 2.68 **Warp: nach einem Moduswechsel bleibt die alte Ringgröße stehen** (12.10., G-EU, Quelle ThinkPad, Warp an,
+      `arbeit/remote-reihe-20261012/` J Befund 3): in 2 von 4 Durchläufen durch 14 Modi meldete der Treiber (`G_FMT`) nach dem Wechsel
+      weiter die Größe des vorigen Modus - einmal 1152x720 für 720x576/720x480/640x480, einmal 640x480 für 1280x720, 17 s lang bis zum
+      nächsten Wechsel; der Warp importiert dann diese Größe. Ohne Warp nicht gesehen (h713-tv baut seinen Puffer selbst neu). Vermutung,
+      nicht geprüft: der Ring-Record der Firmware wird nicht neu veröffentlicht, solange der Warp das Panel hält (vgl. Prüfstand 05.10.
+      2.1/`0183`). Widerlegt: im Warp das Format einmal je Sekunde neu lesen hilft nicht (G_FMT selbst ist veraltet; Zweig
+      `versuch/warp-reste` `52eff45`). Offen: an der Wand ansehen (unscharf oder verschert?), dann die Ursache im Treiber/Record
+      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0260` + h713-warp, in `main` 8ac1226): INCAP folgt dem Record erst mit dem Umbau
+        der Capture-Kette, ohne Ereignis; der Treiber beobachtet INCAP (100 ms) und meldet `SOURCE_CHANGE`; der Warp fragt `QUERY_DV_TIMINGS` selbst
+        (G_FMT bleibt unter einer laufenden Queue stehen) und baut je Ereignis neu. 0 von 48 Wechseln (vorher 5 von 30)
+- [x] 2.69 **Die Firmware legt für manche PC-Modi einen Ring an, der höher ist als das Panel** (12.10., G-EU, `arbeit/remote-reihe-20261012/`
+      J Befund 2): 1280x1024 -> Ring 912x728 ("by the rowbyte"), 1360x768 -> einmal 1280x722, einmal 1280x720 (dieselbe Quelle); h713-tv weist
+      "larger than the panel 1280x720" ab, die Konsole bleibt. **Marco: nicht beschneiden** - entweder richtig rechnen oder ablehnen
+      (wie heute); die Ursache lösen: warum rechnet die
+      Firmware eine Höhe über 720 (Seitenverhältnis gehalten, Ausrichtung?), was Stock mit derselben Quelle tut, wo im Treiber
+      (`hdmirx`, "the firmware scales") oder in `display.bin` die Ringgröße entsteht
+      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0260`, in `main` 8ac1226): die 728 waren **unsere** Formel (Höhe aus dem
+        Seitenverhältnis); die Firmware skaliert auf das Panel, begrenzt durch beide Seiten, und schreibt Breite/Höhe nach INCAP `+0x86c/+0x870`
+        (Slot-Füllhöhe gemessen: 720 Zeilen; Listing `CalcWinSize`). Der Treiber liest sie jetzt, unplausibel → `-ENOLCK`. 1280x1024 → 900x720,
+        1360x768 → 1274x720, 1366x768 → 1280x718; alle 14 Modi mit Bild. **Augen an der Wand (Marco, 12.10. abends): 1280x1024 und 1360x768 komplett**
+- [x] 5.18 **Hostname je Board** (Marco 10.10. nachts: der HY300PRO-G-EU meldet sich im Netz als `hy310`). Heute fest im
+      Rootfs: `rootfs/overlay/etc/hostname` = `hy310`, `rootfs/overlay/etc/hosts` `127.0.1.1 hy310`, dazu der Rückfall
+      `hy310` in `h713-wifi` (DNS-Name im Zugangspunkt-Modus). Jedes Board heißt also `hy310`, zwei Boxen im selben Netz
+      kollidieren. Vorschlag: das Abbild wird ohnehin je Board gebaut - ein Feld `HOSTNAME` in `board.env` (sonst der Name
+      des Board-Ordners), `build-rootfs.sh` schreibt `/etc/hostname` und `/etc/hosts` daraus, `h713-wifi` nimmt
+      `/etc/hostname` ohne festen Rückfall, `boards/check.sh` prüft das Feld (gültiger Hostname). Der Installer setzt nichts
+      selbst, nimmt aber bei einer Neuinstallation einen vom Nutzer geänderten Namen mit (gehört zu 1.2b: `/etc/h713` und
+      Host-Schlüssel sichern). Namen je Board mit Marco festlegen (Packungsname, z. B. `hy300pro`, statt
+      `hy200-qz713df-a1`). Getrennt davon, nicht in diesem Zug: die Partitionsnamen `hy310-boot`/`hy310-rootfs` gelten
+      für alle Boards (Layout v4, `root=PARTLABEL=…`) - umbenennen wäre eine Layout-Änderung
+      - **11.10. abends (Marco):** Namen `hy310`, `hy300pro` (G-EU), `hy300proplus`, sonst der Board-Ordner; im Panel änderbar
+      - **12.10. geschlossen (Marco, Durchsicht 5.x):** umgesetzt in `234282c` (seit 11.10. in `main`, `doku/202` §9): `HOSTNAME_BOARD`
+        (variant.env vor board.env, sonst `BOARD_ID`), `install-projekt.sh` schreibt `/etc/hostname` und `/etc/hosts` und weist
+        ungültige Namen ab, `h713-wifi` fällt auf `h713` zurück. Am G-EU als `hy300pro` noch nicht gesehen - mit dessen nächstem
+        Abbild. Reste: "im Panel änderbar" -> 2.54, "bei Neuinstallation mitnehmen" -> 1.2b
+- [x] 5.19 **`boards/check.sh` urteilt über alte Gerätebäume**: es liest `mainline/build/out/<dtb>.dtb` des Checkouts; in
+      `repo-neu` liegen die vom 05.10. (vor crust), daher am 10.10. zwei falsche FAILs (hy310, hy200-qz713df-a1 "device tree
+      names h713-arisc.bin"); im frisch gebauten Worktree grün. Den DTB nur mit passendem Kernelbaum-Stempel werten, sonst "note"
+      - 12.10. nachgestellt: dieselben zwei FAILs. **Entschieden (Marco): kein Hash** - den DTB-Teil aus `check.sh` (Prüfung 9)
+        streichen. Ob Gerätebaum und Firmware zusammenpassen, prüft `build-all.sh` Schritt 10 (`check-crust.py`) am frisch gebauten
+        Abbild; `check.sh` prüft nur die Quellen (`board.env`, crust-Konfiguration vorhanden)
+      - **12.10. erledigt** (d78e089, in `main`): mit den DTBs vom 05.10. grün (vorher 2 FAILs), falsche Konfiguration 1 FAIL
+- [x] 5.23 **Unbekannte Android-Firmware -> Issue** (Marco 12.10.): wer ein Gerät mit einer Hersteller-Firmware hat, die der Installer
+      nicht kennt, soll ein Issue aufmachen, damit wir das Profil ergänzen können. Ein Satz im README und derselbe Hinweis in der Meldung,
+      mit der der Installer eine unbekannte Firmware ablehnt
+      - **12.10. erledigt** (39c2c17, in `main`): die vier Texte nennen ein Issue mit der Zeile und die Adresse; README-Absatz unter
+        "Boards"; 5 Tests
