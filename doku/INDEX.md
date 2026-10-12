@@ -258,6 +258,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`205-remote-reihe-kaltstart-standby-warmstart-modi-20261012.md`](205-remote-reihe-kaltstart-standby-warmstart-modi-20261012.md) | Analyse | 2026-10-12 | 205 - Remote-Reihe am G-EU: Kaltstarts, Standbys, Warmstarts, HDCP, PC-Modi, WLAN-Hänger (12.10.2026, vormittags) | - |
 | [`206-wurzeln-pid255-dsp-blockgrenze-ringgroesse-20261012.md`](206-wurzeln-pid255-dsp-blockgrenze-ringgroesse-20261012.md) | Analyse | 2026-10-12 | 206 - Wurzeln: PID 255 als "Sperre frei", die DSP-Blockgrenze, die Ringgröße aus INCAP, der Ring ohne Ereignis; Handoff (12.10.2026, nachmittags/abends) | 4 |
 | [`207-hy310-auf-main-hy310main1-reihe-20261012.md`](207-hy310-auf-main-hy310main1-reihe-20261012.md) | Analyse | 2026-10-12 | 207 - HY310 auf `main`: Abbild hy310main1 gebaut und installiert, die offenen 2.x-Punkte gemessen; Handoff (12.10.2026, abends) | 1 |
+| [`208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`](208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md) | Analyse | 2026-10-12 | 208 - Die 5.x-Runde: Werkzeuge, Reste der Standby-Durchsicht, ARISC-Wahl, Panel-PR, Testabbild runde5x1 am HY310; Handoff (12.10.2026, nachts) | - |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -414,7 +415,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-49 von 266 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+50 von 267 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -457,6 +458,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `202-ausschalten-kernel-abend-warmstart-20261012.md`
 * `204-uclamp-gemessen-aus-ueber-crust-20261012.md`
 * `205-remote-reihe-kaltstart-standby-warmstart-modi-20261012.md`
+* `208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)
