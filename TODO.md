@@ -1,7 +1,7 @@
 # TODO — die eine Liste
 
 **Die einzige Todo-Liste dieses Projekts.** Neue Punkte hierher; erledigte nach §10 — nicht löschen.
-Changelog ist [RELEASES.md](RELEASES.md). Letzter Handoff: `doku/208` (12.10. nachts, 5.x-Runde, Testabbild `runde5x1` am HY310). `known-issues.md` und `ROADMAP.md` beschreiben dem Leser,
+Changelog ist [RELEASES.md](RELEASES.md). Letzter Handoff: `doku/209` (13.10. nachts, 5.x-Runde abgeschlossen, alles in `main`). `known-issues.md` und `ROADMAP.md` beschreiben dem Leser,
 was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2026 aus `doku/151`.
 
 ## 1 Release — in dieser Reihenfolge
@@ -181,6 +181,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Fassung vom 11.10.) ist auf `versuch/panel-redesign` (e7598aa, `arbeit/panel-redesign-20261012/`) mit Unit und Doku der Referenz;
         gelesen, 72 Tests grün. Im Testabbild `runde5x1` zum **Ansehen** - nach `main` erst nach Marcos Ja. Offen: `docs/guides/settings-page.md`
       - 12.10. aus 5.18: der Hostname gehört zu den Einstellungen, die im Panel änderbar sein sollen
+      - **13.10. in `main`:** das neue Panel (PR aus `h713-panel-dev`, Server mit allen Befehlen, Unit mit `/etc/hosts` und den
+        h713-logs-Pfaden), die Beamer-Begriffe zurück (Sonnet-Agent, `arbeit/panel-wording-20261012/`), die Off..High-Reihen zeigen den
+        echten Wert (der Server suchte unter den Kurznamen). Marco am Gerät: "passt". Offen: `docs/guides/settings-page.md` und
+        `docs/tools/h713-panel.md` auf die neue Seite (7.19); die Ecken zeigen ihr Maximum nicht mehr, der Chip "picture" fehlt
 - [ ] 2.66 **Nach dem Standby zweimal 0 Bilder/s gezeigt, obwohl h713-tv "plane on" meldet** (12.10., G-EU, 20 Standbys per RTC,
       Quelle ThinkPad, `arbeit/remote-reihe-20261012/` C): `anzeige.py` 4 s, ~10 s nach ssh, in st6 und st18 0,00 Wechsel/s, die anderen
       18 bei 59,6-59,8; der jeweils nächste Standby wieder normal. Ungeklärt, ob zu früh gemessen (Skript- und Journalzeit gingen über die
@@ -217,25 +221,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 5 Installer und Werkzeuge
 
-- [ ] 5.11 `h713-install` löscht seine Arbeitskopie (`image-filled.img`, im Abzugsordner oder `--work-copy`) nie; sie enthält die
-      geräteeigenen Dateien. Nach bestandenem Rückvergleich löschen, außer `--keep-work-copy` (08.10., `doku/170`)
-      - 10.10.: sie entsteht außerdem **für alle lesbar** (`0644`, root, weil `h713-install` unter sudo läuft) - Arbeitskopie und
-        Abzug mit `0600` anlegen, ihre Ordner `0700`. Die eigenen Sicherungsskripte schrieben das Archiv mit den privaten
-        Host-Schlüsseln und `wifi.env` ebenso mit `0664` (behoben: `chmod 600`, `umask 077` im Installationsskript)
-      - **12.10. entschieden (Marco, Durchsicht 5.x):** keine Rechte-Verschärfung ("übertrieben" - das Backup ist seins, er
-        entscheidet). Stattdessen: Abzug, Ordner und alles, was `h713-install` anlegt, gehören **dem Nutzer, der sudo aufgerufen hat**
-        (`SUDO_USER`), statt root. Die Arbeitskopie (1,2 GB je Installation, der Linux-Teil des Abbilds mit den eingefüllten
-        Gerätedateien) wird **nach bestandenem Rückvergleich gelöscht**; scheitert er, bleibt sie liegen; `--work-copy DATEI` behält
-        sie (keine neue Option)
-      - **12.10. in `main`** (5382cce, 288f2f5, Paket `arbeit/werkzeuge-20261012/`): Übergabe an den sudo-Nutzer - ein Ordner, den
-        der Lauf anlegt, ganz; ein leerer oder unser Abzugsordner gibt ab, was der Lauf schrieb; ein fremder Ordner bleibt unberührt
-        (Marco: so ok); dazu die entpackten Release-Teile. Gemessen am PC (13 Tests, echter chown als root, `sudo h713-install dump`
-        auf eine Test-eMMC). **Offen: das Löschen der Arbeitskopie am Gerät** (braucht einen echten Schreiblauf) - Schritt 7
-- [ ] 5.12 `v4l2-ctl` (Paket `v4l-utils`) ins Rootfs: zum Lesen der HDMI-RX-Steuerungen am Gerät fehlte es (Marco 08.10., klein)
-      - **12.10. entschieden (Marco):** das Debian-Paket `v4l-utils` in `packages.txt` (kein eigener Bau); die Ausschlusszeile
-        "gstreamer1.0-*, mpv, ffmpeg, v4l-utils" so ändern, dass nur cstengers Video-Laufzeit draußen bleibt
-      - **12.10. in `main`** (d88b433), Abnahme prüft `/usr/bin/v4l2-ctl`. **Nicht gebaut** - Größe und `v4l2-ctl` am Gerät mit dem
-        Testabbild (Schritt 6/7)
 - [ ] 5.14 **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
       Zeitüberschreitung öffnet die Aufrufe), CC-3..CC-6, U2 (abgebrochener Standby zählt als verweigert), U3..U6 (hdcp-key-Reste,
       Sperre, kein Zeitlimit für den Neustart), TFA-R2-1/2 (Zeitgutschrift ab Überlauf, R_WDOG-Meldung), CR-3 (50 ms ohne WFI-
@@ -270,6 +255,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
           Arbeitskopie gelöscht, Abzug gehört dem Nutzer, `v4l2-ctl` da, Hostname, `pm_test=devices` -> DSP neu aufgebaut (0266),
           10/10 Standbys (DSP 10/10 im 1. Versuch), U5 per Bind-Mount bestanden, 5/5 Warmstarts. CC-3 nicht beobachtbar.
           **Offen Teil B mit Marco:** zweiter Tastendruck (U2), Ton, Panel ansehen, ARISC hin/zurück, R_WDOG nach Aus über crust
+      - **13.10.: in `main`** - Banner, B4, CC-1, CC-3, CC-6, U2, U3, U5, U6, TFA-R2-2 (TF-A 287dca2fe, Spiegel 32), der msp-Rest (0266);
+        Teil A und B am HY310 bestanden (`doku/209`). **Offen bleiben nur die Punkte nach dem Release:** CC-4, CC-5, U4, CR-3, KM-3.
+        Gelernt (B2): der zweite Tastendruck beim Einschlafen landet bei crust und weckt sofort (860 ms) - ein Abbruch entsteht am
+        HY310 so nicht; U2 bleibt die Absicherung für andere Weck-Interrupts
 - [ ] 5.15 **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
       braucht den veröffentlichten Fork (1.6)
       - 12.10. geprüft: `build-all.sh` sucht schon in `mainline/external/crust` (Z. 181), es fehlt nur das Submodul; `well0nez/crust`
@@ -288,6 +277,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10. (Marco: ok):** die Commit-Texte von `0231` (1 Stelle), `0240` (1), `0243` (2) jetzt mit dem Kernel-Paket;
         `docs/uboot/README.md` Z. 65-66 (nennt noch den Kopf `7b1ea388da0d`, heute `61ea018712c8`, und "unveröffentlicht") nach 1.6
       - **12.10. nachts:** die drei Commit-Texte auf `versuch/kernel` (96a92a3); `docs/uboot/README.md` bleibt für nach 1.6
+      - **13.10.:** die Patch-Texte 0231/0240/0243 sind in `main`; offen nur `docs/uboot/README.md` nach 1.6
 - [ ] 5.17 **`build-all.sh` muss nach einem Abbruch weiterbauen können** (Marco 09.10.: "nicht entwicklerfreundlich"). Anlass:
       G-EU-Testbau 09.10. stieg in Schritt 7 (Rootfs) aus, nach ~25 min Kernel/Mesa/Sysroot; danach lief alles von vorn, und
       eine Kommentaränderung im Gerätebaum-Patch kostete den Kernel noch einmal. Heute gibt es `--skip-bl31/-uboot/-kernel/
@@ -321,41 +311,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10. (Marco, Durchsicht 5.x): nach dem Release, aber unbedingt.** Geprüft: noch nicht angefangen (die vier `--skip-*`
         stehen, kein `stempel/`). Vorschlag dazu: Punkt 5 (Kernel teilweise inkrementell) zurückstellen - der riskante Teil, und den
         häufigsten Fall fängt der Kernel-Cache über den Eingabe-Hash schon ab
-- [ ] 5.20 **ARISC-Wahl: Anzeige im Installer und Umschalter `h713-arisc`** (Entscheidung 1.1b, Marco 10.10. abends). Eigenes
-      Paket `arbeit/arisc-wahl-<datum>/`, **nach** dem G-EU-Abbild `geuaus1` und seinen Kurztests. Ziel: crust bleibt die
-      Vorgabe, die Hersteller-Firmware ist ohne Neuinstallation erreichbar, und jeder sieht, welche läuft.
-      1. **Kernel (neuer Patch, `sun50i-h713-arisc`):** Moduloption `firmware=<name>` überstimmt `firmware-name[0]` des
-         Gerätebaums. Erlaubt nur `h713-arisc.bin` (Hersteller) oder den crust-Namen des eigenen Baums; alles andere wird mit
-         Warnung ignoriert. Die Nachlade-Regel `0192` bleibt: läuft (von BL31 gestartet) crust und die Option sagt
-         Hersteller, lädt der Treiber die Hersteller-Datei und ersetzt crust - das ist am 10.10. nebenbei belegt worden (der
-         Treiber ersetzte ein FEL-crust durch die Datei, `doku/188` §2). Die Startzeile sagt, welche Firmware warum läuft
-         ("firmware: vendor (module option)").
-      2. **Werkzeug `h713-arisc` (Userspace, wie `h713-power set`):** `h713-arisc status` (welche läuft, Version/Build,
-         was das heißt: Standby ja/nein, Aus über crust oder Gate), `h713-arisc set vendor|crust` schreibt/löscht
-         `/etc/modprobe.d/h713-arisc.conf` (`options sun50i_h713_arisc firmware=h713-arisc.bin`), sagt "wirkt nach dem
-         nächsten Neustart"; braucht root; Tests nach dem Muster `userspace/h713-power/tests`. Weigert sich auf einem Board,
-         dessen Abbild keine Hersteller-Datei hat (Abzug ohne `scp`).
-      3. **Nichts an U-Boot und Gate:** BL31 startet weiter crust aus dem FIT; mit der Hersteller-Firmware findet TF-A keinen
-         crust-Vertrag und fällt von selbst zurück (Standby verweigert, Aus = Gate, TF-A-Ereignis 5) - das ist bereits so
-         gebaut (`sunxi_scp_off.c`, `sunxi_standby.c`).
-      4. **Installer (`h713-install`, Abschluss):** eine Zeile "ARISC: crust (Board-Konfiguration ..., Standby und Aus 0,3 W)"
-         oder "ARISC: Hersteller-Firmware aus deinem Abzug (TV-303 ... ), kein Standby, Aus = Gate", dazu der Hinweis auf
-         `h713-arisc set vendor`. Quelle: der Gerätebaum des Abbilds (`firmware-name`) und die extrahierte `arisc_version`.
-         Eine Install-Option `--arisc vendor` legt die modprobe-Datei gleich mit an (für Boards, auf denen crust stört).
-      5. **Messen am G-EU** (Kopie, FEL oder installiertes Testabbild): `set vendor` + Neustart -> Hersteller-Firmware läuft,
-         EDID/HPD und Bild ok, Standby sauber verweigert, `poweroff` -> Gate (~2,4 W); `set crust` + Neustart -> crust, Aus 0,3 W.
-      6. **Doku:** `docs/subsystems/arisc.md` (die Wahl, der Umschalter, was ohne crust fehlt), `docs/tools/h713-arisc.md`,
-         README/Board-Liste (welches Board welche Firmware als Vorgabe hat), `RELEASES.md`.
-      7. **Später (eigenes Paket, nur mit Besitzerbericht und Registerbeweis):** crust ohne Standby für fremde Boards - nur Aus
-         und der HDMI-Vertrag, die Pins (PL6, PB5, PL3, Taste) aus `standby_param` des eigenen Stock-Gerätebaums; dann hätten
-         auch sie 0,3 W im Aus, ohne dass wir ihr DRAM kennen
-      - **12.10. (Marco, Durchsicht 5.x): schlank umsetzen** - Kernel-Option, `h713-arisc status|set vendor|crust` (`status` liest die
-        Zustandsdatei aus `0205`, die es schon gibt), die Zeile im Installer, Doku; **ohne** die Install-Option `--arisc vendor` (keine
-        neuen Parameter). Geprüft: die Hersteller-Datei ist bei jeder Installation Pflicht (`vendorfiles.py` `REQUIRED_FILES`), die
-        Weigerung in 2. trifft also kaum je zu. **Gemessen wird erst, wenn die übrigen besprochenen 5.x-Punkte fertig sind** (Marco)
-      - **12.10. nachts gebaut** (`arbeit/kernel-20261012/`, `versuch/kernel`): Kernel `0267` (`firmware=vendor|crust`, `firmware_from=`),
-        `h713-arisc status|set` (7 Tests), `h713-mkimage --arisc` + Tabellenschlüssel `arisc`, Schlusszeile von `h713-install`, Doku. Im
-        Testabbild `runde5x1`; die Messung hin und zurück kommt zuletzt
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
@@ -1288,3 +1243,61 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
 - [x] 8.5 Graphify-Gemeinschaften heißen „Community N" (ohne LLM keine Namen). Bei der Bilanz
       entscheiden, ob `graphify label --backend claude-cli` erlaubt ist (schickt nur Symbolnamen)
       - **12.10. nachts gestrichen:** Graphify ist ausgebaut (8.2)
+- [x] 5.11 `h713-install` löscht seine Arbeitskopie (`image-filled.img`, im Abzugsordner oder `--work-copy`) nie; sie enthält die
+      geräteeigenen Dateien. Nach bestandenem Rückvergleich löschen, außer `--keep-work-copy` (08.10., `doku/170`)
+      - 10.10.: sie entsteht außerdem **für alle lesbar** (`0644`, root, weil `h713-install` unter sudo läuft) - Arbeitskopie und
+        Abzug mit `0600` anlegen, ihre Ordner `0700`. Die eigenen Sicherungsskripte schrieben das Archiv mit den privaten
+        Host-Schlüsseln und `wifi.env` ebenso mit `0664` (behoben: `chmod 600`, `umask 077` im Installationsskript)
+      - **12.10. entschieden (Marco, Durchsicht 5.x):** keine Rechte-Verschärfung ("übertrieben" - das Backup ist seins, er
+        entscheidet). Stattdessen: Abzug, Ordner und alles, was `h713-install` anlegt, gehören **dem Nutzer, der sudo aufgerufen hat**
+        (`SUDO_USER`), statt root. Die Arbeitskopie (1,2 GB je Installation, der Linux-Teil des Abbilds mit den eingefüllten
+        Gerätedateien) wird **nach bestandenem Rückvergleich gelöscht**; scheitert er, bleibt sie liegen; `--work-copy DATEI` behält
+        sie (keine neue Option)
+      - **12.10. in `main`** (5382cce, 288f2f5, Paket `arbeit/werkzeuge-20261012/`): Übergabe an den sudo-Nutzer - ein Ordner, den
+        der Lauf anlegt, ganz; ein leerer oder unser Abzugsordner gibt ab, was der Lauf schrieb; ein fremder Ordner bleibt unberührt
+        (Marco: so ok); dazu die entpackten Release-Teile. Gemessen am PC (13 Tests, echter chown als root, `sudo h713-install dump`
+        auf eine Test-eMMC). **Offen: das Löschen der Arbeitskopie am Gerät** (braucht einen echten Schreiblauf) - Schritt 7
+      - **13.10. erledigt:** in `main`; am HY310 mit `runde5x1` gemessen (A1): Arbeitskopie nach dem Vergleich gelöscht, Abzug gehört dem Nutzer (`doku/209`)
+- [x] 5.12 `v4l2-ctl` (Paket `v4l-utils`) ins Rootfs: zum Lesen der HDMI-RX-Steuerungen am Gerät fehlte es (Marco 08.10., klein)
+      - **12.10. entschieden (Marco):** das Debian-Paket `v4l-utils` in `packages.txt` (kein eigener Bau); die Ausschlusszeile
+        "gstreamer1.0-*, mpv, ffmpeg, v4l-utils" so ändern, dass nur cstengers Video-Laufzeit draußen bleibt
+      - **12.10. in `main`** (d88b433), Abnahme prüft `/usr/bin/v4l2-ctl`. **Nicht gebaut** - Größe und `v4l2-ctl` am Gerät mit dem
+        Testabbild (Schritt 6/7)
+      - **13.10. erledigt:** in `main`; `v4l2-ctl` 1.30.1 liest am HY310 Treiber, Steuerungen und DV-Timing des Empfängers (A3, +4,5 MiB)
+- [x] 5.20 **ARISC-Wahl: Anzeige im Installer und Umschalter `h713-arisc`** (Entscheidung 1.1b, Marco 10.10. abends). Eigenes
+      Paket `arbeit/arisc-wahl-<datum>/`, **nach** dem G-EU-Abbild `geuaus1` und seinen Kurztests. Ziel: crust bleibt die
+      Vorgabe, die Hersteller-Firmware ist ohne Neuinstallation erreichbar, und jeder sieht, welche läuft.
+      1. **Kernel (neuer Patch, `sun50i-h713-arisc`):** Moduloption `firmware=<name>` überstimmt `firmware-name[0]` des
+         Gerätebaums. Erlaubt nur `h713-arisc.bin` (Hersteller) oder den crust-Namen des eigenen Baums; alles andere wird mit
+         Warnung ignoriert. Die Nachlade-Regel `0192` bleibt: läuft (von BL31 gestartet) crust und die Option sagt
+         Hersteller, lädt der Treiber die Hersteller-Datei und ersetzt crust - das ist am 10.10. nebenbei belegt worden (der
+         Treiber ersetzte ein FEL-crust durch die Datei, `doku/188` §2). Die Startzeile sagt, welche Firmware warum läuft
+         ("firmware: vendor (module option)").
+      2. **Werkzeug `h713-arisc` (Userspace, wie `h713-power set`):** `h713-arisc status` (welche läuft, Version/Build,
+         was das heißt: Standby ja/nein, Aus über crust oder Gate), `h713-arisc set vendor|crust` schreibt/löscht
+         `/etc/modprobe.d/h713-arisc.conf` (`options sun50i_h713_arisc firmware=h713-arisc.bin`), sagt "wirkt nach dem
+         nächsten Neustart"; braucht root; Tests nach dem Muster `userspace/h713-power/tests`. Weigert sich auf einem Board,
+         dessen Abbild keine Hersteller-Datei hat (Abzug ohne `scp`).
+      3. **Nichts an U-Boot und Gate:** BL31 startet weiter crust aus dem FIT; mit der Hersteller-Firmware findet TF-A keinen
+         crust-Vertrag und fällt von selbst zurück (Standby verweigert, Aus = Gate, TF-A-Ereignis 5) - das ist bereits so
+         gebaut (`sunxi_scp_off.c`, `sunxi_standby.c`).
+      4. **Installer (`h713-install`, Abschluss):** eine Zeile "ARISC: crust (Board-Konfiguration ..., Standby und Aus 0,3 W)"
+         oder "ARISC: Hersteller-Firmware aus deinem Abzug (TV-303 ... ), kein Standby, Aus = Gate", dazu der Hinweis auf
+         `h713-arisc set vendor`. Quelle: der Gerätebaum des Abbilds (`firmware-name`) und die extrahierte `arisc_version`.
+         Eine Install-Option `--arisc vendor` legt die modprobe-Datei gleich mit an (für Boards, auf denen crust stört).
+      5. **Messen am G-EU** (Kopie, FEL oder installiertes Testabbild): `set vendor` + Neustart -> Hersteller-Firmware läuft,
+         EDID/HPD und Bild ok, Standby sauber verweigert, `poweroff` -> Gate (~2,4 W); `set crust` + Neustart -> crust, Aus 0,3 W.
+      6. **Doku:** `docs/subsystems/arisc.md` (die Wahl, der Umschalter, was ohne crust fehlt), `docs/tools/h713-arisc.md`,
+         README/Board-Liste (welches Board welche Firmware als Vorgabe hat), `RELEASES.md`.
+      7. **Später (eigenes Paket, nur mit Besitzerbericht und Registerbeweis):** crust ohne Standby für fremde Boards - nur Aus
+         und der HDMI-Vertrag, die Pins (PL6, PB5, PL3, Taste) aus `standby_param` des eigenen Stock-Gerätebaums; dann hätten
+         auch sie 0,3 W im Aus, ohne dass wir ihr DRAM kennen
+      - **12.10. (Marco, Durchsicht 5.x): schlank umsetzen** - Kernel-Option, `h713-arisc status|set vendor|crust` (`status` liest die
+        Zustandsdatei aus `0205`, die es schon gibt), die Zeile im Installer, Doku; **ohne** die Install-Option `--arisc vendor` (keine
+        neuen Parameter). Geprüft: die Hersteller-Datei ist bei jeder Installation Pflicht (`vendorfiles.py` `REQUIRED_FILES`), die
+        Weigerung in 2. trifft also kaum je zu. **Gemessen wird erst, wenn die übrigen besprochenen 5.x-Punkte fertig sind** (Marco)
+      - **12.10. nachts gebaut** (`arbeit/kernel-20261012/`, `versuch/kernel`): Kernel `0267` (`firmware=vendor|crust`, `firmware_from=`),
+        `h713-arisc status|set` (7 Tests), `h713-mkimage --arisc` + Tabellenschlüssel `arisc`, Schlusszeile von `h713-install`, Doku. Im
+        Testabbild `runde5x1`; die Messung hin und zurück kommt zuletzt
+      - **13.10. erledigt:** in `main` (Kernel `0267`, `h713-arisc`, Installer-Zeile); am HY310 hin und zurück ohne Neuinstallation gemessen
+        (B5): vendor -> kein Standby, Aus ins Gate; crust -> Aus über crust, R_WDOG-Zeile neu (`doku/209`)
