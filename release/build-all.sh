@@ -25,9 +25,9 @@
 # /lib/firmware/<board>-crust.bin, the name the board's device tree gives the arisc driver; step
 # 10 checks that both are this build (release/check-crust.py). The installer and the probe U-Boot
 # never carry it.
-# --standby (off until TODO 3.3) offers the standby: BL31 with PSCI SYSTEM_SUSPEND, the rootfs
-# with suspend allowed and h713-power on the power key. Only for STANDBY=sr, which follows from
-# CRUST_DEFCONFIG on a verified board.
+# --standby offers the standby, experimental (TODO 2.29): BL31 with PSCI SYSTEM_SUSPEND and the rootfs
+# with suspend allowed, so that h713-power (on every image) offers it in its countdown; power.conf's
+# default stays poweroff. Only for STANDBY=sr, which follows from CRUST_DEFCONFIG on a verified board.
 #
 # Order (doku/116 P4):
 #   1 bl31  1b crust  2 U-Boot (+ split SPL/proper + environment with CRC)  2b installer U-Boot (ums)
@@ -254,8 +254,8 @@ info "$REPRO_LINE"
 ((TEST_IMAGE)) && { say "TEST IMAGE for $UNIT (STATUS=$STATUS) -- not a release"
 	info "Nobody has reported a green run here. The table is marked test_for=$TEST_PROFILE, so h713-install"
 	info "writes it on this board alone and only with --test-image; the owner's full dump is the way back."; }
-((WANT_STANDBY)) && { say "STANDBY offered (--standby) -- not a release before TODO 3.3"
-	info "The picture comes back after a wake (h713-mips-restart); open before a release: the hang going to sleep (C1), no HDMI audio after a standby, key and IR wake not measured (TODO 3.3). An image for the device stages."; }
+((WANT_STANDBY)) && { say "STANDBY offered (--standby) -- experimental"
+	info "Suspend through crust is allowed; h713-power offers it in its countdown. The default stays power-off (power.conf default = poweroff); 'h713-power set default standby' makes it the default on the device."; }
 ((DRY)) && info "DRY RUN -- nothing is built"
 
 # --- 0. prerequisites -------------------------------------------------------
@@ -579,7 +579,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	else
 		echo "crust: none - the ARISC runs the vendor firmware from the owner's dump"
 	fi
-	echo "standby: $STANDBY, $( ((WANT_STANDBY)) && echo "offered (--standby): BL31 with SYSTEM_SUSPEND, suspend allowed, h713-power; not a release before TODO 3.3" || echo "not offered: BL31 without SYSTEM_SUSPEND, AllowSuspend=no")"
+	echo "standby: $STANDBY, $( ((WANT_STANDBY)) && echo "offered (--standby, experimental): BL31 with SYSTEM_SUSPEND, suspend allowed, power.conf default poweroff" || echo "not offered: BL31 without SYSTEM_SUSPEND, AllowSuspend=no")"
 	GIT_ROOT=$(git -C "$MAINLINE" rev-parse --show-toplevel 2>/dev/null || true)
 	# No directory name in the stamp: that is local and tells a reader nothing.
 	if [[ "$GIT_ROOT" == "$MAINLINE" ]]; then W=mainline; else W=repo; fi
