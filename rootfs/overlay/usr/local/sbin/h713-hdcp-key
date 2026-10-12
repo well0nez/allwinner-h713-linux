@@ -140,7 +140,10 @@ def main():
             sag("usage: h713-hdcp-key --bind DEVICE")
             return 2
         geraet = sys.argv[i + 1]
-    nutz, grund = finden()
+    try:
+        nutz, grund = finden()
+    except OSError as e:                # a read error on the eMMC is "no key", not a crash (TODO 5.14 U5)
+        nutz, grund = None, "Secure Storage not readable: %s" % (e.strerror or e)
     if nutz is None:
         sag("ERROR: " + grund)
         if geraet:                      # the picture without the 2.2 key rather than none

@@ -95,6 +95,14 @@ class Bind(unittest.TestCase):
         self.assertEqual(self.seen, [("hdmi-rx", None, None, "\n")])
         self.after()
 
+    def test_a_storage_that_cannot_be_read_still_binds_and_says_3(self):
+        # TODO 5.14 U5: a read error is "no key" - bound without it, exit 3, no traceback
+        os.remove(self.m.PARTLABEL)
+        os.mkdir(self.m.PARTLABEL)                      # exists, but reading it fails (EISDIR)
+        self.assertEqual(self.main("--bind", "hdmi-rx"), 3)
+        self.assertEqual(self.seen, [("hdmi-rx", None, None, "\n")])
+        self.after()
+
     def test_a_failed_bind_is_1_and_the_key_is_gone(self):
         os.mkdir(self.m.BIND)                           # the write fails like a probe that fails
         self.assertEqual(self.main("--bind", "hdmi-rx"), 1)
