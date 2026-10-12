@@ -33,6 +33,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       übernehmen — oder `build-all.sh --wifi-env` ist Pflicht. Bis dahin: Sicherung vorher (`/root/pre-v096`)
 - [ ] 1.3 **WLAN-Timeouts verifizieren** (`82cb57e`): im Abbild drin, 5 Boots je ~9 s bis Finished — der Hängefall
       (Funk absichtlich verklemmen) ist noch nicht provoziert
+      - **12.10. provoziert** (G-EU, ein `install`-Hänger in modprobe.d, `arbeit/remote-reihe-20261012/` H): `timeout 30` greift, aber
+        systemd wartete danach 90 s auf den hängenden Rest der cgroup - Boot fertig nach 2 min 15 s, ssh ab 127 s. Mit `TimeoutStopSec=10`
+        (`c809c23`, in `main`): ssh ab 46 s, fertig nach 54 s. Ins Abbild mit 1.1a
 - [ ] 1.4 HY300 Pro G-EU (`boards/hy200-qz713df-a1`): Boot, Bild, HDCP 1.4 mit geteiltem Satz, 2.2 (Marco 06.10.:
       später). Dazu Bluetooth dort: erster Attach nach Kaltstart hängt an `0x1003`, 245-Byte-Schreibvorgänge kommen
       unvollständig an (FB-BTRESET 9.3, RTS/CTS?); `h713-bt-reset` auf dem Board noch nie probiert
@@ -111,6 +114,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (h713-tv-0001 + 0183). **Offen:** laxe `atoi`-Prüfung bei zoom/edge, `check` halbiert fps
       (dokumentieren), Musterwechsel = Konsolenblitz, Client ohne Newline blockiert 500 ms,
       `evaluate()` gibt bei -ENOLCK sofort frei, Textreste „primary plane"
+      - **12.10.** (`arbeit/remote-reihe-20261012/` G): `atoi`, Client ohne Zeilenende (500 ms -> keine Lücke über 20 ms) und die Texte in
+        `main` (`62d1887`), am G-EU gemessen. `evaluate()` bei -ENOLCK gebaut (Zweig `versuch/warp-reste` `f089cdd`), aber in 9 Versuchen
+        nie ausgelöst (HDCP-Neuanforderung wirft den Warp gar nicht ab) - nicht in `main`. Offen: `check` halbiert fps, Musterwechsel
 - [ ] 2.5 HY300-Lampe: Testplan `doku/143` §11 (Foto gegen Stock, PWM-Block lesen)
 - [ ] 2.9 Keystone: Langlauf 05.10. ~8 h Warp an, 59 fps, RSS flach, 20× an/aus ohne Leck (Prüfstand) — der
       Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
@@ -170,6 +176,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `pd_tvcap` ganz Null, im ELF nachgelesen); MIPS-Park schon in `suspend`, ohne Wartezeiten. Versuch, wenn Standby wieder
         dran ist: TVCAP im Systemschlaf an lassen, dann prüfen, ob der INCAP-Stopp vor dem Suspend noch nötig ist
       - 11.10. G-EU (`doku/195` Stufe 8): ein Standby, DSP im **2. Versuch**
+      - 12.10. G-EU, 20 Standbys (`arbeit/remote-reihe-20261012/` C): 17 x im 1., 2 x im 2., **1 x im 3. Versuch** - an der Grenze
 - [ ] 2.42 **Netzteil fiept auch im Aus über crust** (Marco 10.10. abends, HY310, Lauf `hy2`): im Standby fiept es leise (2.31),
       im Aus über crust ebenso. Mit dem Stock-Abzug gegenhalten (Stock-Android aus: fiept es da auch?) - erst dann ist es ein Befund
       über unser System oder über das Netzteil bei kleiner Last
@@ -284,6 +291,32 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       die Fernbedienungs-Geräte vom VT fernhalten oder den getty auf tty1 ändern
       - 11.10. nachts: `sunxi-ir` hängt am Handler `kbd` (`/proc/bus/input/devices`), die Tasten gehen also ans VT; der Weg ins
         Login-Feld selbst ist nicht gemessen (braucht eine gedrückte Taste)
+- [ ] 2.66 **Nach dem Standby zweimal 0 Bilder/s gezeigt, obwohl h713-tv "plane on" meldet** (12.10., G-EU, 20 Standbys per RTC,
+      Quelle ThinkPad, `arbeit/remote-reihe-20261012/` C): `anzeige.py` 4 s, ~10 s nach ssh, in st6 und st18 0,00 Wechsel/s, die anderen
+      18 bei 59,6-59,8; der jeweils nächste Standby wieder normal. Ungeklärt, ob zu früh gemessen (Skript- und Journalzeit gingen über die
+      Suspend-Zeit nicht sauber auf) oder ein echter Stillstand. Nächster Schritt: nach jedem Aufwachen 30 s `anzeige.py` mit Zeitstempel
+      in CLOCK_MONOTONIC wie das Journal, dazu Augen an der Wand
+      - Marco 12.10.: vielleicht hat der ThinkPad wieder nichts gesendet (wie die Stillstände mit `rustdesk --server`, `referenz/geraete.md`)
+        - nicht sicher; **den Test nach dem Release wiederholen**, dann mit einer zweiten Quelle (Fire TV) als Gegenprobe
+- [ ] 2.67 **Warmstart: die Sperre 2 bleibt wieder liegen, ohne vorherigen Absturz** (12.10., G-EU, `warm14` von 20 mit dem Kernel aus
+      `main` 234282c, `arbeit/remote-reihe-20261012/laeufe/warm14-journal.txt`): `SpinUnLock(2): no thread_id`, dann `routine spinlock 2
+      not free after AddInRoutine (owner=0 refcnt=1 thread=0xff)`, 22 x "callbacks cannot be registered (-16)"; `h713-tv-rescue` holte das
+      Bild nach 4,46 s. Anders als `doku/203` §1: kein abgestürzter Lauf davor, und `0259` fand beim Übernehmen keine ARM-Sperre ("free
+      lock carried" fehlt) - die Sperre entstand erst bei `AddInRoutine`. `0259` deckt also nicht alles ab (1 aus 20; doku/203 0 aus 12).
+      Ursache offline klären (wie `arbeit/mips-sperre-20261012/`), das Netz bleibt bis dahin
+- [ ] 2.68 **Warp: nach einem Moduswechsel bleibt die alte Ringgröße stehen** (12.10., G-EU, Quelle ThinkPad, Warp an,
+      `arbeit/remote-reihe-20261012/` J Befund 3): in 2 von 4 Durchläufen durch 14 Modi meldete der Treiber (`G_FMT`) nach dem Wechsel
+      weiter die Größe des vorigen Modus - einmal 1152x720 für 720x576/720x480/640x480, einmal 640x480 für 1280x720, 17 s lang bis zum
+      nächsten Wechsel; der Warp importiert dann diese Größe. Ohne Warp nicht gesehen (h713-tv baut seinen Puffer selbst neu). Vermutung,
+      nicht geprüft: der Ring-Record der Firmware wird nicht neu veröffentlicht, solange der Warp das Panel hält (vgl. Prüfstand 05.10.
+      2.1/`0183`). Widerlegt: im Warp das Format einmal je Sekunde neu lesen hilft nicht (G_FMT selbst ist veraltet; Zweig
+      `versuch/warp-reste` `52eff45`). Offen: an der Wand ansehen (unscharf oder verschert?), dann die Ursache im Treiber/Record
+- [ ] 2.69 **Die Firmware legt für manche PC-Modi einen Ring an, der höher ist als das Panel** (12.10., G-EU, `arbeit/remote-reihe-20261012/`
+      J Befund 2): 1280x1024 -> Ring 912x728 ("by the rowbyte"), 1360x768 -> einmal 1280x722, einmal 1280x720 (dieselbe Quelle); h713-tv weist
+      "larger than the panel 1280x720" ab, die Konsole bleibt. **Marco: nicht beschneiden** - die Ursache lösen: warum rechnet die
+      Firmware eine Höhe über 720 (Seitenverhältnis gehalten, Ausrichtung?), was Stock mit derselben Quelle tut, wo im Treiber
+      (`hdmirx`, "the firmware scales") oder in `display.bin` die Ringgröße entsteht
+
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
