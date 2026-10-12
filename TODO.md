@@ -109,6 +109,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
       Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
 - [ ] 2.4f Keystone für Ringe mit unausgerichtetem Pitch (SD- und PC-Modi): Warp braucht einen 64-aligned Import
+      - 12.10. (`arbeit/wurzeln-20261012/` §5): betrifft 800x600 (Pitch 800), 720x576/720x480 (720), 1280x1024 (912). Weg A (Ring 64-ausgerichtet
+        anlegen) **geht nicht**: INCAP schreibt nach einem Override von `+0x924` weiter mit dem alten Pitch, auch nach Enable aus/an, und die Firmware
+        setzt den Wert bei jedem Umbau neu (Pitch = Breite auf 16). Bleibt Weg B: linearer Import im Warp (Textur 2048 breit, Shader adressiert
+        `y·pitch + x`, bilinear von Hand), ~+1 ms GPU, ~ein halber Tag. Entscheidung Marco
 - [ ] 2.4d Prüfstand-Kleinfunde (BERICHT §2.2–2.12) — **erledigt 05.10.:** `ctl status` wirft den Warp ab
       (Frist 1000 ms), Journal-Spam ohne Signal, `test mask` markiert tl, Firmware-Zoom im Warp-Commit
       (h713-tv-0001 + 0183). **Offen:** laxe `atoi`-Prüfung bei zoom/edge, `check` halbiert fps
@@ -167,7 +171,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 11.10. abends: Kernel-Patch `0257` gebaut und am G-EU installiert (`versuch/kernel-abend`); noch nicht gemessen - braucht ein
         Aus über crust und den Start danach
       - **12.10. gemessen** (`doku/204`): nach Aus über crust beide Zeilen als Info - erledigt
-- [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
+- [x] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
       höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
       - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf
         (`snd_alsa_trid` ohne PM-Haken); seine TVFE-Einschaltfolge (`tvtop_tvfe_enable`) hat drei Pausen von 10-15 ms, Takte mit
@@ -177,6 +181,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         dran ist: TVCAP im Systemschlaf an lassen, dann prüfen, ob der INCAP-Stopp vor dem Suspend noch nötig ist
       - 11.10. G-EU (`doku/195` Stufe 8): ein Standby, DSP im **2. Versuch**
       - 12.10. G-EU, 20 Standbys (`arbeit/remote-reihe-20261012/` C): 17 x im 1., 2 x im 2., **1 x im 3. Versuch** - an der Grenze
+      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0262`, in `main` 8ac1226): nicht der Insel-Start (Selbsttest 52/52 sofort), sondern
+        das eine 50-ms-Lesen von `0x00EE` an einer Blockgrenze des Patch-Downloads (`msp_kick`) brach den Download ab; der DSP beantwortet die nächste
+        Anfrage sofort. Jetzt wird bis zur 500-ms-Frist des Aufwachrufs weitergefragt. 30 Standbys, Ton 30 x im 1. Versuch, 5 verspätete Rufe
+        abgefangen. Die TVFE-Folge des Herstellers (`re-auftrag/BERICHT.md` §3) ist dokumentiert, nicht übernommen - nicht die Ursache
 - [ ] 2.42 **Netzteil fiept auch im Aus über crust** (Marco 10.10. abends, HY310, Lauf `hy2`): im Standby fiept es leise (2.31),
       im Aus über crust ebenso. Mit dem Stock-Abzug gegenhalten (Stock-Android aus: fiept es da auch?) - erst dann ist es ein Befund
       über unser System oder über das Netzteil bei kleiner Last
@@ -302,25 +310,36 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       in CLOCK_MONOTONIC wie das Journal, dazu Augen an der Wand
       - Marco 12.10.: vielleicht hat der ThinkPad wieder nichts gesendet (wie die Stillstände mit `rustdesk --server`, `referenz/geraete.md`)
         - nicht sicher; **den Test nach dem Release wiederholen**, dann mit einer zweiten Quelle (Fire TV) als Gegenprobe
-- [ ] 2.67 **Warmstart: die Sperre 2 bleibt wieder liegen, ohne vorherigen Absturz** (12.10., G-EU, `warm14` von 20 mit dem Kernel aus
+- [x] 2.67 **Warmstart: die Sperre 2 bleibt wieder liegen, ohne vorherigen Absturz** (12.10., G-EU, `warm14` von 20 mit dem Kernel aus
       `main` 234282c, `arbeit/remote-reihe-20261012/laeufe/warm14-journal.txt`): `SpinUnLock(2): no thread_id`, dann `routine spinlock 2
       not free after AddInRoutine (owner=0 refcnt=1 thread=0xff)`, 22 x "callbacks cannot be registered (-16)"; `h713-tv-rescue` holte das
       Bild nach 4,46 s. Anders als `doku/203` §1: kein abgestürzter Lauf davor, und `0259` fand beim Übernehmen keine ARM-Sperre ("free
       lock carried" fehlt) - die Sperre entstand erst bei `AddInRoutine`. `0259` deckt also nicht alles ab (1 aus 20; doku/203 0 aus 12).
       Ursache offline klären (wie `arbeit/mips-sperre-20261012/`), das Netz bleibt bis dahin
-- [ ] 2.68 **Warp: nach einem Moduswechsel bleibt die alte Ringgröße stehen** (12.10., G-EU, Quelle ThinkPad, Warp an,
+      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0261`, in `main` 8ac1226): die Ursache war **PID 255** - unser Treiber schrieb die
+        Prozess-ID als Thread-Wort der Sperre, und 0xff ist die Markierung "frei" (Firmware: unteres Byte, wir: ganzes Wort); h713-tv bekommt
+        diese PID in ~1 von 20 Warmstarts. L2T-Spur zeigt es Schritt für Schritt (zweimal reproduziert). Fix: `tgid << 8 | 1`. 50 Warmstarts ohne
+        Treffer, Netz (`h713-tv-rescue`) griff nie mehr
+- [x] 2.68 **Warp: nach einem Moduswechsel bleibt die alte Ringgröße stehen** (12.10., G-EU, Quelle ThinkPad, Warp an,
       `arbeit/remote-reihe-20261012/` J Befund 3): in 2 von 4 Durchläufen durch 14 Modi meldete der Treiber (`G_FMT`) nach dem Wechsel
       weiter die Größe des vorigen Modus - einmal 1152x720 für 720x576/720x480/640x480, einmal 640x480 für 1280x720, 17 s lang bis zum
       nächsten Wechsel; der Warp importiert dann diese Größe. Ohne Warp nicht gesehen (h713-tv baut seinen Puffer selbst neu). Vermutung,
       nicht geprüft: der Ring-Record der Firmware wird nicht neu veröffentlicht, solange der Warp das Panel hält (vgl. Prüfstand 05.10.
       2.1/`0183`). Widerlegt: im Warp das Format einmal je Sekunde neu lesen hilft nicht (G_FMT selbst ist veraltet; Zweig
       `versuch/warp-reste` `52eff45`). Offen: an der Wand ansehen (unscharf oder verschert?), dann die Ursache im Treiber/Record
-- [ ] 2.69 **Die Firmware legt für manche PC-Modi einen Ring an, der höher ist als das Panel** (12.10., G-EU, `arbeit/remote-reihe-20261012/`
+      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0260` + h713-warp, in `main` 8ac1226): INCAP folgt dem Record erst mit dem Umbau
+        der Capture-Kette, ohne Ereignis; der Treiber beobachtet INCAP (100 ms) und meldet `SOURCE_CHANGE`; der Warp fragt `QUERY_DV_TIMINGS` selbst
+        (G_FMT bleibt unter einer laufenden Queue stehen) und baut je Ereignis neu. 0 von 48 Wechseln (vorher 5 von 30)
+- [x] 2.69 **Die Firmware legt für manche PC-Modi einen Ring an, der höher ist als das Panel** (12.10., G-EU, `arbeit/remote-reihe-20261012/`
       J Befund 2): 1280x1024 -> Ring 912x728 ("by the rowbyte"), 1360x768 -> einmal 1280x722, einmal 1280x720 (dieselbe Quelle); h713-tv weist
       "larger than the panel 1280x720" ab, die Konsole bleibt. **Marco: nicht beschneiden** - entweder richtig rechnen oder ablehnen
       (wie heute); die Ursache lösen: warum rechnet die
       Firmware eine Höhe über 720 (Seitenverhältnis gehalten, Ausrichtung?), was Stock mit derselben Quelle tut, wo im Treiber
       (`hdmirx`, "the firmware scales") oder in `display.bin` die Ringgröße entsteht
+      - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0260`, in `main` 8ac1226): die 728 waren **unsere** Formel (Höhe aus dem
+        Seitenverhältnis); die Firmware skaliert auf das Panel, begrenzt durch beide Seiten, und schreibt Breite/Höhe nach INCAP `+0x86c/+0x870`
+        (Slot-Füllhöhe gemessen: 720 Zeilen; Listing `CalcWinSize`). Der Treiber liest sie jetzt, unplausibel → `-ENOLCK`. 1280x1024 → 900x720,
+        1360x768 → 1274x720, 1366x768 → 1280x718; alle 14 Modi mit Bild. Augen an der Wand stehen aus
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
