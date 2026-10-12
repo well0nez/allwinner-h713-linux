@@ -412,9 +412,15 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         (`SUDO_USER`), statt root. Die Arbeitskopie (1,2 GB je Installation, der Linux-Teil des Abbilds mit den eingefüllten
         Gerätedateien) wird **nach bestandenem Rückvergleich gelöscht**; scheitert er, bleibt sie liegen; `--work-copy DATEI` behält
         sie (keine neue Option)
+      - **12.10. in `main`** (5382cce, 288f2f5, Paket `arbeit/werkzeuge-20261012/`): Übergabe an den sudo-Nutzer - ein Ordner, den
+        der Lauf anlegt, ganz; ein leerer oder unser Abzugsordner gibt ab, was der Lauf schrieb; ein fremder Ordner bleibt unberührt
+        (Marco: so ok); dazu die entpackten Release-Teile. Gemessen am PC (13 Tests, echter chown als root, `sudo h713-install dump`
+        auf eine Test-eMMC). **Offen: das Löschen der Arbeitskopie am Gerät** (braucht einen echten Schreiblauf) - Schritt 7
 - [ ] 5.12 `v4l2-ctl` (Paket `v4l-utils`) ins Rootfs: zum Lesen der HDMI-RX-Steuerungen am Gerät fehlte es (Marco 08.10., klein)
       - **12.10. entschieden (Marco):** das Debian-Paket `v4l-utils` in `packages.txt` (kein eigener Bau); die Ausschlusszeile
         "gstreamer1.0-*, mpv, ffmpeg, v4l-utils" so ändern, dass nur cstengers Video-Laufzeit draußen bleibt
+      - **12.10. in `main`** (d88b433), Abnahme prüft `/usr/bin/v4l2-ctl`. **Nicht gebaut** - Größe und `v4l2-ctl` am Gerät mit dem
+        Testabbild (Schritt 6/7)
 - [ ] 5.14 **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
       Zeitüberschreitung öffnet die Aufrufe), CC-3..CC-6, U2 (abgebrochener Standby zählt als verweigert), U3..U6 (hdcp-key-Reste,
       Sperre, kein Zeitlimit für den Neustart), TFA-R2-1/2 (Zeitgutschrift ab Überlauf, R_WDOG-Meldung), CR-3 (50 ms ohne WFI-
@@ -429,6 +435,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
           (Zeitgrenze 120 s für h713-mips-restart); CC-1; CC-6; U3; B4
         - **nach dem Release:** CC-4, CC-5, U4, CR-3, KM-3
         - **gestrichen:** TFA-R2-1 (falsche Zeitgutschrift erst nach 49,7 Tagen Schlaf am Stück)
+        - **12.10. in `main`** (Paket `arbeit/werkzeuge-20261012/`): Banner (07a9355), B4 (b79df7e, 7f6c2f2: `check-crust.py` wertet alle
+          `sleep.conf` und Drop-ins aus, `build-rootfs.sh` lehnt fremde Drop-ins ab). Dabei gefunden und behoben (Marco: behalten):
+          `check-crust.py` verlangte ohne `--standby`, dass `h713-power` fehlt - seit 2.38 ist es auf jedem Abbild, jeder Bau ohne
+          `--standby` wäre in Schritt 10 gescheitert
         - **nicht besprochen:** der Rest aus 5.16 (msp bleibt auf "error", wenn ein Standby zwischen `msp_suspend` und dem Park
           abbricht) - erst prüfen, ob das nach `0243`/`0262` noch gilt, dann Marco fragen
 - [ ] 5.15 **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
@@ -496,12 +506,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         (variant.env vor board.env, sonst `BOARD_ID`), `install-projekt.sh` schreibt `/etc/hostname` und `/etc/hosts` und weist
         ungültige Namen ab, `h713-wifi` fällt auf `h713` zurück. Am G-EU als `hy300pro` noch nicht gesehen - mit dessen nächstem
         Abbild. Reste: "im Panel änderbar" -> 2.54, "bei Neuinstallation mitnehmen" -> 1.2b
-- [ ] 5.19 **`boards/check.sh` urteilt über alte Gerätebäume**: es liest `mainline/build/out/<dtb>.dtb` des Checkouts; in
+- [x] 5.19 **`boards/check.sh` urteilt über alte Gerätebäume**: es liest `mainline/build/out/<dtb>.dtb` des Checkouts; in
       `repo-neu` liegen die vom 05.10. (vor crust), daher am 10.10. zwei falsche FAILs (hy310, hy200-qz713df-a1 "device tree
       names h713-arisc.bin"); im frisch gebauten Worktree grün. Den DTB nur mit passendem Kernelbaum-Stempel werten, sonst "note"
       - 12.10. nachgestellt: dieselben zwei FAILs. **Entschieden (Marco): kein Hash** - den DTB-Teil aus `check.sh` (Prüfung 9)
         streichen. Ob Gerätebaum und Firmware zusammenpassen, prüft `build-all.sh` Schritt 10 (`check-crust.py`) am frisch gebauten
         Abbild; `check.sh` prüft nur die Quellen (`board.env`, crust-Konfiguration vorhanden)
+      - **12.10. erledigt** (d78e089, in `main`): mit den DTBs vom 05.10. grün (vorher 2 FAILs), falsche Konfiguration 1 FAIL
 - [ ] 5.20 **ARISC-Wahl: Anzeige im Installer und Umschalter `h713-arisc`** (Entscheidung 1.1b, Marco 10.10. abends). Eigenes
       Paket `arbeit/arisc-wahl-<datum>/`, **nach** dem G-EU-Abbild `geuaus1` und seinen Kurztests. Ziel: crust bleibt die
       Vorgabe, die Hersteller-Firmware ist ohne Neuinstallation erreichbar, und jeder sieht, welche läuft.
@@ -534,9 +545,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Zustandsdatei aus `0205`, die es schon gibt), die Zeile im Installer, Doku; **ohne** die Install-Option `--arisc vendor` (keine
         neuen Parameter). Geprüft: die Hersteller-Datei ist bei jeder Installation Pflicht (`vendorfiles.py` `REQUIRED_FILES`), die
         Weigerung in 2. trifft also kaum je zu. **Gemessen wird erst, wenn die übrigen besprochenen 5.x-Punkte fertig sind** (Marco)
-- [ ] 5.23 **Unbekannte Android-Firmware -> Issue** (Marco 12.10.): wer ein Gerät mit einer Hersteller-Firmware hat, die der Installer
+- [x] 5.23 **Unbekannte Android-Firmware -> Issue** (Marco 12.10.): wer ein Gerät mit einer Hersteller-Firmware hat, die der Installer
       nicht kennt, soll ein Issue aufmachen, damit wir das Profil ergänzen können. Ein Satz im README und derselbe Hinweis in der Meldung,
       mit der der Installer eine unbekannte Firmware ablehnt
+      - **12.10. erledigt** (39c2c17, in `main`): die vier Texte nennen ein Issue mit der Zeile und die Adresse; README-Absatz unter
+        "Boards"; 5 Tests
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
