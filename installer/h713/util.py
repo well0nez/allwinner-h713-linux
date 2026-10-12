@@ -55,3 +55,55 @@ def hexdump_short(b: bytes, n: int = 16) -> str:
 
 def crc32(b: bytes) -> int:
     return zlib.crc32(b) & 0xFFFFFFFF
+
+
+def sudo_owner():
+    """(uid, gid) of the user who ran this under sudo, or None: not root, not under sudo, sudo from root, or no
+    os.geteuid (Windows)."""
+    if not hasattr(os, "geteuid") or os.geteuid() != 0:
+        return None
+    uid, gid = os.environ.get("SUDO_UID", ""), os.environ.get("SUDO_GID", "")
+    if not (uid.isdigit() and gid.isdigit()) or int(uid) == 0:
+        return None
+    return int(uid), int(gid)
+
+
+def give_back(roots, since, existed, owner=None):
+    """What this run made under <roots> belongs to the user who ran sudo, not to root (TODO 5.11, Marco 12.10.2026:
+    the dump is the user's own, under their own account). Only what is root's and changed since <since> - the run
+    itself - and a root itself only when it did not exist before the run (existed: {root: bool}): a directory
+    named by mistake (/root, /etc) keeps its owner, and nothing older than the run is touched. Symbolic links
+    are neither followed nor changed. Returns (given, failed); a file system without owners (FAT on a stick)
+    counts as failed and stops nothing."""
+    owner = owner or sudo_owner()
+    if owner is None:
+        return 0, 0
+    given = failed = 0
+    seen = set()
+
+    def one(p, is_root=False):
+        nonlocal given, failed
+        try:
+            st = os.lstat(p)
+        except OSError:
+            return
+        if st.st_uid != 0 or (is_root and existed.get(p, True)) or (not is_root and st.st_ctime < since):
+            return
+        if os.path.islink(p):
+            return
+        try:
+            os.chown(p, owner[0], owner[1], follow_symlinks=False)
+            given += 1
+        except OSError:
+            failed += 1
+
+    for root in roots:
+        if not root or root in seen or not os.path.lexists(root):
+            continue
+        seen.add(root)
+        one(root, is_root=True)
+        if os.path.isdir(root) and not os.path.islink(root):
+            for top, dirs, files in os.walk(root):
+                for name in dirs + files:
+                    one(os.path.join(top, name))
+    return given, failed

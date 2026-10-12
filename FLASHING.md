@@ -83,8 +83,10 @@ installer - then the installer stops and names the packed parts instead of unpac
 unpack them by hand or on another machine. The installer checks the sha256 of every part before it writes either
 way, so `sha256sum -c` is a second pair of eyes, not a requirement.
 
-`sudo` because it writes a block device and mounts the image's file systems. The dump and the filled copy
-of the image land in `~/hy310-dump` - about 8.5 GB with the full dump.
+`sudo` because it writes a block device and mounts the image's file systems. What it writes - the dump,
+the extracted files, the unpacked parts of the release - belongs to you, the user who ran `sudo`, not to
+root. The dump lands in `~/hy310-dump`, a little over 7.3 GB with the full dump; the filled copy of the
+image it writes (about 1.2 GB) is removed once the device has been written and compared.
 
 U-Boot exposes the eMMC as a normal USB drive; that is how the PC reads and writes it. The only way out
 of that mode is a power cycle, which is also the end of the procedure.

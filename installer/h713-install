@@ -57,7 +57,7 @@ from h713.install import (BOARD_FILE, board_from_device, DUMP_DEFAULT, DUMP_FULL
 from h713.log import console                                                # noqa: E402
 from h713.profiles import get as profile_of                                 # noqa: E402
 from h713.stock import check_stock_gpt, restore_stock                       # noqa: E402
-from h713.util import duration, mib                                         # noqa: E402
+from h713.util import duration, give_back, mib, sudo_owner                  # noqa: E402
 from h713.verify import verify_image, write_image                           # noqa: E402
 
 VERSION = "0.2"   # the package's, h713/__init__.py
@@ -675,7 +675,35 @@ def _work(args, path):
         disk.close()
 
 
+def output_roots(args):
+    """Where this run may write: the dump directory, a --work-copy named by hand, and the release folder of an
+    install (its .zst parts are unpacked beside them). TODO 5.11."""
+    roots = [getattr(args, "dump_dir", None), getattr(args, "work_copy", None)]
+    if args.command == "install" and args.image:
+        roots.append(args.image if os.path.isdir(args.image) else os.path.dirname(os.path.abspath(args.image)))
+    return [os.path.abspath(r) for r in roots if r]
+
+
+def hand_over(roots, since, existed):
+    """Under sudo, what this run wrote goes to the user who ran it (TODO 5.11): the dump is theirs."""
+    owner = sudo_owner()
+    if owner is None:
+        return
+    given, failed = give_back(roots, since, existed, owner)
+    user = os.environ.get("SUDO_USER") or "uid %d" % owner[0]
+    if given:
+        console.info("%d file(s) and folder(s) of this run handed to %s" % (given, user))
+    if failed:
+        console.info("%d could not be handed to %s (a file system without owners?)" % (failed, user))
+    # A dump folder an earlier run made as root stays root's - only one that is ours (MANIFEST.json) gets the hint
+    for root in roots:
+        if existed.get(root) and os.path.isfile(os.path.join(root, "MANIFEST.json")) and os.stat(root).st_uid == 0:
+            console.info("%s itself belongs to root (made by an earlier run): sudo chown -R %s %s"
+                         % (root, user, root))
+
+
 def main(argv=None):
+    since = time.time() - 2      # what changed after this is the run's; 2 s for coarse file system clocks
     raw = sys.argv[1:] if argv is None else list(argv)
     if not raw:
         parser().print_help()
@@ -732,8 +760,13 @@ def main(argv=None):
             found = release_files(args.image)     # a release folder brings both along
             args.uboot = args.uboot or found.get("uboot")
             args.fel = args.fel or found.get("fel")
-    path, code = expose_drive(args, HERE)
-    return code if path is None else _work(args, path)
+    roots = output_roots(args)
+    existed = {r: os.path.lexists(r) for r in roots}
+    try:
+        path, code = expose_drive(args, HERE)
+        return code if path is None else _work(args, path)
+    finally:
+        hand_over(roots, since, existed)
 
 
 if __name__ == "__main__":

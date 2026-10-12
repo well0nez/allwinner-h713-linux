@@ -25,7 +25,9 @@ forwarder.
    have, and unmounts. Sizes therefore never have to match anything - the layout before this one wrote
    into placeholders of a measured size, and a firmware whose files are bigger had nowhere to go. Every
    file is read back out of the working copy and compared byte for byte before anything goes onto the
-   eMMC, in one pass.
+   eMMC, in one pass. Once the device has been written and compared (step 5), the working copy - about
+   1.2 GB, the image with the device's files in - is removed; it is kept when it was named with
+   `--work-copy FILE`, and after any failure, for the report.
 5. **Verified**: a full dump is sampled against the device before extraction starts; after writing, every
    part is spot-checked and the secure storage compared byte for byte against the dump. A mismatch is
    reported as a clear failure - "do not reboot, ask" - never as a quiet success.

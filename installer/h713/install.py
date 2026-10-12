@@ -1201,6 +1201,16 @@ def write_package(args, disk, path, directory, tab, here=None):
                              "only HDCP-protected sources stay dark.")
         except Exception as exc:          # a report must never fail an install
             console.info("could not judge the HDCP key set (%s)" % exc)
+    # The working copy is the image with the device's files in, now on the eMMC and compared: it can be made
+    # again from the image and the dump any time, and it is 1.2 GB per install (TODO 5.11, Marco 12.10.2026).
+    # Kept when named with --work-copy; any failure above returned before this and left it for the report.
+    if work and not args.work_copy and os.path.isfile(work):
+        size = os.path.getsize(work)
+        try:
+            os.remove(work)
+            console.info("Working copy %s removed (%.0f MiB) - the device carries it now" % (work, mib(size)))
+        except OSError as exc:
+            console.info("Working copy %s could not be removed (%s)" % (work, exc.strerror))
     console.info("")
     console.info("Done. Unplug the power and plug it in again.")
     return 0
