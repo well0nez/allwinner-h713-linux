@@ -89,7 +89,7 @@ class Gate(unittest.TestCase):
         arisc = {"compatible": b"allwinner,sun50i-h713-arisc\0", "firmware-name": firmware.encode() + b"\0hy310-edid.bin\0"}
         self.put("board.dtb", fdt({"soc": {"watchdog@2051000": {"compatible": wdt}, "arisc@100000": arisc}}))
 
-    def rootfs(self, crust=None, standby=False, watchdog=False, extra=None):
+    def rootfs(self, crust=None, standby=False, watchdog=False, extra=None, power=None):
         files = {"./etc/systemd/sleep.conf.d/10-h713.conf":
                  b"[Sleep]\nAllowSuspend=yes\nSuspendState=mem\nMemorySleepMode=deep\n" if standby else b"[Sleep]\nAllowSuspend=no\n"}
         if crust is not None:
@@ -102,7 +102,7 @@ class Gate(unittest.TestCase):
                 info = tarfile.TarInfo(name)
                 info.size = len(data)
                 t.addfile(info, io.BytesIO(data))
-            if standby:
+            if standby if power is None else power:
                 info = tarfile.TarInfo("./etc/systemd/system/multi-user.target.wants/h713-power.service")
                 info.type, info.linkname = tarfile.SYMTYPE, "../h713-power.service"
                 t.addfile(info)
@@ -168,6 +168,33 @@ class Gate(unittest.TestCase):
     def test_standby_against_bl31_and_rootfs(self):
         self.assert_refused("BL31 offers SYSTEM_SUSPEND, the build has no --standby", standby=False)
         self.rootfs(crust=CRUST, standby=False)
+        self.assert_refused("do not fit --standby")
+
+    def test_the_sleep_settings_as_systemd_reads_them(self):
+        # Every sleep.conf and drop-in counts, not 10-h713.conf alone (review 09.10., B4)
+        drop = "./%s/systemd/sleep.conf.d/%s"
+        for files in ({drop % ("usr/lib", "50-pkg.conf"): b"[Sleep]\nSuspendState=freeze\n"},
+                      {drop % ("etc", "90-x.conf"): b"[Sleep]\nMemorySleepMode=s2idle\n"},
+                      {drop % ("usr/local/lib", "99-x.conf"): b"[Sleep]\nAllowSuspend=no\n"}):
+            self.rootfs(crust=CRUST, standby=True, extra=files)
+            self.assert_refused("do not fit --standby")
+        for files in ({"./etc/systemd/sleep.conf": b"[Sleep]\n#AllowSuspend=yes\n"},
+                      {drop % ("usr/lib", "10-h713.conf"): b"[Sleep]\nSuspendState=freeze\n"},  # hidden by /etc's
+                      {drop % ("usr/lib", "05-pkg.conf"): b"[Sleep]\nSuspendState=freeze\n"}):  # ours comes later
+            self.rootfs(crust=CRUST, standby=True, extra=files)
+            rc, out = self.run_gate()
+            self.assertEqual(rc, 0, (files, out))
+        self.put("bl31.bin", T1_TEXT)
+        self.rootfs(crust=CRUST, extra={drop % ("usr/lib", "50-pkg.conf"): b"[Sleep]\nAllowSuspend=yes\n"})
+        self.assert_refused("do not fit no standby", standby=False)
+
+    def test_h713_power_is_on_every_image(self):
+        # TODO 2.38 put it on every image: a build without --standby carries it too and passes
+        self.put("bl31.bin", T1_TEXT)
+        self.rootfs(crust=CRUST, standby=False, power=True)
+        rc, out = self.run_gate(standby=False)
+        self.assertEqual(rc, 0, out)
+        self.rootfs(crust=CRUST, standby=True, power=False)
         self.assert_refused("do not fit --standby")
 
     def test_a_watchdog_rootfs_needs_the_feeding_reset(self):
