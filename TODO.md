@@ -291,6 +291,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       die Fernbedienungs-Geräte vom VT fernhalten oder den getty auf tty1 ändern
       - 11.10. nachts: `sunxi-ir` hängt am Handler `kbd` (`/proc/bus/input/devices`), die Tasten gehen also ans VT; der Weg ins
         Login-Feld selbst ist nicht gemessen (braucht eine gedrückte Taste)
+      - **12.10. nachgewiesen** (`arbeit/remote-reihe-20261012/` E): KEY_UP/KEY_LEFT in `sunxi-ir` eingespeist -> `/dev/vcs1` zeigt
+        `hy310 login: ^[[A^[[D`. **Marco entschieden: vorerst Weg 2** - das Login auf tty1 neu starten, wenn die Konsole sichtbar wird, aber
+        nur wenn dort niemand angemeldet ist (getty noch am Prompt). Nicht an HDMI koppeln: die Fernbedienung soll später den Desktop
+        bedienen; die Trennung Fernbedienung/VT (EVIOCGRAB + Power über uinput) gehört zum Desktop
 - [ ] 2.66 **Nach dem Standby zweimal 0 Bilder/s gezeigt, obwohl h713-tv "plane on" meldet** (12.10., G-EU, 20 Standbys per RTC,
       Quelle ThinkPad, `arbeit/remote-reihe-20261012/` C): `anzeige.py` 4 s, ~10 s nach ssh, in st6 und st18 0,00 Wechsel/s, die anderen
       18 bei 59,6-59,8; der jeweils nächste Standby wieder normal. Ungeklärt, ob zu früh gemessen (Skript- und Journalzeit gingen über die
@@ -313,7 +317,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `versuch/warp-reste` `52eff45`). Offen: an der Wand ansehen (unscharf oder verschert?), dann die Ursache im Treiber/Record
 - [ ] 2.69 **Die Firmware legt für manche PC-Modi einen Ring an, der höher ist als das Panel** (12.10., G-EU, `arbeit/remote-reihe-20261012/`
       J Befund 2): 1280x1024 -> Ring 912x728 ("by the rowbyte"), 1360x768 -> einmal 1280x722, einmal 1280x720 (dieselbe Quelle); h713-tv weist
-      "larger than the panel 1280x720" ab, die Konsole bleibt. **Marco: nicht beschneiden** - die Ursache lösen: warum rechnet die
+      "larger than the panel 1280x720" ab, die Konsole bleibt. **Marco: nicht beschneiden** - entweder richtig rechnen oder ablehnen
+      (wie heute); die Ursache lösen: warum rechnet die
       Firmware eine Höhe über 720 (Seitenverhältnis gehalten, Ausrichtung?), was Stock mit derselben Quelle tut, wo im Treiber
       (`hdmirx`, "the firmware scales") oder in `display.bin` die Ringgröße entsteht
 
