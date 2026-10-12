@@ -518,8 +518,9 @@ grep -c "  OK" "$OUT/inputs.log" | sed 's/^/    OK lines: /'
 # --- 9. image ---------------------------------------------------------------
 say "9/11 image $NAME"
 TEST_FOR=(); ((TEST_IMAGE)) && TEST_FOR=(--test-for "$TEST_PROFILE")
+ARISC_FW=vendor; [[ -n "${CRUST_DEFCONFIG:-}" ]] && ARISC_FW=crust      # the table's "arisc" (TODO 5.20)
 ( cd "$INSTALLER" && python3 h713-mkimage build -o "out/$NAME.img" "${TEST_FOR[@]+"${TEST_FOR[@]}"}" \
-	--arisc "${CRUST_DEFCONFIG:+crust}${CRUST_DEFCONFIG:-vendor}" \
+	--arisc "$ARISC_FW" \
 	--spl "$OUT/spl-release.bin" --uboot "$OUT/uboot-proper-release.bin" --env "$OUT/hy310-env-release.bin" \
 	--boot-ext4 tmp/hy310-boot.ext4 --rootfs-ext4 tmp/hy310-rootfs-platz.ext4 ) > "$OUT/mkimage.log" 2>&1 \
 	|| { tail -20 "$OUT/mkimage.log"; die "image build failed (log: $OUT/mkimage.log)"; }

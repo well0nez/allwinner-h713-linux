@@ -9,6 +9,7 @@ Nothing here freezes a golden value: a normal table carries no `test_for` at all
 the first test asserts against the released v0.5-beta table.
 """
 
+import contextlib
 import hashlib
 import importlib.machinery
 import importlib.util
@@ -20,6 +21,7 @@ import unittest
 
 import support                 # imported first: it puts the tests directory on sys.path
 import fakedisk
+import io
 
 sys.path.insert(0, support.TOOLS)
 from h713.blockdev import SECTORS_EXPECTED                          # noqa: E402
@@ -170,6 +172,35 @@ class MkimageTestFor(unittest.TestCase):
         args = module.parser().parse_args(["build", "-o", "x.img", "--test-for", "hy300_pro"])
         self.assertEqual(args.test_for, "hy300_pro")
         self.assertIsNone(module.parser().parse_args(["build", "-o", "x.img"]).test_for)
+
+
+class MkimageArisc(unittest.TestCase):
+    """TODO 5.20: `build --arisc crust|vendor`, and what build-all passes it."""
+
+    def test_the_flag_takes_crust_or_vendor_and_nothing_else(self):
+        mk = os.path.join(support.TOOLS, "h713-mkimage")
+        support.need([mk])
+        spec = importlib.util.spec_from_loader(
+            "h713_mkimage_arisc", importlib.machinery.SourceFileLoader("h713_mkimage_arisc", mk))
+        module = importlib.util.module_from_spec(spec)
+        spec.loader.exec_module(module)
+        for choice in ("crust", "vendor"):
+            self.assertEqual(module.parser().parse_args(["build", "-o", "x.img", "--arisc", choice]).arisc, choice)
+        self.assertIsNone(module.parser().parse_args(["build", "-o", "x.img"]).arisc)
+        with contextlib.redirect_stderr(io.StringIO()), self.assertRaises(SystemExit):
+            # what build-all passed on 12.10.2026: "crust" glued to the defconfig's name
+            module.parser().parse_args(["build", "-o", "x.img", "--arisc", "crusth713_hy310_sr_defconfig"])
+
+    def test_build_all_passes_crust_for_a_crust_board_and_vendor_else(self):
+        script = os.path.join(os.path.dirname(support.TOOLS), "release", "build-all.sh")
+        support.need([script])
+        with open(script, encoding="utf-8") as fh:
+            line = [l for l in fh.read().splitlines() if l.startswith("ARISC_FW=")]
+        self.assertEqual(len(line), 1, "build-all.sh sets ARISC_FW in one line")
+        for defconfig, want in (("h713_hy310_sr_defconfig", "crust"), ("", "vendor")):
+            got = subprocess.run(["bash", "-c", line[0] + '\necho "$ARISC_FW"'], capture_output=True, text=True,
+                                 env=dict(os.environ, CRUST_DEFCONFIG=defconfig)).stdout.strip()
+            self.assertEqual(got, want, defconfig)
 
 
 class Decision(unittest.TestCase):
