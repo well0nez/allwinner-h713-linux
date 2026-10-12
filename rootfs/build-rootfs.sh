@@ -747,6 +747,7 @@ t "h713-wifi linked"          test -L "$TREE/etc/systemd/system/multi-user.targe
 t "aic8800 quiet"             grep -q 'aicwf_dbg_level=0x1' "$TREE/etc/modprobe.d/aic8800.conf"
 t "regulatory.db upstream"    test "$(readlink "$TREE/etc/alternatives/regulatory.db")" = /lib/firmware/regulatory.db-upstream
 t "v4l2-ctl (TODO 5.12)"      test -x "$TREE/usr/bin/v4l2-ctl"
+t "h713-arisc (TODO 5.20)"    test -x "$TREE/usr/local/sbin/h713-arisc"
 # Standby only where the image offers it (docs/subsystems/standby.md): else no suspend at all, which
 # would fall back to s2idle; with it suspend to RAM through crust and h713-power on the key.
 SLEEP_CONF="$TREE/etc/systemd/sleep.conf.d/10-h713.conf"

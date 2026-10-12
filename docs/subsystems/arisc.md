@@ -9,6 +9,13 @@ on 2026-09-06 before the rule was understood; the hardware survived every one of
 
 ## Firmware and driver
 
+**The choice, and the way back.** The device tree names the firmware, and the module option
+`firmware=vendor|crust` of `sun50i-h713-arisc` overrides it (kernel patch `0267`): `h713-arisc set vendor`
+writes it to `/etc/modprobe.d/h713-arisc.conf`, and from the next boot on the owner's `h713-arisc.bin` runs
+instead of crust - no standby, a power-off through the gate - without a reinstall; `set crust` goes back.
+`h713-arisc status` and the driver's state file (`firmware=`, `firmware_from=`) say which runs and why
+([h713-arisc](../tools/h713-arisc.md), decision 1.1b of 10.10.2026, TODO 5.20).
+
 Two firmwares can run here, and the board's device tree names which (`firmware-name`). On the HY310 and the
 HY200 QZ713DF A1 (HY300PRO-G-EU, since kernel `0246`, measured 10.10.2026 in `doku/184`) it is **crust**, our own,
 built with the image ("crust and the contract page" below). On every other board it is the vendor's (`h713-arisc.bin`, the vendor's `scp.bin`), which never ships - like the MIPS

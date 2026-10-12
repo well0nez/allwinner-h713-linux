@@ -1,0 +1,123 @@
+#!/usr/bin/env python3
+"""h713-arisc - which firmware runs on the ARISC, and the way back to the vendor's.
+
+crust (ours, built with the image) is the default on every board with a measured crust configuration: only with
+it the standby and the 0.3 W power-off exist. The vendor's firmware (h713-arisc.bin, from your own dump) stays
+one command away: `set vendor` writes /etc/modprobe.d/h713-arisc.conf (options sun50i_h713_arisc
+firmware=vendor), `set crust` removes that choice; both take effect at the next boot. `status` says which runs
+now, where the choice came from and what it means (TODO 5.20). Commands: status, set vendor|crust. Exit: 0,
+1 not possible on this image or not written, 2 usage. Tests only: H713_ARISC_ROOT goes before /sys, /etc, /lib.
+"""
+import argparse
+import glob
+import os
+import sys
+
+ROOT = os.environ.get("H713_ARISC_ROOT", "/")
+CONF = "etc/modprobe.d/h713-arisc.conf"
+VENDOR = "h713-arisc.bin"
+BUILD2_POWER_OFF = 1 << 24                   # crust's build word 2: it can power the rails off
+
+
+def path(*parts):
+    return os.path.join(ROOT, *parts)
+
+
+def read(p, default=""):
+    try:
+        with open(p) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def state():
+    """The arisc driver's state file as a dict (firmware=, firmware_from=, build2=, ready=, ...)."""
+    for p in sorted(glob.glob(path("sys/bus/platform/drivers/sun50i-h713-arisc/*/state"))):
+        return dict(line.split("=", 1) for line in read(p).splitlines() if "=" in line)
+    return {}
+
+
+def configured():
+    """What modprobe.d asks for at the next boot: "vendor", "crust" or None (the device tree decides)."""
+    for line in read(path(CONF)).splitlines():
+        words = line.split()
+        if words[:2] == ["options", "sun50i_h713_arisc"]:
+            for w in words[2:]:
+                if w.startswith("firmware="):
+                    return w[len("firmware="):]
+    return None
+
+
+def crust_image():
+    """The crust image this image carries for its board, or None."""
+    hits = glob.glob(path("lib/firmware/*-crust.bin")) + glob.glob(path("usr/lib/firmware/*-crust.bin"))
+    return os.path.basename(hits[0]) if hits else None
+
+
+def vendor_image():
+    return os.path.isfile(path("lib/firmware", VENDOR)) or os.path.isfile(path("usr/lib/firmware", VENDOR))
+
+
+def running(st):
+    fw = st.get("firmware", "")
+    if not fw or fw == "-":
+        return "none (the driver is not bound, or the firmware did not load)"
+    return "the vendor firmware from your dump" if fw == VENDOR else "crust (%s)" % fw
+
+
+def status():
+    st = state()
+    print("running: %s, chosen by the %s" % (running(st), st.get("firmware_from", "-")))
+    if st.get("firmware", "") == VENDOR:
+        print("this means: no standby; a power-off ends in the power-on gate (the key starts the next boot)")
+    elif st.get("firmware"):
+        try:
+            off = int(st.get("build2", "0"), 16) & BUILD2_POWER_OFF
+        except ValueError:
+            off = 0
+        print("this means: standby %s; a power-off %s" % (
+            "ready" if st.get("ready") == "1" else "not ready (ready=%s)" % st.get("ready", "-"),
+            "switches the rails off, about 0.3 W" if off else "ends in the power-on gate"))
+    want = configured()
+    print("next boot: %s" % ("the vendor firmware (%s)" % CONF if want == "vendor" else
+                             "crust (%s)" % CONF if want == "crust" else
+                             "what the device tree names (no %s)" % CONF))
+    print("this image carries: %s, %s" % ("the vendor firmware" if vendor_image() else "no vendor firmware",
+                                          crust_image() or "no crust image for this board"))
+    return 0
+
+
+def set_value(choice):
+    if choice == "vendor" and not vendor_image():
+        print("h713-arisc: this image carries no %s - a reinstall with your dump brings it" % VENDOR, file=sys.stderr)
+        return 1
+    if choice == "crust" and not crust_image():
+        print("h713-arisc: this image carries no crust image for this board - the vendor firmware is all it has",
+              file=sys.stderr)
+        return 1
+    p = path(CONF)
+    try:
+        os.makedirs(os.path.dirname(p), exist_ok=True)
+        with open(p, "w") as f:
+            f.write("# written by h713-arisc: which firmware the ARISC driver loads (h713-arisc status says what runs)\n"
+                    "options sun50i_h713_arisc firmware=%s\n" % choice)
+    except OSError as e:
+        print("h713-arisc: %s not written: %s (root?)" % (p, e.strerror), file=sys.stderr)
+        return 1
+    print("firmware = %s (from the next boot on; h713-arisc status shows what runs now)" % choice)
+    return 0
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="h713-arisc", description=__doc__.split("\n\n")[1])
+    sub = p.add_subparsers(dest="command", required=True)
+    sub.add_parser("status", help="which firmware runs, where the choice came from, what it means")
+    s = sub.add_parser("set", help="the firmware for the next boot: vendor or crust")
+    s.add_argument("choice", choices=("vendor", "crust"))
+    a = p.parse_args(argv)
+    return set_value(a.choice) if a.command == "set" else status()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

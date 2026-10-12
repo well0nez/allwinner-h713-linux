@@ -457,6 +457,10 @@ def build(args, here=None):
     # table, and the table is byte for byte the one built before.
     if test_for:
         data["test_for"] = test_for
+    # Which firmware the ARISC runs on this image, for h713-install's last lines (TODO 5.20). Without
+    # --arisc the key stays out, as before, and an older installer never sees it.
+    if getattr(args, "arisc", None):
+        data["arisc"] = args.arisc
     data.update({
         "version": 1,
         "werkzeug": "h713-mkimage " + VERSION,     # key stays (stage 4), the tool is renamed in stage 3

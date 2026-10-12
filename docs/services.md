@@ -34,6 +34,7 @@ Beyond the tools in [docs/tools/](tools/):
 | `h713-logs volatile\|persistent\|status` | the journal lives in RAM by default, so a projector left running for weeks does not chew through eMMC write cycles. `persistent` bind-mounts `/var/log` onto `/data/log` when you need logs to survive a crash. The old name `hy310-logs` is still there as a symlink |
 | `h713-fel` | put the running system into FEL from Linux ([details](tools/h713-fel.md)) |
 | `fw_printenv` / `fw_setenv` | read and change the U-Boot environment from Linux ([environment](uboot/environment.md)) |
+| `h713-arisc status\|set vendor\|crust` | which firmware the ARISC runs (crust or the vendor's from the dump), where the choice came from, and the switch for the next boot through `/etc/modprobe.d/h713-arisc.conf` ([h713-arisc](tools/h713-arisc.md)) |
 | `h713-mips-restart [FIRMWARE]` | restart the display MIPS and bring the HDMI picture back; `h713-power` runs it after a standby, by hand it also reloads a running MIPS. It stops `h713-warp` and `h713-tv@*`, unbinds and binds the receiver around the restart, starts both again and rebuilds the audio DSP; it refuses while a process holds the receiver's video node ([h713-power](tools/h713-power.md)) |
 | `h713-bt-reset` | sends HCI_Reset to the Bluetooth controller on the bare UART; `h713-bluetooth` runs it before and after `hciattach`; by hand only while that unit is stopped, because it needs the bare UART |
 

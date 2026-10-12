@@ -1211,6 +1211,15 @@ def write_package(args, disk, path, directory, tab, here=None):
             console.info("Working copy %s removed (%.0f MiB) - the device carries it now" % (work, mib(size)))
         except OSError as exc:
             console.info("Working copy %s could not be removed (%s)" % (work, exc.strerror))
+    # The ARISC firmware this image runs (its table, h713-mkimage --arisc; TODO 5.20): crust, ours, or the
+    # vendor's from the owner's dump. Either way the other is one command away on the device.
+    arisc = tab.get("arisc")
+    if arisc == "crust":
+        console.info("ARISC: crust (built with this image) - standby and the 0.3 W power-off; "
+                     "'h713-arisc set vendor' on the device goes back to your vendor firmware without a reinstall")
+    elif arisc == "vendor":
+        console.info("ARISC: the vendor firmware from your dump - no standby, a power-off ends in the power-on gate; "
+                     "this board has no measured crust configuration yet")
     console.info("")
     console.info("Done. Unplug the power and plug it in again.")
     return 0

@@ -103,6 +103,7 @@ Everything here is ours and documented; nothing needs a vendor daemon.
 | [`h713-panel`](docs/tools/h713-panel.md) | the settings page in the browser, port 8080 ([guide](docs/guides/settings-page.md)) |
 | [`h713-features`](docs/tools/h713-features.md) | which optional hardware - camera, accelerometer, focus motor - this board has |
 | `h713-remote-pair` | pairs the stock Bluetooth remote and keeps it connected ([details](docs/subsystems/wifi.md#bluetooth)) |
+| [`h713-arisc`](docs/tools/h713-arisc.md) | which firmware the power-management coprocessor runs - crust, ours, or the vendor's from your dump - and the switch between them for the next boot, no reinstall |
 | [everything else that runs](docs/services.md) | the services in the image, the journal switch, and the one security decision you should know about |
 | **On your PC** | |
 | [`h713-install`](docs/tools/h713-install.md) | dump, extract, install, verify - and the way back to stock, in one tool with subcommands |
