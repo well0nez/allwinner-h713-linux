@@ -96,7 +96,7 @@ Every one of these leaves a picture on the wall; that is the rule.
 | no signal | nothing to warp; the daemon idles and `h713-tv`'s own console handback covers the wall |
 | no `h713-tv` | nothing is claimed; the daemon retries once a second |
 | five failed renders in a row, or a lost EGL context | released back to bypass, once in the journal |
-| the source changes resolution | the six capture images are rebuilt from what V4L2 reports, not from the picture |
+| the source changes resolution | on every `SOURCE_CHANGE` the queue is stopped, the driver asked (`QUERY_DV_TIMINGS`, then `G_FMT` - a streaming queue keeps its format, so `G_FMT` alone could only repeat the old ring, which it did until 12.10.2026) and the six capture images are rebuilt; the driver also reports a ring that moved without a firmware callback since kernel 0260 (`doku/206`) |
 
 ## Limits
 

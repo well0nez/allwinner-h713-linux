@@ -198,7 +198,14 @@ The modes in [STATUS.md](../../STATUS.md) - 1080p at 60, 50 and 24 Hz, 720p50, 5
 and 4K30 - are verified on hardware, colour-correct, across arbitrarily many source switches, HDMI
 unplug/replug, and a cold start with no operator. The colour space comes from the firmware's record for the
 mode: BT.709 for HD, BT.601 (`SMPTE170M`) for 576p and 480p, and the range is what the source declared.
-1280×1024 is pillarboxed by the `aspect` property described in [display.md](display.md). A source geometry
+1280×1024 is pillarboxed by the `aspect` property described in [display.md](display.md). On a panel smaller
+than the source the firmware scales inside its capture path, and the ring the format describes is what its
+capture scaler writes, INCAP `+0x86c` × `+0x870` with the rowbyte as the pitch (kernel 0260, `doku/206`;
+measured against the slots' fill height: 1280×1024 → 900×720 of 912 bytes a line, 1360×768 → 1274×720,
+1366×768 → 1280×718 - the scaler keeps the aspect and is bounded by both panel sides). Until 12.10.2026 the
+height was derived from the aspect ratio (912×728, taller than the panel, the console for two PC modes). INCAP
+follows a mode change only when the firmware rebuilds its capture chain, with no callback; the driver looks at
+it ten times a second and reports a change as `SOURCE_CHANGE`. A source geometry
 the firmware itself does not lock onto is its own answer since the mode table is read (`-ERANGE`, above),
 not the same one as no signal at all.
 

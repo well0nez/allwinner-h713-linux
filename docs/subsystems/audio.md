@@ -115,5 +115,11 @@ separated.
 Not measured: the device-sound PCM and the volume after such a rebuild, a sleep with `rebuild_after_sleep=1`,
 the duration of the rebuild.
 
+The second and third attempts had one cause (`doku/206`, 12.10.2026): the wake-up call at a block boundary of
+the patch download - one read of `0x00EE` - ran into the mailbox's 50 ms now and then, the DSP being busy with
+the block it was just given, and that single timeout aborted the whole download. Since `0262` the call asks
+again up to its own 500 ms; the next request was answered at once every time. 30 wakes, 30 at the first
+attempt, five late calls absorbed on the way.
+
 Details: doku/100-plan-hdmi-audio.md, doku/101-plan-audio-treiber.md, doku/102-plan-audio-mischung.md,
 doku/00-STATUS.md; for the standby doku/172 - doku/174 and doku/nachtlog/S21-re-audif-zugang.md.

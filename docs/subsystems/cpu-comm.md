@@ -91,6 +91,12 @@ whatever an earlier Linux left held by the ARM. Measured: 22 warm starts clean o
 (`doku/203`). As a net for whatever else could leave h713-tv without its device, `h713-tv-rescue.service`
 reloads the MIPS once per boot when h713-tv gives up.
 
+The thread word is not the bare tgid since `0261` (12.10.2026): both sides read a low byte of 0xff as "free",
+and the process that registers first after a warm start - h713-tv - gets pid 255 in about one boot of twenty.
+That lock then read "free" to its own unlock, stayed held by the ARM for ever, and the wall was dark until the
+net reloaded the MIPS (one warm start in twenty, traced step by step in `doku/206`). The word is now
+`tgid << 8 | 1`; 50 warm starts without the net since.
+
 ## Callbacks
 
 The MIPS calls back into the ARM for events such as a signal change; a registered handler receives
