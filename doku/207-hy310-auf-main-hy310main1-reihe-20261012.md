@@ -59,9 +59,9 @@ gepusht** - alles seit 234282c ist ungepusht, Reihenfolge beim Push in `TODO.md`
   `updates/`, `h713_gate=0`), heute Abend nicht erreichbar (aus).
 
 **Paket `arbeit/hy310-main-20261012/`:** `BERICHT.md`, `install.sh`, `skripte/`, `laeufe/`, `fotos/`, Sicherung
-`sicherung-hy310main1/`. Worktree `repo/` auf `versuch/hy310-main` = `main` db558e3 **ohne eigene Commits**, aber mit 5,2 GB
-(Abbild 1,2 GB, Bauverzeichnis 4 GB inkl. Kernelbaum 6531a386 - brauchbar für Schnell-Deploys bis 1.1a). Entscheidung Marco:
-jetzt löschen oder nach 1.1a; der Worktree geht dann mit `git worktree remove`.
+`sicherung-hy310main1/`. Worktree `repo/` (`versuch/hy310-main`, 0 eigene Commits, 6,9 GB mit Abbild und Bau) **gelöscht 12.10. ~20:15 (Marco)**,
+Zweig weg; Baustempel, sha256 und Tabelle des Abbilds in `abbild-stempel/`. Dazu 2.16, 2.22, 2.26, 2.49 abgehakt (Marco), 2.34
+bleibt offen ohne Prio.
 
 **Was die Reihe gezeigt hat** (§1): 2.36 und 2.62 zu; 2.22 nicht reproduziert; 2.26 kein Desired-Stall am HY310; Bluetooth 11/11
 mit 0256; Panel des HY310 59,42 Hz. **Offen aus der Reihe:** 2.42 (Ohr, Stock-Vergleich = `restore-stock`), 2.28 (CEC-Quelle +

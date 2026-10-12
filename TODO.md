@@ -133,16 +133,18 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Langlauf-Teil ist erledigt; offen: automatische Korrektur ohne `/etc/h713/keystone-ref` gegen Ideal-Pose
       - **12.10. (Marco): gestrichen** - die Automatik gegen die Ideal-Pose ist seit 26.09. so gebaut wie Stock gegen `GsInitXYZ`
         (`docs/tools/h713-keystone.md`); eine eigene Messreihe dafür ist "zum jetzigen Zeitpunkt und auch generell unnötig"
-- [ ] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
+- [x] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
       100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
       - 12.10. abends (HY310, `main` db558e3, `arbeit/hy310-main-20261012/`): 2 von 1927, 0 von 11230 nach 12 min, 3 von 238 direkt
         nach einem Warp-Start - normal, nur beobachten
-- [ ] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
+      - **12.10. abends erledigt (Marco):** beobachtet, normal - zu
+- [x] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
       Plattenzugriff (ls /boot, dmesg ueber Shell, Konsolen-Login), ssh/uptime antworten - Kernel 0184 frisch gebootet,
       Ursache offen, nach Stromzyklus alles normal, keine mmc-Fehler im Log. Beobachten. *Überholt (11.10.):* "Journal ist persistent" - stimmt nicht, `10-h713.conf` hat `Storage=volatile`, siehe 1.2a
       - **12.10. abends** (HY310 auf `main` db558e3): 5 Warmstarts, je bei 151 s fünf Plattenzugriffe mit Zeitlimit (ls /boot, dmesg,
         Datei lesen, schreiben+sync, journalctl) - 5/5 sofort, 0 mmc-Fehlerzeilen (`arbeit/hy310-main-20261012/laeufe/warmstart-reihe.txt`)
-- [ ] 2.26 **HDCP 1.4 nach einem Moduswechsel der Quelle** (`doku/170` §3): fordert der ThinkPad (i915) sofort beim Modeset an,
+      - **12.10. abends erledigt (Marco):** nicht reproduziert; wieder öffnen, wenn ein Hänger auftritt
+- [x] 2.26 **HDCP 1.4 nach einem Moduswechsel der Quelle** (`doku/170` §3): fordert der ThinkPad (i915) sofort beim Modeset an,
       bleibt er auf `Desired`; 2 s später angefordert steht `Enabled` nach 5 s. Mit der Hersteller-ARISC-Firmware und dem
       Fire-TV-Stick vergleichen (Auflösungswechsel), erst dann entscheiden, ob der Empfänger früher bereit sein muss
       - 10.10. (G-EU, crust, `doku/184`): auch nach Neustart und Standby der Box fragt i915 nicht von selbst neu an (`Desired`),
@@ -150,6 +152,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10. abends gemessen (HY310, `main` db558e3, ThinkPad i915, `hdcp-verzoegerung.sh`):** Moduswechsel 1080p50 -> 1080p60, Anforderung
         nach d s: d=0 **Enabled nach 3,06 s**, d=0,5 bis 3 nach 1,14-1,21 s. "Bleibt auf Desired" tritt am HY310 nicht auf; der Vergleich
         mit der Hersteller-ARISC-Firmware braucht 5.20
+      - **12.10. abends erledigt (Marco):** am HY310 kein Stall; am G-EU war es das Verhalten der Quelle (i915 fragt nicht von selbst neu an), kein Fehler bei uns
 - [ ] 2.28 **Physische Adresse im HDMI-VSDB** (war 2.26 auf `versuch/crust-release`, Commit 9d95b89): crust schreibt für Port 0/1/2 1.0.0.0 / 2.0.0.0 / 3.0.0.0, der Blob 0.0.0.0 /
       2.0.0.0 / 0.2.0.0 (gemessen 07.10., `doku/163`). Von Belang nur für CEC und AV-Receiver in einer Kette. Offen: die
       Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen
@@ -260,7 +263,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Warnung). Braucht Marco vor Ort (IR)
       - 12.10.: IR weckt aus dem Aus über crust (Marco, `doku/204`). **Offen, Marcos eigentliche Frage:** IR nach einem Kaltstart,
         wenn das Gate (`h713_gate=1`) auf die Taste wartet - der G-EU steht derzeit auf Gate 0, HY310 auf 1
-- [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
+- [x] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
       H4-Datenstrom auf der UART (1,5 MBd, Flusssteuerung) kommt zerstückelt an. Dazu passt 1.4 (G-EU: 245-Byte-Schreibvorgänge
@@ -276,6 +279,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Unit). Offen: mehr Starts zählen, Last-Test; der Patch liegt auf `versuch/kernel-abend` (`arbeit/kernel-abend-20261011/`)
       - **12.10. abends (HY310, `main` db558e3 mit 0256):** 5 Warmstarts + 6 Standbys, Bluetooth 11/11 beim 1. Versuch, 0 HCI-Fehlerzeilen.
         Offen nur noch der Last-Test (Warp + WLAN + Mikro)
+      - **12.10. abends erledigt (Marco):** 0256 in `main` und im HY310-Abbild, 11/11 sauber; der Last-Test steht bei 9.12
 - [ ] 2.51 **Mikrofon der Fernbedienung hörbar machen** (11.10., `doku/193` §3): per Bluetooth kommt beim Halten ein Tonstrom
       (60-Byte-HID-Berichte, ~63/s, ~3,8 kB/s), Format unbekannt - kein IMA-ADPCM, kein fester Kopf, komprimiert. Codec aus der
       Sprach-App/dem Audio-HAL der Stock-Firmware bestimmen, dann `CONFIG_HIDRAW` und ein Dekoder in Userspace. Nicht dringend
@@ -568,6 +572,7 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       Messung: 10 warme Reboots mit der alten Unit (Drop-in, btmon ab Boot), dann 10 mit `hciattach -s 1500000`.
       Dazu 9.2: der Kernel verliert seinen Close-Reset beim tty-Detach (`hci_ldisc.c`, upstream-würdig).
       **Früher wieder aufmachen,** sobald trotz Helfer `not UP` oder `no answer` im Journal von h713-bluetooth steht
+      - 12.10. dazu aus 2.49: **Last-Test** der HCI-UART mit 0256 (Warp + WLAN + Mikrofon der Fernbedienung gleichzeitig), HCI-Fehlerzeilen zählen
 - [ ] 9.13 Webpanel-Konzept (aus 5.10): Ecke/Kante, Seitenverhältnis, Undo/Redo, Vorschau = Warp (`61` Z. 555ff) - Marco 06.10.:
       erst einmal geschoben
 - [ ] 9.14 Automatischer Standby, wenn lange kein Signal kommt (aus 2.29; Marco 09.10.: Userspace, erst viel später)
