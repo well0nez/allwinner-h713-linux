@@ -23,6 +23,12 @@ ExecStop=/usr/local/sbin/h713-wifi down
 # "running (3min 58s / no limit)"). The script's own waits are bounded; this
 # bounds the ones below it. A box without Wi-Fi must still finish booting.
 TimeoutStartSec=60
+# And the stop after a failed start: a modprobe the script's "timeout 30" gave up on
+# stays in this unit's cgroup, and systemd waited the default 90 s for it before the
+# boot went on - network.target, ssh and the login came 120 s late (measured
+# 12.10.2026 with a simulated hang, arbeit/remote-reihe-20261012 H). One stuck in the
+# kernel does not die on SIGKILL either; waiting longer does not help it.
+TimeoutStopSec=10
 
 [Install]
 WantedBy=multi-user.target
