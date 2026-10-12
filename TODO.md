@@ -155,11 +155,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         bricht ab, ein zweiter Druck führt die Auswahl sofort aus, 3 s halten = aus ohne Einblendung; nach 15 s gilt die Vorgabe
         `default = poweroff|standby` in `power.conf` (ersetzt `short`, Vorgabe poweroff). Standby nur, wo er gerade geht (crust
         bereit); ohne Signal sofort wie heute. h713-power kommt auf jedes Abbild. Erst 2-3 Mockups (`osd-mockup`), Text vorerst nicht
-- [ ] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
+- [x] 2.40 **"TF-A: R_WDOG found armed" nach jedem Aus über crust** ist eine Warnung für den vorgesehenen Rückweg (crust setzt
       über den R_WDOG zurück, BL31 entschärft ihn). Im Kernel (`arisc_tfa_report`) als Info melden, wenn der Record des vorigen
       Laufs Phase `poweroff` hat; sonst bleibt es eine Warnung
       - 11.10. abends: Kernel-Patch `0257` gebaut und am G-EU installiert (`versuch/kernel-abend`); noch nicht gemessen - braucht ein
         Aus über crust und den Start danach
+      - **12.10. gemessen** (`doku/204`): nach Aus über crust beide Zeilen als Info - erledigt
 - [ ] 2.37 **msp-Neuaufbau nach dem Standby brauchte am G-EU einmal 3 Versuche** (Standby s2, `doku/184`; am HY310 5/5 in
       höchstens 2). Drei ist die Grenze von `h713-mips-restart` - beobachten; gehört zu 5.14
       - **10.10. Cloud-RE B (`doku/187`, aus Listings):** der Stock-Kernel baut den DSP nach dem Standby **nicht** neu auf
@@ -180,11 +181,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 11.10.: vorbereitet - Zeichnen (`libh713osd`) und Ausgabe (`h713-osd` + Kanal in `h713-tv`) sind getrennt, die Matrix eine
         Bibliothek (`libh713geom`); `docs/architecture.md` "The display stack". Der Desktop selbst steht aus
 
-- [ ] 2.60 **CONFIG_UCLAMP_TASK statt chrt** (11.10. abends, `doku/201`): der Kernel-Weg gegen den RT-Takt-Boost ist
+- [x] 2.60 **CONFIG_UCLAMP_TASK statt chrt** (11.10. abends, `doku/201`): der Kernel-Weg gegen den RT-Takt-Boost ist
       `CONFIG_UCLAMP_TASK` + `kernel.sched_util_clamp_min_rt_default` (dann bleiben die Panfrost-IRQ-Threads FIFO und schedutil
       ignoriert sie trotzdem). Kernelconfig im Patchspiegel, Bau, Messung wie `h713-cpufreq` (m30/m31), dann das chrt im Skript weg
       - 11.10. abends: Kernel mit `CONFIG_UCLAMP_TASK` gebaut, `h713-cpufreq` schreibt `sched_util_clamp_min_rt_default = 0`
         ("was 1024"), am G-EU aktiv. Die Messreihe wie m30/m31 steht aus; nicht in `main` bis 2.63 geklärt ist
+      - **12.10. erledigt** (`doku/204`): in `main` (a27f245); gemessen mit Warp an, auch mit bewegtem Bild: 86-87 % bei 480 MHz,
+        ~3 Wechsel/s (Zwangsboost 35/s, alte chrt-Lösung 4-6/s), unter Last sofort 100 % bei 1296 MHz, 59,7 fps
 - [ ] 2.62 **HY310 mit 0255 und dem Warp aus `doku/201` nachmessen** (11.10., Handoff `doku/201` §7; HY310 offline, Marco: nach
       hinten): `anzeige.py`, `ctl trace 30 gpu`, `messe-warp.py`; dazu die Panel-Hz des HY310 (nie gemessen) und 2.49 dort
 - [x] 2.63 **HY300PRO-G-EU: nach einem Warmstart stirbt der MIPS beim Anmelden der Routinen - wieder** (11.10. ~23:50, Kernel
@@ -213,6 +216,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       IR, Selbstwecken), am G-EU "Taste oder Fernbedienung weckt" (`doku/188`). Mit dem Kernel aus `main` 234282c am G-EU nachmessen,
       je einmal: Standby -> IR-Power; Aus über crust -> IR-Power; dabei 2.40 (`0257`) im Log des Starts danach ansehen (Info statt
       Warnung). Braucht Marco vor Ort (IR)
+      - 12.10.: IR weckt aus dem Aus über crust (Marco, `doku/204`). **Offen, Marcos eigentliche Frage:** IR nach einem Kaltstart,
+        wenn das Gate (`h713_gate=1`) auf die Taste wartet - der G-EU steht derzeit auf Gate 0, HY310 auf 1
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
