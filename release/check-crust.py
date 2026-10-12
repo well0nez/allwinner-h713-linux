@@ -42,8 +42,9 @@ WDT_LAYOUT = b"allwinner,sun55i-a523-wdt"                # the SoC watchdog boun
 SUSPEND_MARKS = (b"PSCI: system suspend refused (", b"not usable by the ARISC", b"PSCI: msgbox port 3 keeps the request",
                  b"PSCI: system suspend, cpu op req sent", b"PSCI: msgbox port 3 stays full",
                  b"PSCI: system counter restored", b"PSCI: back from system suspend")
-# systemd's system.conf and sleep.conf (effective()): the first main file of these directories, then every drop-in by name, a name in an earlier
-# directory hiding the same name in a later one; the last setting wins (systemd-system.conf(5)). /run is a tmpfs
+# systemd's system.conf and sleep.conf (effective()): the first main file of these directories, then every drop-in
+# by name, a name in an earlier directory hiding the same name in a later one; the last setting wins
+# (systemd-system.conf(5)). /run is a tmpfs
 # at boot, a file there in the tar is never read. RebootWatchdogSec's built-in 10min needs no file and never arms:
 # sunxi_wdt stops at 16 s, and systemd-shutdown logs "Failed to set watchdog hardware timeout to 10min: Invalid
 # argument" (seen on the HY310, 07.10.2026). If W1/W2 change that maximum, this has to count the default.
