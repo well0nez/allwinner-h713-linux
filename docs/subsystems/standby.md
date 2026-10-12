@@ -105,6 +105,15 @@ put it into the PPU power-off of TVCAP under the running HDMI capture (five of f
 first (r2test3) it did not happen in 50 sleeps, against 5 in 111 before - a strong hint, not a proof
 (`doku/173`).
 
+**Waking up can hang on the capture's registers (fixed, `0258`).** From kernel patch `0255` the display driver
+takes the slot to show from the capture's own write index, read in the vsync interrupt. On the way back that
+interrupt runs long before userspace restarts the parked MIPS, and the capture block is unclocked then: the read
+hung the bus, the console stopped after `standby: display clocks restored`, and the SoC watchdog reset the board
+16.4 s into crust's phase "resuming" - three times of three on the HY300PRO-G-EU (12.10.2026). Since `0258` a
+standby to RAM forbids those reads until the capture driver binds again on the running MIPS; until then the
+driver takes the firmware's flip pointers, as before `0255`. Afterwards 59.70 of 60 frames are shown again
+(`doku/203`).
+
 A standby that does not come back looks like this: **dark, red LED, no network, the key does nothing.**
 The LED follows PB5, so it is red whether the board sleeps, hangs or sits in the gate; it says nothing
 about which.

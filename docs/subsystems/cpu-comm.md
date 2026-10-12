@@ -76,6 +76,21 @@ that address has to be one the MIPS can already see.
 The character devices (`/dev/cpu_comm`) that predate this API keep working unchanged and share the
 same call mutex, so a kernel caller and an ioctl caller cannot race each other on the wire.
 
+### The software spinlocks
+
+Twelve 12-byte entries at the start of the shared region are one protocol on both processors - the vendor's
+`tridspinlock.c`, compiled into the ARM driver and into `display.bin`: byte 0 says who is between
+`enterCritical()` and `leaveCritical()`, byte 1 who holds the lock, bytes 4..7 the count, 8..11 the thread
+(255 while free). Software lock N is guarded by hardware lock N + 2 (register id N + 10). Until `0259`
+(12.10.2026) the port wrote byte 3 for "in the critical section", did not wait for the other side there and never
+wrote byte 1, so a lock the ARM held looked free to the MIPS. On a warm start, while the freshly started MIPS
+copied its routine table under lock 2 and Linux registered its routines, both sides changed the entry at once;
+lock 2 stayed taken for ever, every open of the HDMI receiver was refused and the wall stayed dark (about two
+warm starts in eleven). `0259` follows the vendor's sequence and, on a load that adopts the live region, releases
+whatever an earlier Linux left held by the ARM. Measured: 22 warm starts clean on the HY300PRO-G-EU
+(`doku/203`). As a net for whatever else could leave h713-tv without its device, `h713-tv-rescue.service`
+reloads the MIPS once per boot when h713-tv gives up.
+
 ## Callbacks
 
 The MIPS calls back into the ARM for events such as a signal change; a registered handler receives

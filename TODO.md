@@ -187,7 +187,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         ("was 1024"), am G-EU aktiv. Die Messreihe wie m30/m31 steht aus; nicht in `main` bis 2.63 geklärt ist
 - [ ] 2.62 **HY310 mit 0255 und dem Warp aus `doku/201` nachmessen** (11.10., Handoff `doku/201` §7; HY310 offline, Marco: nach
       hinten): `anzeige.py`, `ctl trace 30 gpu`, `messe-warp.py`; dazu die Panel-Hz des HY310 (nie gemessen) und 2.49 dort
-- [ ] 2.63 **HY300PRO-G-EU: nach einem Warmstart stirbt der MIPS beim Anmelden der Routinen - wieder** (11.10. ~23:50, Kernel
+- [x] 2.63 **HY300PRO-G-EU: nach einem Warmstart stirbt der MIPS beim Anmelden der Routinen - wieder** (11.10. ~23:50, Kernel
       `versuch/kernel-abend`): Linux übernimmt beim Warmstart den laufenden MIPS ("adopting the live shared region"), meldet seine
       Routinen an, der MIPS kopiert dafür seine Routinentabelle unter Sperre 2 neu und stirbt dabei (wie `doku/72`). Sperre 2 bleibt
       `refcnt=1 thread=0xff` stehen, `SpinUnLock(2): no thread_id, skipping`, jedes Öffnen von video0 endet in "the callbacks cannot
@@ -199,11 +199,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         (IDA-Datenbanken `display.bin`, `mcu_comm_dev.ko`, `doku/72`, `re/notes/`), Journalauszügen und Lieferform liegt lokal in
         `arbeit/mips-sperre-20261012/AUFTRAG.md`. Frage: wie nimmt der MIPS Sperre 2 (`spinLock(2,quick)`), und warum schließen sich
         sein Weg und unser Nachbau (`cpu_comm_hw.c`) beim Warmstart nicht aus. Bis dahin das Sicherheitsnetz (h713-tv-rescue)
-- [ ] 2.64 **HY300PRO-G-EU: Standby kam nicht zurück** (11.10. 21:24, Auswahl Standby in der Ausschalt-Einblendung): 15,5 s
+      - **12.10. behoben** (`doku/203`): Kernel `0259` - die Sperren wie Firmware und Herstellertreiber (Byte 0 kritisch, Byte 1
+        Besitzer), dazu Freigabe von Sperren, die ein früherer ARM-Lauf hinterließ. 12/12 Warmstarts sauber mit dem Serienkernel.
+- [x] 2.64 **HY300PRO-G-EU: Standby kam nicht zurück** (11.10. 21:24, Auswahl Standby in der Ausschalt-Einblendung): 15,5 s
       geschlafen, "back from system suspend", sofort danach Reset ins dunkle Gate ("a standby did not finish", crust Phase
       resuming, ohne Ursache). Linux schreibt beim Aufwachen nichts auf die UART, das Journal war flüchtig - keine Spur. Der folgende
       Warmstart blieb dunkel, ohne Sperr-Meldungen (anders als 2.63). Seit 23:3x ist das Journal am G-EU dauerhaft (`h713-logs
       persistent`, zurück: `h713-logs volatile`); nächster Versuch mit `echo N > /sys/module/printk/parameters/console_suspend`
+      - **12.10. behoben** (`doku/203`): afbd `0258` - nach einem Standby kein Lesen von `INCAP +0xa0c` (0255), bis der
+        HDMI-Empfänger neu gebunden ist; vorher Bus-Hänger, Watchdog nach 16,4 s, 3/3. Danach 15/15 Standbys zurück (Warp an, 60 s,
+        fünf hintereinander, `ctl off`), 59,6-59,8 fps. Offen: Wecken per Taste/IR (Marco)
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
