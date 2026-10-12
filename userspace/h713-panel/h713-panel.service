@@ -25,11 +25,25 @@ Restart=on-failure
 RestartSec=5s
 
 # It runs h713-keystone reference, h713-focus and the ctl clients, and it
-# writes after_move into /etc/h713/keystone.conf, so /etc/h713 is the one path
-# that stays writable. It opens no device node of its own.
+# writes the settings pages' files (keystone.conf, keys.conf, osd.conf, tv.conf,
+# wifi.env and its fall-back copy, power.conf through h713-power, panel.env), so
+# /etc/h713 is writable. It opens no device node of its own.
+# The rest is the narrowest set the other verbs need; each line says whose write it is:
+#  /etc/hosts      the host name page rewrites the 127.0.1.1 line in place. The file
+#                  alone, not /etc: a rename needs the directory, an in-place write
+#                  does not. /etc/hostname is NOT here: `hostnamectl set-hostname`
+#                  asks systemd-hostnamed, which writes it outside this unit.
+#  the other three h713-logs (volatile|persistent): it writes the journald drop-in
+#                  and var-log.mount, `systemctl enable` links the mount into
+#                  /etc/systemd/system, and /data/log is the persistent journal.
+#                  "-" lets the unit start where one is missing; h713-logs then
+#                  fails by itself, with a message, instead of this unit not starting.
+# The Wi-Fi fall-back (systemd-run, a timer that restores wifi.env) runs in the
+# manager, not in this sandbox, so it needs no path of its own.
 NoNewPrivileges=yes
 ProtectSystem=strict
-ReadWritePaths=/etc/h713
+ReadWritePaths=/etc/h713 /etc/hosts
+ReadWritePaths=-/etc/systemd/journald.conf.d -/etc/systemd/system -/data
 ProtectHome=yes
 PrivateTmp=yes
 RestrictSUIDSGID=yes
