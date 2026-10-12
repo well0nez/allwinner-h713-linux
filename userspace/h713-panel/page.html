@@ -545,7 +545,13 @@ function act(verb, args) {
   BUSY = true; say("... " + verb, "");
   return api(verb, args).then(function (a) {
     BUSY = false; say(a.line, a.ok ? "ok" : "bad");
-    return refresh().then(function () { if (verb === "preset") { return syncSliders(); } });
+    return refresh().then(function () { if (verb === "preset") { return syncSliders(); } return a; });
+  });
+}
+/* One of the four Off..High rows: the pressed level shows at once when h713-tv took it. */
+function quality(name, level) {
+  act("picture_set", [name, level]).then(function (a) {
+    if (a && a.ok) { [0, 1, 2, 3].forEach(function (i) { press("q-" + name + "-" + i, i === level); }); }
   });
 }
 /* What cannot be taken back asks first. */
@@ -903,7 +909,7 @@ function build() {     /* the page draws itself from the tool's own lists */
           return '<div class="qrow"><span class="qname">' + esc(t.name) + '</span><div class="row">' +
             [0, 1, 2, 3].map(function (i) {
               return '<button class="mini" id="q-' + t.name + '-' + i +
-                '" onclick="act(\'picture_set\', [\'' + t.name + "', " + i + '])">' +
+                '" onclick="quality(\'' + t.name + "', " + i + ')">' +
                 ["off", "low", "middle", "high"][i] + "</button>";
             }).join("") + "</div></div>";
         }).join("")

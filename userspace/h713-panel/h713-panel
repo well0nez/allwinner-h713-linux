@@ -63,6 +63,10 @@ PRESETS = ("standard", "cinema", "vivid", "game", "computer", "hdr",
 ASPECTS = ("auto", "proportional", "full", "16:9", "4:3")   # not "zoom": it stops the picture (kernel 0185)
 PICTURE_CONTROLS = ("brightness", "contrast", "saturation", "hue", "sharpness")
 QUALITY_CONTROLS = ("tnr", "snr", "dci", "black")    # 0..3: Off Low Middle High (h713-tv.md)
+# `ctl set` takes these short names, `ctl list` prints the long ones (HY310, 12.10.2026): the value and the range
+# are looked up under the long name, or the page shows every one as Off whatever it is.
+QUALITY_LISTED = {"tnr": "temporal_noise_reduction", "snr": "spatial_noise_reduction",
+                  "dci": "dynamic_contrast", "black": "black_extension"}
 AFTER_MOVE = ("off", "keystone", "keystone+focus")
 # The optional hardware (boards/README.md, FEATURES) as `h713-features status`
 # names it, and what each after-move choice needs of it.  The page hides the
@@ -497,7 +501,7 @@ class Panel(object):
         return {"ok": True, "line": "ok controls", "steps": NUDGE_STEPS,
                 "controls": [dict(blank, name=n, **ranges.get(n, {}))
                              for n in PICTURE_CONTROLS],
-                "quality": [dict(dict(blank, max=3), name=n, **ranges.get(n, {}))
+                "quality": [dict(dict(blank, max=3), name=n, **ranges.get(QUALITY_LISTED[n], {}))
                             for n in QUALITY_CONTROLS],
                 "conf": dict((n, dict((k, c.spec) for k, c in checks.items()))
                              for n, (_, checks) in CONF.items()),
@@ -510,7 +514,7 @@ class Panel(object):
         if len(args) != 2:
             raise Refused("error a control and a value were expected")
         name = _choice(*PICTURE_CONTROLS, *QUALITY_CONTROLS)(args[0])
-        span = self.control_ranges().get(name) or {}
+        span = self.control_ranges().get(QUALITY_LISTED.get(name, name)) or {}
         value = _number(span.get("min", 0),
                         span.get("max", 3 if name in QUALITY_CONTROLS else 100))(args[1])
         ok, line, _ = self.run(TV, ("ctl", "set", name, value), T)

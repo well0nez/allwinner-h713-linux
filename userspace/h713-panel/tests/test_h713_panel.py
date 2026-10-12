@@ -728,6 +728,13 @@ class NewVerbTest(Bench):
         self.assertEqual(os.listdir(self.etc), [])
         self.assertFalse(os.path.exists(self.hosts))
 
+    def test_a_quality_control_takes_its_range_from_the_long_name_of_ctl_list(self):
+        self.fake.tool("h713-tv", {"ctl list": TV_LIST + "\n  spatial_noise_reduction    0 (Off)  menu 0..2"})
+        self.panel.ranges = {}
+        self.assertFalse(self.call("picture_set", ["snr", 3])["ok"])    # 0..2 on this firmware, not the fallback 3
+        self.assertTrue(self.call("picture_set", ["snr", 2])["ok"])
+        self.assertEqual(self.fake.calls()[-1], "h713-tv ctl set snr 2")
+
     def test_the_quality_controls_go_through_ctl_set_in_their_range(self):
         for name, value in (("tnr", 3), ("black", 0)):
             self.fake.forget()
@@ -739,11 +746,14 @@ class NewVerbTest(Bench):
         self.assertFalse([c for c in self.fake.calls() if " set " in c])
 
     def test_controls_carry_the_quality_controls_and_the_forms(self):
-        self.fake.tool("h713-tv", {"ctl list": TV_LIST + "\n  tnr                        2  (0..3)\n  black                      1  menu 0..3"})
+        # `ctl list` as the HY310 prints it (12.10.2026): the long names; the page and ctl set use the short ones
+        self.fake.tool("h713-tv", {"ctl list": TV_LIST + "\n  temporal_noise_reduction   2 (Middle)  menu 0..3"
+                                   "\n  black_extension            1 (Low)  menu 0..3"})
         answer = self.call("controls")
         found = dict((c["name"], c) for c in answer["quality"])
         self.assertEqual(sorted(found), ["black", "dci", "snr", "tnr"])
         self.assertEqual((found["tnr"]["value"], found["tnr"]["max"]), (2, 3))
+        self.assertEqual(found["black"]["value"], 1)
         self.assertEqual(found["dci"]["max"], 3)                      # not listed: the fallback
         self.assertEqual(list(answer["conf"]["keys"]["volume_step"]), ["number", 1, 20, 1])
         self.assertEqual(json.loads(json.dumps(answer["conf"]["osd"]["place"])), ["choice", ["bottom", "top-right", "center"]])
