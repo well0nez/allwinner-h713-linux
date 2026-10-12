@@ -94,6 +94,8 @@
  */
 #include <ctype.h>
 #include <errno.h>
+#include <sys/sysmacros.h>
+#include <dirent.h>
 #include <fcntl.h>
 #include <poll.h>
 #include <signal.h>
@@ -1274,6 +1276,7 @@ static bool display_show(struct display *d)
  * standing on the wall would be the one lie this program must not tell.
  */
 static void console_restore(void);
+static void console_login_clean(void);
 
 static bool display_hide(struct display *d)
 {
@@ -1895,6 +1898,105 @@ static void console_restore(void)
 			complained = true;
 		}
 		close(fd);
+	}
+
+	console_login_clean();
+}
+
+/*
+ * The remote is a keyboard to the kernel as well (sunxi-ir and the BLE remote
+ * both hang on the "kbd" handler): arrows and F4..F6 pressed while the HDMI
+ * picture is up land as escape sequences in the hidden login prompt on tty1
+ * and show the moment the console is back, "hy310 login: ^[[A^[[D" (TODO
+ * 2.55, shown 12.10.2026 by injecting KEY_UP and KEY_LEFT). So whenever the
+ * console comes back and tty1 still shows the login prompt with something
+ * typed behind it, its getty is told to start over -- SIGTERM, getty@tty1
+ * restarts on its own -- and the prompt is clean. A tty1 where somebody is
+ * logged in (no prompt), or whose prompt is clean, is left alone. The remote
+ * stays a keyboard: it will drive a desktop one day, and keeping it off the
+ * VT is that desktop's business.
+ */
+static void console_login_clean(void)
+{
+	static char screen[256 * 256];
+	unsigned char hdr[4];
+	const char *row, *p;
+	unsigned int rows, cols, y;
+	ssize_t n;
+	int fd, dirty = -1;
+
+	fd = open("/dev/vcsa1", O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return;
+	n = read(fd, hdr, sizeof(hdr));
+	close(fd);
+	if (n != sizeof(hdr))
+		return;
+	rows = hdr[0];
+	cols = hdr[1];
+	if (!rows || !cols || rows * cols > sizeof(screen))
+		return;
+	fd = open("/dev/vcs1", O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return;
+	n = read(fd, screen, rows * cols);
+	close(fd);
+	if (n != (ssize_t)(rows * cols))
+		return;
+
+	/* the last prompt on the screen, and whether anything stands behind it */
+	for (y = 0; y < rows; y++) {
+		row = screen + y * cols;
+		p = memmem(row, cols, "login:", 6);
+		if (!p)
+			continue;
+		dirty = 0;
+		for (p += 6; p < row + cols; p++)
+			if (*p != ' ' && *p != '\0')
+				dirty = 1;
+	}
+	if (dirty != 1)
+		return;
+
+	/* the getty on tty1 (major 4, minor 1), by its controlling terminal */
+	{
+		DIR *proc = opendir("/proc");
+		struct dirent *de;
+		char path[64], stat_line[512], comm[32];
+		int tty_nr;
+
+		if (!proc)
+			return;
+		while ((de = readdir(proc))) {
+			FILE *f;
+			char *paren;
+
+			if (de->d_name[0] < '1' || de->d_name[0] > '9')
+				continue;
+			snprintf(path, sizeof(path), "/proc/%s/stat", de->d_name);
+			f = fopen(path, "r");
+			if (!f)
+				continue;
+			stat_line[0] = '\0';
+			if (!fgets(stat_line, sizeof(stat_line), f)) {
+				fclose(f);
+				continue;
+			}
+			fclose(f);
+			/* "pid (comm) state ppid pgrp session tty_nr ..." -- comm may hold spaces */
+			paren = strrchr(stat_line, ')');
+			if (!paren || sscanf(paren + 1, " %*c %*d %*d %*d %d", &tty_nr) != 1)
+				continue;
+			if (tty_nr != (int)makedev(4, 1))
+				continue;
+			sscanf(stat_line, "%*d (%31[^)])", comm);
+			if (strcmp(comm, "agetty"))
+				continue;
+			if (!kill((pid_t)atoi(de->d_name), SIGTERM))
+				info("console         the login prompt on tty1 carried keystrokes from the remote -- getty restarted");
+			break;
+		}
+		closedir(proc);
 	}
 }
 
