@@ -38,6 +38,7 @@ void control_lock(struct control *c, const char *path)
 
 	c->lfd = -1;
 	c->lock_fd = -1;
+	c->cfd = -1;
 	c->path = path;
 	if (strlen(path) >= sizeof(((struct sockaddr_un *)0)->sun_path))
 		fail("%s: socket path longer than %zu characters", path,
@@ -83,6 +84,9 @@ void control_listen(struct control *c)
 
 void control_close(struct control *c)
 {
+	if (c->cfd >= 0)
+		close(c->cfd);
+	c->cfd = -1;
 	if (c->lock_fd >= 0)
 		close(c->lock_fd);
 	c->lock_fd = -1;
@@ -91,6 +95,22 @@ void control_close(struct control *c)
 	close(c->lfd);
 	unlink(c->path);
 	c->lfd = -1;
+}
+
+/* A whole decimal number in lo..hi, as cmd_keystone takes one: "50abc", "4x" and
+ * "" are not numbers (atoi took their leading digits, Prüfstand 05.10. 2.8). */
+static bool number(const char *s, long lo, long hi, int *out)
+{
+	char *end;
+	long x;
+
+	errno = 0;
+	x = strtol(s, &end, 10);
+	if (end == s || *end || errno || x < lo || x > hi)
+		return false;
+	*out = (int)x;
+
+	return true;
 }
 
 static void save(struct runtime *r, struct textbuf *t)
@@ -297,14 +317,20 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 		else
 			text_add(t, "error dump: %s\n", why);
 	} else if (!strcmp(cmd, "trace")) {
-		r->check.trace = a1 ? atoi(a1) : 300;
-		r->check.trace_gpu = a2 && !strcmp(a2, "gpu");
-		text_add(t, "ok trace %d dequeues to the journal%s\n", r->check.trace,
-			 r->check.trace_gpu ? " (with the GPU's time from the fence)" : "");
-	} else if (!strcmp(cmd, "check")) {
-		int f = a1 ? atoi(a1) : 300;
+		int n = 300;
 
-		if (f < 1 || f > 100000) {
+		if (a1 && !number(a1, 0, 100000, &n)) {
+			text_add(t, "error trace takes a dequeue count 0..100000\n");
+		} else {
+			r->check.trace = n;
+			r->check.trace_gpu = a2 && !strcmp(a2, "gpu");
+			text_add(t, "ok trace %d dequeues to the journal%s\n", r->check.trace,
+				 r->check.trace_gpu ? " (with the GPU's time from the fence)" : "");
+		}
+	} else if (!strcmp(cmd, "check")) {
+		int f = 300;
+
+		if (a1 && !number(a1, 1, 100000, &f)) {
 			text_add(t, "error check takes a frame count 1..100000\n");
 		} else if (r->state != WARP_ON || r->pattern != PATTERN_NONE) {
 			text_add(t, "error check needs the warp on with the capture\n");
@@ -315,11 +341,11 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 			text_add(t, "ok check %d frames -- see the journal or \"ctl status\"\n", f);
 		}
 	} else if (!strcmp(cmd, "zoom")) {
-		int z = a1 ? atoi(a1) : -1;
+		int z;
 
 		if (!a1) {
 			text_add(t, "ok zoom %d\n", r->conf.zoom);
-		} else if (z < 10 || z > 100) {
+		} else if (!number(a1, 10, 100, &z)) {
 			text_add(t, "error zoom takes a percentage 10..100 (100 = none)\n");
 		} else {
 			r->conf.zoom = z;
@@ -330,11 +356,11 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 				 z, z);
 		}
 	} else if (!strcmp(cmd, "edge")) {
-		int e = a1 ? atoi(a1) : -1;
+		int e;
 
 		if (!a1) {
 			text_add(t, "ok edge %d\n", r->conf.edge);
-		} else if (e < 0 || e > EDGE_MAX || *a1 < '0' || *a1 > '9') {
+		} else if (!number(a1, 0, EDGE_MAX, &e)) {
 			text_add(t, "error edge takes a width in panel pixels 0..%d (0 = a hard edge, %d = the vendor's)\n",
 				 EDGE_MAX, EDGE_DEFAULT);
 		} else {
@@ -385,56 +411,75 @@ static int time_left(const struct timespec *t0)
 	return used >= CTL_DEADLINE_MS ? 0 : (int)(CTL_DEADLINE_MS - used);
 }
 
-/* One client: read a line, answer, hang up. One deadline for the whole
- * exchange, not per read -- a client that trickles bytes must not hold the
- * render loop (h713-tv S12 R2).
- */
-void control_serve(struct control *c, struct runtime *r)
+int control_left(const struct control *c)
 {
-	char line[WARP_LINE], buf[4096];
-	struct textbuf t = { buf, sizeof(buf), 0 };
-	struct timespec t0;
-	struct pollfd pf;
-	ssize_t n = 0, off = 0;
-	int fd, left;
+	return c->cfd < 0 ? -1 : time_left(&c->t0);
+}
 
-	fd = accept4(c->lfd, NULL, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
-	if (fd < 0)
-		return;
-	clock_gettime(CLOCK_MONOTONIC, &t0);
-	pf.fd = fd;
-	pf.events = POLLIN;
-	while (off < (ssize_t)sizeof(line) - 1) {
-		if ((left = time_left(&t0)) <= 0 || poll(&pf, 1, left) <= 0)
-			break;
-		n = read(fd, line + off, sizeof(line) - 1 - (size_t)off);
-		if (n <= 0)
-			break;
-		off += n;
-		if (memchr(line, '\n', (size_t)off))
-			break;
-	}
-	line[off > 0 ? off : 0] = '\0';
-	line[strcspn(line, "\r\n")] = '\0';
-	if (off <= 0)
+/* The line is in (or the deadline passed, or the client hung up): answer, hang up. */
+static void answer(struct control *c, struct runtime *r)
+{
+	char buf[4096];
+	struct textbuf t = { buf, sizeof(buf), 0 };
+	struct pollfd pf = { .fd = c->cfd, .events = POLLOUT };
+	ssize_t n;
+	size_t off = 0;
+	int left;
+
+	c->line[c->off] = '\0';
+	c->line[strcspn(c->line, "\r\n")] = '\0';
+	if (!c->off)
 		text_add(&t, "error nothing received\n");
 	else
-		dispatch(r, line, &t);
-
-	off = 0;
-	pf.events = POLLOUT;
-	while ((size_t)off < t.l) {
-		n = send(fd, t.b + off, t.l - (size_t)off, MSG_NOSIGNAL);
+		dispatch(r, c->line, &t);
+	while (off < t.l) {
+		n = send(c->cfd, t.b + off, t.l - off, MSG_NOSIGNAL);
 		if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
-			if ((left = time_left(&t0)) <= 0 || poll(&pf, 1, left) <= 0)
+			if ((left = time_left(&c->t0)) <= 0 || poll(&pf, 1, left) <= 0)
 				break;
 			continue;
 		}
 		if (n <= 0)
 			break;
-		off += n;
+		off += (size_t)n;
 	}
-	close(fd);
+	close(c->cfd);
+	c->cfd = -1;
+}
+
+/* One client: read a line, answer, hang up. One deadline for the whole
+ * exchange, not per read -- a client that trickles bytes must not hold the
+ * render loop (h713-tv S12 R2). Nor does one that sends no newline: its line
+ * waits here between two turns of the loop instead of in a poll() of its own,
+ * which held the loop 500 ms (Prüfstand 05.10. 2.9). Called when the listening
+ * socket or the pending client is readable, and when control_left() ran out;
+ * one client at a time, the next one waits in the listen backlog.
+ */
+void control_serve(struct control *c, struct runtime *r)
+{
+	ssize_t n;
+
+	if (c->cfd < 0) {
+		c->cfd = accept4(c->lfd, NULL, NULL, SOCK_CLOEXEC | SOCK_NONBLOCK);
+		if (c->cfd < 0)
+			return;
+		c->off = 0;
+		clock_gettime(CLOCK_MONOTONIC, &c->t0);
+	}
+	while (c->off < sizeof(c->line) - 1) {
+		n = read(c->cfd, c->line + c->off, sizeof(c->line) - 1 - c->off);
+		if (n < 0 && (errno == EAGAIN || errno == EWOULDBLOCK)) {
+			if (time_left(&c->t0) > 0)
+				return;		/* the rest of the line comes later */
+			break;
+		}
+		if (n <= 0)
+			break;
+		c->off += (size_t)n;
+		if (memchr(c->line, '\n', c->off))
+			break;
+	}
+	answer(c, r);
 }
 
 /* h713-warp ctl COMMAND [ARG...] */

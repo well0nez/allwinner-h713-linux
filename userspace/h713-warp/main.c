@@ -130,7 +130,7 @@ int main(int argc, char **argv)
 	struct runtime r;
 	struct control ctl;
 	const char *sock = WARP_SOCKET, *tv = TV_SOCKET, *video = NULL;
-	struct pollfd fds[4];
+	struct pollfd fds[5];
 	int sfd, arg, rc = 0;
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
@@ -219,7 +219,13 @@ int main(int argc, char **argv)
 			timeout = RETRY_MS;
 		if (r.check.slot >= 0)
 			timeout = 2;		/* the self-check's second draw is due */
-		if (poll(fds, 4, timeout) < 0) {
+		/* a client with half a line: listen again once it is answered */
+		fds[0].fd = ctl.cfd >= 0 ? -1 : ctl.lfd;
+		fds[4].fd = ctl.cfd;
+		fds[4].events = POLLIN;
+		if (ctl.cfd >= 0 && (timeout < 0 || control_left(&ctl) < timeout))
+			timeout = control_left(&ctl);
+		if (poll(fds, 5, timeout) < 0) {
 			if (errno == EINTR)
 				continue;
 			warn("poll: %s", strerror(errno));
@@ -253,7 +259,9 @@ int main(int argc, char **argv)
 		else if (!live && r.on)
 			warp_apply(&r);
 		warp_check_tick(&r);
-		if (fds[0].revents & POLLIN)
+		if ((fds[0].fd >= 0 && (fds[0].revents & POLLIN)) ||
+		    (fds[4].fd >= 0 && fds[4].revents) ||
+		    (ctl.cfd >= 0 && control_left(&ctl) == 0))
 			control_serve(&ctl, &r);
 	}
 

@@ -9,10 +9,10 @@
  * file descriptors in SCM_RIGHTS on the same connection:
  *
  *   "warp claim"    -> "ok WIDTH HEIGHT PITCH nv12 COFF" + three dma-buf fds, the
- *                      XRGB8888 dumb buffers of the panel mode
+ *                      NV12 dumb buffers of the panel mode
  *   "warp frame N"  -> the out-fence fd travels with the line; h713-tv commits
- *                      buffer N on the primary plane with IN_FENCE_FD = that
- *                      fd and the video plane off, and answers "ok" once the
+ *                      buffer N on the video plane (without the ring) with
+ *                      IN_FENCE_FD = that fd, and answers "ok" once the
  *                      commit is queued, or "ok busy" when the previous flip
  *                      has not happened yet -- that frame is dropped, which
  *                      is one frame of the wall and not an error

@@ -4,7 +4,7 @@
  * (modules M1-M11), plan stage S5 (working journal `keystone/PLAN`).
  *
  * The one sentence that explains the split: h713-warp is a RENDERER, not a
- * display owner. h713-tv keeps card1, allocates the three XRGB8888 targets,
+ * display owner. h713-tv keeps card1, allocates the three NV12 targets,
  * exports them as dma-bufs and does every atomic commit; this program owns
  * /dev/dri/renderD128, the capture buffers, the shader and the matrix, and
  * asks h713-tv to show what it has drawn (peer protocol in peer.c).
@@ -17,6 +17,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <time.h>
 #include <stddef.h>
 
 #include "geom.h"	/* the eight values, the matrix, warp.conf: ../libh713geom */
@@ -190,12 +191,17 @@ struct control {
 	const char *path;
 	int lfd;			/* listening socket, -1 */
 	int lock_fd;
+	int cfd;			/* the client whose line is not complete yet, -1 */
+	size_t off;			/* bytes of its line so far */
+	struct timespec t0;		/* when it was accepted */
+	char line[WARP_LINE];
 };
 
 void control_lock(struct control *c, const char *path);
 void control_listen(struct control *c);
 void control_close(struct control *c);
 void control_serve(struct control *c, struct runtime *r);
+int control_left(const struct control *c);	/* ms until the pending client's deadline, -1 none */
 int client(int argc, char **argv, const char *path);
 
 #endif /* H713_WARP_H */

@@ -143,7 +143,7 @@ bool warp_engage(struct runtime *r)
 	r->f_mark = 0;
 	r->t_mark = r->t_start = now_s();
 	r->why[0] = '\0';
-	info("warp            on: %s renders %ux%u onto the primary plane%s",
+	info("warp            on: %s renders %ux%u NV12 onto the video plane%s",
 	     gl_renderer(), r->peer.width, r->peer.height,
 	     r->pattern == PATTERN_NONE ? "" : ", test pattern");
 
