@@ -342,7 +342,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10. behoben** (`arbeit/wurzeln-20261012/`, Kernel `0260`, in `main` 8ac1226): die 728 waren **unsere** Formel (Höhe aus dem
         Seitenverhältnis); die Firmware skaliert auf das Panel, begrenzt durch beide Seiten, und schreibt Breite/Höhe nach INCAP `+0x86c/+0x870`
         (Slot-Füllhöhe gemessen: 720 Zeilen; Listing `CalcWinSize`). Der Treiber liest sie jetzt, unplausibel → `-ENOLCK`. 1280x1024 → 900x720,
-        1360x768 → 1274x720, 1366x768 → 1280x718; alle 14 Modi mit Bild. Augen an der Wand stehen aus
+        1360x768 → 1274x720, 1366x768 → 1280x718; alle 14 Modi mit Bild. **Augen an der Wand (Marco, 12.10. abends): 1280x1024 und 1360x768 komplett**
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
