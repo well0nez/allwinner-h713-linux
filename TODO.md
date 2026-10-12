@@ -23,6 +23,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **09.10. abends (Marco, 2.29):** mit `--standby` bauen, `power.conf` Vorgabe `short = poweroff` (Standby experimentell,
         per Schalter), Doku und Release-Text sagen "experimentell"; 2.30 ist gemessen und mit Kernel `0245` in `main`; die U-Boot-Zeile
         (`0097`) und der TF-A-Kommentar (`0030`) sind seit `doku/180` in den Forks
+      - **12.10. abends, Generalprobe:** `build-all.sh --board hy310 --standby` aus einem frischen Worktree von `main` db558e3 (`CRUST_SRC`
+        wie oben) baut in 28 min 48 s ein reproduzierbares Abbild (286 Patches); per FEL auf dem HY310 installiert und gemessen
+        (`arbeit/hy310-main-20261012/BERICHT.md`). Der HY310 läuft damit `main`. Bleibt für 1.1a: 7.19 vorher, Release-Version, Tag
 - [ ] 1.2a **Z4 zweiter Boot** (~80 s nach Strom-an, Ursache unbekannt, Journal war flüchtig - **06.10.: ist es im
       Abbild weiter**, `10-h713.conf` `Storage=volatile` schlägt `/var/log/journal`, `doku/155` §3): Journal im
       Abbild persistent machen (`/var/log/journal`), ggf. pstore/ramoops, 5 weitere Kaltstarte beobachten
@@ -132,14 +135,21 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         (`docs/tools/h713-keystone.md`); eine eigene Messreihe dafür ist "zum jetzigen Zeitpunkt und auch generell unnötig"
 - [ ] 2.16 Frame während laufendem Commit wird verworfen (`ok busy`) — Prüfstand 05.10.: normal 2–5 busy auf
       100–16 000 Commits, einmal 31/59 bei 50-Hz-Quelle (Schwebung 50↔60 Hz). Design mit drei Puffern; nur beobachten
+      - 12.10. abends (HY310, `main` db558e3, `arbeit/hy310-main-20261012/`): 2 von 1927, 0 von 11230 nach 12 min, 3 von 238 direkt
+        nach einem Warp-Start - normal, nur beobachten
 - [ ] 2.22 eMMC: `data error cmd18` am GEU (einmal); **05.10. 23:03 am HY310:** ~2 min nach dem Boot haengt jeder
       Plattenzugriff (ls /boot, dmesg ueber Shell, Konsolen-Login), ssh/uptime antworten - Kernel 0184 frisch gebootet,
       Ursache offen, nach Stromzyklus alles normal, keine mmc-Fehler im Log. Beobachten. *Überholt (11.10.):* "Journal ist persistent" - stimmt nicht, `10-h713.conf` hat `Storage=volatile`, siehe 1.2a
+      - **12.10. abends** (HY310 auf `main` db558e3): 5 Warmstarts, je bei 151 s fünf Plattenzugriffe mit Zeitlimit (ls /boot, dmesg,
+        Datei lesen, schreiben+sync, journalctl) - 5/5 sofort, 0 mmc-Fehlerzeilen (`arbeit/hy310-main-20261012/laeufe/warmstart-reihe.txt`)
 - [ ] 2.26 **HDCP 1.4 nach einem Moduswechsel der Quelle** (`doku/170` §3): fordert der ThinkPad (i915) sofort beim Modeset an,
       bleibt er auf `Desired`; 2 s später angefordert steht `Enabled` nach 5 s. Mit der Hersteller-ARISC-Firmware und dem
       Fire-TV-Stick vergleichen (Auflösungswechsel), erst dann entscheiden, ob der Empfänger früher bereit sein muss
       - 10.10. (G-EU, crust, `doku/184`): auch nach Neustart und Standby der Box fragt i915 nicht von selbst neu an (`Desired`),
         mit neuer Anfrage sofort `Enabled`; der Fire-TV-Stick (2.2) verhandelte nach jedem Neustecken von selbst neu
+      - **12.10. abends gemessen (HY310, `main` db558e3, ThinkPad i915, `hdcp-verzoegerung.sh`):** Moduswechsel 1080p50 -> 1080p60, Anforderung
+        nach d s: d=0 **Enabled nach 3,06 s**, d=0,5 bis 3 nach 1,14-1,21 s. "Bleibt auf Desired" tritt am HY310 nicht auf; der Vergleich
+        mit der Hersteller-ARISC-Firmware braucht 5.20
 - [ ] 2.28 **Physische Adresse im HDMI-VSDB** (war 2.26 auf `versuch/crust-release`, Commit 9d95b89): crust schreibt für Port 0/1/2 1.0.0.0 / 2.0.0.0 / 3.0.0.0, der Blob 0.0.0.0 /
       2.0.0.0 / 0.2.0.0 (gemessen 07.10., `doku/163`). Von Belang nur für CEC und AV-Receiver in einer Kette. Offen: die
       Formel des Blobs aus seinem `HostHDMIMAP` lesen; in Stufe A0 einmal mit einer CEC-fähigen Quelle prüfen
@@ -148,7 +158,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.34 **Grüner Streifen auf der Konsole** (Marco 10.10. nachts): kurz nach dem Booten links, nach dem Aufwachen aus dem
       Standby rechts, geht von selbst weg; HY310 und HY300PRO-G-EU. Ursache offen (Marco: DRAM? - ein alter Bildspeicher-Inhalt,
       bevor der erste Frame steht); nicht dringend
-- [ ] 2.36 **HDCP-2.2-Beweis am G-EU ohne `SKE_SEND_EKS`-Zeile**: gleiche `display.bin` wie der HY310 (`16c74a28...`), aber im
+      - **12.10. abends (HY310, `arbeit/hy310-main-20261012/` §3):** Marco: "immer grün beim Warpen, egal ob Standby oder nicht; die
+        Konsole hat grüne Streifen mal links, mal rechts, wenn's aus dem Standby kommt" - **keine Prio, bleibt TODO**. Gemessen: Grün =
+        YUV-Puffer ohne Inhalt (Y=U=V=0; der Code nennt es selbst so, h713-tv `display_create_fb`, h713-warp `warp_engage`); nach dem
+        Aufwachen geht die Ebene im Bypass auf **volle** Ringplätze (3 Läufe, `ebene-wach.py`), der erste Warp-Puffer ist beim Flip
+        gefenct (afbd nutzt `drm_atomic_helper_commit`). Offen: Inhalt des ersten Warp-Puffers (nicht über `/dev/mem` lesbar), die
+        Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
+- [x] 2.36 **HDCP-2.2-Beweis am G-EU ohne `SKE_SEND_EKS`-Zeile**: gleiche `display.bin` wie der HY310 (`16c74a28...`), aber im
       Firmware-Log (Abbild-Stufe, `h713_disp init` ohne `elog=`) nur "HDCP Process cost tick". Klären, ob die HY310-Zeile vom
       05.10. aus einer höheren Log-Stufe kam; `referenz/messregeln.md` HDCP 2.2 danach nachziehen. Bis dahin: Bit LINK 0x422 +
       neue Sitzung je Neustecken
@@ -157,6 +173,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `HDCP Process cost tick` (Stufe 1, einzige Stelle) **ist** der SKE_Send_Eks-Beweis - am G-EU also erbracht. Die HY310-Zeile
         vom 05.10. war zusammengesetzt. Messregel, `docs/subsystems/hdcp.md` und h713-tv-README korrigiert. Rest: Gegenprobe am Gerät
         (`0x4B48BE84` liest `0xA7`), dann schließen
+      - **12.10. abends erledigt:** Gegenprobe am HY310 - `0x4B48BE84` = `0x000000A7`, alle fünf Masken `0xA7`, `fmt_set[0]` = 0
+        (`arbeit/hy310-main-20261012/skripte/reg-a7.py`, vor und nach der Neuinstallation)
 - [ ] 2.38 **Ausschalten mit OSD** (Marco 10.10. abends): ein Druck auf Power (Gerät oder Fernbedienung) blendet auf afbd ein
       "Ausschalten in 15 s" mit "Standby" daneben; ein zweiter Druck schaltet sofort aus, links/rechts + OK wählt, Zurück bricht
       ab, nach 15 s gilt `power.conf` `short`; ein langer Druck (3 s) schaltet ohne OSD aus. Rückfall: stirbt der Dienst, schaltet
@@ -209,8 +227,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         ("was 1024"), am G-EU aktiv. Die Messreihe wie m30/m31 steht aus; nicht in `main` bis 2.63 geklärt ist
       - **12.10. erledigt** (`doku/204`): in `main` (a27f245); gemessen mit Warp an, auch mit bewegtem Bild: 86-87 % bei 480 MHz,
         ~3 Wechsel/s (Zwangsboost 35/s, alte chrt-Lösung 4-6/s), unter Last sofort 100 % bei 1296 MHz, 59,7 fps
-- [ ] 2.62 **HY310 mit 0255 und dem Warp aus `doku/201` nachmessen** (11.10., Handoff `doku/201` §7; HY310 offline, Marco: nach
+- [x] 2.62 **HY310 mit 0255 und dem Warp aus `doku/201` nachmessen** (11.10., Handoff `doku/201` §7; HY310 offline, Marco: nach
       hinten): `anzeige.py`, `ctl trace 30 gpu`, `messe-warp.py`; dazu die Panel-Hz des HY310 (nie gemessen) und 2.49 dort
+      - **12.10. abends erledigt** (HY310 auf `main` db558e3, `arbeit/hy310-main-20261012/laeufe/2.62.txt`): Warp an 59,43 Wechsel/s, Quelle
+        60,02/s, **Panel 59,42 Hz**, 0 Sprünge; fps 59,5, 0 stale/late/drop; CPU warp 9,8 % (alle 4,6 %) bei 100 % 480 MHz, GPU 432 MHz 76 %;
+        GPU 6,2 ms je Bild (1080p, submit bis Fence), draw 1,09 ms CPU. Bypass: 0,57 Sprünge/s (Takt 59,42 zu 60,02, wie `doku/200`)
 - [x] 2.63 **HY300PRO-G-EU: nach einem Warmstart stirbt der MIPS beim Anmelden der Routinen - wieder** (11.10. ~23:50, Kernel
       `versuch/kernel-abend`): Linux übernimmt beim Warmstart den laufenden MIPS ("adopting the live shared region"), meldet seine
       Routinen an, der MIPS kopiert dafür seine Routinentabelle unter Sperre 2 neu und stirbt dabei (wie `doku/72`). Sperre 2 bleibt
@@ -253,6 +274,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         (Kompatibel `allwinner,sun50i-h713-uart`, CPR-Wert mit 64-Byte-FIFO und AFCE, `DW_UART_QUIRK_CPR_VALUE`): danach `MCR = 0x2b`,
         `AFCE = 1`. Erster BT-Start nach einem Warmstart beim ersten Versuch (vorher zweimal nach 8 s ohne Antwort, Neustart der
         Unit). Offen: mehr Starts zählen, Last-Test; der Patch liegt auf `versuch/kernel-abend` (`arbeit/kernel-abend-20261011/`)
+      - **12.10. abends (HY310, `main` db558e3 mit 0256):** 5 Warmstarts + 6 Standbys, Bluetooth 11/11 beim 1. Versuch, 0 HCI-Fehlerzeilen.
+        Offen nur noch der Last-Test (Warp + WLAN + Mikro)
 - [ ] 2.51 **Mikrofon der Fernbedienung hörbar machen** (11.10., `doku/193` §3): per Bluetooth kommt beim Halten ein Tonstrom
       (60-Byte-HID-Berichte, ~63/s, ~3,8 kB/s), Format unbekannt - kein IMA-ADPCM, kein fester Kopf, komprimiert. Codec aus der
       Sprach-App/dem Audio-HAL der Stock-Firmware bestimmen, dann `CONFIG_HIDRAW` und ein Dekoder in Userspace. Nicht dringend
