@@ -20,6 +20,7 @@ Layout (doku/68): slots of 4 KiB, every item twice (original + copy).
                            it (none found), 1 not bound, 2 no DEV
 """
 import os
+import signal
 import struct
 import subprocess
 import sys
@@ -152,12 +153,18 @@ def main():
     os.makedirs(FW_DIR, mode=0o700, exist_ok=True)
     os.chmod(FW_DIR, 0o700)
     ziel = os.path.join(FW_DIR, FW_NAME)
-    fd = os.open(ziel, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+    # From the moment the file exists, every way out goes through the finally below that deletes it (TODO 5.14,
+    # review U3): the write is inside it, and SIGTERM/SIGHUP end the run through it. A signal the caller
+    # ignores stays ignored - h713-mips-restart starts this with INT, TERM and HUP ignored on purpose.
+    for sig in (signal.SIGTERM, signal.SIGHUP):
+        if signal.getsignal(sig) is not signal.SIG_IGN:
+            signal.signal(sig, lambda num, frame: sys.exit(128 + num))
     try:
-        os.write(fd, nutz)
-    finally:
-        os.close(fd)
-    try:
+        fd = os.open(ziel, os.O_WRONLY | os.O_CREAT | os.O_TRUNC, 0o600)
+        try:
+            os.write(fd, nutz)
+        finally:
+            os.close(fd)
         with open(FW_PATH_PARAM, "w") as fh:
             fh.write(FW_DIR)
         if geraet:

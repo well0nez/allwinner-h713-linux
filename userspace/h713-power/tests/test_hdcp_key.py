@@ -9,6 +9,7 @@ both are gone afterwards, whatever the bind did.
 import importlib.machinery
 import importlib.util
 import os
+import signal
 import struct
 import sys
 import tempfile
@@ -104,6 +105,49 @@ class Bind(unittest.TestCase):
         self.assertEqual(self.main("--bind"), 2)
         self.assertEqual(self.seen, [])
         self.assertFalse(os.path.exists(self.m.FW_DIR))
+
+    def keep_signals(self):
+        for sig in (signal.SIGTERM, signal.SIGHUP):
+            self.addCleanup(signal.signal, sig, signal.getsignal(sig))
+
+    def test_a_write_that_fails_leaves_no_key_behind(self):
+        # TODO 5.14 U3: the file exists from os.open on - its write is inside the try that deletes it
+        self.keep_signals()
+        real = self.m.os.write
+
+        def full(fd, data):
+            real(fd, data[:100])
+            raise OSError(28, "No space left on device")
+        self.m.os = types.SimpleNamespace(**{k: getattr(os, k) for k in dir(os) if not k.startswith("__")})
+        self.m.os.write, self.m.os.path = full, os.path
+        with self.assertRaises(OSError):
+            self.main("--bind", "hdmi-rx")
+        self.assertEqual(self.seen, [])
+        self.after()
+
+    def test_sigterm_during_the_bind_ends_through_the_cleanup(self):
+        self.keep_signals()
+        signal.signal(signal.SIGTERM, signal.SIG_DFL)
+        bind = self.m.binden
+
+        def killed(dev):
+            os.kill(os.getpid(), signal.SIGTERM)        # systemd stopping the unit, say
+            return bind(dev)
+        self.m.binden = killed
+        with self.assertRaises(SystemExit) as end:
+            self.main("--bind", "hdmi-rx")
+        self.assertEqual(end.exception.code, 128 + signal.SIGTERM)
+        self.after()
+
+    def test_a_signal_the_caller_ignores_stays_ignored(self):
+        # h713-mips-restart starts the tool with INT, TERM and HUP ignored: the write must not be cut
+        self.keep_signals()
+        signal.signal(signal.SIGTERM, signal.SIG_IGN)
+        signal.signal(signal.SIGHUP, signal.SIG_IGN)
+        self.assertEqual(self.main("--bind", "hdmi-rx"), 0)
+        self.assertIs(signal.getsignal(signal.SIGTERM), signal.SIG_IGN)
+        self.assertIs(signal.getsignal(signal.SIGHUP), signal.SIG_IGN)
+        self.after()
 
     def test_without_bind_the_boot_path_is_unchanged(self):
         self.assertEqual(self.main(), 0)
