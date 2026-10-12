@@ -81,6 +81,11 @@ bluez               # bluetoothd, bluetoothctl, hciattach: HCI H4 on UART1 (h713
                     # the hog plugin makes the stock BLE remote an evdev device through uhid,
                     # h713-remote-pair bonds it. The BT patch set IS in the dump (FB-BTFW).
 
+# --- HDMI input diagnostics (TODO 5.12, Marco 08.10./12.10.) -------------------
+v4l-utils           # v4l2-ctl: the HDMI receiver's signal, timings, controls and events through
+                    # the plain V4L2 interface (/dev/video*) - missing at the device on 08.10.
+                    # Only the command line tools and libv4l, no GUI (qv4l2 is its own package)
+
 # --- U-Boot environment from Linux -------------------------------------------
 libubootenv-tool    # fw_printenv/fw_setenv per /etc/fw_env.config (0x700000, 64 KiB).
                     # Without it there was the configuration file but no tool for it;
@@ -113,11 +118,12 @@ debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg - witho
 #     25.0.7 with only the Panfrost driver, EGL, GLES2 and GBM (15 MiB, no LLVM),
 #     build-rootfs.sh puts it under /usr/local (--mesa). Reason: the keystone path
 #     (working journal `keystone`).
-# gstreamer1.0-*, mpv, ffmpeg, v4l-utils
+# gstreamer1.0-*, mpv, ffmpeg
 #     cstenger's video runtime (mainline/tools/rootfs/build.sh, VIDEO_RUNTIME_PACKAGES).
 #     Pulls in GTK3, x265, aom, libllvm - doku/107 section 1: the biggest single item of
 #     today's netboot root. The projector moves HDMI input onto a DRM plane,
-#     it decodes nothing.
+#     it decodes nothing. v4l-utils stood here with them until 12.10.2026; it is only
+#     command line tools and libv4l, and is included above for v4l2-ctl (TODO 5.12).
 # (bluez stood here until 27.09.2026 - "BT firmware not in the dump"; it is, FB-BTFW.)
 # dnsmasq (the full package)
 #     brings dnsmasq.service, which takes port 53 on all interfaces.
