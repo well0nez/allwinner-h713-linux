@@ -16,7 +16,7 @@ if PACKAGE not in sys.path:
     sys.path.insert(0, PACKAGE)
 
 from h713.blockdev import Disk                                   # noqa: E402
-from h713.identify import identify, match_profiles, report_device  # noqa: E402
+from h713.identify import ISSUES, identify, match_profiles, report_device  # noqa: E402
 from h713.profiles import PROFILES, get                          # noqa: E402
 
 PLUS = "hy200_qz713df_a1/projector09220931"     # the 2025-09-22 firmware of the HY200 QZ713DF A1
@@ -264,3 +264,44 @@ class Matching(unittest.TestCase):
     def test_nothing_read_means_no_candidate(self):
         profile, candidates, _matches = match_profiles({})
         self.assertEqual((profile, candidates), (None, []))
+
+
+class AnUnknownFirmwareAsksForAnIssue(unittest.TestCase):
+    """TODO 5.23 (Marco 12.10.2026): a board or firmware the table does not know is never guessed at,
+    and the refusal says where to report it - an issue with the row the installer printed."""
+
+    UNKNOWN = {"text": "", "_lines": [("info", "the row")], "status": None, "kind": "stock", "profile": None}
+    FP = "Allwinner/h713_tuna_p3/h713-tuna_p3:11/RP1A.201005.006/Projector99999999:user/release-keys"
+
+    def test_a_write_stops_and_names_the_issue_page(self):
+        log = Recorder()
+        self.assertFalse(report_device(dict(self.UNKNOWN), log, writing=True))
+        self.assertIn("ERROR", log.text)
+        self.assertIn("open an issue with the row above", log.text)
+        self.assertIn(ISSUES, log.text)
+
+    def test_reading_goes_on_and_names_it_too(self):
+        log = Recorder()
+        self.assertTrue(report_device(dict(self.UNKNOWN), log, writing=False))
+        self.assertNotIn("ERROR", log.text)
+        self.assertIn(ISSUES, log.text)
+
+    def test_a_known_board_without_a_green_run_is_no_issue(self):
+        log = Recorder()
+        self.assertFalse(report_device(dict(self.UNKNOWN, profile="hy300_pro", status="partial"), log, writing=True))
+        self.assertNotIn(ISSUES, log.text)
+
+    def test_the_old_report_by_fingerprint_names_it(self):
+        for writing in (True, False):
+            log = Recorder()
+            found = {"layout": "stock layout, 26 partitions", "fingerprint": self.FP, "known": False, "device": None}
+            self.assertEqual(report_device(found, log, writing=writing), not writing)
+            self.assertIn("open an issue with the fingerprint line above", log.text)
+            self.assertIn(ISSUES, log.text)
+
+    def test_the_address_is_the_repository_s_issue_page(self):
+        self.assertEqual(ISSUES, "https://github.com/well0nez/allwinner-h713-linux/issues")
+
+
+if __name__ == "__main__":
+    unittest.main()

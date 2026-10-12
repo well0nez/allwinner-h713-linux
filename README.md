@@ -139,6 +139,12 @@ run; from then on a release image exists for it). The rule behind it: no image f
 ids follow the **circuit board**, and one board is sold in several projectors. The HY300PRO-G-EU,
 for instance, lives under `hy200-qz713df-a1`.
 
+**Your projector, or its Android firmware, is not in the table?** Then the installer stops before it writes
+anything and prints one row about the device (`installer/h713-install identify` prints the same row and writes
+nothing). Please [open an issue](https://github.com/well0nez/allwinner-h713-linux/issues) with
+that row: we add the profile, and from then on the installer knows your firmware. A firmware it does not
+know is never guessed at - the places of a foreign version could cost the device's secure storage.
+
 | Board id | Sold as | DRAM | Panel | State |
 |---|---|---|---|---|
 | [`hy310`](boards/hy310/) | MagCubic HY310 | DDR3 792 MHz | 1920×1080 dual (0x30) | **verified** |

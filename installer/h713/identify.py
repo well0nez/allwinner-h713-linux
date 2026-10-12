@@ -424,6 +424,10 @@ def interpret_fingerprint(fp) -> Tuple[str, str]:
     return version, date
 
 
+# Where a board or a firmware the table does not know is reported (TODO 5.23, Marco 12.10.2026)
+ISSUES = "https://github.com/well0nez/allwinner-h713-linux/issues"
+
+
 def report_device(found, log=console, writing=True):
     """Print the recognition in plain words. Return: may writing go on?
     (plan 110 §8, points 3 to 5)
@@ -458,8 +462,8 @@ def report_device(found, log=console, writing=True):
             log.info("owner has reported a green run of our build on it, so no image exists for it yet.")
         else:
             log.warn("Only reading -- nothing is written, so an unknown board is a note, not a stop.")
-            log.info("Please post the row above, then the board goes into the table")
-            log.info("(github.com/well0nez/allwinner-h713-linux).")
+            log.info("Please open an issue with the row above, then the board goes into the table:")
+            log.info("  %s" % ISSUES)
         return True
     log.error("No verified profile for this board -- nothing is written.")
     if known:
@@ -467,7 +471,9 @@ def report_device(found, log=console, writing=True):
         log.info("build on it, and no image is built for a board nobody has tested (doku/121 section 5).")
     else:
         log.info("Guessing the places of a foreign version costs the secure storage in the")
-        log.info("worst case, so this stops here. Post the row above and it goes into the table.")
+        log.info("worst case, so this stops here. Please open an issue with the row above: we add")
+        log.info("the board or its firmware to the table, and then the installer knows it.")
+        log.info("  %s" % ISSUES)
     return False
 
 
@@ -489,11 +495,12 @@ def _report_legacy(found, log, writing):
     if not writing:
         log.warn("Unknown firmware: Android %s, build %s -- only reading, "
                  "nothing is written." % (version, date))
-        log.info("  Please report the fingerprint line above, then the device goes")
-        log.info("  into the table (github.com/well0nez/allwinner-h713-linux).")
+        log.info("  Please open an issue with the fingerprint line above, then the device")
+        log.info("  goes into the table: %s" % ISSUES)
         return True
     log.error("Unknown firmware: Android %s, build %s -- no writing." % (version, date))
     log.info("  Guessing the places of a foreign version costs the Secure Storage")
     log.info("  in the worst case -- so no going on.")
-    log.info("  Please report the fingerprint line above, then it goes into the table.")
+    log.info("  Please open an issue with the fingerprint line above, then it goes into")
+    log.info("  the table: %s" % ISSUES)
     return False
