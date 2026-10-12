@@ -80,9 +80,10 @@ def status():
             "ready" if st.get("ready") == "1" else "not ready (ready=%s)" % st.get("ready", "-"),
             "switches the rails off, about 0.3 W" if off else "ends in the power-on gate"))
     want = configured()
-    print("next boot: %s" % ("the vendor firmware (%s)" % CONF if want == "vendor" else
-                             "crust (%s)" % CONF if want == "crust" else
-                             "what the device tree names (no %s)" % CONF))
+    shown = "/" + CONF                       # the device's path, whatever ROOT the tests give
+    print("next boot: %s" % ("the vendor firmware (%s)" % shown if want == "vendor" else
+                             "crust (%s)" % shown if want == "crust" else
+                             "what the device tree names (no %s)" % shown))
     print("this image carries: %s, %s" % ("the vendor firmware" if vendor_image() else "no vendor firmware",
                                           crust_image() or "no crust image for this board"))
     return 0

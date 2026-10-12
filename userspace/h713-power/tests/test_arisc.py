@@ -58,7 +58,7 @@ class Arisc(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("running: crust (hy310-crust.bin), chosen by the device tree", out)
         self.assertIn("standby ready; a power-off switches the rails off", out)
-        self.assertIn("next boot: what the device tree names", out)
+        self.assertIn("next boot: what the device tree names (no /etc/modprobe.d/h713-arisc.conf)", out)
         self.assertIn("this image carries: the vendor firmware, hy310-crust.bin", out)
 
     def test_status_on_the_vendor_firmware_by_the_option(self):
@@ -68,7 +68,7 @@ class Arisc(unittest.TestCase):
         self.assertEqual(rc, 0)
         self.assertIn("running: the vendor firmware from your dump, chosen by the module option", out)
         self.assertIn("no standby; a power-off ends in the power-on gate", out)
-        self.assertIn("next boot: the vendor firmware (etc/modprobe.d/h713-arisc.conf)", out)
+        self.assertIn("next boot: the vendor firmware (/etc/modprobe.d/h713-arisc.conf)", out)
 
     def test_status_names_a_crust_that_cannot_power_off_and_a_driver_that_is_not_there(self):
         rc, out, _ = self.run_tool(Root(build2="0x00003318", ready="0"), "status")
