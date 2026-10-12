@@ -327,6 +327,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - Marco dazu (12.10. nachts): **die vielen Optionen sind gewollt** ("find ich geil"), aber gruppiert, **jede Gruppe ein
         eigenes Menü**, nicht zusammengewürfelt; das Design der Agentenfassung ist "abgrundtief schlecht". Ursprünglich gemeint war
         nur der eine Knopf "Fernbedienung neu koppeln" - der Rest ist der Wunsch "alles, was nur per Kommandozeile geht, ins Panel"
+      - **12.10. nachts (Marco): der Panel-PR** aus `well0nez/h713-panel-dev` (Neugestaltung in sechs Bereichen, Server = die verworfene
+        Fassung vom 11.10.) ist auf `versuch/panel-redesign` (e7598aa, `arbeit/panel-redesign-20261012/`) mit Unit und Doku der Referenz;
+        gelesen, 72 Tests grün. Im Testabbild `runde5x1` zum **Ansehen** - nach `main` erst nach Marcos Ja. Offen: `docs/guides/settings-page.md`
       - 12.10. aus 5.18: der Hostname gehört zu den Einstellungen, die im Panel änderbar sein sollen
 - [x] 2.55 **Sonderzeichen im Login-Feld der Konsole nach dem Schlaf** (Marco 11.10., beide Geräte): Verdacht, nicht geprüft - die
       Fernbedienung ist für den Kernel auch eine Tastatur, Pfeile und F4/F5/F6 landen als Escape-Folgen im versteckten getty auf
@@ -464,6 +467,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         stand schon in `standby.md`. Offen: die Commit-Texte (nächster Serienumbau), `docs/uboot/README.md` (nach 1.6)
       - **12.10. (Marco: ok):** die Commit-Texte von `0231` (1 Stelle), `0240` (1), `0243` (2) jetzt mit dem Kernel-Paket;
         `docs/uboot/README.md` Z. 65-66 (nennt noch den Kopf `7b1ea388da0d`, heute `61ea018712c8`, und "unveröffentlicht") nach 1.6
+      - **12.10. nachts:** die drei Commit-Texte auf `versuch/kernel` (96a92a3); `docs/uboot/README.md` bleibt für nach 1.6
 - [ ] 5.17 **`build-all.sh` muss nach einem Abbruch weiterbauen können** (Marco 09.10.: "nicht entwicklerfreundlich"). Anlass:
       G-EU-Testbau 09.10. stieg in Schritt 7 (Rootfs) aus, nach ~25 min Kernel/Mesa/Sysroot; danach lief alles von vorn, und
       eine Kommentaränderung im Gerätebaum-Patch kostete den Kernel noch einmal. Heute gibt es `--skip-bl31/-uboot/-kernel/
@@ -551,6 +555,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Zustandsdatei aus `0205`, die es schon gibt), die Zeile im Installer, Doku; **ohne** die Install-Option `--arisc vendor` (keine
         neuen Parameter). Geprüft: die Hersteller-Datei ist bei jeder Installation Pflicht (`vendorfiles.py` `REQUIRED_FILES`), die
         Weigerung in 2. trifft also kaum je zu. **Gemessen wird erst, wenn die übrigen besprochenen 5.x-Punkte fertig sind** (Marco)
+      - **12.10. nachts gebaut** (`arbeit/kernel-20261012/`, `versuch/kernel`): Kernel `0267` (`firmware=vendor|crust`, `firmware_from=`),
+        `h713-arisc status|set` (7 Tests), `h713-mkimage --arisc` + Tabellenschlüssel `arisc`, Schlusszeile von `h713-install`, Doku. Im
+        Testabbild `runde5x1`; die Messung hin und zurück kommt zuletzt
 - [x] 5.23 **Unbekannte Android-Firmware -> Issue** (Marco 12.10.): wer ein Gerät mit einer Hersteller-Firmware hat, die der Installer
       nicht kennt, soll ein Issue aufmachen, damit wir das Profil ergänzen können. Ein Satz im README und derselbe Hinweis in der Meldung,
       mit der der Installer eine unbekannte Firmware ablehnt
