@@ -1,0 +1,60 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: soc: sunxi: cpu_comm: the thread word of a held lock must not read as "free"
+
+The software spinlocks shared with the display MIPS (0259) write the holding
+thread into the entry's thread word, and both sides test that word to tell a
+free lock: the firmware looks at its low byte being 0xff (tridspinlock.c:326),
+this side at the whole word being 255. The word written was the bare tgid.
+
+So a process with pid 255 held routine lock 2 with a thread word that read
+"free" to both sides. Its own unlock skipped ("SpinUnLock(2): no thread_id"),
+the lock stayed ARM-owned with ref 1 for ever, the MIPS waited on it without
+a timeout, every open of the HDMI receiver was refused ("the callbacks cannot
+be registered (-16)") and the wall stayed dark until h713-tv-rescue reloaded
+the MIPS (TODO 2.67; 2.63 before 0259 had the same seed: the MIPS taking a
+lock this side held). h713-tv is the process that registers first after a
+warm start, and it gets pid 255 in about one boot of twenty -- 1 of 20 on
+11.10., 2 of 21 on 12.10., both traced step by step (arbeit/wurzeln-20261012,
+L2T trace: "lock: taken ... own=0 ref=1 tid=000000ff", pid 255). Pids 511,
+767, ... would have let the MIPS take a lock this side held.
+
+The tgid moves up one byte and the low byte is a constant that is not 0xff.
+pid_max is far below 2^24. Nothing else reads the word as a pid: the RPC
+channel id has its own thread field.
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -1054,11 +1054,30 @@
+  * Returns 2 = taken, 1 = taken again by the holding thread, 0 = held
+  * elsewhere (mode 0 only), negative errno = not taken.
+  */
++/*
++ * The thread word this side writes into an entry it holds. Not the bare
++ * tgid: the firmware's test for "free" is the LOW BYTE of the thread word
++ * being 0xff (tridspinlock.c:326, re-auftrag/BERICHT.md 1.4), and this
++ * side's own test in comm_SpinUnLock() is the whole word being 255. A
++ * process with pid 255 -- h713-tv gets it in about one warm start of twenty
++ * -- therefore held routine lock 2 with a thread word that read "free" to
++ * both sides: its own unlock skipped ("no thread_id"), the lock stayed
++ * ARM-owned for ever, every open of the HDMI receiver was refused and the
++ * wall stayed dark until h713-tv-rescue (TODO 2.67, L2T trace of
++ * 12.10.2026, arbeit/wurzeln-20261012). Pids 511, 767, ... would have let
++ * the MIPS take a lock this side held. So the tgid moves up a byte and the
++ * low byte is a constant that is not 0xff; pid_max is far below 2^24.
++ */
++static u32 spinlock_thread_id(void)
++{
++	return ((u32)current->tgid << 8) | 0x01;
++}
++
+ static int spinLock(int lock_id, int mode)
+ {
+ 	void __iomem *e;
+ 	unsigned long deadline = jiffies + msecs_to_jiffies(SPINLOCK_HOLD_TIMEOUT_MS);
+-	u32 tid = (u32)current->tgid;
++	u32 tid = spinlock_thread_id();
+ 	u32 old_tid;
+ 	int ref, ret;
+ 	u8 cpu;

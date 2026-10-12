@@ -584,3 +584,4 @@
 0258-drm-h713-afbd-no-read-of-the-capture-s-registers-from-a-standby-until-the-capture-is-back.patch
 0259-soc-sunxi-cpu_comm-the-software-spinlocks-as-the-vendor-and-the-firmware-run-them.patch
 0260-media-h713-hdmirx-the-ring-is-what-the-capture-scaler-writes-and-incap-moving-on-its-own-is-a-source-change.patch
+0261-soc-sunxi-cpu_comm-the-thread-word-of-a-held-lock-must-not-read-as-free.patch
