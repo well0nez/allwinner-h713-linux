@@ -1,0 +1,405 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: h713-hdmirx: the ring is what the capture scaler writes, and INCAP moving on its own is a source change
+
+Two faults of the same block, measured 12.10.2026 on the HY300PRO-G-EU
+(1280x720 panel, arbeit/wurzeln-20261012, TODO 2.68 and 2.69).
+
+1. The ring's size when the firmware scales was derived, not read: width =
+   the pitch, height = source height * pitch / source width (0136f). For a
+   1280x1024 source that gave 912x728, for 1360x768 1280x722 -- both taller
+   than the panel, both refused by the display side, the console for two
+   common PC modes. INCAP itself says what it writes: +0x86c is the capture
+   scaler's output width, +0x870 its output height, and the slots' fill
+   height agrees byte for byte (last written byte 656639 = 720 lines of
+   912 for 1280x1024; 717.99 lines for 1366x768; 600 for 800x600):
+
+     source      +0x86c  +0x870  rowbyte  +0x864 (factor)
+     1920x1080     1280     720   0x50    0xaaaa = 720/1080
+     1280x1024      900     720   0x39    0xb400 = 720/1024
+     1024x768       960     720   0x3c    0xf000 = 720/768
+     1360x768      1274     720   0x50
+     1366x768      1280     718   0x50    (bounded by the width)
+     800x600        800     600   0x32    (not scaled)
+
+   So the ring is +0x86c x +0x870 whenever the pitch says the firmware
+   scales, the pitch stays the rowbyte, and output words that do not agree
+   with the rowbyte and the source (INCAP mid-change, its words move one
+   after another) answer -ENOLCK instead of a guess. The DE scaler's input
+   window, the former cross-check for the same information, goes: the
+   firmware writes it only on a window-chain rebuild, and it read 1280x720
+   while INCAP already captured 1280x1024. A board whose ring is the source
+   (the HY310) takes the same path as before, byte for byte.
+
+2. After a mode change the firmware's record names the new source at once,
+   INCAP follows only when the capture chain is rebuilt -- seconds later at
+   times -- and that step has no callback. A client that asked in between
+   holds a ring nobody writes any more, and nothing tells it: with h713-warp
+   streaming, INCAP read 1152x720 of the previous 1440x900 for a 720x480
+   source through three SOURCE_CHANGE callbacks, moved to 720x480 without
+   one, and the warp drew 1152x720 slots of a 720-byte ring until the next
+   change (2 of 16 changes). The block is now looked at ten times a second;
+   when active, rowbyte or scaler output differ from what the last detection
+   saw, a SOURCE_CHANGE is queued. The client stops its queue and asks again,
+   as for every other source change; the warp does so since the same day.
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -253,25 +253,11 @@
+ #define H713_INCAP_ROWBYTE_UNIT	16
+ 
+ /*
+- * The display engine's picture scaler at 0x05180000, and why it is only a
+- * cross-check. Its input window, +0x34 (width [31:16], height [15:0]), is the
+- * size the scaler reads the ring at -- 0x035401de = 852x478 on the HY300 Pro
+- * for the case above, where the rowbyte says 864 = ALIGN(852, 16). It names
+- * the ring exactly where the rowbyte can only name it to within 16 pixels.
+- *
+- * But the firmware writes it only when it rebuilds its window chain, which is
+- * at the first lock of a boot and whenever the display side republishes the
+- * VidDec descriptor (0117) -- not on every source change. Measured on the HY310,
+- * 20.09.2026 (dev17): after 720p -> 1080p the window still read 1280x720 while
+- * INCAP active and the rowbyte had long moved to 1920x1080 / 0x78. Taking that
+- * register as the ring's size reported a 1280x720 ring with a 1920-byte pitch:
+- * a sheared picture, then the console, not recoverable by replugging. So it is
+- * consulted only after the rowbyte has said that the firmware scales, only
+- * when what it says agrees with the rowbyte (ALIGN(width, 16) == pitch) and
+- * with the source's aspect ratio, and only through an optional phandle: a
+- * device tree without allwinner,scaler leaves the arithmetic alone in charge.
++ * The capture scaler's output size, +0x86c width and +0x870 height: what the
++ * firmware writes into the ring when it scales (h713_hdmirx_ring_geometry()).
+  */
+-#define H713_SCALER_IN_WIN	0x34
++#define H713_INCAP_OUT_W	0x86c
++#define H713_INCAP_OUT_H	0x870
+ 
+ /*
+  * The display firmware's own timing table -- the list the device locks on, and
+@@ -983,6 +969,7 @@
+ 
+ /* How often the three above are re-read, plan section 1 D. */
+ #define H713_AUDIO_POLL_MS	100
++#define H713_GEOMETRY_POLL_MS	100
+ 
+ /* The vendor's own four steps, from the header of pq_picturemode.ini. */
+ static const char * const h713_hdmirx_pq_steps[] = {
+@@ -1319,7 +1306,6 @@
+ 	 * read on demand, under sig_lock, through a mapping made on first use.
+ 	 */
+ 	struct regmap *incap;
+-	struct regmap *scaler;		/* DE picture scaler, read only, optional */
+ 
+ 	/*
+ 	 * The firmware's mode table, copied out of the TSE window at probe:
+@@ -1367,6 +1353,11 @@
+ 	 */
+ 	struct regmap *link;
+ 	struct delayed_work audio_work;
++
++	/* the geometry poll: INCAP moving without a firmware callback (2.68) */
++	struct delayed_work geometry_work;
++	u32 seen_active, seen_rowbyte, seen_out;
++	bool seen_looked;
+ 	struct h713_hdmirx_audio audio_last;
+ 	/*
+ 	 * Set for good when this instance finds the display MIPS not running
+@@ -2026,6 +2017,56 @@
+ }
+ 
+ /*
++ * INCAP moves on its own. After a mode change the firmware's record names the
++ * new source at once, the capture block follows only when the firmware has
++ * rebuilt its capture chain, seconds later at times, and that step comes with
++ * no callback: a client that asked in between holds a ring that is no longer
++ * written, and nothing tells it. Measured 12.10.2026 on the HY300PRO-G-EU with
++ * h713-warp streaming (TODO 2.68, arbeit/wurzeln-20261012): INCAP read
++ * 1152x720 of the previous 1440x900 for a 720x480 source through three
++ * callbacks, then moved to 720x480 without one; the warp kept drawing
++ * 1152x720 slots of a 720-byte ring until the next mode change.
++ *
++ * So the block is looked at ten times a second, and when its active size,
++ * rowbyte or scaler output differ from what the driver saw at its last
++ * detection, that is a source change and is reported as one. The client
++ * stops its queue and asks again (QUERY_DV_TIMINGS), as for every other
++ * source change event; a block mid-change answers -ENOLCK there and is asked
++ * again. A block that reads zero (the TVCAP domain off) is not a change.
++ */
++static void h713_hdmirx_geometry_work(struct work_struct *work)
++{
++	struct h713_hdmirx *rx = container_of(to_delayed_work(work),
++					      struct h713_hdmirx, geometry_work);
++	u32 active, rowbyte, out_w, out_h, out;
++
++	if (READ_ONCE(rx->seen_looked) && video_is_registered(&rx->vdev) &&
++	    !regmap_read(rx->incap, H713_INCAP_ACTIVE, &active) &&
++	    !regmap_read(rx->incap, H713_INCAP_ROWBYTE, &rowbyte) &&
++	    !regmap_read(rx->incap, H713_INCAP_OUT_W, &out_w) &&
++	    !regmap_read(rx->incap, H713_INCAP_OUT_H, &out_h) &&
++	    active && rowbyte) {
++		out = out_w << 16 | (out_h & 0xffff);
++		if (active != READ_ONCE(rx->seen_active) ||
++		    rowbyte != READ_ONCE(rx->seen_rowbyte) ||
++		    out != READ_ONCE(rx->seen_out)) {
++			WRITE_ONCE(rx->seen_active, active);
++			WRITE_ONCE(rx->seen_rowbyte, rowbyte);
++			WRITE_ONCE(rx->seen_out, out);
++			dev_info_ratelimited(rx->dev,
++					     "INCAP moved without a callback: active %ux%u, scaler out %ux%u, pitch %u -- source change reported\n",
++					     active >> 16, active & 0xffff,
++					     out_w & 0xffff, out_h & 0xffff,
++					     (rowbyte & 0xffff) * H713_INCAP_ROWBYTE_UNIT);
++			h713_hdmirx_src_change(rx);
++		}
++	}
++
++	queue_delayed_work(system_wq, &rx->geometry_work,
++			   msecs_to_jiffies(H713_GEOMETRY_POLL_MS));
++}
++
++/*
+  * Drop the remembered timing (struct h713_hdmirx). Everything that can mean
+  * another source does this: both firmware callbacks, a ring that has stopped
+  * moving, and INCAP reading other words than it read at the measurement.
+@@ -3696,57 +3737,44 @@
+ 
+ /*
+  * The ring's geometry from the capture block, with the source's active size
+- * (@src_w x @src_h, INCAP +0x874) and the rowbyte word (+0x924) already read.
+- *
+- * The rule, in this order and with the rowbyte as the only primary source:
+- *
+- *  1. pitch = rowbyte * 16. A rowbyte of zero, or a luma pitch that differs
+- *     from the chroma pitch, is not a ring this driver knows how to describe;
+- *     then ALIGN(src_w, 16) stands in -- the rounding rule measured for every
+- *     width so far -- with a line in the log.
++ * (@src_w x @src_h, INCAP +0x874), the rowbyte word (+0x924) and the capture
++ * scaler's output size (+0x86c, +0x870) already read.
+  *
++ *  1. pitch = rowbyte * 16 (0136f). A rowbyte of zero, or a luma pitch that
++ *     differs from the chroma pitch, is not a ring this driver knows how to
++ *     describe; then ALIGN(src_w, 16) stands in, with a line in the log.
+  *  2. pitch >= ALIGN(src_w, 16): the firmware does not scale, the ring is the
+- *     source, src_w x src_h. This is every case on the HY310 (1920x1080 panel):
+- *     1920 for 1920, 1280 for 1280, 1376 for 1366 (doku/nachtlog/E4, 08.09.).
+- *     A pitch above the rounded width has never been measured as a steady
+- *     state; it is what a change in flight can leave for a moment (active
+- *     rewritten, rowbyte not yet), and it is reported as today: the source's
+- *     size with the pitch as read, a valid format with padding.
+- *
+- *  3. pitch < ALIGN(src_w, 16): the firmware scales down in its capture path
+- *     (HY300 Pro, 1280x720 panel, 1920x1080 source: rowbyte 0x36 -> 864). The
+- *     ring's width is the pitch -- NV16 luma bytes are pixels, and 864 is the
+- *     tightest width the pitch admits; the true width lies in (pitch - 15,
+- *     pitch] and only the picture scaler's window below can name it exactly.
+- *     The height follows the source's aspect ratio, rounded DOWN to an even
+- *     count: 852 * 1080 / 1920 = 479.25 was measured as 478, not 479 or 480
+- *     (19.09.2026), and the plane refuses an odd height in any case
+- *     (sun50i-h713-afbd atomic_check, fb->height % 2). With the pitch as the
+- *     width that is 864 x 486 for the case above.
+- *
+- *  4. Cross-check, only in case 3 and only with allwinner,scaler in the tree:
+- *     the picture scaler's input window (H713_SCALER_IN_WIN) is taken instead
+- *     of the arithmetic when it is consistent with what the rowbyte and the
+- *     source already said -- a non-empty window no wider than the pitch whose
+- *     rounded width IS the pitch (ALIGN(852, 16) == 864) and whose height is
+- *     within two lines of the source's aspect ratio applied to its width. Then
+- *     the ring is 852 x 478, exactly. A stale window fails the first test
+- *     (1280x720 against a pitch of 864 or 1920) or the second (another
+- *     source's shape) and is ignored; the arithmetic stands. The register is
+- *     never consulted when the rowbyte says the ring is the source, so on the
+- *     HY310 it is never read at all.
+- *
+- * One ratelimited line when the ring is not the source, none when it is:
+- * "source 1920x1080, ring 852x478 pitch 864 - the firmware scales".
+- */
+-static void h713_hdmirx_ring_geometry(struct h713_hdmirx *rx,
+-				      unsigned int src_w, unsigned int src_h,
+-				      u32 rowbyte,
+-				      struct h713_hdmirx_ring_geometry *ring)
++ *     source -- every HY310 case, byte-identical to 0136f.
++ *  3. pitch < ALIGN(src_w, 16): the firmware scales, and the ring is what its
++ *     capture scaler writes, +0x86c x +0x870. Measured 12.10.2026 on the
++ *     HY300PRO-G-EU (1280x720 panel), the registers and the slots' fill
++ *     height alike (arbeit/wurzeln-20261012): 1280x1024 -> 900x720, pitch
++ *     912; 1024x768 -> 960x720, pitch 960; 1360x768 -> 1274x720, pitch 1280;
++ *     1366x768 -> 1280x718, pitch 1280; 1920x1080 -> 1280x720, pitch 1280.
++ *     The scaler keeps the aspect, bounded by both panel sides (1366x768 is
++ *     bounded by the width: 718 lines), and the pitch is the width rounded
++ *     up to 16. The output words have to agree with the rowbyte and with
++ *     the source: 0 < out_w <= src_w, ALIGN(out_w, 16) == pitch,
++ *     0 < out_h <= src_h. Otherwise INCAP is mid-change -- its words move one
++ *     after another (0136v) -- and the answer is -ENOLCK, not a guess.
++ *
++ * Until 12.10.2026 rule 3 derived the height from the aspect ratio,
++ * src_h * pitch / src_w, and took the pitch as the width: 912x728 for
++ * 1280x1024 and 1280x722 for 1360x768, both taller than the panel and both
++ * refused by the display side, the console for two common PC modes (TODO
++ * 2.69). The DE picture scaler's input window (syscon@5180000 +0x34) served
++ * as a cross-check for the same information and is not consulted any more:
++ * the firmware writes it only when it rebuilds its window chain, and it read
++ * 1280x720 while INCAP already captured 1280x1024.
++ *
++ * One ratelimited line when the ring is not the source, none when it is.
++ */
++static int h713_hdmirx_ring_geometry(struct h713_hdmirx *rx,
++				     unsigned int src_w, unsigned int src_h,
++				     u32 rowbyte, u32 out_w, u32 out_h,
++				     struct h713_hdmirx_ring_geometry *ring)
+ {
+ 	unsigned int pitch = (rowbyte & 0xffff) * H713_INCAP_ROWBYTE_UNIT;
+-	const char *how = "by the rowbyte";
+-	u32 win;
+ 
+ 	if (!pitch || (rowbyte >> 16) != (rowbyte & 0xffff)) {
+ 		dev_warn_ratelimited(rx->dev,
+@@ -3759,29 +3787,27 @@
+ 	if (pitch >= ALIGN(src_w, H713_INCAP_ROWBYTE_UNIT)) {
+ 		ring->width = src_w;
+ 		ring->height = src_h;
+-		return;
++		return 0;
+ 	}
+ 
+-	ring->width = pitch;
+-	ring->height = (src_h * pitch / src_w) & ~1U;
+-
+-	if (rx->scaler && !regmap_read(rx->scaler, H713_SCALER_IN_WIN, &win)) {
+-		unsigned int w = win >> 16, h = win & 0xffff;
+-		unsigned int expect = w ? src_h * w / src_w : 0;
+-
+-		if (w && h && w <= pitch &&
+-		    ALIGN(w, H713_INCAP_ROWBYTE_UNIT) == pitch &&
+-		    h <= expect + 2 && h + 2 >= expect) {
+-			ring->width = w;
+-			ring->height = h;
+-			how = "by the picture scaler";
+-		}
++	out_w &= 0xffff;
++	out_h &= 0xffff;
++	if (!out_w || out_w > src_w ||
++	    ALIGN(out_w, H713_INCAP_ROWBYTE_UNIT) != pitch ||
++	    !out_h || out_h > src_h) {
++		dev_info_ratelimited(rx->dev,
++				     "source %ux%u, pitch %u, but the capture scaler says %ux%u -- INCAP is mid-change\n",
++				     src_w, src_h, pitch, out_w, out_h);
++		return -ENOLCK;
+ 	}
++	ring->width = out_w;
++	ring->height = out_h;
+ 
+ 	dev_info_ratelimited(rx->dev,
+-			     "source %ux%u, ring %ux%u pitch %u - the firmware scales (%s)\n",
+-			     src_w, src_h, ring->width, ring->height, ring->pitch,
+-			     how);
++			     "source %ux%u, ring %ux%u pitch %u - the firmware scales\n",
++			     src_w, src_h, ring->width, ring->height, ring->pitch);
++
++	return 0;
+ }
+ 
+ /*
+@@ -3966,7 +3992,7 @@
+ 	struct h713_hdmirx_ring_sample flips;
+ 	struct v4l2_bt_timings *bt = &t->bt;
+ 	unsigned int width, height, htotal, vtotal, fps_x100, tolerance;
+-	u32 active, total, rowbyte;
++	u32 active, total, rowbyte, out_w, out_h;
+ 	bool have_sig, own_record;
+ 	int ret;
+ 
+@@ -4030,8 +4056,17 @@
+ 		ret = regmap_read(rx->incap, H713_INCAP_TOTAL, &total);
+ 	if (!ret)
+ 		ret = regmap_read(rx->incap, H713_INCAP_ROWBYTE, &rowbyte);
++	if (!ret)
++		ret = regmap_read(rx->incap, H713_INCAP_OUT_W, &out_w);
++	if (!ret)
++		ret = regmap_read(rx->incap, H713_INCAP_OUT_H, &out_h);
+ 	if (ret)
+ 		return ret;
++	/* what INCAP said when the driver last looked, for the geometry poll */
++	WRITE_ONCE(rx->seen_active, active);
++	WRITE_ONCE(rx->seen_rowbyte, rowbyte);
++	WRITE_ONCE(rx->seen_out, out_w << 16 | (out_h & 0xffff));
++	WRITE_ONCE(rx->seen_looked, true);
+ 	width = active >> 16;
+ 	height = active & 0xffff;
+ 	vtotal = total >> 16;
+@@ -4093,7 +4128,10 @@
+ 		return -ENOLCK;
+ 	}
+ 
+-	h713_hdmirx_ring_geometry(rx, width, height, rowbyte, ring);
++	ret = h713_hdmirx_ring_geometry(rx, width, height, rowbyte, out_w, out_h,
++					ring);
++	if (ret)
++		return ret;
+ 
+ 	/*
+ 	 * A lock that survives our own republish. The record at sig_phys is
+@@ -5326,6 +5364,7 @@
+ 	INIT_WORK(&rx->rearm_work, h713_hdmirx_rearm_work);
+ 	INIT_DELAYED_WORK(&rx->rearm_retry_work, h713_hdmirx_rearm_retry_work);
+ 	INIT_DELAYED_WORK(&rx->audio_work, h713_hdmirx_audio_work);
++	INIT_DELAYED_WORK(&rx->geometry_work, h713_hdmirx_geometry_work);
+ 	h713_hdmirx_set_timings(rx, &h713_hdmirx_timings, &h713_hdmirx_ring_default);
+ 	/* until the first genuine record: what the driver reported all along */
+ 	rx->fmt_colorspace = V4L2_COLORSPACE_REC709;
+@@ -5423,19 +5462,6 @@
+ 			 "no allwinner,hdmirx-link -- the receiver audio status stays empty\n");
+ 
+ 	/*
+-	 * The picture scaler's window, same shape and reason, read only and
+-	 * optional. It is a cross-check for a ring the rowbyte has already
+-	 * shown to be smaller than the source (see H713_SCALER_IN_WIN); a tree
+-	 * without it leaves the arithmetic in charge and costs nothing where
+-	 * the firmware does not scale, so its absence is not worth a warning.
+-	 */
+-	rx->scaler = syscon_regmap_lookup_by_phandle_optional(dev->of_node,
+-							     "allwinner,scaler");
+-	if (IS_ERR(rx->scaler))
+-		return dev_err_probe(dev, PTR_ERR(rx->scaler),
+-				     "no access to the scaler block (allwinner,scaler)\n");
+-
+-	/*
+ 	 * The firmware's mode table, read once and copied. Optional in the same
+ 	 * sense as the two syscons above: without it the preset list decides
+ 	 * what QUERY_DV_TIMINGS may report. See H713_TSE_RECORD.
+@@ -5575,6 +5601,10 @@
+ 		WRITE_ONCE(rx->link_lost, true);
+ 		dev_warn(dev, "LINK is not read: %s\n", H713_LINK_LOST);
+ 	}
++	/* the geometry poll needs only INCAP, which reads zero until the firmware runs */
++	if (cpu_comm_firmware_up())
++		queue_delayed_work(system_wq, &rx->geometry_work,
++				   msecs_to_jiffies(H713_GEOMETRY_POLL_MS));
+ 
+ 	platform_set_drvdata(pdev, rx);
+ 	dev_info(dev, "/dev/video%d, slot source: %s\n", rx->vdev.num,
+@@ -5636,6 +5666,7 @@
+ 	 * re-arms itself. The re-arm before its retry, which it may queue.
+ 	 */
+ 	cancel_delayed_work_sync(&rx->audio_work);
++	cancel_delayed_work_sync(&rx->geometry_work);
+ 	cancel_work_sync(&rx->rearm_work);
+ 	cancel_delayed_work_sync(&rx->rearm_retry_work);
+ 	debugfs_remove_recursive(rx->debugfs);
+@@ -5683,6 +5714,7 @@
+ 
+ 	if (rx->link)
+ 		cancel_delayed_work_sync(&rx->audio_work);
++	cancel_delayed_work_sync(&rx->geometry_work);
+ 	cancel_work_sync(&rx->rearm_work);
+ 	cancel_delayed_work_sync(&rx->rearm_retry_work);
+ 
+@@ -5709,6 +5741,9 @@
+ 			queue_delayed_work(system_wq, &rx->rearm_retry_work, 0);
+ 	}
+ 	rx->capture_stopped = false;
++	if (cpu_comm_firmware_up())
++		queue_delayed_work(system_wq, &rx->geometry_work,
++				   msecs_to_jiffies(H713_GEOMETRY_POLL_MS));
+ 
+ 	if (!rx->link || READ_ONCE(rx->link_lost))
+ 		return 0;

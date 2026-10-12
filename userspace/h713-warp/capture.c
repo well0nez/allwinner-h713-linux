@@ -79,12 +79,29 @@ static bool open_node(struct source *s, char *why, size_t n)
 	return false;
 }
 
-/* the ring as the driver reports it: no S_FMT, the signal is the format */
+/*
+ * The ring as the driver reports it: no S_FMT, the signal is the format. The
+ * format is asked for in two steps, as V4L2 means it: QUERY_DV_TIMINGS makes
+ * the driver measure the source and the ring NOW and, with no queue
+ * streaming, makes that the format; G_FMT then reads it. G_FMT alone answers
+ * the format of the last successful query by anyone -- until 12.10.2026 this
+ * was h713-tv's, and while the warp streamed nothing could move it: after a
+ * mode change the warp went on importing the previous mode's ring (TODO
+ * 2.68, arbeit/wurzeln-20261012). Called only with the queue stopped.
+ */
 static bool read_format(struct source *s, char *why, size_t n)
 {
 	struct v4l2_format f;
+	struct v4l2_dv_timings t;
 	bool mp = s->type == V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE;
 
+	memset(&t, 0, sizeof(t));
+	if (ioctl(s->fd, VIDIOC_QUERY_DV_TIMINGS, &t)) {
+		snprintf(why, n, "QUERY_DV_TIMINGS: %s -- %s", strerror(errno),
+			 errno == ENOLCK ? "a change in flight, asked again" :
+			 errno == ENOLINK ? "no signal" : "no timing to capture");
+		return false;
+	}
 	memset(&f, 0, sizeof(f));
 	f.type = s->type;
 	if (ioctl(s->fd, VIDIOC_G_FMT, &f)) {
@@ -254,29 +271,22 @@ bool source_queue(struct source *s, int index)
 }
 
 /*
- * Drain the event queue and say whether the geometry moved. The event alone
- * is not the answer -- a SOURCE_CHANGE also fires for a colour change -- so
- * the format is read again and compared.
+ * Drain the event queue and say whether a SOURCE_CHANGE came. Every one of
+ * them is answered by stopping the queue and asking again (source_rebuilt):
+ * while the queue streams the driver keeps the format, as V4L2 wants, so a
+ * G_FMT here could only repeat the old ring and said "no change" for a ring
+ * that had moved (TODO 2.68). A colour-only change costs one stop and start
+ * of the stream, a few frames; source changes are rare.
  */
 bool source_geometry_changed(struct source *s)
 {
-	unsigned int w = s->width, h = s->height, p = s->pitch;
 	struct v4l2_event ev;
-	char why[WARP_WHY];
 	bool seen = false;
 
 	while (!ioctl(s->fd, VIDIOC_DQEVENT, &ev))
 		seen |= ev.type == V4L2_EVENT_SOURCE_CHANGE;
-	if (!seen)
-		return false;
-	if (!read_format(s, why, sizeof(why))) {
-		info("capture         source change: %s", why);
-		return true;
-	}
-	if (w == s->width && h == s->height && p == s->pitch)
-		return false;
-	info("capture         source change: ring %ux%u line pitch %u (was %ux%u/%u)",
-	     s->width, s->height, s->pitch, w, h, p);
+	if (seen)
+		info("capture         source change event: the ring is asked for again");
 
-	return true;
+	return seen;
 }
