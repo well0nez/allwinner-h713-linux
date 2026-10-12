@@ -1,0 +1,70 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: soc: sunxi: cpu_comm: no read of the MIPS status behind a closed bus gate
+
+Without an owner bound (sun50i-h713-mips missing, its probe failed, or
+unbound after a park) cpu_comm_mips_running() read the MIPS status word
+raw, and prepare and suspend_late asked it at every sleep - after a raw
+park, whose last write closes the block's bus gate (0x0200160c bit 0),
+such a read hangs the bus. Two guards: prepare and suspend_late look at
+the software state first (parked, or stopped for a restart: no core to
+refuse for or to park, no register touched), and the raw read itself
+happens only while the CCU shows the clock on and the gate open - the two
+words the raw park writes, always readable. With the owner bound, as on
+every image, nothing changes. Review of 09.10.2026, CC-6.
+
+Not measured at the device (needs a sleep without the owner).
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_hw.c
+@@ -1516,6 +1516,30 @@
+ }
+ EXPORT_SYMBOL_GPL(cpu_comm_set_mips_owner);
+ 
++#define H713_CCU_MIPS_CLK	0x02001600	/* 0x80000002 running, 0 off */
++#define H713_CCU_MIPS_RESET	0x0200160c	/* 0x00070001 released, 0 held */
++#define H713_MIPS_PARK_MS	12
++
++/*
++ * Without an owner, the MIPS block is reachable only while the CCU shows
++ * its clock on and its bus gate open (the two words the raw park writes
++ * to 0 below); behind a closed gate a read of the status word hangs the
++ * bus. The CCU itself is always there to read (review 09.10., CC-6).
++ */
++static bool cpu_comm_mips_block_reachable(void)
++{
++	void __iomem *ccu;
++	bool reachable;
++
++	ccu = ioremap(H713_CCU_MIPS_CLK, 0x10);
++	if (!ccu)
++		return false;
++	reachable = (readl(ccu) & BIT(31)) &&
++		    (readl(ccu + (H713_CCU_MIPS_RESET - H713_CCU_MIPS_CLK)) & BIT(0));
++	iounmap(ccu);
++	return reachable;
++}
++
+ bool cpu_comm_mips_running(void)
+ {
+ 	bool up;
+@@ -1524,7 +1548,7 @@
+ 	if (cpu_comm_mips_owner)
+ 		up = cpu_comm_mips_owner->alive(cpu_comm_mips_owner->ctx);
+ 	else
+-		up = mips_ctrl_base &&
++		up = mips_ctrl_base && cpu_comm_mips_block_reachable() &&
+ 		     (readl(mips_ctrl_base + MIPS_REG_STATUS) & BIT(0));
+ 	mutex_unlock(&cpu_comm_mips_owner_lock);
+ 	return up;
+@@ -1536,9 +1560,6 @@
+  * when one is bound; otherwise the registers are written raw here, as the
+  * R1 park did, because nobody else holds them then.
+  */
+-#define H713_CCU_MIPS_CLK	0x02001600	/* 0x80000002 running, 0 off */
+-#define H713_CCU_MIPS_RESET	0x0200160c	/* 0x00070001 released, 0 held */
+-#define H713_MIPS_PARK_MS	12
+ 
+ int cpu_comm_mips_park(u32 *clk, u32 *rst)
+ {

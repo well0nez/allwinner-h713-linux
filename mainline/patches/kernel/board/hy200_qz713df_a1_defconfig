@@ -328,3 +328,7 @@ CONFIG_H713_CE_TEST=m
 CONFIG_MAGIC_SYSRQ=y
 CONFIG_MAGIC_SYSRQ_SERIAL=y
 CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE=0x1
+# /sys/power/pm_wakeup_irq (CONFIG_PM_SLEEP_DEBUG follows): h713-power reads which
+# interrupt aborted a standby - a press while the box goes to sleep is no refusal
+# (TODO 5.14 U2). pm_test comes with it, the way to abort a standby at a chosen phase.
+CONFIG_PM_DEBUG=y

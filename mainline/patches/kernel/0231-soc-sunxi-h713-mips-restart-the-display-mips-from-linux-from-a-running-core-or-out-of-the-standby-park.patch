@@ -4,7 +4,7 @@ U-Boot loads display.bin once and starts the MIPS display core. Until
 now, once the core was gone the picture was gone: a firmware that went
 wrong cost a power cycle, and since the standby park (0208) a standby to
 RAM cost a reboot. On the HY310 the restart was measured on 08.10.2026
-with a test bench driver (V3, V8, three times in a row in V10). The core
+with a test bench driver (V3, V8; V10 is on no record, doku/176). The core
 was halted, display.bin was loaded again into the window U-Boot uses,
 the core was started, cpu_comm reported it ready after 330 ms, the
 receiver was bound again and the projected picture came back each time.

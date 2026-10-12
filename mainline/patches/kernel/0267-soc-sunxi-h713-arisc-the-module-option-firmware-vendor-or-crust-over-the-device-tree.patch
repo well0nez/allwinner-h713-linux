@@ -1,0 +1,80 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: soc: sunxi: h713-arisc: the module option firmware=vendor|crust over the device tree
+
+crust is the default on every board with a measured crust configuration
+(decision 1.1b, 10.10.2026) and the vendor firmware stays as the way back,
+"one command away": until now that command was a reinstall. The option
+firmware=vendor loads the owner's h713-arisc.bin from the dump instead
+of the tree's crust image (no standby, power-off through the gate; 0192
+replaces a crust TF-A started), firmware=crust names the tree's own,
+anything else is ignored with a warning, and on a board whose tree names
+no crust image "crust" says so and loads the vendor's. The state file
+says where the choice came from (firmware_from=), the start line too.
+h713-arisc (userspace, TODO 5.20) writes it to /etc/modprobe.d.
+
+Not measured at the device.
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -423,6 +423,7 @@
+ 
+ 	struct h713_arisc_offsets off;		/* resolved from the image */
+ 	const char		*fw_name;	/* the file it came from */
++	const char		*fw_from;	/* "device tree" or "module option" */
+ 	char			image_version[64];	/* its git describe */
+ 	u8			lane;		/* 0 or 3, see arisc_notify_version() */
+ 
+@@ -497,6 +498,17 @@
+ module_param_cb(recover, &recover_ops, NULL, 0644);
+ MODULE_PARM_DESC(recover, "crust found stopped or restarted: log (default) or reload");
+ 
++/*
++ * Which image to load, over the device tree's firmware-name[0]: "vendor"
++ * (the owner's h713-arisc.bin from the dump, no standby, power-off through
++ * the gate) or "crust" (the tree's own crust image). A way back to the
++ * vendor firmware without a reinstall, set by h713-arisc through
++ * /etc/modprobe.d (TODO 5.20); anything else is ignored with a warning.
++ */
++static char *firmware;
++module_param(firmware, charp, 0444);
++MODULE_PARM_DESC(firmware, "the ARISC image over the device tree's: vendor (h713-arisc.bin) or crust");
++
+ /* ---- small helpers ------------------------------------------------------ */
+ 
+ static void __iomem *sram_at(struct h713_arisc *a, unsigned long off)
+@@ -3412,6 +3424,23 @@
+ 
+ 	of_property_read_string_index(a->dev->of_node, "firmware-name", 0,
+ 				      &name);
++	a->fw_from = "device tree";
++	if (firmware && *firmware) {
++		if (!strcmp(firmware, "vendor") || !strcmp(firmware, FW_NAME_ARISC)) {
++			name = FW_NAME_ARISC;
++			a->fw_from = "module option";
++		} else if (!strcmp(firmware, "crust") || !strcmp(firmware, name)) {
++			if (!strcmp(name, FW_NAME_ARISC))
++				dev_warn(a->dev, "firmware=%s: this board's device tree names no crust image - loading \"%s\"\n",
++					 firmware, name);
++			else
++				a->fw_from = "module option";
++		} else {
++			dev_warn(a->dev, "firmware=%s is neither vendor nor crust - ignored, loading the device tree's \"%s\"\n",
++				 firmware, name);
++		}
++	}
++	dev_info(a->dev, "firmware \"%s\" (%s)\n", name, a->fw_from);
+ 
+ 	/*
+ 	 * Before anything decides about the image: how the last run ended,
+@@ -4140,7 +4169,8 @@
+ 		sb = crust_rd(a, H713_SB_STATE);
+ 		err = crust_rd(a, H713_ERR);
+ 	}
+-	n += sysfs_emit_at(buf, n, "firmware=%s\n", a->fw_name ?: "-");
++	n += sysfs_emit_at(buf, n, "firmware=%s\nfirmware_from=%s\n", a->fw_name ?: "-",
++			   a->fw_from ?: "-");
+ 	n += sysfs_emit_at(buf, n, "version=%u\nbuild=0x%08x\nbuild2=0x%08x\n",
+ 			   version, build, build2);
+ 	n += sysfs_emit_at(buf, n, "starts=%u\nexception=0x%08x\nstep=0x%x\n",

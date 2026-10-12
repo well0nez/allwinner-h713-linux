@@ -586,3 +586,8 @@
 0260-media-h713-hdmirx-the-ring-is-what-the-capture-scaler-writes-and-incap-moving-on-its-own-is-a-source-change.patch
 0261-soc-sunxi-cpu_comm-the-thread-word-of-a-held-lock-must-not-read-as-free.patch
 0262-asoc-sunxi-h713-msp-a-wake-up-call-the-dsp-is-late-for-is-asked-again-not-an-aborted-download.patch
+0263-soc-sunxi-cpu_comm-a-start-that-timed-out-closes-the-call-path-again.patch
+0264-soc-sunxi-cpu_comm-a-parked-core-answers-ENODEV-as-promised-not-EBUSY.patch
+0265-soc-sunxi-cpu_comm-no-read-of-the-mips-status-behind-a-closed-bus-gate.patch
+0266-asoc-sunxi-h713-msp-a-standby-aborted-before-the-island-lost-its-power-is-rebuilt-not-called-a-loss.patch
+0267-soc-sunxi-h713-arisc-the-module-option-firmware-vendor-or-crust-over-the-device-tree.patch

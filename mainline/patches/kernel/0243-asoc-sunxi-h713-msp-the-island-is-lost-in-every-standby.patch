@@ -16,10 +16,13 @@ and its timer; without the rebuild the wake sets the state to "error",
 so open, prepare and the status reads keep their hands off the dead
 block, and says so. A rebuild after the standby does not come up yet
 (measured: "echo 1 > reset" sets the audio top again, the DSP's mailbox
-then times out), hence "until a reboot".
+then times out), hence "until a reboot" - at the time: since 0262
+h713-mips-restart rebuilds the DSP after every standby ("audio DSP rebuilt
+(attempt 1)", 45 of 45, doku/203, doku/206), and 0266 rebuilds it in the
+driver when a standby was aborted before the island lost its power.
 
-Built against the r2test2 kernel, W=1 without warnings; not yet measured
-on the device. arbeit/review-r2-20261009/BERICHT.md.
+Built against the r2test2 kernel, W=1 without warnings; measured on the
+device since (doku/172, doku/173). arbeit/review-r2-20261009/BERICHT.md.
 ---
 --- a/sound/soc/sunxi/sun50i-h713-msp.c
 +++ b/sound/soc/sunxi/sun50i-h713-msp.c

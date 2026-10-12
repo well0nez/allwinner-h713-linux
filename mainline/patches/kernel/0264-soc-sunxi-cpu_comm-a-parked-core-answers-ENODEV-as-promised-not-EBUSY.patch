@@ -1,0 +1,31 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: soc: sunxi: cpu_comm: a parked core answers -ENODEV as promised, not -EBUSY
+
+The park's message and cpu_comm.h say kernel RPCs fail with -ENODEV while
+the core is parked, but the park takes the suspend count as well, and
+cpu_comm_call() tested that count first: a parked core answered -EBUSY,
+the code of "being replaced, try again". A caller that tells the two apart
+(hdmirx's SetSource after a wake) tried again in vain and the log named
+a code the message did not. The parked test now comes first. Review of
+09.10.2026, CC-3.
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_api.c
+@@ -169,6 +169,15 @@
+ 		return -EINVAL;
+ 	if (!ShMemAddrBase || !pcpu_comm_dev)
+ 		return -ENODEV;
++	/*
++	 * Parked for the standby: -ENODEV, as the park's message and the
++	 * header promise. Before the count, which the park takes as well -
++	 * through it alone a parked core read as "being replaced" (-EBUSY),
++	 * and a caller that tells the two apart tried again in vain (review
++	 * 09.10., CC-3).
++	 */
++	if (READ_ONCE(cpu_comm_parked_since))
++		return -ENODEV;
+ 	/* The core is being replaced (cpu_comm_firmware_stop). */
+ 	if (cpu_comm_suspend_flag > 0)
+ 		return -EBUSY;

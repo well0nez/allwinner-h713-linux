@@ -1,0 +1,78 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: ASoC: sunxi: h713-msp: a standby aborted before the island lost its power is rebuilt, not called a loss
+
+msp_resume set the state to "error" after every standby that had run
+msp_suspend, whether or not pd_tvfe was ever cut - and nothing rebuilt
+the DSP then: h713-mips-restart runs only when the display MIPS was
+parked, and the park comes in suspend_late, after msp_suspend. A standby
+aborted between the two (a wake-up event while the devices went down -
+the second press of the power key that h713-power keeps the projector on
+for since TODO 5.14 U2) left a live island reported dead: the picture
+on, no sound until the next successful standby or a reboot. Read in the
+review of 09.10.2026 (TODO 5.16), confirmed in the code on 12.10.2026.
+
+The resume now reads whether the power was lost - the TVFE router word
+and the audio top's clock bits, which the bring-up sets and checks; both
+read 0 after a real sleep (HY310, 09.10.2026) and neither read hangs -
+and rebuilds a live island itself, through the same bring-up "echo 1 >
+reset" runs (65 of 65 in the self-healing). A real loss stays "error",
+with the message naming what rebuilds it.
+
+To measure: pm_test=devices aborts after the devices' suspend phase,
+before the park: state "running" afterwards, "standby aborted before the
+island lost its power" in the log, then a real standby as before.
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+--- a/sound/soc/sunxi/sun50i-h713-msp.c
++++ b/sound/soc/sunxi/sun50i-h713-msp.c
+@@ -2524,6 +2524,25 @@
+ 	return 0;
+ }
+ 
++/*
++ * Did the island really lose its power? A standby that was aborted after
++ * msp_suspend but before the noirq phase (a wake-up event while the
++ * devices went down, review 09.10. and TODO 5.14 U2) never cut pd_tvfe:
++ * the DSP runs on with its patch and its graph, and only the bridge PCM
++ * was stopped. Read, not assumed: the TVFE router word and the audio top's
++ * clock bits, which the bring-up sets and checks (msp_island_up). Both
++ * survive only with the power; after a real sleep the top word reads 0
++ * (HY310, 09.10.2026). Neither read hangs - a dead demod bus reads 0.
++ */
++static bool msp_island_powered(struct h713_msp *msp)
++{
++	unsigned int router = 0;
++
++	if (regmap_read(msp->router, 0, &router) || !router)
++		return false;
++	return (readl(msp->top + MSP_TOP_CTL) & MSP_TOP_CTL_CLK) == MSP_TOP_CTL_CLK;
++}
++
+ static int msp_resume(struct device *dev)
+ {
+ 	struct h713_msp *msp = dev_get_drvdata(dev);
+@@ -2536,9 +2555,22 @@
+ 		msp->heal_after_sleep = true;
+ 		schedule_work(&msp->heal);
+ 		dev_info(dev, "standby: the DSP is rebuilt after the wake\n");
++	} else if (msp->lost_in_sleep && msp_island_powered(msp)) {
++		/*
++		 * The sleep never reached the island: rebuild what suspend
++		 * took down - the same bring-up "echo 1 > reset" runs, on a
++		 * live island, as the self-healing has run it (65 of 65) -
++		 * rather than report a loss that did not happen and leave
++		 * the picture without sound until somebody resets by hand.
++		 */
++		msp->state = MSP_STATE_ERROR;
++		msp->heal_count = 0;
++		msp->heal_after_sleep = true;
++		schedule_work(&msp->heal);
++		dev_info(dev, "standby aborted before the island lost its power: the DSP is rebuilt\n");
+ 	} else if (msp->lost_in_sleep) {
+ 		msp->state = MSP_STATE_ERROR;
+-		dev_info(dev, "standby: the DSP lost its power in the sleep and is not rebuilt (rebuild_after_sleep=0): state error, no HDMI audio until a reboot\n");
++		dev_info(dev, "standby: the DSP lost its power in the sleep and is not rebuilt by the driver (rebuild_after_sleep=0): state error until h713-mips-restart or \"echo 1 > reset\" rebuilds it\n");
+ 	}
+ 	msp->lost_in_sleep = false;
+ 	mutex_unlock(&msp->lock);

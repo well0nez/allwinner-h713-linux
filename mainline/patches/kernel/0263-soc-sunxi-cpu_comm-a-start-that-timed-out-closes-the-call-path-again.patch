@@ -1,0 +1,71 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: soc: sunxi: cpu_comm: a start that timed out closes the call path again
+
+cpu_comm_firmware_start() gives the count back before it waits for READY,
+so a core that never answered left the call path open and
+cpu_comm_firmware_up() said "up". That word is what keeps the HDMI
+receiver's LINK poll off a dead block (0236/0237): on 08.10.2026 one such
+read held the bus and the watchdog reset the device. After the timeout the
+stop's count is taken again (fw_down), the next stop finds it taken and
+takes no second one, and the next start gives it back as before. Review of
+09.10.2026, CC-1 (arbeit/review-r2-20261009/FUNDE.md).
+
+Not measured at the device: needs a restart that times out.
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -1388,6 +1388,20 @@
+ 	if (!ret) {
+ 		WRITE_ONCE(mips_app_ready_assumed, 1);
+ 		pr_info("cpu_comm: the coprocessor is ready after %u ms\n", waited);
++	} else {
++		/*
++		 * A core that never answered is not up: the call path closes
++		 * again and cpu_comm_firmware_up() says so, so that nobody
++		 * (the receiver's LINK poll, 0236/0237) reads a block whose
++		 * core is dead and hangs the bus. The next stop finds the
++		 * count taken and takes no second one (review 09.10., CC-1).
++		 */
++		mutex_lock(&cpu_comm_call_mutex);
++		if (!cpu_comm_fw_down) {
++			cpu_comm_fw_down = true;
++			cpu_comm_suspend(0);
++		}
++		mutex_unlock(&cpu_comm_call_mutex);
+ 	}
+ 	blocking_notifier_call_chain(&cpu_comm_fw_chain,
+ 				     CPU_COMM_FIRMWARE_STARTED, &ret);
+@@ -2403,10 +2417,21 @@
+  * the noirq phase whatever the runtime references say, and the MIPS polls
+  * its HDMI-RX PHY in TVCAP. Standby to RAM parks it first, below.
+  */
++/*
++ * The software state before the register: a core parked by an earlier
++ * sleep or stopped for a restart is no core to refuse for or to park, and
++ * after a raw park the MIPS block sits behind a closed bus gate, where a
++ * read of its status word would hang the bus (review 09.10., CC-6).
++ */
++static bool cpu_comm_mips_gone(void)
++{
++	return READ_ONCE(cpu_comm_parked_since) || READ_ONCE(cpu_comm_fw_down);
++}
++
+ static int cpu_comm_prepare(struct device *dev)
+ {
+ 	if (pm_suspend_target_state != PM_SUSPEND_TO_IDLE ||
+-	    !cpu_comm_mips_running())
++	    cpu_comm_mips_gone() || !cpu_comm_mips_running())
+ 		return 0;
+ 	dev_err(dev, "s2idle would power TVFE/TVCAP off under the running display coprocessor, refused\n");
+ 	return -EOPNOTSUPP;
+@@ -2427,7 +2452,7 @@
+ 	if (pm_suspend_target_state != PM_SUSPEND_MEM)
+ 		return 0;
+ 	cpu_comm_s2r_count++;
+-	if (!cpu_comm_mips_running()) {
++	if (cpu_comm_mips_gone() || !cpu_comm_mips_running()) {
+ 		/*
+ 		 * Parked since an earlier sleep, or held after a restart that
+ 		 * failed past its park: the pipeline the old firmware set up
