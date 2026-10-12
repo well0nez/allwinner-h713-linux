@@ -173,6 +173,29 @@ def suspend_counts():
     return tuple(int(read(path("sys/power/suspend_stats", n), "0") or 0) for n in ("success", "fail"))
 
 
+# The kernel's counters of the steps a standby fails in from the freezer on (kernel/power/main.c). The freezer
+# clears pm_wakeup_irq first (pm_wakeup_clear), so only when one of these moved does that file speak of this try.
+STEPS = ("failed_freeze", "failed_prepare", "failed_suspend", "failed_suspend_late", "failed_suspend_noirq")
+
+
+def suspend_steps():
+    return tuple(int(read(path("sys/power/suspend_stats", n), "0") or 0) for n in STEPS)
+
+
+def wake_abort(steps_before):
+    """The IRQ whose wake-up aborted the standby that just failed, or None (TODO 5.14 U2, review 09.10.).
+
+    A press while the box goes to sleep (or any interrupt armed for wake-up) aborts it in its last phases, and
+    the kernel answers -EBUSY - but so do two real refusals of ours (afbd's scanout that does not stop, crust's
+    RTC alarm that is due), so the errno does not tell them apart. /sys/power/pm_wakeup_irq does: the first
+    wake-up interrupt of the try, cleared when the freezer starts. It exists with CONFIG_PM_DEBUG only; without
+    it, or when the try failed before the freezer, this is None and the failure counts as a refusal, as before."""
+    if suspend_steps() == steps_before:
+        return None
+    irq = read(path("sys/power/pm_wakeup_irq"))
+    return irq if irq.isdigit() else None
+
+
 def suspend(clock=None, sleep=None):
     """systemctl suspend, then wait for the kernel's verdict in suspend_stats.
 
@@ -252,7 +275,14 @@ def act(what, conf, choice=None):
             standby_unavailable() if choice == "standby" else "the countdown ended on off")
         if why is None:
             log("short press: standby")
+            steps = suspend_steps()
             if suspend():
+                picture_back()
+                return True
+            irq = wake_abort(steps)
+            if irq:
+                # not a refusal: the user (or a wake source) asked for the projector before it slept
+                log("the standby was aborted by a wake-up (IRQ %s): the projector stays on" % irq, "<4>")
                 picture_back()
                 return True
             if conf["refused"] == "log":

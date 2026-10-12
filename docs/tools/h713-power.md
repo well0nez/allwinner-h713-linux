@@ -60,6 +60,15 @@ comes back from the freezer, and the counters are read before the time is judged
 never turns a standby that happened into a power-off. A refusal and a power-off for a short press are
 logged as warnings.
 
+A standby that a **wake-up aborted** is not a refusal: a press while the box goes to sleep, or any interrupt
+armed for wake-up, stops it in its last phases, and the projector stays on whatever `refused` says ("the
+standby was aborted by a wake-up (IRQ n)"). The kernel's errno cannot tell this from a refusal - afbd's
+scanout that does not stop and crust's RTC alarm that is due answer -EBUSY too - so h713-power reads
+`/sys/power/pm_wakeup_irq`, the first wake-up interrupt of the try, and only when one of the step counters
+in `/sys/power/suspend_stats` (`failed_freeze` to `failed_suspend_noirq`) moved, because the freezer clears
+the file and an earlier failure would leave the last resume's interrupt there. The file exists with
+`CONFIG_PM_DEBUG`; without it every failure is a refusal, as before (TODO 5.14, review U2).
+
 **The picture after a standby.** The standby parks the display MIPS (cpu_comm, `suspend_late`), and
 nothing in the kernel starts it again: after the resume the wall would stay on the console. When the
 projector stays on after a standby - or after a refused one with `refused = log`, the park may have come

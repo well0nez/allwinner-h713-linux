@@ -27,7 +27,7 @@ class Root:
     default is poweroff (Defaults below)."""
 
     def __init__(self, mem_sleep="s2idle [deep]", ready="1", conf="", mips=None, suspend_ok=True, restart_rc=0,
-                 build2="0x00003318"):
+                 build2="0x00003318", fail_step=None, wake_irq=None):
         self.tmp = tempfile.TemporaryDirectory()        # removed with this object
         self.dir = self.tmp.name
         self.put("etc/h713/power.conf", conf if conf is None or "short" in conf else "short = standby\n" + conf)
@@ -42,8 +42,18 @@ class Root:
         os.makedirs(os.path.dirname(self.fifo))
         os.mkfifo(self.fifo)
         self.log = self.p("systemctl.log")
-        self.put("systemctl", '#!/bin/sh\necho "$@" >> %s\n[ "$1" = suspend ] && echo 1 > %s\nexit 0\n'
-                 % (self.log, self.p("sys/power/suspend_stats/" + ("success" if suspend_ok else "fail"))))
+        # A failed try can name the step it failed in (the kernel's failed_<step> counter) and, with
+        # CONFIG_PM_DEBUG, the wake-up interrupt that aborted it (pm_wakeup_irq) - both written by "suspend".
+        more = ""
+        if fail_step:
+            more += "echo 1 > %s\n" % self.p("sys/power/suspend_stats/" + fail_step)
+        if wake_irq:
+            more += "echo %s > %s\n" % (wake_irq, self.p("sys/power/pm_wakeup_irq"))
+        for step in ("failed_freeze", "failed_prepare", "failed_suspend", "failed_suspend_late",
+                     "failed_suspend_noirq"):
+            self.put("sys/power/suspend_stats/" + step, "0")
+        self.put("systemctl", '#!/bin/sh\necho "$@" >> %s\n[ "$1" = suspend ] && { echo 1 > %s\n%s}\nexit 0\n'
+                 % (self.log, self.p("sys/power/suspend_stats/" + ("success" if suspend_ok else "fail")), more))
         os.chmod(self.p("systemctl"), 0o755)
         if mips:
             self.put("sys/bus/platform/drivers/sun50i-h713-mips/3061000.mips/state",
@@ -263,6 +273,27 @@ class AfterTheStandby(unittest.TestCase):
         self.assertEqual(calls, ["suspend", "mips-restart"], out)
         calls, out = Root(mips="parked", suspend_ok=False).press(*self.SHORT)
         self.assertEqual(calls, ["suspend", "poweroff"], out)
+
+    def test_a_standby_a_wake_up_aborted_stays_on_whatever_refused_says(self):
+        # TODO 5.14 U2: a press while the box goes to sleep is no refusal - the projector stays on
+        r = Root(mips="parked", suspend_ok=False, fail_step="failed_suspend_noirq", wake_irq="45")
+        calls, out = r.press(*self.SHORT)
+        self.assertEqual(calls, ["suspend", "mips-restart"], out)
+        self.assertIn("aborted by a wake-up (IRQ 45): the projector stays on", out)
+
+    def test_a_wake_up_irq_of_an_earlier_cycle_does_not_count(self):
+        # pm_wakeup_irq left from the last resume, the try failed before the freezer cleared it: a refusal
+        r = Root(mips="parked", suspend_ok=False)
+        r.put("sys/power/pm_wakeup_irq", "45")
+        calls, out = r.press(*self.SHORT)
+        self.assertEqual(calls, ["suspend", "poweroff"], out)
+        self.assertNotIn("aborted by a wake-up", out)
+
+    def test_without_pm_wakeup_irq_a_failed_step_is_a_refusal_as_before(self):
+        # a kernel without CONFIG_PM_DEBUG has no pm_wakeup_irq: as before, the refusal powers off
+        for step in ("failed_suspend_noirq", "failed_suspend", "failed_freeze"):
+            calls, out = Root(mips="parked", suspend_ok=False, fail_step=step).press(*self.SHORT)
+            self.assertEqual(calls, ["suspend", "poweroff"], (step, out))
 
     def test_while_the_picture_comes_back_a_short_press_does_nothing_a_long_one_powers_off(self):
         m, r = load(), Root(mips="parked")
