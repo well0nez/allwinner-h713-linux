@@ -209,6 +209,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10. behoben** (`doku/203`): afbd `0258` - nach einem Standby kein Lesen von `INCAP +0xa0c` (0255), bis der
         HDMI-Empfänger neu gebunden ist; vorher Bus-Hänger, Watchdog nach 16,4 s, 3/3. Danach 15/15 Standbys zurück (Warp an, 60 s,
         fünf hintereinander, `ctl off`), 59,6-59,8 fps. Offen: Wecken per Taste/IR (Marco)
+- [ ] 2.65 **Frage (Marco 12.10.): weckt IR auch aus dem Aus über crust, wie aus dem Standby?** Am HY310 bestanden (`doku/190`: Taste,
+      IR, Selbstwecken), am G-EU "Taste oder Fernbedienung weckt" (`doku/188`). Mit dem Kernel aus `main` 234282c am G-EU nachmessen,
+      je einmal: Standby -> IR-Power; Aus über crust -> IR-Power; dabei 2.40 (`0257`) im Log des Starts danach ansehen (Info statt
+      Warnung). Braucht Marco vor Ort (IR)
 - [ ] 2.49 **Bluetooth: Fehler auf der HCI-UART** (Marco 11.10., HY310 mit Kernel 8b663b8 + 0251): im dmesg 18-mal
       `hci0: Frame reassembly failed (-84)`/`(-90)`, dazu `Received unexpected HCI Event 0x00`, `unexpected event 0x04 length: 62 > 10`,
       `unknown link type 35`, `SCO packet for unknown connection handle 278` - alle bei Uptime 1564-1796 s (10.10. ~22:55); der
