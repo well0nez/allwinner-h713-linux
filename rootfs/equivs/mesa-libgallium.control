@@ -1,0 +1,17 @@
+# Dummy for Debian trixie's mesa-libgallium: the real library is the mesa that rootfs/mesa/build-mesa.sh puts under /usr/local
+# (panfrost only, Wayland platform, glvnd, no LLVM). Debian's own mesa-libgallium would pull mesa-libgallium and libllvm19
+# (187 MiB). rootfs/build-rootfs.sh builds this file into a .deb (dpkg-deb, the same fields equivs-build reads) and
+# installs it with the base image, so apt knows the dependency is met.
+# The epoch keeps every Debian mesa update (25.0.7-2+deb13uN) below this version: apt never swaps a dummy for the real
+# package. Debian's dependencies on these packages are ">=" (kodi, wlroots, libegl1), except libglx-mesa0's exact
+# one on mesa-libgallium - see libglx-mesa0.control.
+Package: mesa-libgallium
+Version: 1:25.0.7-2+deb13u1
+Architecture: arm64
+Section: libs
+Priority: optional
+Maintainer: well0nez <8986239+well0nez@users.noreply.github.com>
+Provides: libglapi-mesa
+Description: dummy for mesa-libgallium (h713 mesa under /usr/local)
+ No files. The library comes from the mesa build in /usr/local/lib, which
+ only this image's own build provides; see rootfs/mesa/build-mesa.sh.
