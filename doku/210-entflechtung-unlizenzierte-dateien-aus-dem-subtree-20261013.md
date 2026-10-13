@@ -22,6 +22,10 @@ Gearbeitet wurde im Zweig `versuch/entflechtung`, **ohne Push**; die Dateien sin
 Aus dem Baum verschwinden damit **70** Dateien. Die Kernelpatches wurden nicht berührt; ihre Kommentare auf seine Dokumente bleiben
 als Herkunftsangabe stehen (`0024`, `0033`, `0042`, `0055`, `0092`, `0101`, `0187`, `uboot-h713/0005`, `0051` und andere).
 
+Dazu ein neues Tor: Regel 9 in `release/sperr-scan.py` meldet eine Quelldatei (`.c .h .S .py .sh .dts .dtsi`) unter `mainline/` ohne
+SPDX-Zeile im Kopf als harten Fund (frei: `external/`, `modules/aic8800/`, `build/`, `tools/or1k-toolchain/`); Test `installer/tests/test_sperrscan_spdx.py`
+(Fund, Nicht-Fund, freie Stellen). Gegenprobe am echten Baum: eine unverfolgte `mainline/tools/zz-probe.c` ohne Kopf wurde gemeldet, der Baum selbst ist sauber.
+
 ## 2 Wo die entfernten Dateien liegen
 
 * **In seinem Repository** `github.com/cstenger/allwinner-h713-mainline` @`8860991`: derselbe Pfad **ohne** das führende `mainline/`
@@ -70,7 +74,7 @@ Fakten nach seiner Aufnahme, Gliederung und Wortlaut eigen, die IDs neu gerechne
   Die 16 Pfade unter `mainline/`, die im Arbeitsbaum von `main` heute ignoriert sind, liegen alle unter `mainline/build/` und sind auch nach dem Entfernen von
   `mainline/.gitignore` ignoriert (`git check-ignore --no-index`); deren Typmuster (`*.bin`, `*.fit`, `*.dtb`, `*.tar`, `Image*`, `*.swp`, `.DS_Store`) sind
   nicht in die Wurzeldatei übernommen.
-* **Tore:** `release/tor.sh --tests` grün (Installer-Tests 449, davon 54 übersprungen wie vorher; `h713-power` 83, `h713-keys` 22), `bash boards/check.sh` grün,
+* **Tore:** `release/tor.sh --tests` grün (Installer-Tests 449 nach E3 und 452 mit den drei der neuen Regel, davon 54 übersprungen wie vorher; `h713-power` 83, `h713-keys` 22), `bash boards/check.sh` grün,
   `tools/check-links.py` ohne tote Links und Waisen. Danach verweist außerhalb von Journal, Patchtexten, `TODO.md` und den vier Dateien im Neuschrieb nur noch
   das auf die entfernten Pfade, was dieser Eintrag in §6 nennt.
 

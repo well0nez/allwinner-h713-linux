@@ -115,13 +115,14 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/tests/test_layout_v4.py` | `doku/109` |
 | `installer/tests/test_o1b_followups.py` | `doku/61` |
 | `installer/tests/test_py39_syntax.py` | `doku/61` |
+| `installer/tests/test_sperrscan_spdx.py` | `doku/210` |
 | `installer/tests/test_stock_gpt_crosscheck.py` | `doku/60`, `doku/61` |
 | `installer/tests/test_stock_guard.py` | `doku/121` |
 | `installer/tests/test_test_image.py` | `doku/109`, `doku/121` |
 | `release/build-all.sh` | `doku/116`, `doku/120`, `doku/121`, `doku/148`, `doku/50`, `doku/60` |
 | `release/doku-index.py` | `doku/128`, `doku/128a`, `doku/nachtlog/S49-` |
 | `release/repo-skelett.sh` | `doku/116`, `doku/118`, `doku/121` |
-| `release/sperr-scan.py` | `doku/116`, `doku/121` |
+| `release/sperr-scan.py` | `doku/116`, `doku/121`, `doku/210` |
 | `rootfs/build-rootfs.sh` | `doku/107`, `doku/109`, `doku/116`, `doku/50` |
 | `rootfs/install-projekt.sh` | `doku/116`, `doku/60` |
 | `rootfs/packages.txt` | `doku/107`, `doku/108` |
@@ -260,7 +261,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`207-hy310-auf-main-hy310main1-reihe-20261012.md`](207-hy310-auf-main-hy310main1-reihe-20261012.md) | Analyse | 2026-10-12 | 207 - HY310 auf `main`: Abbild hy310main1 gebaut und installiert, die offenen 2.x-Punkte gemessen; Handoff (12.10.2026, abends) | 1 |
 | [`208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`](208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md) | Analyse | 2026-10-12 | 208 - Die 5.x-Runde: Werkzeuge, Reste der Standby-Durchsicht, ARISC-Wahl, Panel-PR, Testabbild runde5x1 am HY310; Handoff (12.10.2026, nachts) | - |
 | [`209-runde-5x-teil-b-uebernahme-panel-20261013.md`](209-runde-5x-teil-b-uebernahme-panel-20261013.md) | Analyse | 2026-10-13 | 209 - Die 5.x-Runde, Teil B mit Marco am HY310, alles nach `main`, das Panel mit den Beamer-Begriffen; Handoff (13.10.2026, nachts) | - |
-| [`210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md`](210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md) | Analyse | 2026-10-13 | 210 - Entflechtung des Subtrees: cstengers Dateien ohne Lizenz sind aus dem Baum, was sie ersetzt (13.10.2026) | 3 |
+| [`210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md`](210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md) | Analyse | 2026-10-13 | 210 - Entflechtung des Subtrees: cstengers Dateien ohne Lizenz sind aus dem Baum, was sie ersetzt (13.10.2026) | 5 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
