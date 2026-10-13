@@ -86,6 +86,7 @@ MODROOT="$PROJECT_ROOT/mainline/build/modroot.GUT-bad2f16b"
 H713_TV_SRC="$PROJECT_ROOT/userspace/h713-tv"
 H713_TV_BIN="$H713_TV_SRC/h713-tv.aarch64-linux-gnu"
 MESA_TAR="$PROJECT_ROOT/mainline/build/out/mesa-panfrost-25.0.7.tar"   # rootfs/mesa/build-mesa.sh
+LIBVA_TAR="$PROJECT_ROOT/mainline/build/out/libva-v4l2-request-1.2.tar" # rootfs/libva/build-libva.sh; laid in by profile media only
 H713_PQ_SRC="$PROJECT_ROOT/userspace/h713-pq"
 
 usage() {
@@ -113,6 +114,9 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
   --mesa FILE          the panfrost-only mesa tarball out of rootfs/mesa/build-mesa.sh
                         (default: ${MESA_TAR#"$PROJECT_ROOT"/}); "none" builds without a GPU
                         userspace
+  --libva FILE         the VA-API driver tarball out of rootfs/libva/build-libva.sh (default:
+                        ${LIBVA_TAR#"$PROJECT_ROOT"/}); laid in by --profile media, which also lays
+                        rootfs/overlay-media/ (environment, mpv.conf); "none" leaves the driver out
   --authorized-key FILE optionally build in an SSH key. NOT the default and
                         not the release way (107 §3).
   --wifi-env FILE       your own /etc/h713/wifi.env (mode=ap|sta|off, ssid,
@@ -134,8 +138,10 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
                         (sleep.conf.d); h713-power (on every image) then
                         offers it in its countdown. Needs
                         --crust; without it the image never suspends
-  --profile NAME[,NAME] packages-NAME.txt on top of packages.txt: 'media' (ffmpeg, mpv, GStreamer, PipeWire)
-                        and/or 'desktop' (cage, labwc, Kodi, seatd). Without it the base image, unchanged.
+  --profile NAME[,NAME] packages-NAME.txt on top of packages.txt: 'media' (ffmpeg, mpv, GStreamer, PipeWire, and the
+                        VA-API driver for the hardware decoders) and/or 'desktop' (cage, labwc, Kodi, seatd).
+                        A profile NAME with an overlay-NAME/ directory lays it over overlay/. Without
+                        --profile the base image, unchanged.
                         The same --out names are written; keep profile builds in their own --out.
   --skip-project        the Debian base system + overlay/ only
   --keep-work           do not delete the work directory
@@ -158,6 +164,7 @@ while (($#)); do
 	--modroot)         MODROOT=${2:?missing value for --modroot}; shift 2 ;;
 	--h713-tv)        H713_TV_BIN=${2:?missing value for --h713-tv}; shift 2 ;;
 	--mesa)           MESA_TAR=${2:?missing value for --mesa}; shift 2 ;;
+	--libva)          LIBVA_TAR=${2:?missing value for --libva}; shift 2 ;;
 	--authorized-key)  AUTHORIZED_KEY=${2:?missing value for --authorized-key}; shift 2 ;;
 	--wifi-env)        WIFI_ENV=${2:?missing value for --wifi-env}; shift 2 ;;
 	--board)           BOARD=${2:?missing value for --board}; shift 2 ;;
@@ -185,8 +192,10 @@ EQUIVS_INC=     # set by the real run (build_equivs); the dry run shows a placeh
 EQUIVS_WORK=    # the directory of the built dummies (<work>/equivs); set by the real run, a placeholder in the dry run
 # Profile lists, in the order given; the base list always comes first
 PACKAGE_FILES=("$PACKAGES_FILE")
+PROFILE_NAMES=()
 if [[ -n "$PROFILES" ]]; then
 	IFS=, read -ra _profiles <<< "$PROFILES"
+	PROFILE_NAMES=("${_profiles[@]}")
 	for _p in "${_profiles[@]}"; do
 		[[ "$_p" =~ ^[a-z][a-z0-9-]*$ && -r "$HERE/packages-$_p.txt" ]] || {
 			echo "error: --profile $_p: no $HERE/packages-$_p.txt (profiles: $(cd "$HERE" && ls packages-*.txt 2>/dev/null | sed 's/^packages-//; s/\.txt$//' | paste -sd' '))" >&2
@@ -195,6 +204,12 @@ if [[ -n "$PROFILES" ]]; then
 		PACKAGE_FILES+=("$HERE/packages-$_p.txt")
 	done
 fi
+
+# What the profiles bring besides packages (media side project, package D): an overlay directory per profile, and for
+# `media` the VA-API driver of rootfs/libva (the decoders are reached through it; libva2, which loads it, is Debian's).
+has_profile() { local p; for p in "${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}"; do [[ "$p" == "$1" ]] && return 0; done; return 1; }
+WANT_LIBVA=0
+if has_profile media && [[ "$LIBVA_TAR" != none ]]; then WANT_LIBVA=1; fi
 
 # Resolve wifi.env. The check is done by the same script that runs on the
 # device -- what passes here passes there, and the other way round.
@@ -505,6 +520,13 @@ dry_run() {
 	else
 		warn "overlay/ is missing: $OVERLAY"
 	fi
+	local _p
+	for _p in "${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}"; do
+		[[ -d "$HERE/overlay-$_p" ]] || continue
+		info "plus overlay-$_p/ (profile $_p):"
+		(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) -printf '    /%P\n' | sort)
+	done
+	if ((WANT_LIBVA)); then info "plus the VA-API driver: ${LIBVA_TAR#"$PROJECT_ROOT"/}"; fi
 	echo
 
 	say "5. WLAN ($WIFI_ENV_ORIGIN: $WIFI_ENV)"
@@ -619,6 +641,15 @@ tar -C "$OVERLAY" --exclude=__pycache__ --exclude="*.pyc" -cf - . |
 		chown 0:0 "$TREE/$rel" 2>/dev/null || true
 	done
 info "$(cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) files from overlay/"
+# A profile's own files (media side project, package D): overlay-<profile>/ over overlay/, laid the same way.
+for _p in "${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}"; do
+	[[ -d "$HERE/overlay-$_p" ]] || continue
+	tar -C "$HERE/overlay-$_p" --exclude=__pycache__ --exclude="*.pyc" -cf - . |
+		tar -C "$TREE" --no-same-owner -xf -
+	(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) -printf '%P\n') | \
+		while read -r rel; do chown 0:0 "$TREE/$rel" 2>/dev/null || true; done
+	info "$(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) files from overlay-$_p/ (profile $_p)"
+done
 # wifi.env: the chosen version, 0600 root -- it carries a password.
 install -m 0600 -o 0 -g 0 "$WIFI_ENV" "$TREE/etc/h713/wifi.env" 2>/dev/null || \
 	{ install -m 0600 "$WIFI_ENV" "$TREE/etc/h713/wifi.env"; chown 0:0 "$TREE/etc/h713/wifi.env" 2>/dev/null || true; }
@@ -632,6 +663,14 @@ if [[ "$MESA_TAR" != none ]]; then
 	info "mesa: $(tar -tf "$MESA_TAR" | grep -c "\.so") libraries, $(du -sh "$TREE/usr/local/lib" | cut -f1) under /usr/local/lib ($(basename "$MESA_TAR"))"
 else
 	info "mesa: none (--mesa none)"
+fi
+# The VA-API driver for the hardware decoders (rootfs/libva/build-libva.sh), with profile media: one module under
+# /usr/local/lib/dri, which libva finds through LIBVA_DRIVERS_PATH (overlay-media/etc/environment.d). No ldconfig needed.
+if ((WANT_LIBVA)); then
+	[[ -f "$LIBVA_TAR" ]] || die "no VA-API driver tarball at $LIBVA_TAR (rootfs/libva/build-libva.sh makes it; --libva none builds without)"
+	tar -C "$TREE" --no-same-owner -xf "$LIBVA_TAR"
+	(cd "$TREE" && tar -tf "$LIBVA_TAR" | while read -r rel; do chown 0:0 "$rel" 2>/dev/null || true; done)
+	info "libva driver: $(basename "$LIBVA_TAR") ($(tar -tf "$LIBVA_TAR" | grep -c '\.so$') module)"
 fi
 
 # --- 4. rework -------------------------------------------------------------
@@ -838,6 +877,23 @@ if [[ "$MESA_TAR" != none ]]; then
 	t "libEGL_mesa.so.0 there"    test -e "$TREE/usr/local/lib/libEGL_mesa.so.0"
 	((! LDCACHE_DONE)) || t "ld.so.cache lists libgbm from /usr/local" grep -qa '/usr/local/lib/libgbm.so.1' "$TREE/etc/ld.so.cache"
 fi
+# Profile media (package D): the players reach the hardware decoders through the VA-API driver of rootfs/libva,
+# which libva2 (Debian's, a dependency of ffmpeg and mpv) loads from LIBVA_DRIVERS_PATH under the name in
+# LIBVA_DRIVER_NAME. Every link of that chain is checked, and the GStreamer elements the decoder tests use are there.
+if has_profile media; then
+	_ENVF="$TREE/etc/environment.d/h713-media.conf"
+	t "media: environment names the VA driver"   grep -qx 'LIBVA_DRIVER_NAME=v4l2_request' "$_ENVF"
+	t "media: environment lifts GStreamer's va filter" grep -qx 'GST_VA_ALL_DRIVERS=1' "$_ENVF"
+	t "media: login shells read the environment" grep -q 'environment.d/h713-media.conf' "$TREE/etc/profile.d/h713-media.sh"
+	t "media: mpv.conf: hwdec=vaapi"             grep -qx 'hwdec=vaapi' "$TREE/etc/mpv/mpv.conf"
+	t "media: 10 bit shader for mpv.conf"        test -f "$TREE/usr/local/share/h713/mpv/lsb10-x64.glsl"
+	t "media: libva2 (loads the driver)"         grep -q '^Package: libva2$' "$TREE/var/lib/dpkg/status"
+	t "media: GStreamer va and v4l2codecs"       test -e "$TREE/usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstva.so" -a -e "$TREE/usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstv4l2codecs.so"
+	if ((WANT_LIBVA)); then
+		t "media: LIBVA_DRIVERS_PATH holds the driver" bash -c 'd=$(sed -n "s/^LIBVA_DRIVERS_PATH=//p" "$2"); test -n "$d" && test -f "$1$d/v4l2_request_drv_video.so"' _ "$TREE" "$_ENVF"
+		t "media: driver licence and source note"    test -f "$TREE/usr/local/share/doc/libva-v4l2-request/COPYING" -a -f "$TREE/usr/local/share/doc/libva-v4l2-request/SOURCE"
+	fi
+fi
 t "h713-arisc (TODO 5.20)"    test -x "$TREE/usr/local/sbin/h713-arisc"
 # Standby only where the image offers it (docs/subsystems/standby.md): else no suspend at all, which
 # would fall back to s2idle; with it suspend to RAM through crust and h713-power on the key.
@@ -929,6 +985,7 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "h713_tv=${H713_TV_BIN#"$PROJECT_ROOT"/}"
 	echo "mesa=$( [[ "$MESA_TAR" == none ]] && echo none || echo "${MESA_TAR#"$PROJECT_ROOT"/}" )"
 	echo "profile=${PROFILES:-none}"
+	echo "libva=$( ((WANT_LIBVA)) && echo "${LIBVA_TAR#"$PROJECT_ROOT"/}" || echo none )"
 	echo "mesa_dummies=$(sed -n 's/^Package: //p' "$EQUIVS_DIR"/*.control | paste -sd,)"
 	echo "crust=$( [[ -n "$CRUST_BIN" ]] && echo "$BOARD-crust.bin $(sha256sum "$CRUST_BIN" | cut -c1-16)" || echo none )"
 	echo "standby=$( ((STANDBY)) && echo offered || echo no )"

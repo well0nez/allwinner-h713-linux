@@ -1,20 +1,24 @@
 # packages-media.txt - profile `media` (build-rootfs.sh --profile media), on top of packages.txt.
 #
-# Media side project (arbeit/medien), package E: the players and their audio path, for the hardware
-# decoders (cedrus, hantro: packages B, C, D). Not in the base image: the projector moves HDMI input onto
+# Media side project (arbeit/medien), packages E and D: the players and their audio path, for the hardware
+# decoders (cedrus, hantro: packages B, C). Not in the base image: the projector moves HDMI input onto
 # a DRM plane and decodes nothing (doku/107 section 1) - this is for the box that plays files.
 # Same format as packages.txt. Everything here must install against the dummies in rootfs/equivs/, without
-# libllvm* and without mesa-libgallium (UMSETZUNG E1).
+# libllvm* and without mesa-libgallium (UMSETZUNG E1). The VA-API driver itself is not a package: this
+# profile lays rootfs/libva/'s tarball (build-rootfs.sh --libva) and rootfs/overlay-media/ (environment, mpv.conf).
 
-ffmpeg                       # ffmpeg/ffprobe, libav*: software reference decode (framemd5) and the VA-API client
-mpv                          # the player; vo=gpu-next on EGL, hwdec vaapi
+ffmpeg                       # ffmpeg/ffprobe, libav*: software reference decode (framemd5) and the VA-API client (-hwaccel vaapi)
+mpv                          # the player; vo=gpu on EGL, hwdec=vaapi (/etc/mpv/mpv.conf)
 gstreamer1.0-tools           # gst-launch-1.0, gst-inspect-1.0
 gstreamer1.0-plugins-base    # playbin, audioconvert, videoconvert, ...
 gstreamer1.0-plugins-good    # matroska, mp4, v4l2
-#gstreamer1.0-plugins-bad    # NOT in: it carries the `va` decoders (vah264dec, ...) but pulls GTK3, flite, onnxruntime, oneDNN,
-                             # iso-codes: +197 MiB installed, measured 13.10.2026 (package D decides whether the profile wants it)
+gstreamer1.0-plugins-bad     # `va`: vah264dec, vah265dec, vaav1dec, ... (D2) and `v4l2codecs`: v4l2slh264dec, ... (D3), both
+                             # in this one package. It is big (GTK3, flite, onnxruntime, oneDNN, iso-codes: +197 MiB
+                             # installed, measured 13.10.2026) and there is no smaller package that has them (D, 13.10.2026)
 gstreamer1.0-gl              # glimagesink, glupload on EGL
 gstreamer1.0-alsa            # alsasink
+gstreamer1.0-pipewire        # pipewiresink/pipewiresrc, for the PipeWire test D6 next to alsasink device=pipewire
 pipewire                     # the mixer between players and the DSP PCM hw:hy310hdmi,0 (docs/subsystems/audio.md)
 pipewire-alsa                # makes `default` of ALSA clients a PipeWire sink: mpv-ALSA's start_threshold race is avoided
 wireplumber                  # the session manager pipewire needs
+vainfo                       # lists the profiles/entrypoints the VA-API driver advertises: first look when a player stays in software
