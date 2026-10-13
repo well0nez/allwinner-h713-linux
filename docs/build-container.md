@@ -28,11 +28,14 @@ podman exec -u root h713-build apt-get install -y --no-install-recommends \
   libncurses-dev pkg-config libusb-1.0-0-dev libfdt-dev python3-capstone \
   python3-setuptools python3-pyelftools \
   mmdebstrap e2fsprogs zstd \
-  meson ninja-build python3-mako python3-yaml python3-packaging
+  meson ninja-build python3-mako python3-yaml python3-packaging \
+  libwayland-bin libwayland-dev
 ```
 
-The last line is for mesa (`rootfs/mesa/build-mesa.sh`, cross-built with the same clang against the arm64
-sysroot; the sysroot carries `libstdc++-14-dev` for mesa's C++ parts).
+The last two lines are for mesa (`rootfs/mesa/build-mesa.sh`, cross-built with the same clang against the arm64
+sysroot; the sysroot carries `libstdc++-14-dev` for mesa's C++ parts, and `libwayland-dev`,
+`libwayland-egl-backend-dev`, `wayland-protocols` and `libglvnd-dev` for its Wayland platform and glvnd).
+`libwayland-bin` brings `wayland-scanner`, which runs on the build machine; `libwayland-dev` its pkg-config file.
 
 `python3-setuptools` is needed by U-Boot's in-tree `pylibfdt`; `mmdebstrap` and `e2fsprogs` build the
 root filesystem and its ext4 images; `libusb-1.0-0-dev` builds `sunxi-fel`.

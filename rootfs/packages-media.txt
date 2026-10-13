@@ -1,0 +1,20 @@
+# packages-media.txt - profile `media` (build-rootfs.sh --profile media), on top of packages.txt.
+#
+# Media side project (arbeit/medien), package E: the players and their audio path, for the hardware
+# decoders (cedrus, hantro: packages B, C, D). Not in the base image: the projector moves HDMI input onto
+# a DRM plane and decodes nothing (doku/107 section 1) - this is for the box that plays files.
+# Same format as packages.txt. Everything here must install against the dummies in rootfs/equivs/, without
+# libllvm* and without mesa-libgallium (UMSETZUNG E1).
+
+ffmpeg                       # ffmpeg/ffprobe, libav*: software reference decode (framemd5) and the VA-API client
+mpv                          # the player; vo=gpu-next on EGL, hwdec vaapi
+gstreamer1.0-tools           # gst-launch-1.0, gst-inspect-1.0
+gstreamer1.0-plugins-base    # playbin, audioconvert, videoconvert, ...
+gstreamer1.0-plugins-good    # matroska, mp4, v4l2
+#gstreamer1.0-plugins-bad    # NOT in: it carries the `va` decoders (vah264dec, ...) but pulls GTK3, flite, onnxruntime, oneDNN,
+                             # iso-codes: +197 MiB installed, measured 13.10.2026 (package D decides whether the profile wants it)
+gstreamer1.0-gl              # glimagesink, glupload on EGL
+gstreamer1.0-alsa            # alsasink
+pipewire                     # the mixer between players and the DSP PCM hw:hy310hdmi,0 (docs/subsystems/audio.md)
+pipewire-alsa                # makes `default` of ALSA clients a PipeWire sink: mpv-ALSA's start_threshold race is avoided
+wireplumber                  # the session manager pipewire needs

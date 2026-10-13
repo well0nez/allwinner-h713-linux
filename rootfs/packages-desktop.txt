@@ -1,0 +1,11 @@
+# packages-desktop.txt - profile `desktop` (build-rootfs.sh --profile desktop), on top of packages.txt.
+#
+# Media side project (arbeit/medien), package E: a compositor and Kodi, on the mesa of rootfs/mesa
+# (Wayland platform, glvnd). Not in the base image. Same format as packages.txt. Everything here must
+# install against the dummies in rootfs/equivs/, without libllvm* and without mesa-libgallium (E1).
+
+seatd                        # seat management for a compositor without logind sessions (E3: seatd + cage)
+cage                         # single-window kiosk compositor: Kodi's first host (package F)
+labwc                        # stacking compositor for the desktop modes (package H)
+kodi                         # media centre; kodi-bin links libEGL/libGLESv2/libgbm (E2)
+glmark2-es2-wayland          # the E3 test: Renderer "Mali-G31 (Panfrost)" and a score
