@@ -363,6 +363,17 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       h713-tv beim Neuverbinden)
 
 - [ ] 9.1 **AV1**: erst klären, ob RE-Stand oder lauffähig; H713 ist der erste Allwinner mit AV1
+      - 12.10. abends (`arbeit/medien/vorarbeit/BERICHT.md`): bei cstenger lauffähig und bitgenau (Zweig `h713-av1-probe`,
+        Kernel `0140`-`0148`, verisilicon-Variante, 30.09.); dazu VP9 (`0143`), MPEG-2, VP8, alles über megis `libva-v4l2_request`.
+        In unserem Abbild nicht gemessen
+- [x] 9.1a **GPU läuft womöglich mit halbem Takt** (cstenger `0152`, 02.10., gemessen über Panfrost-fdinfo): Bit 0 von PLL_GPU
+      (`CCU+0x030`) ist ein Ausgangsteiler ÷2, den unser `0001` nicht modelliert; `CCU+0x670` hat einen M-Teiler. Am HY310 12.10.
+      gelesen: `0x02001030 = 0x28000b01` (Bit 0 gesetzt). Die Halbierung selbst ist bei uns nicht gemessen: unter Warp-Last
+      `drm-cycles`/`drm-engine` gegen devfreq. Stimmt sie, lief der Warp bei 216 statt 432 MHz; Stock fährt fest 600 MHz
+      (`0153`: 150/200/300/600). Nach dem Release, vor jeder Desktop-Planung
+      - **13.10. erledigt** (Paket A des Nebenprojekts `arbeit/medien/`, `A-takt/BERICHT.md`): Halbierung gemessen (Verhältnis
+        0,500 an allen vier Punkten), mit `0268`-`0270` in `main` 150/200/300/600 MHz exakt, Warp 2,49 ms je Bild bei 600 MHz
+        statt 3,97 ms bei 348 echt, 45 min ohne Trip. Am G-EU offen: 2.72
 - [ ] 9.2 Cedrus/GPU Testmatrix Decoder × Auflösung × Ausgabe; der KASAN-Fall steht
 - [ ] 9.3 Hardware-Video-Decode und IOMMU in **diesem** Image nachmessen (aus cstengers Baum übernommen)
 - [ ] 9.4 Verwaltungsoberfläche (WLAN, Presets, Startmodus, Updates ohne SSH) — Zuschnitt offen
