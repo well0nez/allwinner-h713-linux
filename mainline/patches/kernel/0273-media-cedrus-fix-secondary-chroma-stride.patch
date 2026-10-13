@@ -1,0 +1,20 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: express secondary chroma stride in hardware units
+
+NV12 chroma stride uses half the byte pitch, as for primary output. Passing
+the full pitch made 960x544 decode fault at the end of the capture mapping.
+With a guard allocation it wrote 130560 bytes beyond the 783360-byte frame.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0102-media-cedrus-fix-secondary-chroma-stride.patch (0102-media-cedrus-fix-secondary-chroma-stride.patch, commit 2952b81)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -717,7 +717,7 @@
+ 	cedrus_write(dev, VE_H264_SDROT_CHROMA_ADDR, (u32)chroma);
+ 
+ 	cedrus_write(dev, VE_SECONDARY_FB_LINE_STRIDE,
+-		     VE_SECONDARY_FB_LINE_STRIDE_CHROMA(stride) |
++		     VE_SECONDARY_FB_LINE_STRIDE_CHROMA(stride / 2) |
+ 		     VE_SECONDARY_FB_LINE_STRIDE_LUMA(stride));
+ 
+ 	reg = cedrus_read(dev, VE_CHROMA_BUF_LEN);

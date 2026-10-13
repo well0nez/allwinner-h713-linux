@@ -1,0 +1,982 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: share the H713 polyphase scaler between H.264 and HEVC
+
+H264ConfigNewScaler in H713's vendor decoder routes H.264 through the same
+VE+0xf00 4-tap/32-phase filter as HEVC. It needs H264_CTRL bit 11 and
+VE_CHROMA_BUF_LEN bit 29, not the SDROT enable bit. Preserve full-size
+reconstruction and replace the H.264 shifter with this path.
+
+Allocate the scaler line buffer per decoder context, program geometry and
+both coefficient banks per picture, and gate the new datapath to H713.
+Remove the rotate control; no rotation is exposed for either codec.
+
+Let NV12 CAPTURE S_FMT choose even output dimensions between 1x and 4x
+per axis. Keep COMPOSE as an active rectangle in the negotiated canvas,
+honour LE/GE constraints, and leave TRY_FMT free of side effects. Scaled
+heights need only be even. A 32-byte secondary pitch keeps HEVC chroma
+64-byte aligned; Main10 rounds packed 2-bit widths up before alignment.
+Refresh reconstruction side-plane sizing when an early SPS declares Main10.
+
+Coefficient generation is unchanged. Hardware validation and reproduction
+commands are documented in docs/handoff-2026-09-17-shared-scaler.md.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0120-media-cedrus-share-the-polyphase-scaler-with-h264.patch (0120-media-cedrus-share-the-polyphase-scaler-with-h264.patch, commit a861df2)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.c
+@@ -76,60 +76,18 @@
+ 		} else {
+ 			ctx->bit_depth = bit_depth;
+ 			cedrus_reset_cap_format(ctx);
++			cedrus_update_recon_format(ctx);
+ 		}
+ 	}
+-
+-	return 0;
+-}
+-
+-static int cedrus_s_ctrl(struct v4l2_ctrl *ctrl)
+-{
+-	struct cedrus_ctx *ctx = container_of(ctrl->handler, struct cedrus_ctx, hdl);
+-
+-	if (ctrl->id != V4L2_CID_ROTATE)
+-		return 0;
+-
+-	/*
+-	 * Accept anything the control range allows and never fail here.
+-	 * State-dependent rejection from s_ctrl defeats the control
+-	 * framework's own range probing: it walks the control against the
+-	 * CURRENT configuration, and the default output format is MPEG-2, so
+-	 * refusing every non-zero value there made the advertised maximum
+-	 * unreachable and v4l2-compliance reported "invalid maximum range
+-	 * check". Rotation is instead made inert for non-H.264 by
+-	 * cedrus_rotation(), and the reallocation this forces on userspace is
+-	 * already advertised by V4L2_CTRL_FLAG_MODIFY_LAYOUT: a client that
+-	 * changes rotation must reallocate, and cedrus_buf_prepare() rejects a
+-	 * now-undersized buffer with -EINVAL. Do NOT reach for
+-	 * v4l2_ctrl_grab() here -- a grabbed control cannot be set into a
+-	 * REQUEST either, which is a legitimate thing for userspace to do and
+-	 * which v4l2-compliance exercises.
+-	 */
+-	ctx->rotation = ctrl->val;
+-	cedrus_reset_cap_format(ctx);
+-	cedrus_update_recon_format(ctx);
+ 
+ 	return 0;
+ }
+ 
+ static const struct v4l2_ctrl_ops cedrus_ctrl_ops = {
+ 	.try_ctrl = cedrus_try_ctrl,
+-	.s_ctrl = cedrus_s_ctrl,
+ };
+ 
+ static const struct cedrus_control cedrus_controls[] = {
+-	{
+-		.cfg = {
+-			.id	= V4L2_CID_ROTATE,
+-			.min	= 0,
+-			.max	= 270,
+-			.step	= 90,
+-			.def	= 0,
+-			.flags	= V4L2_CTRL_FLAG_MODIFY_LAYOUT,
+-			.ops	= &cedrus_ctrl_ops,
+-		},
+-		.capabilities	= CEDRUS_CAPABILITY_H264_DEC,
+-	},
+ 	{
+ 		.cfg = {
+ 			.id	= V4L2_CID_STATELESS_MPEG2_SEQUENCE,
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -34,6 +34,7 @@
+ #define CEDRUS_CAPABILITY_MPEG2_DEC	BIT(3)
+ #define CEDRUS_CAPABILITY_VP8_DEC	BIT(4)
+ #define CEDRUS_CAPABILITY_H265_10_DEC	BIT(5)
++#define CEDRUS_CAPABILITY_POLYPHASE	BIT(6)
+ 
+ enum cedrus_irq_status {
+ 	CEDRUS_IRQ_NONE,
+@@ -129,6 +130,9 @@
+ 	} codec;
+ };
+ 
++/* Six source lines plus margin at the maximum supported coded width. */
++#define CEDRUS_SCALER_BUF_SIZE		(64 * SZ_1K)
++
+ struct cedrus_ctx {
+ 	struct v4l2_fh			fh;
+ 	struct cedrus_dev		*dev;
+@@ -141,9 +145,9 @@
+ 	 * picture userspace dequeues.
+ 	 */
+ 	struct v4l2_pix_format		recon_fmt;
+-	u8				sd_h_shift;
+-	u8				sd_v_shift;
+-	u16				rotation;
++	struct v4l2_rect		compose;
++	void				*scaler_buf;
++	dma_addr_t			scaler_buf_addr;
+ 	struct cedrus_dec_ops		*current_codec;
+ 	unsigned int			bit_depth;
+ 
+@@ -169,8 +173,6 @@
+ 			dma_addr_t	neighbor_info_buf_addr;
+ 			void		*entry_points_buf;
+ 			dma_addr_t	entry_points_buf_addr;
+-			void		*scaler_buf;
+-			dma_addr_t	scaler_buf_addr;
+ 		} h265;
+ 		struct {
+ 			unsigned int	last_frame_p_type;
+@@ -277,56 +279,18 @@
+ 	return vb2_v4l2_to_cedrus_buffer(to_vb2_v4l2_buffer(p));
+ }
+ 
++/* The group-7 datapath is validated on H713, not on its H6 DT fallback. */
++static inline bool cedrus_can_scale(struct cedrus_ctx *ctx)
++{
++	return (ctx->dev->capabilities & CEDRUS_CAPABILITY_POLYPHASE) &&
++	       (ctx->src_fmt.pixelformat == V4L2_PIX_FMT_H264_SLICE ||
++		ctx->src_fmt.pixelformat == V4L2_PIX_FMT_HEVC_SLICE);
++}
++
+ static inline bool cedrus_scaling(struct cedrus_ctx *ctx)
+ {
+-	return ctx->sd_h_shift || ctx->sd_v_shift;
+-}
+-
+-/*
+- * The rotator lives in the H.264 engine, so a rotation requested while another
+- * codec is selected is remembered but inert. Everything that ACTS on rotation
+- * reads it through here rather than touching ctx->rotation directly, so a
+- * stale request can never arm the H.264 transform path under MPEG-2, HEVC or
+- * VP8. Storing it unconditionally is deliberate: rejecting the value in
+- * s_ctrl instead broke the control framework's own range probing.
+- */
+-/*
+- * Both engines scale by powers of two.  ROTATION stays H.264 only, and that is
+- * a property of the silicon rather than a cautious choice: the rotate field
+- * the H.265 engine appears to have at VE_DEC_H265_SDRT_CTRL[2:0] IS NOT
+- * IMPLEMENTED.  Writing ~0 to that register reads back 0x00003f00, so only the
+- * scale shifts at [11:8] and the interlaced controls at [13:12] exist; write 7
+- * to the rotate field and it reads back 0.  Requesting 90, 180 or 270 on an
+- * H.265 stream decodes cleanly and emits an UNROTATED picture -- measured with
+- * a four-quadrant card, which came back in its original orientation at every
+- * angle while the same test rotates correctly under H.264.  The vendor's
+- * "Rotation doesn't support" comment is literally true of the hardware.
+- */
+-static inline bool cedrus_can_scale(struct cedrus_ctx *ctx)
+-{
+-	return ctx->src_fmt.pixelformat == V4L2_PIX_FMT_H264_SLICE ||
+-	       ctx->src_fmt.pixelformat == V4L2_PIX_FMT_HEVC_SLICE;
+-}
+-
+-static inline unsigned int cedrus_rotation(struct cedrus_ctx *ctx)
+-{
+-	if (ctx->src_fmt.pixelformat != V4L2_PIX_FMT_H264_SLICE)
+-		return 0;
+-
+-	return ctx->rotation;
+-}
+-
+-/* 90 and 270 degrees exchange the output raster's width and height. */
+-static inline bool cedrus_rotation_swaps_axes(struct cedrus_ctx *ctx)
+-{
+-	unsigned int rotation = cedrus_rotation(ctx);
+-
+-	return rotation == 90 || rotation == 270;
+-}
+-
+-static inline bool cedrus_transforming(struct cedrus_ctx *ctx)
+-{
+-	return cedrus_scaling(ctx) || cedrus_rotation(ctx);
++	return ctx->compose.width != ctx->src_fmt.width ||
++	       ctx->compose.height != ctx->src_fmt.height;
+ }
+ 
+ /*
+@@ -346,7 +310,7 @@
+ 	if (!buf)
+ 		return 0;
+ 
+-	if (cedrus_transforming(ctx)) {
++	if (cedrus_scaling(ctx)) {
+ 		cbuf = vb2_to_cedrus_buffer(buf);
+ 		if (WARN_ON_ONCE(!cbuf->recon))
+ 			return 0;
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+@@ -98,7 +98,7 @@
+ 	 * the smaller picture userspace sees and would size the primary's
+ 	 * stride and chroma offset wrongly.
+ 	 */
+-	cedrus_dst_format_set(dev, cedrus_transforming(ctx) ? &ctx->recon_fmt
++	cedrus_dst_format_set(dev, cedrus_scaling(ctx) ? &ctx->recon_fmt
+ 						       : &ctx->dst_fmt);
+ 
+ 	error = ctx->current_codec->setup(ctx, &run);
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
+@@ -25,14 +25,6 @@
+  */
+ #define CEDRUS_H265_NEIGHBOR_INFO_BUF_SIZE	(794 * SZ_1K)
+ #define CEDRUS_H265_ENTRY_POINTS_BUF_SIZE	(4 * SZ_1K)
+-/*
+- * Line buffer for the VE+0xf00 scaler.  Observed use is 7680 bytes at a
+- * 1280-wide source -- six source lines, the working set of a 4-tap vertical
+- * filter.  How that scales with width is not established, so size it for the
+- * widest picture the driver accepts with room to spare; a short buffer shows
+- * up immediately as an IOMMU fault rather than as quiet corruption.
+- */
+-#define CEDRUS_H265_SCALER_BUF_SIZE		(64 * SZ_1K)
+ #define CEDRUS_H265_MV_COL_BUF_UNIT_CTB_SIZE	160
+ 
+ struct cedrus_h265_sram_frame_info {
+@@ -52,14 +44,8 @@
+ static unsigned int cedrus_h265_2bit_size(unsigned int width,
+ 					  unsigned int height)
+ {
+-	/*
+-	 * Vendor library additionally aligns width and height to 16,
+-	 * but all capture formats are already aligned to that anyway,
+-	 * so we can skip that here. All formats are also one form of
+-	 * YUV 4:2:0 or another, so we can safely assume multiplication
+-	 * factor of 1.5.
+-	 */
+-	return ALIGN(width / 4, 32) * height * 3 / 2;
++	/* Pack four samples per byte, with a 32-byte 2-bit pitch. */
++	return ALIGN(DIV_ROUND_UP(width, 4), 32) * height * 3 / 2;
+ }
+ 
+ static enum cedrus_irq_status cedrus_h265_irq_status(struct cedrus_ctx *ctx)
+@@ -828,9 +814,9 @@
+ 		 * buffer at the full coded size, not the capture buffer, so
+ 		 * dst_fmt would size the 2-bit plane from the scaled picture.
+ 		 */
+-		struct v4l2_pix_format *fmt = cedrus_transforming(ctx) ?
++		struct v4l2_pix_format *fmt = cedrus_scaling(ctx) ?
+ 					      &ctx->recon_fmt : &ctx->dst_fmt;
+-		unsigned int stride = ALIGN(fmt->width / 4, 32);
++		unsigned int stride = ALIGN(DIV_ROUND_UP(fmt->width, 4), 32);
+ 
+ 		reg = fmt->sizeimage -
+ 		      cedrus_h265_2bit_size(fmt->width, fmt->height);
+@@ -870,20 +856,6 @@
+ 		return -ENOMEM;
+ 	}
+ 
+-	ctx->codec.h265.scaler_buf =
+-		dma_alloc_attrs(dev->dev, CEDRUS_H265_SCALER_BUF_SIZE,
+-				&ctx->codec.h265.scaler_buf_addr, GFP_KERNEL,
+-				DMA_ATTR_NO_KERNEL_MAPPING);
+-	if (!ctx->codec.h265.scaler_buf) {
+-		dma_free_coherent(dev->dev, CEDRUS_H265_ENTRY_POINTS_BUF_SIZE,
+-				  ctx->codec.h265.entry_points_buf,
+-				  ctx->codec.h265.entry_points_buf_addr);
+-		dma_free_attrs(dev->dev, CEDRUS_H265_NEIGHBOR_INFO_BUF_SIZE,
+-			       ctx->codec.h265.neighbor_info_buf,
+-			       ctx->codec.h265.neighbor_info_buf_addr,
+-			       DMA_ATTR_NO_KERNEL_MAPPING);
+-		return -ENOMEM;
+-	}
+ 
+ 	return 0;
+ }
+@@ -923,10 +895,7 @@
+ 	dma_free_coherent(dev->dev, CEDRUS_H265_ENTRY_POINTS_BUF_SIZE,
+ 			  ctx->codec.h265.entry_points_buf,
+ 			  ctx->codec.h265.entry_points_buf_addr);
+-	dma_free_attrs(dev->dev, CEDRUS_H265_SCALER_BUF_SIZE,
+-		       ctx->codec.h265.scaler_buf,
+-		       ctx->codec.h265.scaler_buf_addr,
+-		       DMA_ATTR_NO_KERNEL_MAPPING);
++
+ }
+ 
+ static void cedrus_h265_trigger(struct cedrus_ctx *ctx)
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -30,6 +30,7 @@
+ #include "cedrus.h"
+ #include "cedrus_hw.h"
+ #include "cedrus_regs.h"
++#include "cedrus_scaler_coef.h"
+ 
+ int cedrus_engine_enable(struct cedrus_ctx *ctx)
+ {
+@@ -79,8 +80,8 @@
+ void cedrus_dst_format_set(struct cedrus_dev *dev,
+ 			   struct v4l2_pix_format *fmt)
+ {
+-	unsigned int width = fmt->width;
+ 	unsigned int height = fmt->height;
++	unsigned int stride = fmt->bytesperline;
+ 	u32 chroma_size;
+ 	u32 reg;
+ 
+@@ -89,7 +90,7 @@
+ 	case V4L2_PIX_FMT_NV21:
+ 	case V4L2_PIX_FMT_YUV420:
+ 	case V4L2_PIX_FMT_YVU420:
+-		chroma_size = ALIGN(width, 16) * ALIGN(height, 16) / 2;
++		chroma_size = stride * ALIGN(height, 16) / 2;
+ 
+ 		switch (fmt->pixelformat) {
+ 		case V4L2_PIX_FMT_NV12:
+@@ -111,8 +112,8 @@
+ 		reg = chroma_size / 2;
+ 		cedrus_write(dev, VE_PRIMARY_CHROMA_BUF_LEN, reg);
+ 
+-		reg = VE_PRIMARY_FB_LINE_STRIDE_LUMA(ALIGN(width, 16)) |
+-		      VE_PRIMARY_FB_LINE_STRIDE_CHROMA(ALIGN(width, 16) / 2);
++		reg = VE_PRIMARY_FB_LINE_STRIDE_LUMA(stride) |
++		      VE_PRIMARY_FB_LINE_STRIDE_CHROMA(stride / 2);
+ 		cedrus_write(dev, VE_PRIMARY_FB_LINE_STRIDE, reg);
+ 
+ 		break;
+@@ -127,35 +128,6 @@
+ 		break;
+ 	}
+ }
+-
+-/*
+- * Point the VE's secondary output at the V4L2 capture buffer and set the
+- * per-axis division.  The primary reconstruction keeps writing full size into
+- * the buffer's private frame; this is the copy userspace actually gets.
+- *
+- * Three things here are not optional, and each of them fails silently:
+- *
+- *   - THIS MUST RUN AFTER THE CODEC'S OWN SETUP, which is where
+- *     cedrus_engine_enable() writes VE_MODE.  A disabled engine accepts the
+- *     control word and then DROPS THE ADDRESSES, which read back as zero.
+- *   - the addresses go in raw and unshifted, unlike several neighbouring
+- *     engine registers.
+- *   - the secondary output defaults to TILED_32_NV12.  Linear NV12 needs both
+- *     the EXT table selected in VE_CHROMA_BUF_LEN[31:30] and the format in
+- *     VE_PRIMARY_OUT_FMT[3:0]; miss either and a perfectly working scaler
+- *     produces something that renders as horizontal stripes.
+- */
+-/*
+- * The H.265 engine's secondary output.
+- *
+- * Every register here is ZEROED AND REBUILT rather than read-modify-written,
+- * which is what the vendor does and what distinguishes this from the first
+- * attempt.  CTRL is the one that matters: cedrus_h265_setup() leaves only the
+- * IRQ mask there, and an RMW therefore never sets DDR_CONSISTENCY_EN, which
+- * the vendor sets alongside write_sc_rt_pic.  Two outputs writing concurrently
+- * is exactly when DDR consistency would matter.
+- */
+-#include "cedrus_scaler_coef.h"
+ 
+ /*
+  * "VE/Top1 Level" (vendor register group 7) at VE + 0xf00: the polyphase
+@@ -168,10 +140,10 @@
+  * 0x14 = ffffffff (two 16-bit), 0xf8 = 00000ffc.
+  */
+ #define TOP1				0xf00
+-#define TOP1_IN_SIZE			(TOP1 + 0x0c)	/* [29:16] h, [13:0] w */
+-#define TOP1_OUT_SIZE			(TOP1 + 0x10)	/* [29:16] h, [13:0] w */
+-#define TOP1_STEP			(TOP1 + 0x14)	/* [31:16] v, [15:0] h */
+-#define TOP1_INV			(TOP1 + 0x18)	/* [29:16] v, [13:0] h */
++#define TOP1_IN_SIZE			(TOP1 + 0x0c)	/* [29:16] w, [13:0] h */
++#define TOP1_OUT_SIZE			(TOP1 + 0x10)	/* [29:16] w, [13:0] h */
++#define TOP1_STEP			(TOP1 + 0x14)	/* [31:16] h, [15:0] v */
++#define TOP1_INV			(TOP1 + 0x18)	/* [29:16] h, [13:0] v */
+ #define TOP1_LINE_BUF			(TOP1 + 0xe4)	/* [31:2] = addr >> 10 */
+ #define TOP1_COEF_IDX			(TOP1 + 0xf8)
+ #define TOP1_COEF_DATA			(TOP1 + 0xfc)
+@@ -282,8 +254,7 @@
+ 	 * power-of-two shifter off and lets the VE+0xf00 polyphase scaler do
+ 	 * all of the scaling.  Setting both makes them fight.
+ 	 */
+-	cedrus_write(dev, VE_DEC_H265_SDRT_CTRL,
+-		     VE_DEC_H265_SDRT_CTRL_ROTATE(cedrus_rotation(ctx)));
++	cedrus_write(dev, VE_DEC_H265_SDRT_CTRL, 0);
+ 
+ 	/*
+ 	 * 10-bit: the secondary output needs its own 2-bit plane, exactly as
+@@ -293,7 +264,7 @@
+ 	 */
+ 	if (ctx->bit_depth > 8) {
+ 		unsigned int w = ctx->dst_fmt.width, h = ctx->dst_fmt.height;
+-		unsigned int two_bit = ALIGN(w / 4, 32) * h * 3 / 2;
++		unsigned int two_bit = ALIGN(DIV_ROUND_UP(w, 4), 32) * h * 3 / 2;
+ 		u32 reg;
+ 
+ 		cedrus_write(dev, VE_DEC_H265_OFFSET_ADDR_SECOND_OUT,
+@@ -301,16 +272,12 @@
+ 
+ 		reg = cedrus_read(dev, VE_DEC_H265_10BIT_CONFIGURE);
+ 		reg &= ~(GENMASK(24, 11));
+-		reg |= VE_DEC_H265_10BIT_CONFIGURE_SECOND_2BIT_STRIDE(ALIGN(w / 4, 32)) |
++		reg |= VE_DEC_H265_10BIT_CONFIGURE_SECOND_2BIT_STRIDE(ALIGN(DIV_ROUND_UP(w, 4), 32)) |
+ 		       VE_DEC_H265_10BIT_CONFIGURE_SECOND_2BIT_ENABLE |
+ 		       VE_DEC_H265_10BIT_CONFIGURE_SECOND_OUT_FMT(VE_DEC_H265_SECOND_OUT_FMT_8BIT_PLUS_2BIT);
+ 		cedrus_write(dev, VE_DEC_H265_10BIT_CONFIGURE, reg);
+ 	}
+ 
+-	cedrus_top1_configure(ctx, ctx->codec.h265.scaler_buf_addr,
+-			      ctx->recon_fmt.width, ctx->recon_fmt.height,
+-			      ALIGN(ctx->src_fmt.width, 16) >> ctx->sd_h_shift,
+-			      ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift);
+ }
+ 
+ void cedrus_sd_program(struct cedrus_ctx *ctx, struct vb2_buffer *dst)
+@@ -321,7 +288,7 @@
+ 	unsigned int stride = ctx->dst_fmt.bytesperline;
+ 	u32 reg;
+ 
+-	if (!cedrus_transforming(ctx))
++	if (!cedrus_scaling(ctx))
+ 		return;
+ 
+ 	cedrus_write(dev, VE_SECONDARY_FB_LINE_STRIDE,
+@@ -340,28 +307,28 @@
+ 
+ 	if (ctx->src_fmt.pixelformat == V4L2_PIX_FMT_HEVC_SLICE) {
+ 		cedrus_sd_program_h265(ctx, luma, chroma);
+-		return;
+-	}
+-
+-	cedrus_write(dev, VE_H264_SDROT_LUMA_ADDR, (u32)luma);
+-	cedrus_write(dev, VE_H264_SDROT_CHROMA_ADDR, (u32)chroma);
+-
+-	reg = cedrus_read(dev, VE_H264_CTRL);
+-	reg |= VE_H264_CTRL_SDROT_ENABLE;
+-	cedrus_write(dev, VE_H264_CTRL, reg);
+-
+-	cedrus_write(dev, VE_H264_SDROT_CTRL,
+-		     VE_H264_SDROT_CTRL_ROTATE(cedrus_rotation(ctx)) |
+-		     VE_H264_SDROT_CTRL_H_SHIFT(ctx->sd_h_shift) |
+-		     VE_H264_SDROT_CTRL_V_SHIFT(ctx->sd_v_shift));
+-
+-	/*
+-	 * A zero address here means the engine was not enabled when we wrote
+-	 * it, and the decode would quietly produce nothing at all.
+-	 */
+-	if (!cedrus_read(dev, VE_H264_SDROT_LUMA_ADDR))
+-		dev_warn_once(dev->dev,
+-			      "scale-down address did not latch; engine off?\n");
++	} else {
++		cedrus_write(dev, VE_H264_SDROT_LUMA_ADDR, (u32)luma);
++		cedrus_write(dev, VE_H264_SDROT_CHROMA_ADDR, (u32)chroma);
++		cedrus_write(dev, VE_H264_SDROT_CTRL, 0);
++
++		/* H264ConfigNewScaler selects this route instead of SDROT. */
++		reg = cedrus_read(dev, VE_H264_CTRL);
++		reg &= ~(VE_H264_CTRL_SDROT_ENABLE |
++			 VE_H264_CTRL_MC_NO_WRITEBACK);
++		reg |= VE_H264_CTRL_POLYPHASE_ENABLE;
++		cedrus_write(dev, VE_H264_CTRL, reg);
++
++		reg = cedrus_read(dev, VE_CHROMA_BUF_LEN);
++		reg &= ~GENMASK(27, 0);
++		reg |= VE_CHROMA_BUF_LEN_POLYPHASE_ENABLE |
++		       VE_CHROMA_BUF_LEN_SDRT(stride * ctx->dst_fmt.height / 4);
++		cedrus_write(dev, VE_CHROMA_BUF_LEN, reg);
++	}
++
++	cedrus_top1_configure(ctx, ctx->scaler_buf_addr,
++			      ctx->src_fmt.width, ctx->src_fmt.height,
++			      ctx->compose.width, ctx->compose.height);
+ }
+ 
+ static irqreturn_t cedrus_irq(int irq, void *data)
+@@ -537,6 +504,9 @@
+ 		return -EINVAL;
+ 
+ 	dev->capabilities = variant->capabilities;
++	/* H713 currently uses the H6-compatible VE node. */
++	if (of_machine_is_compatible("allwinner,sun50i-h713"))
++		dev->capabilities |= CEDRUS_CAPABILITY_POLYPHASE;
+ 
+ 	irq_dec = platform_get_irq(dev->pdev, 0);
+ 	if (irq_dec <= 0)
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
+@@ -78,6 +78,7 @@
+ #define VE_SECONDARY_OUT_FMT_EXT		(0x01 << 30)
+ #define VE_SECONDARY_OUT_FMT_YU12		(0x02 << 30)
+ #define VE_SECONDARY_OUT_FMT_YV12		(0x03 << 30)
++#define VE_CHROMA_BUF_LEN_POLYPHASE_ENABLE	BIT(29)
+ #define VE_CHROMA_BUF_LEN_SDRT(l)		SHIFT_AND_MASK_BITS(l, 27, 0)
+ 
+ #define VE_PRIMARY_OUT_FMT			0xec
+@@ -589,6 +590,8 @@
+ 
+ #define VE_H264_CTRL			0x220
+ #define VE_H264_CTRL_VP8			BIT(29)
++#define VE_H264_CTRL_POLYPHASE_ENABLE	BIT(11)
++#define VE_H264_CTRL_MC_NO_WRITEBACK	BIT(8)
+ #define VE_H264_CTRL_SDROT_ENABLE		BIT(9)
+ #define VE_H264_CTRL_VLD_DATA_REQ_INT		BIT(2)
+ #define VE_H264_CTRL_DECODE_ERR_INT		BIT(1)
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -208,55 +208,32 @@
+ 	pix_fmt->sizeimage = sizeimage;
+ }
+ 
+-/*
+- * The size the scaler would actually produce for a given power-of-two shift,
+- * computed exactly as cedrus_compose_shift() does so that what this enumerates
+- * is what a client will really get.
+- */
+-static bool cedrus_scaled_size(struct cedrus_ctx *ctx, unsigned int shift,
+-			       u32 *width, u32 *height)
+-{
+-	unsigned int w = ctx->src_fmt.width, h = ctx->src_fmt.height;
+-
+-	if (!w || !h)
+-		return false;
+-
+-	w = shift ? ALIGN(w, 16) >> shift : w;
+-	h = shift ? ALIGN(h, 16) >> shift : h;
+-
+-	/* Do not offer a 4- or 8-pixel output that would be clamped to 16. */
+-	if (w < CEDRUS_MIN_WIDTH || h < CEDRUS_MIN_HEIGHT)
+-		return false;
+-
+-	*width = w;
+-	*height = ALIGN(h, 16);
+-
+-	return true;
+-}
+-
+-/*
+- * Coded formats get the stepwise range the hardware accepts.  Raw formats get
+- * the discrete set the scaler can produce from the CURRENT coded size, which is
+- * what the stateless decoder interface asks for: the client sets the OUTPUT
+- * format first, then enumerates CAPTURE resolutions and picks one with S_FMT.
+- *
+- * This depends on ctx->src_fmt, so the enumeration changes when the client
+- * changes the OUTPUT format.  That is permitted -- the spec only requires the
+- * data to be stable in the absence of client interaction.
+- */
++/* Keep the exposed range to the tested 1x..4x downscale interval. */
++static unsigned int cedrus_scale_min(unsigned int coded)
++{
++	return ALIGN(max(16U, DIV_ROUND_UP(coded, 4)), 2);
++}
++
++static unsigned int cedrus_scale_size(unsigned int coded, unsigned int want,
++				      u32 flags)
++{
++	unsigned int size;
++
++	size = flags & V4L2_SEL_FLAG_GE ? ALIGN(want, 2) : want & ~1U;
++	return clamp(size, cedrus_scale_min(coded), coded & ~1U);
++}
++
+ static int cedrus_enum_framesizes(struct file *file, void *priv,
+ 				  struct v4l2_frmsizeenum *fsize)
+ {
+ 	struct cedrus_ctx *ctx = cedrus_file2ctx(file);
+ 	struct cedrus_format *fmt;
+-	unsigned int shift, n = 0;
+-	u32 width, height;
++
++	if (fsize->index)
++		return -EINVAL;
+ 
+ 	fmt = cedrus_find_format(ctx, fsize->pixel_format, CEDRUS_DECODE_SRC);
+ 	if (fmt && fmt->pixelformat == fsize->pixel_format) {
+-		if (fsize->index)
+-			return -EINVAL;
+-
+ 		fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
+ 		fsize->stepwise.min_width = CEDRUS_MIN_WIDTH;
+ 		fsize->stepwise.max_width = CEDRUS_MAX_WIDTH;
+@@ -264,7 +241,6 @@
+ 		fsize->stepwise.min_height = CEDRUS_MIN_HEIGHT;
+ 		fsize->stepwise.max_height = CEDRUS_MAX_HEIGHT;
+ 		fsize->stepwise.step_height = 1;
+-
+ 		return 0;
+ 	}
+ 
+@@ -272,24 +248,26 @@
+ 	if (!fmt || fmt->pixelformat != fsize->pixel_format)
+ 		return -EINVAL;
+ 
+-	for (shift = 0; shift <= VE_H264_SDROT_MAX_SHIFT; shift++) {
+-		if (shift && !cedrus_can_scale(ctx))
+-			break;
+-
+-		if (!cedrus_scaled_size(ctx, shift, &width, &height))
+-			continue;
+-
+-		if (n++ != fsize->index)
+-			continue;
+-
++	if (cedrus_can_scale(ctx) && fsize->pixel_format == V4L2_PIX_FMT_NV12) {
++		fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
++		fsize->stepwise.min_width = cedrus_scale_min(ctx->src_fmt.width);
++		fsize->stepwise.max_width = ctx->src_fmt.width & ~1U;
++		fsize->stepwise.step_width = 2;
++		fsize->stepwise.min_height = cedrus_scale_min(ctx->src_fmt.height);
++		fsize->stepwise.max_height = ALIGN(ctx->src_fmt.height, 16);
++		fsize->stepwise.step_height = 2;
++	} else {
++		struct v4l2_pix_format pix_fmt = ctx->src_fmt;
++
++		pix_fmt.pixelformat = fsize->pixel_format;
++		pix_fmt.bytesperline = 0;
++		cedrus_prepare_format(&pix_fmt);
+ 		fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
+-		fsize->discrete.width = width;
+-		fsize->discrete.height = height;
+-
+-		return 0;
+-	}
+-
+-	return -EINVAL;
++		fsize->discrete.width = pix_fmt.width;
++		fsize->discrete.height = pix_fmt.height;
++	}
++
++	return 0;
+ }
+ 
+ static int cedrus_querycap(struct file *file, void *priv,
+@@ -365,47 +343,50 @@
+ 	return 0;
+ }
+ 
++static void cedrus_prepare_capture_format(struct cedrus_ctx *ctx,
++					  struct v4l2_pix_format *pix_fmt,
++					  bool scaling)
++{
++	unsigned int height = pix_fmt->height;
++
++	cedrus_prepare_format(pix_fmt);
++	/* TOP1 writes the requested even number of lines, not macroblocks. */
++	if (scaling) {
++		pix_fmt->height = height;
++		/*
++		 * HEVC secondary chroma requires a 64-byte aligned base.
++		 * A 32-byte pitch and even height preserve that alignment.
++		 */
++		pix_fmt->bytesperline = ALIGN(pix_fmt->bytesperline, 32);
++		pix_fmt->sizeimage = pix_fmt->bytesperline * height * 3 / 2;
++	}
++	if (ctx->current_codec->extra_cap_size)
++		pix_fmt->sizeimage += ctx->current_codec->extra_cap_size(ctx, pix_fmt);
++}
++
+ static int cedrus_try_fmt_vid_cap_p(struct cedrus_ctx *ctx,
+ 				    struct v4l2_pix_format *pix_fmt)
+ {
+-	unsigned int output_width, output_height;
+-	struct cedrus_format *fmt =
+-		cedrus_find_format(ctx, pix_fmt->pixelformat,
+-				   CEDRUS_DECODE_DST);
++	struct cedrus_format *fmt = cedrus_find_format(ctx, pix_fmt->pixelformat,
++						    CEDRUS_DECODE_DST);
++	bool scaling = false;
+ 
+ 	if (!fmt)
+ 		return -EINVAL;
+ 
+-	pix_fmt->pixelformat = cedrus_transforming(ctx) ? V4L2_PIX_FMT_NV12 :
+-						 fmt->pixelformat;
+-	/*
+-	 * COMPOSE is a window inside the capture allocation.  Keep userspace's
+-	 * requested canvas while scaling and only enlarge it when the secondary
+-	 * picture would not fit.  Conflating these dimensions put the chroma plane
+-	 * immediately after the 544 visible rows and forced the display fetcher to
+-	 * use a small raster, which this H713 hardware wraps and shears.
+-	 */
+-	if (cedrus_transforming(ctx)) {
+-		output_width = ctx->sd_h_shift ?
+-			ALIGN(ctx->src_fmt.width, 16) >> ctx->sd_h_shift :
+-			ctx->src_fmt.width;
+-		output_height = ctx->sd_v_shift ?
+-			ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
+-			ctx->src_fmt.height;
+-		if (cedrus_rotation_swaps_axes(ctx))
+-			swap(output_width, output_height);
+-		pix_fmt->width = max(pix_fmt->width, output_width);
+-		pix_fmt->height = max(pix_fmt->height, output_height);
++	pix_fmt->pixelformat = fmt->pixelformat;
++	if (cedrus_can_scale(ctx) && pix_fmt->pixelformat == V4L2_PIX_FMT_NV12) {
++		pix_fmt->width = cedrus_scale_size(ctx->src_fmt.width,
++						 pix_fmt->width, 0);
++		pix_fmt->height = cedrus_scale_size(ctx->src_fmt.height,
++						  pix_fmt->height, 0);
++		scaling = pix_fmt->width != ctx->src_fmt.width ||
++			  pix_fmt->height != ctx->src_fmt.height;
+ 	} else {
+ 		pix_fmt->width = ctx->src_fmt.width;
+ 		pix_fmt->height = ctx->src_fmt.height;
+ 	}
+-	cedrus_prepare_format(pix_fmt);
+-
+-	if (ctx->current_codec->extra_cap_size)
+-		pix_fmt->sizeimage +=
+-			ctx->current_codec->extra_cap_size(ctx, pix_fmt);
+-
++	cedrus_prepare_capture_format(ctx, pix_fmt, scaling);
+ 	return 0;
+ }
+ 
+@@ -462,48 +443,6 @@
+ 			ctx->current_codec->extra_cap_size(ctx, &ctx->recon_fmt);
+ }
+ 
+-/*
+- * Scaling is a property of the H.264 engine block -- VE_H264_SDROT_* live at
+- * 0x240 inside it -- so it is offered for H.264 only.  Each axis divides by 1,
+- * 2 or 4 and nothing between: the VE has no arbitrary-ratio scaler that works
+- * on this part.  A request is rounded DOWN to the next reachable size rather
+- * than refused, which is what V4L2 expects of a compose rectangle, and the
+- * caller reads back what it actually got.
+- */
+-/* Select against the returned NV12 layout, including macroblock padding.
+- * LE/GE constrain the result, not the request. Never change context on error.
+- */
+-static int cedrus_compose_shift(unsigned int coded, unsigned int want,
+-			       bool vertical, u32 flags)
+-{
+-	unsigned int shift, size, best_size = UINT_MAX;
+-	int best = -ERANGE;
+-
+-	for (shift = 0; shift <= VE_H264_SDROT_MAX_SHIFT; shift++) {
+-		size = shift ? ALIGN(coded, 16) >> shift : coded;
+-		/* Do not silently clamp a 4- or 8-pixel output to 16. */
+-		if (size < 16)
+-			continue;
+-		if (vertical)
+-			size = ALIGN(size, 16);
+-		if ((flags & V4L2_SEL_FLAG_LE) && size > want)
+-			continue;
+-		if ((flags & V4L2_SEL_FLAG_GE) && size < want)
+-			continue;
+-		if (flags & V4L2_SEL_FLAG_GE) {
+-			if (size < best_size) {
+-				best = shift;
+-				best_size = size;
+-			}
+-		} else {
+-			best = shift;
+-			if (size <= want)
+-				break;
+-		}
+-	}
+-	return best;
+-}
+-
+ static int cedrus_g_selection(struct file *file, void *priv,
+ 			      struct v4l2_selection *sel)
+ {
+@@ -516,23 +455,14 @@
+ 
+ 	switch (sel->target) {
+ 	case V4L2_SEL_TGT_COMPOSE:
+-		sel->r.left = 0;
+-		sel->r.top = 0;
+-		sel->r.width = ctx->sd_h_shift ?
+-			ALIGN(ctx->src_fmt.width, 16) >> ctx->sd_h_shift :
+-			ctx->src_fmt.width;
+-		sel->r.height = ctx->sd_v_shift ?
+-			ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
+-			ctx->src_fmt.height;
+-		if (cedrus_rotation_swaps_axes(ctx))
+-			swap(sel->r.width, sel->r.height);
++		sel->r = ctx->compose;
+ 		return 0;
+ 	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+ 	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+ 		sel->r.left = 0;
+ 		sel->r.top = 0;
+ 		sel->r.width = ctx->src_fmt.width;
+-		sel->r.height = ALIGN(ctx->src_fmt.height, 16);
++		sel->r.height = ctx->src_fmt.height;
+ 		return 0;
+ 	default:
+ 		return -EINVAL;
+@@ -544,49 +474,36 @@
+ {
+ 	struct cedrus_ctx *ctx = cedrus_file2ctx(file);
+ 	struct vb2_queue *vq;
+-	int h_shift, v_shift;
++	struct v4l2_rect compose = sel->r;
+ 
+ 	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
+-	    sel->target != V4L2_SEL_TGT_COMPOSE)
+-		return -EINVAL;
+-
+-	if (!cedrus_can_scale(ctx) ||
++	    sel->target != V4L2_SEL_TGT_COMPOSE || !cedrus_can_scale(ctx) ||
+ 	    !cedrus_is_capable(ctx, CEDRUS_CAPABILITY_UNTILED) ||
+ 	    sel->flags & ~(V4L2_SEL_FLAG_LE | V4L2_SEL_FLAG_GE))
+ 		return -EINVAL;
+ 
+-	/* The output layout can change, so nothing may be queued. */
+ 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+ 	if (vb2_is_busy(vq))
+ 		return -EBUSY;
+-
+-	if (sel->r.left || sel->r.top || !sel->r.width || !sel->r.height)
++	if (compose.left || compose.top || !compose.width || !compose.height ||
++	    compose.width > INT_MAX || compose.height > INT_MAX)
+ 		return -EINVAL;
+ 
+-	if (cedrus_rotation_swaps_axes(ctx))
+-		swap(sel->r.width, sel->r.height);
+-
+-	h_shift = cedrus_compose_shift(ctx->src_fmt.width, sel->r.width,
+-				       false, sel->flags);
+-	v_shift = cedrus_compose_shift(ctx->src_fmt.height, sel->r.height,
+-				       true, sel->flags);
+-	if (h_shift < 0 || v_shift < 0)
++	compose.width = cedrus_scale_size(ctx->src_fmt.width, compose.width, sel->flags);
++	compose.height = cedrus_scale_size(ctx->src_fmt.height, compose.height, sel->flags);
++	if (((sel->flags & V4L2_SEL_FLAG_LE) &&
++	     (compose.width > sel->r.width || compose.height > sel->r.height)) ||
++	    ((sel->flags & V4L2_SEL_FLAG_GE) &&
++	     (compose.width < sel->r.width || compose.height < sel->r.height)))
+ 		return -ERANGE;
+ 
+-	ctx->sd_h_shift = h_shift;
+-	ctx->sd_v_shift = v_shift;
++	ctx->compose = compose;
++	/* COMPOSE remains a window in a separately negotiated capture canvas. */
++	ctx->dst_fmt.width = max_t(u32, ctx->dst_fmt.width, compose.width);
++	ctx->dst_fmt.height = max_t(u32, ctx->dst_fmt.height, compose.height);
+ 	cedrus_reset_cap_format(ctx);
+ 	cedrus_update_recon_format(ctx);
+-
+-	sel->r.width = ctx->sd_h_shift ?
+-		ALIGN(ctx->src_fmt.width, 16) >> ctx->sd_h_shift :
+-		ctx->src_fmt.width;
+-	sel->r.height = ctx->sd_v_shift ?
+-		ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
+-		ctx->src_fmt.height;
+-	if (cedrus_rotation_swaps_axes(ctx))
+-		swap(sel->r.width, sel->r.height);
+-
++	sel->r = compose;
+ 	return 0;
+ }
+ 
+@@ -606,16 +523,29 @@
+ 		return ret;
+ 
+ 	ctx->dst_fmt = f->fmt.pix;
++	ctx->compose = (struct v4l2_rect) {
++		.width = min(f->fmt.pix.width, ctx->src_fmt.width),
++		.height = min(f->fmt.pix.height, ctx->src_fmt.height),
++	};
++	cedrus_update_recon_format(ctx);
+ 
+ 	return 0;
+ }
+ 
+ void cedrus_reset_cap_format(struct cedrus_ctx *ctx)
+ {
+-	ctx->dst_fmt.pixelformat = 0;
+-	ctx->dst_fmt.bytesperline = 0;
++	struct cedrus_format *fmt = cedrus_find_format(ctx, ctx->dst_fmt.pixelformat,
++						    CEDRUS_DECODE_DST);
++
++	ctx->dst_fmt.pixelformat = cedrus_scaling(ctx) ? V4L2_PIX_FMT_NV12 :
++						      fmt->pixelformat;
+ 	ctx->dst_fmt.sizeimage = 0;
+-	cedrus_try_fmt_vid_cap_p(ctx, &ctx->dst_fmt);
++	if (!cedrus_scaling(ctx)) {
++		ctx->dst_fmt.bytesperline = 0;
++		ctx->dst_fmt.width = ctx->src_fmt.width;
++		ctx->dst_fmt.height = ctx->src_fmt.height;
++	}
++	cedrus_prepare_capture_format(ctx, &ctx->dst_fmt, cedrus_scaling(ctx));
+ }
+ 
+ static int cedrus_s_fmt_vid_out_p(struct cedrus_ctx *ctx,
+@@ -628,13 +558,6 @@
+ 	if (ret)
+ 		return ret;
+ 
+-	/*
+-	 * Selecting a codec without a rotator is not an error even with a
+-	 * rotation still set: cedrus_rotation() reports zero for it, the
+-	 * capture format is re-derived below, and the request comes back into
+-	 * effect if H.264 is selected again. Refusing here made the output
+-	 * format depend on control state in a way userspace cannot discover.
+-	 */
+ 	ctx->src_fmt = *pix_fmt;
+ 
+ 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, V4L2_BUF_TYPE_VIDEO_OUTPUT);
+@@ -675,8 +598,12 @@
+ 	 * A new coded size invalidates any scaling factor chosen against the
+ 	 * old one, and the reconstruction geometry follows the source.
+ 	 */
+-	ctx->sd_h_shift = 0;
+-	ctx->sd_v_shift = 0;
++	ctx->compose = (struct v4l2_rect) {
++		.width = ctx->src_fmt.width,
++		.height = ctx->src_fmt.height,
++	};
++	ctx->dst_fmt.pixelformat = 0;
++	ctx->dst_fmt.bytesperline = 0;
+ 	cedrus_reset_cap_format(ctx);
+ 	cedrus_update_recon_format(ctx);
+ 
+@@ -883,7 +810,7 @@
+ 	struct cedrus_buffer *cbuf = vb2_to_cedrus_buffer(vb);
+ 	struct cedrus_dev *dev = ctx->dev;
+ 
+-	if (V4L2_TYPE_IS_OUTPUT(vq->type) || !cedrus_transforming(ctx))
++	if (V4L2_TYPE_IS_OUTPUT(vq->type) || !cedrus_scaling(ctx))
+ 		return 0;
+ 
+ 	cbuf->recon_size = ctx->recon_fmt.sizeimage;
+@@ -960,15 +887,34 @@
+ 		if (ret < 0)
+ 			goto err_cleanup;
+ 
++		/* CAPTURE sizing may be selected after OUTPUT starts streaming. */
++		if (cedrus_can_scale(ctx)) {
++			ctx->scaler_buf = dma_alloc_attrs(dev->dev,
++						 CEDRUS_SCALER_BUF_SIZE,
++						 &ctx->scaler_buf_addr, GFP_KERNEL,
++						 DMA_ATTR_NO_KERNEL_MAPPING);
++			if (!ctx->scaler_buf) {
++				ret = -ENOMEM;
++				goto err_pm;
++			}
++		}
++
+ 		if (ctx->current_codec->start) {
+ 			ret = ctx->current_codec->start(ctx);
+ 			if (ret)
+-				goto err_pm;
++				goto err_scaler;
+ 		}
+ 	}
+ 
+ 	return 0;
+ 
++err_scaler:
++	if (ctx->scaler_buf) {
++		dma_free_attrs(dev->dev, CEDRUS_SCALER_BUF_SIZE,
++			       ctx->scaler_buf, ctx->scaler_buf_addr,
++			       DMA_ATTR_NO_KERNEL_MAPPING);
++		ctx->scaler_buf = NULL;
++	}
+ err_pm:
+ 	pm_runtime_put(dev->dev);
+ err_cleanup:
+@@ -986,6 +932,12 @@
+ 		if (ctx->current_codec->stop)
+ 			ctx->current_codec->stop(ctx);
+ 
++		if (ctx->scaler_buf) {
++			dma_free_attrs(dev->dev, CEDRUS_SCALER_BUF_SIZE,
++				       ctx->scaler_buf, ctx->scaler_buf_addr,
++				       DMA_ATTR_NO_KERNEL_MAPPING);
++			ctx->scaler_buf = NULL;
++		}
+ 		pm_runtime_put(dev->dev);
+ 	}
+ 

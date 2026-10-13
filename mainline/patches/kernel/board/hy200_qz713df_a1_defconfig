@@ -233,6 +233,10 @@ CONFIG_VIDEO_SUNXI_CEDRUS=m
 CONFIG_HWSPINLOCK=y
 CONFIG_HWSPINLOCK_SUN6I=y
 CONFIG_MAILBOX=y
+# The decoders behind the IOMMU (media side project, package B): the VE as
+# masters 0 and 1 (DT iommus, patch 0042), the display stays physical - the
+# H713 variant (0041) leaves every master bypassing that no device claims.
+CONFIG_SUN50I_IOMMU=y
 CONFIG_HY310_CPU_COMM=m
 # Restarts the display MIPS from Linux, out of the standby park too; owns its clock and resets.
 CONFIG_SUN50I_H713_MIPS=m

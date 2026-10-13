@@ -1,0 +1,186 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: refuse a request missing its per-frame controls
+
+The stateless decoder uAPI is explicit:
+
+    If a request is submitted without an OUTPUT buffer, or if some of the
+    required controls are missing from the request, then
+    MEDIA_REQUEST_IOC_QUEUE() will return -ENOENT.
+
+cedrus_request_validate() only ever rejected a request with no buffer or with
+more than one, so a request carrying a buffer and nothing else queued happily.
+That is not a crash -- cedrus_find_control_data() reads the control's CURRENT
+value, so a missing control reads as a zeroed struct rather than NULL -- but
+the hardware is then programmed from zeros and decodes garbage, and nothing
+reports it.  v4l2-compliance catches it as
+
+    fail: v4l2-test-buffers.cpp(2753): ret != ENOENT (got 0)
+    test Requests: FAIL
+
+and the "test blocking wait" failure follows from the same place, because
+fail_on_test_val returns before testRequests reaches its cleanup and leaves
+buffers allocated for the next test to trip over.
+
+Check the current codec's required controls against the request's own control
+handler, the pattern vicodec uses.  Score goes 46/49 -> 48/49; the one
+remaining failure is pre-existing and present with this whole series reverted.
+
+Only PER-FRAME controls are marked required.  Per-SEQUENCE state -- SPS, PPS,
+the MPEG-2 sequence header -- deliberately is NOT, because clients legitimately
+differ on whether it rides in every request: libva-v4l2-request repeats the
+H.264 SPS per request, GStreamer's v4l2slh265dec sets the HEVC SPS once on the
+fd and never again.  Requiring it was tried first and broke every HEVC clip on
+this board with
+
+    cedrus 1c0e000.video-codec: Missing required codec control HEVC Sequence Parameter Set
+
+The stream-dependent controls stay optional for the same reason: scaling
+matrices, prediction weights, entry point offsets and MPEG-2 quantisation are
+all conditional on stream features, and requiring any of them would break a
+client that correctly omits them.
+
+Verified on H713: v4l2-compliance 48/49, the HEVC ladder decodes (including
+Main10), H.264 scaled decode is bit-identical to before
+(md5 c644eeae215ccc724cf83475443feee6), and rotation still passes 4/4.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0114-media-cedrus-require-per-frame-controls-in-a-request.patch (0114-media-cedrus-require-per-frame-controls-in-a-request.patch, commit 21fc7af)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -50,6 +50,13 @@
+ struct cedrus_control {
+ 	struct v4l2_ctrl_config cfg;
+ 	unsigned int		capabilities;
++	/*
++	 * Coded format this control belongs to, and whether a request for that
++	 * format is meaningless without it. Only set on controls the decoder
++	 * cannot produce a picture without -- see cedrus_request_validate().
++	 */
++	u32			codec;
++	bool			required;
+ };
+ 
+ struct cedrus_h264_run {
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.c
+@@ -141,6 +141,8 @@
+ 			.id	= V4L2_CID_STATELESS_MPEG2_PICTURE,
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_MPEG2_DEC,
++		.codec		= V4L2_PIX_FMT_MPEG2_SLICE,
++		.required	= true,
+ 	},
+ 	{
+ 		.cfg = {
+@@ -153,12 +155,16 @@
+ 			.id	= V4L2_CID_STATELESS_H264_DECODE_PARAMS,
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_H264_DEC,
++		.codec		= V4L2_PIX_FMT_H264_SLICE,
++		.required	= true,
+ 	},
+ 	{
+ 		.cfg = {
+ 			.id	= V4L2_CID_STATELESS_H264_SLICE_PARAMS,
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_H264_DEC,
++		.codec		= V4L2_PIX_FMT_H264_SLICE,
++		.required	= true,
+ 	},
+ 	{
+ 		.cfg = {
+@@ -239,6 +245,8 @@
+ 			.dims   = { 1 },
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_H265_DEC,
++		.codec		= V4L2_PIX_FMT_HEVC_SLICE,
++		.required	= true,
+ 	},
+ 	{
+ 		.cfg = {
+@@ -277,12 +285,16 @@
+ 			.id	= V4L2_CID_STATELESS_VP8_FRAME,
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_VP8_DEC,
++		.codec		= V4L2_PIX_FMT_VP8_FRAME,
++		.required	= true,
+ 	},
+ 	{
+ 		.cfg = {
+ 			.id = V4L2_CID_STATELESS_HEVC_DECODE_PARAMS,
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_H265_DEC,
++		.codec		= V4L2_PIX_FMT_HEVC_SLICE,
++		.required	= true,
+ 	},
+ };
+ 
+@@ -362,8 +374,10 @@
+ static int cedrus_request_validate(struct media_request *req)
+ {
+ 	struct media_request_object *obj;
++	struct v4l2_ctrl_handler *hdl;
+ 	struct cedrus_ctx *ctx = NULL;
+ 	unsigned int count;
++	unsigned int i;
+ 
+ 	list_for_each_entry(obj, &req->objects, list) {
+ 		struct vb2_buffer *vb;
+@@ -390,6 +404,57 @@
+ 		return -EINVAL;
+ 	}
+ 
++	/*
++	 * A request that does not carry the controls its coded format cannot
++	 * be decoded without must be refused with -ENOENT, which the stateless
++	 * decoder uAPI states outright:
++	 *
++	 *   If a request is submitted without an OUTPUT buffer, or if some of
++	 *   the required controls are missing from the request, then
++	 *   MEDIA_REQUEST_IOC_QUEUE() will return -ENOENT.
++	 *
++	 * Accepting it is not a crash -- cedrus_find_control_data() reads the
++	 * control's CURRENT value, so a missing control reads as a zeroed
++	 * struct rather than NULL -- but the hardware is then programmed from
++	 * zeros and decodes garbage, which is worse than a refusal because
++	 * nothing reports it.
++	 *
++	 * Only PER-FRAME controls are marked required. Per-SEQUENCE state --
++	 * SPS, PPS, the MPEG-2 sequence header -- is deliberately NOT, because
++	 * clients legitimately differ on whether it rides in every request:
++	 * libva-v4l2-request repeats the H.264 SPS per request, GStreamer's
++	 * v4l2slh265dec sets the HEVC SPS once on the fd and never again.
++	 * Requiring it broke every HEVC clip on this board with "Missing
++	 * required codec control HEVC Sequence Parameter Set".
++	 *
++	 * The stream-dependent controls stay optional for the same reason:
++	 * scaling matrices, prediction weights, entry point offsets and MPEG-2
++	 * quantisation are all conditional on stream features.
++	 */
++	hdl = v4l2_ctrl_request_hdl_find(req, &ctx->hdl);
++	if (!hdl) {
++		v4l2_info(&ctx->dev->v4l2_dev,
++			  "No controls were provided with the request\n");
++		return -ENOENT;
++	}
++
++	for (i = 0; i < CEDRUS_CONTROLS_COUNT; i++) {
++		if (!cedrus_controls[i].required ||
++		    cedrus_controls[i].codec != ctx->src_fmt.pixelformat)
++			continue;
++
++		if (!v4l2_ctrl_request_hdl_ctrl_find(hdl,
++						     cedrus_controls[i].cfg.id)) {
++			v4l2_info(&ctx->dev->v4l2_dev,
++				  "Missing required codec control %s\n",
++				  v4l2_ctrl_get_name(cedrus_controls[i].cfg.id));
++			v4l2_ctrl_request_hdl_put(hdl);
++			return -ENOENT;
++		}
++	}
++
++	v4l2_ctrl_request_hdl_put(hdl);
++
+ 	return vb2_request_validate(req);
+ }
+ 

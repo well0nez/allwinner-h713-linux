@@ -1,0 +1,50 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: vp9: refuse profiles other than 0 at control time
+
+cedrus decodes VP9 Profile 0 only (8-bit 4:2:0). Job setup already refuses
+anything else, but by then the client has committed to the device and
+gets "Failed to setup decoding job: -22" on every frame. There was no
+earlier refusal userspace could probe: the VP9 frame control was
+registered without cedrus_ctrl_ops, so cedrus_try_ctrl never saw it.
+
+megi's libva-v4l2_request advertises VAProfileVP9Profile2 unless the device
+refuses a 10-bit frame control. With cedrus accepting it, ffmpeg chose VA-API
+for a Profile 2 stream and every frame failed, where it should have fallen
+back to software. Measured 2026-10-03: before, 0 interrupts and an error per
+frame; after, Profile 2 is not advertised, ffmpeg's hwaccel init fails and it
+decodes in software. Profile 0 is unchanged (va-gate VP9 3/3 bit-exact,
+GStreamer v4l2slvp9dec 30/30).
+
+Attach the ops to V4L2_CID_STATELESS_VP9_FRAME and reject profile != 0 or
+bit_depth != 8 in try_ctrl. cedrus_s_ctrl ignores every id but the HEVC
+SPS, so the new s_ctrl calls are no-ops.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0155-media-cedrus-vp9-refuse-profiles-other-than-0-at-control-time.patch (0155-media-cedrus-vp9-refuse-profiles-other-than-0-at-control-time.patch, commit ae94ce3)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.c
+@@ -74,6 +74,16 @@
+ 			if (ctx->bit_depth < bit_depth)
+ 				return -EINVAL;
+ 		}
++	} else if (ctrl->id == V4L2_CID_STATELESS_VP9_FRAME) {
++		const struct v4l2_ctrl_vp9_frame *frame = ctrl->p_new.p_vp9_frame;
++
++		/*
++		 * Profile 0 only. Job setup refuses anything else too, but
++		 * by then the client has committed to the device; refusing
++		 * the control lets userspace probe for 10-bit support.
++		 */
++		if (frame->profile != 0 || frame->bit_depth != 8)
++			return -EINVAL;
+ 	}
+ 
+ 	return 0;
+@@ -277,6 +287,7 @@
+ 	{
+ 		.cfg = {
+ 			.id	= V4L2_CID_STATELESS_VP9_FRAME,
++			.ops	= &cedrus_ctrl_ops,
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_VP9_DEC,
+ 		.codec		= V4L2_PIX_FMT_VP9_FRAME,

@@ -597,3 +597,39 @@
 0268-clk-sunxi-ng-h713-the-gpu-runs-at-432-mhz-not-864.patch
 0269-arm64-dts-h713-gpu-dvfs-at-stock-s-points-pll-gpu-pinned-at-600-mhz.patch
 0270-clk-sunxi-ng-h713-mbus-av1-is-bit-3.patch
+# 13.10.: the decoders (package B "cedrus, VP9, IOMMU" of the media side project, branch medien-b-dekoder, not main).
+#   0271-0296 are cstenger's cedrus series in his series order, byte-identical (message and diff; From: and Origin: added):
+#   his 0099 (VE scaler into the capture buffer), 0101-0125 (cedrus hardening, 10-bit sizing, polyphase scaler for
+#   H.265/H.264, enum_framesizes, field MPEG-2, capture pitch 32), 0143/0154/0155 (VP9 on the VE), 0144 (VE at 432 MHz),
+#   0151 (bidirectional capture mappings, needed behind the IOMMU). Not taken: his 0126/0127 (IOVA reservation, only for
+#   a display in the IOMMU group), 0052/0080 (display behind the IOMMU), 0092. 0297 is ours: the IOMMU comment of 0024e.
+#   0298 is ours: a job of another codec starts from a reset engine (H.265 next to his VP9 failed every job).
+#   The defconfig turns CONFIG_SUN50I_IOMMU on (VE masters 0/1 translated, display physical).
+0271-media-cedrus-scale-down-into-the-capture-buffer.patch
+0272-media-cedrus-harden-compose-negotiation.patch
+0273-media-cedrus-fix-secondary-chroma-stride.patch
+0274-media-cedrus-honor-linear-output-pitch.patch
+0275-media-cedrus-separate-compose-from-capture-canvas.patch
+0276-media-cedrus-expose-h264-hardware-rotation.patch
+0277-media-cedrus-reject-invalid-active-h264-ref-indices.patch
+0278-media-cedrus-fix-missing-cleanup-in-error-path.patch
+0279-media-cedrus-require-per-frame-controls-in-a-request.patch
+0280-media-cedrus-size-the-reconstruction-buffer-for-10-bit-side-data.patch
+0281-media-cedrus-take-the-10-bit-primary-offsets-from-the-reconstruction.patch
+0282-media-cedrus-restore-h265-secondary-output-prerequisites.patch
+0283-media-cedrus-record-that-h265-has-no-rotate-field.patch
+0284-media-cedrus-h265-hardware-scale-down-via-the-ve-polyphase-scaler.patch
+0285-media-cedrus-implement-enum_framesizes.patch
+0286-media-cedrus-share-the-polyphase-scaler-with-h264.patch
+0287-media-cedrus-fix-hevc-sps-default-and-try-controls.patch
+0288-media-cedrus-add-sel-tgt-crop-for-the-scaler-input.patch
+0289-media-cedrus-decode-field-coded-mpeg2.patch
+0290-media-cedrus-keep-decode-error-across-held-buffer.patch
+0291-media-cedrus-align-the-capture-pitch-to-32.patch
+0292-media-cedrus-add-h713-vp9-decoding.patch
+0293-media-cedrus-run-the-h713-video-engine-at-432-mhz.patch
+0294-media-cedrus-map-capture-buffers-bidirectionally.patch
+0295-media-cedrus-vp9-read-references-at-the-real-capture-pitch.patch
+0296-media-cedrus-vp9-refuse-profiles-other-than-0-at-control-time.patch
+0297-arm64-dts-h713-the-iommu-comment-says-the-codecs-are-translated-and-the-display-is-not.patch
+0298-media-cedrus-a-job-of-another-codec-starts-from-a-reset-engine.patch

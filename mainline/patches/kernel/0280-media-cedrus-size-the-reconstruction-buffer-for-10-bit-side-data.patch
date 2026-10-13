@@ -1,0 +1,56 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: size the reconstruction buffer for 10-bit side data
+
+cedrus_update_recon_format() builds the reconstruction format with
+cedrus_prepare_format() alone, while the capture queue goes through
+cedrus_calculate_format(), which additionally adds the codec's
+extra_cap_size().  For H.265 that is the 2-bit plane of a 10-bit picture,
+appended after the 8-bit planes.
+
+So a 10-bit reconstruction buffer is allocated for its 8-bit planes only, and
+the engine writes the 2-bit plane past the end of it.
+
+No bug is reachable today: the reconstruction only gets its own buffer when the
+scaler is running, cedrus_s_selection() refuses a compose rectangle for
+anything but H.264, and H.264 has no extra_cap_size.  The two halves meet as
+soon as the H.265 scaler is enabled, so fix the sizing first.
+
+@@ -366,6 +366,16 @@
+ 	ctx->recon_fmt.bytesperline = 0;
+ 	ctx->recon_fmt.sizeimage = 0;
+ 	cedrus_prepare_format(&ctx->recon_fmt);
++
++	/*
++	 * Codecs with side data per capture buffer need it here too: the
++	 * reconstruction is a frame like any other.  H.265 appends the 2-bit
++	 * plane of a 10-bit picture after the 8-bit planes, and without this
++	 * the buffer is allocated for the 8-bit planes alone.
++	 */
++	if (ctx->current_codec && ctx->current_codec->extra_cap_size)
++		ctx->recon_fmt.sizeimage +=
++			ctx->current_codec->extra_cap_size(ctx, &ctx->recon_fmt);
+ }
+ 
+ /*
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0115-media-cedrus-size-the-reconstruction-buffer-for-10-bit-side-data.patch (0115-media-cedrus-size-the-reconstruction-buffer-for-10-bit-side-data.patch, commit 10ea6a6)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -366,6 +366,16 @@
+ 	ctx->recon_fmt.bytesperline = 0;
+ 	ctx->recon_fmt.sizeimage = 0;
+ 	cedrus_prepare_format(&ctx->recon_fmt);
++
++	/*
++	 * Codecs with side data per capture buffer need it here too: the
++	 * reconstruction is a frame like any other.  H.265 appends the 2-bit
++	 * plane of a 10-bit picture after the 8-bit planes, and without this
++	 * the buffer is allocated for the 8-bit planes alone.
++	 */
++	if (ctx->current_codec && ctx->current_codec->extra_cap_size)
++		ctx->recon_fmt.sizeimage +=
++			ctx->current_codec->extra_cap_size(ctx, &ctx->recon_fmt);
+ }
+ 
+ /*

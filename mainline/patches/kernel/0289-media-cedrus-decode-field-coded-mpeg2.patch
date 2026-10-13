@@ -1,0 +1,97 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: decode field-coded MPEG-2
+
+A field-coded MPEG-2 stream carries each field as its own picture, and cedrus
+refused it outright: no output at all, and the VE interrupt counter never moved.
+
+Two things were wrong, and both had to be fixed to get a picture.
+
+The pair of fields has to land in ONE capture buffer, which means holding that
+buffer across the first field's job -- V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF.  The
+capability was granted to H.264 and HEVC and explicitly cleared for everything
+else, so the client could not say "there is more to come" and its QBUF was
+refused before the driver ever saw a frame.  Confirmed per format on an H713
+before the change: MG2S and VP8F reported REQBUFS capabilities 0x1d, S264 and
+S265 0x3d.
+
+With that granted the stream decoded, at one interrupt per coded field, but the
+last macroblock row of every field was wrong -- a fixed cluster at the bottom
+right, present even in an intra picture with no prediction history.  The cause is
+PICCODEDSIZE: its height field is macroblock ROWS, and a field picture has half
+of them.  The engine was told 36 rows where the field carried 18 and ran past the
+end of its data.
+
+Measured against ffmpeg on the same elementary stream, luma PSNR over 31 frames
+rises from 35.73 dB to 63.70 dB, and the intra frame's six bad macroblocks go to
+none.  The per-frame profile is then a clean GOP sawtooth -- 69 dB at each
+I-field decaying to 62 by the end of the GOP and resetting -- which is what
+MPEG-2's IDCT accuracy tolerance looks like on a conformant decoder.  The single
+remaining outlier is the last frame at 24 dB, whose bad macroblocks start at
+(0, 22): exactly where ffmpeg reports "ac-tex damaged at 0 22" in this sample.
+That frame is the stream's own damage, not the decoder's.
+
+Frame-picture MPEG-2 is byte-identical before and after, progressive and
+interlaced alike, because the new height applies only when picture_structure is
+not FRAME.  VP8 and the H.264/HEVC gates are unchanged and v4l2-compliance stays
+49/49.
+
+Tested with samples.ffmpeg.org/MPEG2/mpeg2_field_encoding.ts, which is genuinely
+field-coded: 31 top-field plus 31 bottom-field pictures and no frame pictures.
+Neither ffmpeg's mpeg2video encoder nor mjpegtools' mpeg2enc can produce such a
+stream locally -- the former only emits frame pictures and the latter segfaults
+in MacroBlock::FieldME().
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0123-media-cedrus-decode-field-coded-mpeg2.patch (0123-media-cedrus-decode-field-coded-mpeg2.patch, commit 0f03d0b)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -658,7 +658,18 @@
+ 
+ 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, V4L2_BUF_TYPE_VIDEO_OUTPUT);
+ 
++	/*
++	 * Formats that can decode two coded pictures into one capture buffer,
++	 * which needs that buffer held across the first one's job.
++	 *
++	 * MPEG-2 is here for FIELD pictures: a field-coded stream carries each
++	 * field as its own picture, and the pair has to be interleaved into a
++	 * single frame. Without this the decoder cannot say "there is more to
++	 * come", the client's QBUF is refused, and a field-coded stream does
++	 * not decode at all.
++	 */
+ 	switch (ctx->src_fmt.pixelformat) {
++	case V4L2_PIX_FMT_MPEG2_SLICE:
+ 	case V4L2_PIX_FMT_H264_SLICE:
+ 	case V4L2_PIX_FMT_HEVC_SLICE:
+ 		vq->subsystem_flags |=
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_mpeg2.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_mpeg2.c
+@@ -57,6 +57,7 @@
+ 	struct cedrus_dev *dev = ctx->dev;
+ 	struct vb2_queue *vq;
+ 	const u8 *matrix;
++	unsigned int coded_height;
+ 	unsigned int i;
+ 	u32 reg;
+ 
+@@ -108,8 +109,17 @@
+ 
+ 	/* Set frame dimensions. */
+ 
++	/*
++	 * A FIELD picture codes half the frame's lines, so it has half the
++	 * macroblock rows. Handing the engine the frame height makes it run
++	 * past the end of the field's data.
++	 */
++	coded_height = seq->vertical_size;
++	if (pic->picture_structure != V4L2_MPEG2_PIC_FRAME)
++		coded_height /= 2;
++
+ 	reg = VE_DEC_MPEG_PICCODEDSIZE_WIDTH(seq->horizontal_size);
+-	reg |= VE_DEC_MPEG_PICCODEDSIZE_HEIGHT(seq->vertical_size);
++	reg |= VE_DEC_MPEG_PICCODEDSIZE_HEIGHT(coded_height);
+ 
+ 	cedrus_write(dev, VE_DEC_MPEG_PICCODEDSIZE, reg);
+ 

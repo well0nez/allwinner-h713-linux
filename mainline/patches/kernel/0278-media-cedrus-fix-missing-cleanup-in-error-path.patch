@@ -1,0 +1,27 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: Fix missing cleanup in error path
+
+From: Samuel Holland
+Acked-by: Paul Kocialkowski
+
+Backported from linux-media: "[PATCH v2] media: cedrus: Fix missing cleanup in
+error path", submitted by Andrey Skvortsov.  Carry it until it lands upstream,
+then drop this patch.
+
+v4l2_fh_init() must be paired with v4l2_fh_exit() before the containing
+structure is freed.  cedrus_open()'s error path frees ctx without it.  No bug
+is reachable today -- v4l2_fh_exit() only destroys an internal mutex -- but
+that is a property of the current v4l2_fh, not a contract.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0113-media-cedrus-fix-missing-cleanup-in-error-path.patch (0113-media-cedrus-fix-missing-cleanup-in-error-path.patch, commit d5a4d98)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.c
+@@ -433,6 +433,7 @@
+ err_m2m_release:
+ 	v4l2_m2m_ctx_release(ctx->fh.m2m_ctx);
+ err_free:
++	v4l2_fh_exit(&ctx->fh);
+ 	kfree(ctx);
+ 	mutex_unlock(&dev->dev_mutex);
+ 

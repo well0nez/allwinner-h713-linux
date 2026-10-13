@@ -1,0 +1,68 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: take the 10-bit primary offsets from the reconstruction
+
+VE_DEC_H265_OFFSET_ADDR_FIRST_OUT and the FIRST_2BIT_STRIDE field describe
+where the primary output puts the 2-bit plane of a 10-bit picture.  The primary
+output is the reconstruction, which is the full coded size.
+
+cedrus_h265_setup() computes both from dst_fmt.  That is correct while dst_fmt
+and the reconstruction are the same frame, but once the scaler is on dst_fmt is
+the smaller picture userspace asked for: the offset then lands inside the 8-bit
+planes and the stride is derived from the scaled width.
+
+Take them from recon_fmt whenever the scaler is transforming.
+
+Not reachable today for the same reason as the preceding patch -- compose is
+refused for anything but H.264, and only H.265 has a 10-bit path.
+
+@@ -814,11 +814,18 @@
+ 	}
+ 
+ 	if (ctx->bit_depth > 8) {
+-		unsigned int stride = ALIGN(ctx->dst_fmt.width / 4, 32);
++		/*
++		 * These describe the PRIMARY output, which is the
++		 * reconstruction.  Once the scaler is on that is a separate
++		 * buffer at the full coded size, not the capture buffer, so
++		 * dst_fmt would size the 2-bit plane from the scaled picture.
++		 */
++		struct v4l2_pix_format *fmt = cedrus_transforming(ctx) ?
++					      &ctx->recon_fmt : &ctx->dst_fmt;
++		unsigned int stride = ALIGN(fmt->width / 4, 32);
+ 
+-		reg = ctx->dst_fmt.sizeimage -
+-		      cedrus_h265_2bit_size(ctx->dst_fmt.width,
+-					    ctx->dst_fmt.height);
++		reg = fmt->sizeimage -
++		      cedrus_h265_2bit_size(fmt->width, fmt->height);
+ 		cedrus_write(dev, VE_DEC_H265_OFFSET_ADDR_FIRST_OUT, reg);
+ 
+ 		reg = VE_DEC_H265_10BIT_CONFIGURE_FIRST_2BIT_STRIDE(stride);
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0116-media-cedrus-take-the-10-bit-primary-offsets-from-the-reconstruction.patch (0116-media-cedrus-take-the-10-bit-primary-offsets-from-the-reconstruction.patch, commit bb66f3b)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
+@@ -814,11 +814,18 @@
+ 	}
+ 
+ 	if (ctx->bit_depth > 8) {
+-		unsigned int stride = ALIGN(ctx->dst_fmt.width / 4, 32);
++		/*
++		 * These describe the PRIMARY output, which is the
++		 * reconstruction.  Once the scaler is on that is a separate
++		 * buffer at the full coded size, not the capture buffer, so
++		 * dst_fmt would size the 2-bit plane from the scaled picture.
++		 */
++		struct v4l2_pix_format *fmt = cedrus_transforming(ctx) ?
++					      &ctx->recon_fmt : &ctx->dst_fmt;
++		unsigned int stride = ALIGN(fmt->width / 4, 32);
+ 
+-		reg = ctx->dst_fmt.sizeimage -
+-		      cedrus_h265_2bit_size(ctx->dst_fmt.width,
+-					    ctx->dst_fmt.height);
++		reg = fmt->sizeimage -
++		      cedrus_h265_2bit_size(fmt->width, fmt->height);
+ 		cedrus_write(dev, VE_DEC_H265_OFFSET_ADDR_FIRST_OUT, reg);
+ 
+ 		reg = VE_DEC_H265_10BIT_CONFIGURE_FIRST_2BIT_STRIDE(stride);

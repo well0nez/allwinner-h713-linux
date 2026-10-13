@@ -1,0 +1,1227 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: add VP9 decoding on the H713
+
+The H713's VE decodes VP9 in hardware. Stock Android does it on every VP9
+file -- the VE interrupt ticks once per frame and the vendor's
+libawvp9HwAL.so drives it -- but nothing about the interface is documented,
+and this driver carried no VP9 at all.
+
+VP9 is the H.265 engine running in H.265 mode, in its own register block at
+VE+0x500: control, trigger, status and bitstream registers keep their H.265
+meaning, and the rest of the block takes a VP9 one. The interface was
+recovered from the vendor library, whose register shadows are exported
+under names that carry their offsets (vp9_func_ctrl_reg30, ...). The
+bitfield packing, the hardware probability-buffer layout and the symbol
+count layout were then mapped by running the library's own routines under
+emulation and perturbing one input at a time; each map accounts for every
+byte. docs/reference/vp9-ve-register-interface.md has the whole of it.
+
+The engine parses no header. It takes the tile data only (the bitstream
+offset skips both headers), all probabilities through one DMA buffer that
+also carries the tile table and the segment map, and it writes the symbol
+counts back into that buffer. Forward updates, backward adaptation and the
+four frame contexts are therefore the CPU's, through the v4l2-vp9 helpers
+exactly as rkvdec uses them. This driver completes jobs from the hard
+interrupt, so a frame's adaptation runs at the next frame's setup.
+
+Two facts that are not in any vendor register name, both found on hardware:
+
+ - Golden's y-scale is at [31:16] of its scale1 register, where the other
+   five scale fields are at [20:5]. The vendor writes it there; putting it
+   where the others go corrupts every golden-predicted block even at 1:1,
+   from the first frame whose golden differs from its last.
+
+ - The engine writes no motion vectors for an intra frame. The co-located
+   MV buffer is one per stream, read and rewritten in place, so after a
+   mid-stream key frame it still holds the frame before it and the next
+   frame predicts from stale vectors. Zeroing it on intra frames gives every
+   key frame the state the stream's first one gets.
+
+Profile 0, 8-bit 4:2:0 only; 10-bit (profile 2) has its own registers and
+is left out. The capability is added on the H713 alone -- the H6, whose
+compatible the H713 VE binds, has no VP9 on its VE.
+
+Tested bit-exact against libvpx (PSNR inf, every frame, VE interrupts =
+frames decoded) through GStreamer's v4l2slvp9dec: key frame alone; one tile
+and four; 352x288 to 1920x1080 and an odd 350x286; libvpx defaults (hidden
+alt-ref frames, compound prediction, backward adaptation, previous-frame
+MVs); frame-parallel; error-resilient; segmentation with aq-mode 1 and 3;
+lossless; and real content with a mid-stream key frame. Scaled references
+are programmed but untested: GStreamer drops frames on a non-key-frame
+resolution change, so it cannot feed that path.
+
+Known limit: buffer addresses are taken as addr >> 10 << 2, so the capture
+chroma plane must be 1 KiB aligned; that fails only when both
+bytesperline / 32 and the 16-aligned height / 16 are odd.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0143-media-cedrus-add-h713-vp9-decoding.patch (0143-media-cedrus-add-h713-vp9-decoding.patch, commit fb1a239)
+---
+diff --color -Naur pa/drivers/staging/media/sunxi/cedrus/cedrus.c pb/drivers/staging/media/sunxi/cedrus/cedrus.c
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.c
+@@ -276,6 +276,22 @@
+ 	},
+ 	{
+ 		.cfg = {
++			.id	= V4L2_CID_STATELESS_VP9_FRAME,
++		},
++		.capabilities	= CEDRUS_CAPABILITY_VP9_DEC,
++		.codec		= V4L2_PIX_FMT_VP9_FRAME,
++		.required	= true,
++	},
++	{
++		.cfg = {
++			.id	= V4L2_CID_STATELESS_VP9_COMPRESSED_HDR,
++		},
++		.capabilities	= CEDRUS_CAPABILITY_VP9_DEC,
++		.codec		= V4L2_PIX_FMT_VP9_FRAME,
++		.required	= true,
++	},
++	{
++		.cfg = {
+ 			.id = V4L2_CID_STATELESS_HEVC_DECODE_PARAMS,
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_H265_DEC,
+diff --color -Naur pa/drivers/staging/media/sunxi/cedrus/cedrus_dec.c pb/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+@@ -86,6 +86,13 @@
+ 			V4L2_CID_STATELESS_VP8_FRAME);
+ 		break;
+ 
++	case V4L2_PIX_FMT_VP9_FRAME:
++		run.vp9.frame = cedrus_find_control_data(ctx,
++			V4L2_CID_STATELESS_VP9_FRAME);
++		run.vp9.compressed_hdr = cedrus_find_control_data(ctx,
++			V4L2_CID_STATELESS_VP9_COMPRESSED_HDR);
++		break;
++
+ 	default:
+ 		break;
+ 	}
+diff --color -Naur pa/drivers/staging/media/sunxi/cedrus/cedrus.h pb/drivers/staging/media/sunxi/cedrus/cedrus.h
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -35,6 +35,7 @@
+ #define CEDRUS_CAPABILITY_VP8_DEC	BIT(4)
+ #define CEDRUS_CAPABILITY_H265_10_DEC	BIT(5)
+ #define CEDRUS_CAPABILITY_POLYPHASE	BIT(6)
++#define CEDRUS_CAPABILITY_VP9_DEC	BIT(7)
+ 
+ enum cedrus_irq_status {
+ 	CEDRUS_IRQ_NONE,
+@@ -48,6 +49,8 @@
+ 	CEDRUS_H264_PIC_TYPE_MBAFF,
+ };
+ 
++struct cedrus_vp9_ctx;
++
+ struct cedrus_control {
+ 	struct v4l2_ctrl_config cfg;
+ 	unsigned int		capabilities;
+@@ -89,6 +92,11 @@
+ 	const struct v4l2_ctrl_vp8_frame		*frame_params;
+ };
+ 
++struct cedrus_vp9_run {
++	const struct v4l2_ctrl_vp9_frame		*frame;
++	const struct v4l2_ctrl_vp9_compressed_hdr	*compressed_hdr;
++};
++
+ struct cedrus_run {
+ 	struct vb2_v4l2_buffer	*src;
+ 	struct vb2_v4l2_buffer	*dst;
+@@ -98,6 +106,7 @@
+ 		struct cedrus_mpeg2_run	mpeg2;
+ 		struct cedrus_h265_run	h265;
+ 		struct cedrus_vp8_run	vp8;
++		struct cedrus_vp9_run	vp9;
+ 	};
+ };
+ 
+@@ -127,6 +136,11 @@
+ 			dma_addr_t	mv_col_buf_dma;
+ 			ssize_t		mv_col_buf_size;
+ 		} h265;
++		struct {
++			/* the decoded size, for scaled prediction from it */
++			u16		width;
++			u16		height;
++		} vp9;
+ 	} codec;
+ };
+ 
+@@ -205,6 +219,9 @@
+ 			u8		*entropy_probs_buf;
+ 			dma_addr_t	entropy_probs_buf_dma;
+ 		} vp8;
++		struct {
++			struct cedrus_vp9_ctx	*priv;
++		} vp9;
+ 	} codec;
+ };
+ 
+@@ -261,6 +278,7 @@
+ extern struct cedrus_dec_ops cedrus_dec_ops_h264;
+ extern struct cedrus_dec_ops cedrus_dec_ops_h265;
+ extern struct cedrus_dec_ops cedrus_dec_ops_vp8;
++extern struct cedrus_dec_ops cedrus_dec_ops_vp9;
+ 
+ static inline void cedrus_write(struct cedrus_dev *dev, u32 reg, u32 val)
+ {
+diff --color -Naur pa/drivers/staging/media/sunxi/cedrus/cedrus_hw.c pb/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -54,7 +54,9 @@
+ 		reg |= VE_MODE_DEC_H264;
+ 		break;
+ 
++	/* VP9 runs on the H.265 engine, in its register block. */
+ 	case V4L2_PIX_FMT_HEVC_SLICE:
++	case V4L2_PIX_FMT_VP9_FRAME:
+ 		reg |= VE_MODE_DEC_H265;
+ 		break;
+ 
+@@ -526,7 +528,8 @@
+ 	dev->capabilities = variant->capabilities;
+ 	/* H713 currently uses the H6-compatible VE node. */
+ 	if (of_machine_is_compatible("allwinner,sun50i-h713"))
+-		dev->capabilities |= CEDRUS_CAPABILITY_POLYPHASE;
++		dev->capabilities |= CEDRUS_CAPABILITY_POLYPHASE |
++				     CEDRUS_CAPABILITY_VP9_DEC;
+ 
+ 	irq_dec = platform_get_irq(dev->pdev, 0);
+ 	if (irq_dec <= 0)
+diff --color -Naur pa/drivers/staging/media/sunxi/cedrus/cedrus_video.c pb/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -84,6 +84,11 @@
+ 		.capabilities	= CEDRUS_CAPABILITY_VP8_DEC,
+ 	},
+ 	{
++		.pixelformat	= V4L2_PIX_FMT_VP9_FRAME,
++		.directions	= CEDRUS_DECODE_SRC,
++		.capabilities	= CEDRUS_CAPABILITY_VP9_DEC,
++	},
++	{
+ 		.pixelformat	= V4L2_PIX_FMT_NV12,
+ 		.directions	= CEDRUS_DECODE_DST,
+ 		.capabilities	= CEDRUS_CAPABILITY_UNTILED,
+@@ -156,6 +161,7 @@
+ 	case V4L2_PIX_FMT_H264_SLICE:
+ 	case V4L2_PIX_FMT_HEVC_SLICE:
+ 	case V4L2_PIX_FMT_VP8_FRAME:
++	case V4L2_PIX_FMT_VP9_FRAME:
+ 		/* Zero bytes per line for encoded source. */
+ 		bytesperline = 0;
+ 		/* Choose some minimum size since this can't be 0 */
+@@ -706,6 +712,9 @@
+ 	case V4L2_PIX_FMT_VP8_FRAME:
+ 		ctx->current_codec = &cedrus_dec_ops_vp8;
+ 		break;
++	case V4L2_PIX_FMT_VP9_FRAME:
++		ctx->current_codec = &cedrus_dec_ops_vp9;
++		break;
+ 	}
+ 
+ 	/* Propagate format information to capture. */
+diff --color -Naur pa/drivers/staging/media/sunxi/cedrus/cedrus_vp9.c pb/drivers/staging/media/sunxi/cedrus/cedrus_vp9.c
+--- /dev/null
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_vp9.c
+@@ -0,0 +1,976 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Cedrus VPU driver: VP9 decoding (Allwinner H713)
++ *
++ * The H713 VE decodes VP9 with the H.265 engine's register block (VE+0x500)
++ * in H.265 mode: the control, trigger, status and bitstream registers are
++ * the H.265 ones, and the rest of the block takes a VP9 meaning. Nothing
++ * about it is documented; the interface was recovered from the vendor's
++ * libawvp9HwAL.so -- its register shadows are exported under names carrying
++ * their offsets, and the packing, the probability buffer layout and the
++ * symbol count layout were mapped by running the library's own routines
++ * under emulation. See docs/reference/vp9-ve-register-interface.md.
++ *
++ * The engine parses no header. It is handed the tile data only, every
++ * probability through one DMA buffer, and it writes the symbol counts back
++ * into the same buffer; forward updates, backward adaptation and the frame
++ * contexts are the CPU's, through the v4l2-vp9 helpers, exactly as for
++ * rkvdec. Adaptation of a frame runs at the next frame's setup, in process
++ * context, since this driver completes jobs from the hard interrupt.
++ */
++
++#include <linux/delay.h>
++#include <linux/slab.h>
++#include <linux/types.h>
++
++#include <media/v4l2-mem2mem.h>
++#include <media/v4l2-vp9.h>
++
++#include "cedrus.h"
++#include "cedrus_hw.h"
++#include "cedrus_regs.h"
++
++static unsigned int vp9_debug;
++module_param(vp9_debug, uint, 0644);
++MODULE_PARM_DESC(vp9_debug, "VP9: bit0 log each frame's references");
++
++#define VE_DEC_VP9_HDR			(VE_ENGINE_DEC_H265 + 0x04)
++#define VE_DEC_VP9_HDR_MULTI_TILE	BIT(0)
++#define VE_DEC_VP9_HDR_INTER		BIT(1)
++#define VE_DEC_VP9_HDR_BIT_DEPTH(d)	(((d) & 0x7) << 2)
++#define VE_DEC_VP9_HDR_SIGN_BIAS(r)	BIT(4 + (r))	/* r = 1..3 */
++#define VE_DEC_VP9_HDR_ALLOW_HP		BIT(8)
++#define VE_DEC_VP9_HDR_INTERP(f)	(((f) & 0x7) << 9)
++#define VE_DEC_VP9_HDR_LF_DELTA		BIT(12)
++#define VE_DEC_VP9_HDR_SHARPNESS(s)	(((s) & 0x7) << 13)
++#define VE_DEC_VP9_HDR_LOSSLESS		BIT(16)
++#define VE_DEC_VP9_HDR_SEG_ENABLED	BIT(17)
++#define VE_DEC_VP9_HDR_SEG_UPDATE_MAP	BIT(18)
++#define VE_DEC_VP9_HDR_SEG_TEMPORAL	BIT(19)
++#define VE_DEC_VP9_HDR_TX_MODE(m)	(((m) & 0x7) << 20)
++#define VE_DEC_VP9_HDR_REF_MODE(m)	(((m) & 0x3) << 23)
++#define VE_DEC_VP9_HDR_PREV_MVS		BIT(25)
++#define VE_DEC_VP9_HDR_ALWAYS		(BIT(26) | BIT(31))
++#define VE_DEC_VP9_HDR_COUNT		BIT(27)
++
++#define VE_DEC_VP9_PIC_SIZE		(VE_ENGINE_DEC_H265 + 0x08)
++/* last, golden, altref: size at 0x0c + 4 * i, scale pair at 0x18 + 8 * i */
++#define VE_DEC_VP9_REF_SIZE(i)		(VE_ENGINE_DEC_H265 + 0x0c + 4 * (i))
++#define VE_DEC_VP9_REF_SCALE0(i)	(VE_ENGINE_DEC_H265 + 0x18 + 8 * (i))
++#define VE_DEC_VP9_REF_SCALE1(i)	(VE_ENGINE_DEC_H265 + 0x1c + 8 * (i))
++/* log2(vendor frame alignment / 8); the vendor's alignment is 16. */
++#define VE_DEC_VP9_LAST_SCALE1_ALIGN	(1 << 28)
++
++#define VE_DEC_VP9_SEG_FEATURE		(VE_ENGINE_DEC_H265 + 0x5c)
++#define VE_DEC_VP9_NEIGHBOR_ADDR	(VE_ENGINE_DEC_H265 + 0x60)
++#define VE_DEC_VP9_PROB_ADDR		(VE_ENGINE_DEC_H265 + 0x64)
++#define VE_DEC_VP9_TILE_START		(VE_ENGINE_DEC_H265 + 0x68)
++#define VE_DEC_VP9_TILE_END		(VE_ENGINE_DEC_H265 + 0x6c)
++#define VE_DEC_VP9_COL_MV_ADDR		(VE_ENGINE_DEC_H265 + 0x78)
++#define VE_DEC_VP9_CUR_LUMA		(VE_ENGINE_DEC_H265 + 0x90)
++#define VE_DEC_VP9_CUR_CHROMA		(VE_ENGINE_DEC_H265 + 0x94)
++#define VE_DEC_VP9_SD_CTRL		(VE_ENGINE_DEC_H265 + 0x50)
++
++/* The altref chroma register is out of line, at 0x7c, not 0xac. */
++static const u32 cedrus_vp9_ref_luma[3] = {
++	VE_ENGINE_DEC_H265 + 0x98, VE_ENGINE_DEC_H265 + 0xa0,
++	VE_ENGINE_DEC_H265 + 0xa8,
++};
++static const u32 cedrus_vp9_ref_chroma[3] = {
++	VE_ENGINE_DEC_H265 + 0x9c, VE_ENGINE_DEC_H265 + 0xa4,
++	VE_ENGINE_DEC_H265 + 0x7c,
++};
++
++/* Every buffer address the VP9 block takes is (addr >> 10) << 2. */
++#define VE_DEC_VP9_ADDR(a)		((u32)(((a) >> 10) << 2))
++
++#define VE_DEC_VP9_SRAM_DEQUANT		0x000
++#define VE_DEC_VP9_SRAM_LF		0x100
++
++/*
++ * The one buffer behind VE_DEC_VP9_PROB_ADDR: the tile table, the
++ * probabilities, the symbol counts the engine writes back, and the segment
++ * map it reads and writes in place.
++ */
++#define CEDRUS_VP9_PROB_BUF_SIZE	0x88000
++#define CEDRUS_VP9_PROBS		0x4000
++#define CEDRUS_VP9_COUNTS		0x4b00
++#define CEDRUS_VP9_SEG_MAP		0x8000
++#define CEDRUS_VP9_SEG_MAP_MAX		(CEDRUS_VP9_PROB_BUF_SIZE - CEDRUS_VP9_SEG_MAP)
++#define CEDRUS_VP9_NEIGHBOR_BUF_SIZE	0x1f4000
++
++/* Probability layout, relative to CEDRUS_VP9_PROBS. */
++#define P_TX8		0x000
++#define P_TX16		0x004
++#define P_TX32		0x00c
++#define P_COEF		0x014
++#define P_SKIP		0x914
++#define P_INTER_MODE	0x918
++#define P_INTERP	0x934
++#define P_IS_INTER	0x944
++#define P_COMP_MODE	0x948
++#define P_COMP_REF	0x950
++#define P_SINGLE_REF	0x958
++#define P_Y_MODE	0x970
++#define P_UV_MODE	0x9b0
++#define P_PARTITION	0xa50
++#define P_MV_JOINT	0xa90
++#define P_MV_COMP(c)	(0xac4 - 0x30 * (c))
++#define P_SEG_TREE	0xaf0
++#define P_SEG_PRED	0xaf8
++
++/* Symbol count layout (u32 words), relative to CEDRUS_VP9_COUNTS. */
++struct cedrus_vp9_hw_mv_counts {
++	u32 sign[2];
++	u32 class0[2];
++	u32 class0_hp[2];
++	u32 hp[2];
++	u32 classes[11];
++	u32 bits[10][2];
++	u32 class0_fp[2][4];
++	u32 fp[4];
++} __packed;
++
++struct cedrus_vp9_hw_counts {
++	u32 tx8p[2][2];
++	u32 tx16p[2][3];
++	u32 tx32p[2][4];
++	u32 eob[4][2][2][6][6];
++	u32 coef[4][2][2][6][6][4];
++	u32 skip[3][2];
++	u32 inter_mode[7][4];
++	u32 interp[4][3];
++	u32 intra_inter[4][2];
++	u32 comp_inter[5][2];
++	u32 comp_ref[5][2];
++	u32 single_ref[5][2][2];
++	u32 y_mode[4][10];
++	u32 uv_mode[10][10];
++	u32 partition[16][4];
++	u32 joints[4];
++	/* component 1 comes first */
++	struct cedrus_vp9_hw_mv_counts comp[2];
++} __packed;
++
++static_assert(sizeof(struct cedrus_vp9_hw_counts) == 0x3398);
++
++/* The counts, in the shapes the v4l2-vp9 helpers take. */
++struct cedrus_vp9_counts {
++	u32 partition[16][4];
++	u32 skip[3][2];
++	u32 intra_inter[4][2];
++	u32 tx32p[2][4];
++	u32 tx16p[2][4];
++	u32 tx8p[2][2];
++	u32 y_mode[4][10];
++	u32 uv_mode[10][10];
++	u32 comp[5][2];
++	u32 comp_ref[5][2];
++	u32 single_ref[5][2][2];
++	u32 mv_mode[7][4];
++	u32 filter[4][3];
++	u32 mv_joint[4];
++	u32 sign[2][2];
++	u32 classes[2][11];
++	u32 class0[2][2];
++	u32 bits[2][10][2];
++	u32 class0_fp[2][2][4];
++	u32 fp[2][4];
++	u32 class0_hp[2][2];
++	u32 hp[2][2];
++};
++
++struct cedrus_vp9_frame_info {
++	u32 flags;
++	u16 width;
++	u16 height;
++	u8 frame_context_idx;
++	u8 reference_mode;
++	u8 interpolation_filter;
++	u8 tx_mode;
++	bool segmentation;
++};
++
++struct cedrus_vp9_ctx {
++	u8 *prob_buf;
++	dma_addr_t prob_dma;
++	void *neighbor_buf;
++	dma_addr_t neighbor_dma;
++	void *mv_buf;
++	dma_addr_t mv_dma;
++	size_t mv_size;
++	u8 *seg_map;
++	size_t seg_map_size;
++
++	struct v4l2_vp9_frame_context frame_context[4];
++	struct v4l2_vp9_frame_context probs;
++
++	struct cedrus_vp9_counts counts;
++	struct v4l2_vp9_frame_symbol_counts symbols;
++
++	/* the frame on the engine, finished at the next setup */
++	struct cedrus_vp9_frame_info cur;
++	bool pending;
++	bool ok;
++
++	/* the last frame finished */
++	struct cedrus_vp9_frame_info last;
++	bool last_valid;
++};
++
++/* Standard VP9 quantizer lookup, 8-bit (spec section 8.6.1). */
++static const u16 dc_qlookup[256] = {
++	4, 8, 8, 9, 10, 11, 12, 12, 13, 14, 15, 16, 17, 18, 19, 19, 20, 21,
++	22, 23, 24, 25, 26, 26, 27, 28, 29, 30, 31, 32, 32, 33, 34, 35, 36,
++	37, 38, 38, 39, 40, 41, 42, 43, 43, 44, 45, 46, 47, 48, 48, 49, 50,
++	51, 52, 53, 53, 54, 55, 56, 57, 57, 58, 59, 60, 61, 62, 62, 63, 64,
++	65, 66, 66, 67, 68, 69, 70, 70, 71, 72, 73, 74, 74, 75, 76, 77, 78,
++	78, 79, 80, 81, 81, 82, 83, 84, 85, 85, 87, 88, 90, 92, 93, 95, 96,
++	98, 99, 101, 102, 104, 105, 107, 108, 110, 111, 113, 114, 116, 117,
++	118, 120, 121, 123, 125, 127, 129, 131, 134, 136, 138, 140, 142, 144,
++	146, 148, 150, 152, 154, 156, 158, 161, 164, 166, 169, 172, 174, 177,
++	180, 182, 185, 187, 190, 192, 195, 199, 202, 205, 208, 211, 214, 217,
++	220, 223, 226, 230, 233, 237, 240, 243, 247, 250, 253, 257, 261, 265,
++	269, 272, 276, 280, 284, 288, 292, 296, 300, 304, 309, 313, 317, 322,
++	326, 330, 335, 340, 344, 349, 354, 359, 364, 369, 374, 379, 384, 389,
++	395, 400, 406, 411, 417, 423, 429, 435, 441, 447, 454, 461, 467, 475,
++	482, 489, 497, 505, 513, 522, 530, 539, 549, 559, 569, 579, 590, 602,
++	614, 626, 640, 654, 668, 684, 700, 717, 736, 755, 775, 796, 819, 843,
++	869, 896, 925, 955, 988, 1022, 1058, 1098, 1139, 1184, 1232, 1282,
++	1336,
++};
++
++static const u16 ac_qlookup[256] = {
++	4, 8, 9, 10, 11, 12, 13, 14, 15, 16, 17, 18, 19, 20, 21, 22, 23, 24,
++	25, 26, 27, 28, 29, 30, 31, 32, 33, 34, 35, 36, 37, 38, 39, 40, 41,
++	42, 43, 44, 45, 46, 47, 48, 49, 50, 51, 52, 53, 54, 55, 56, 57, 58,
++	59, 60, 61, 62, 63, 64, 65, 66, 67, 68, 69, 70, 71, 72, 73, 74, 75,
++	76, 77, 78, 79, 80, 81, 82, 83, 84, 85, 86, 87, 88, 89, 90, 91, 92,
++	93, 94, 95, 96, 97, 98, 99, 100, 101, 102, 104, 106, 108, 110, 112,
++	114, 116, 118, 120, 122, 124, 126, 128, 130, 132, 134, 136, 138, 140,
++	142, 144, 146, 148, 150, 152, 155, 158, 161, 164, 167, 170, 173, 176,
++	179, 182, 185, 188, 191, 194, 197, 200, 203, 207, 211, 215, 219, 223,
++	227, 231, 235, 239, 243, 247, 251, 255, 260, 265, 270, 275, 280, 285,
++	290, 295, 300, 305, 311, 317, 323, 329, 335, 341, 347, 353, 359, 366,
++	373, 380, 387, 394, 401, 408, 416, 424, 432, 440, 448, 456, 465, 474,
++	483, 492, 501, 510, 520, 530, 540, 550, 560, 571, 582, 593, 604, 615,
++	627, 639, 651, 663, 676, 689, 702, 715, 729, 743, 757, 771, 786, 801,
++	816, 832, 848, 864, 881, 898, 915, 933, 951, 969, 988, 1007, 1026,
++	1046, 1066, 1087, 1108, 1129, 1151, 1173, 1196, 1219, 1243, 1267, 1292,
++	1317, 1343, 1369, 1396, 1423, 1451, 1479, 1508, 1537, 1567, 1597, 1628,
++	1660, 1692, 1725, 1759, 1793, 1828,
++};
++
++static unsigned int cedrus_vp9_sb64(unsigned int pixels)
++{
++	return DIV_ROUND_UP(pixels, 64);
++}
++
++/* vendor: ((mi + 15) >> 3) superblocks a side, 640 B each, plus 0x4400 */
++static size_t cedrus_vp9_mv_size(unsigned int width, unsigned int height)
++{
++	unsigned int cols = (DIV_ROUND_UP(width, 8) + 15) >> 3;
++	unsigned int rows = (DIV_ROUND_UP(height, 8) + 15) >> 3;
++
++	return ALIGN(cols * rows * 640 + 0x4400, SZ_1K);
++}
++
++static enum cedrus_irq_status cedrus_vp9_irq_status(struct cedrus_ctx *ctx)
++{
++	struct cedrus_vp9_ctx *vp9 = ctx->codec.vp9.priv;
++	u32 reg = cedrus_read(ctx->dev, VE_DEC_H265_STATUS);
++
++	reg &= VE_DEC_H265_STATUS_CHECK_MASK;
++	vp9->ok = !(reg & VE_DEC_H265_STATUS_CHECK_ERROR) &&
++		  (reg & VE_DEC_H265_STATUS_SUCCESS);
++
++	return vp9->ok ? CEDRUS_IRQ_OK : CEDRUS_IRQ_ERROR;
++}
++
++static void cedrus_vp9_irq_clear(struct cedrus_ctx *ctx)
++{
++	cedrus_write(ctx->dev, VE_DEC_H265_STATUS,
++		     VE_DEC_H265_STATUS_CHECK_MASK);
++}
++
++static void cedrus_vp9_irq_disable(struct cedrus_ctx *ctx)
++{
++	struct cedrus_dev *dev = ctx->dev;
++	u32 reg = cedrus_read(dev, VE_DEC_H265_CTRL);
++
++	cedrus_write(dev, VE_DEC_H265_CTRL, reg & ~VE_DEC_H265_CTRL_IRQ_MASK);
++}
++
++static void cedrus_vp9_counts_from_hw(struct cedrus_vp9_ctx *vp9)
++{
++	const struct cedrus_vp9_hw_counts *hw =
++		(void *)(vp9->prob_buf + CEDRUS_VP9_COUNTS);
++	struct cedrus_vp9_counts *c = &vp9->counts;
++	struct v4l2_vp9_frame_symbol_counts *s = &vp9->symbols;
++	unsigned int i, j, k, l, m;
++
++	memcpy(c->partition, hw->partition, sizeof(c->partition));
++	memcpy(c->skip, hw->skip, sizeof(c->skip));
++	memcpy(c->intra_inter, hw->intra_inter, sizeof(c->intra_inter));
++	memcpy(c->tx32p, hw->tx32p, sizeof(c->tx32p));
++	memset(c->tx16p, 0, sizeof(c->tx16p));
++	for (i = 0; i < 2; i++)
++		memcpy(c->tx16p[i], hw->tx16p[i], sizeof(hw->tx16p[i]));
++	memcpy(c->tx8p, hw->tx8p, sizeof(c->tx8p));
++	memcpy(c->y_mode, hw->y_mode, sizeof(c->y_mode));
++	memcpy(c->uv_mode, hw->uv_mode, sizeof(c->uv_mode));
++	memcpy(c->comp, hw->comp_inter, sizeof(c->comp));
++	memcpy(c->comp_ref, hw->comp_ref, sizeof(c->comp_ref));
++	memcpy(c->single_ref, hw->single_ref, sizeof(c->single_ref));
++	memcpy(c->mv_mode, hw->inter_mode, sizeof(c->mv_mode));
++	memcpy(c->filter, hw->interp, sizeof(c->filter));
++	memcpy(c->mv_joint, hw->joints, sizeof(c->mv_joint));
++
++	for (i = 0; i < 2; i++) {
++		/* the hardware stores component 1 first */
++		const struct cedrus_vp9_hw_mv_counts *mv = &hw->comp[1 - i];
++
++		memcpy(c->sign[i], mv->sign, sizeof(mv->sign));
++		memcpy(c->classes[i], mv->classes, sizeof(mv->classes));
++		memcpy(c->class0[i], mv->class0, sizeof(mv->class0));
++		memcpy(c->bits[i], mv->bits, sizeof(mv->bits));
++		memcpy(c->class0_fp[i], mv->class0_fp,
++			      sizeof(mv->class0_fp));
++		memcpy(c->fp[i], mv->fp, sizeof(mv->fp));
++		memcpy(c->class0_hp[i], mv->class0_hp,
++			      sizeof(mv->class0_hp));
++		memcpy(c->hp[i], mv->hp, sizeof(mv->hp));
++	}
++
++	s->partition = &c->partition;
++	s->skip = &c->skip;
++	s->intra_inter = &c->intra_inter;
++	s->tx32p = &c->tx32p;
++	s->tx16p = &c->tx16p;
++	s->tx8p = &c->tx8p;
++	s->y_mode = &c->y_mode;
++	s->uv_mode = &c->uv_mode;
++	s->comp = &c->comp;
++	s->comp_ref = &c->comp_ref;
++	s->single_ref = &c->single_ref;
++	s->mv_mode = &c->mv_mode;
++	s->filter = &c->filter;
++	s->mv_joint = &c->mv_joint;
++	s->sign = &c->sign;
++	s->classes = &c->classes;
++	s->class0 = &c->class0;
++	s->bits = &c->bits;
++	s->class0_fp = &c->class0_fp;
++	s->fp = &c->fp;
++	s->class0_hp = &c->class0_hp;
++	s->hp = &c->hp;
++
++	/*
++	 * Coefficient counts are read in place. The buffer is coherent and is
++	 * not rebuilt until after adaptation. eob[..][0] is the eob-branch
++	 * total and eob[..][1] the EOB-model count, entry 3 of the node counts.
++	 */
++	for (i = 0; i < 4; i++)
++		for (j = 0; j < 2; j++)
++			for (k = 0; k < 2; k++)
++				for (l = 0; l < 6; l++)
++					for (m = 0; m < 6; m++) {
++						u32 *coef = (u32 *)hw->coef[i][j][k][l][m];
++
++						s->coeff[i][j][k][l][m] = (u32 (*)[3])coef;
++						s->eob[i][j][k][l][m][0] =
++							(u32 *)&hw->eob[i][j][k][l][m];
++						s->eob[i][j][k][l][m][1] = &coef[3];
++					}
++}
++
++static void copy_tx_and_skip(struct v4l2_vp9_frame_context *dst,
++			     const struct v4l2_vp9_frame_context *src)
++{
++	memcpy(dst->tx8, src->tx8, sizeof(src->tx8));
++	memcpy(dst->tx16, src->tx16, sizeof(src->tx16));
++	memcpy(dst->tx32, src->tx32, sizeof(src->tx32));
++	memcpy(dst->skip, src->skip, sizeof(src->skip));
++}
++
++/*
++ * 6.1.2 refresh_probs() for the frame that just left the engine, as rkvdec
++ * does it in its done hook.
++ */
++static void cedrus_vp9_finish(struct cedrus_ctx *ctx)
++{
++	struct cedrus_vp9_ctx *vp9 = ctx->codec.vp9.priv;
++	struct cedrus_vp9_frame_info *cur = &vp9->cur;
++	struct v4l2_vp9_frame_context *probs = &vp9->probs;
++	unsigned int fctx_idx = cur->frame_context_idx;
++
++	if (!vp9->pending)
++		return;
++	vp9->pending = false;
++
++	if (!vp9->ok) {
++		/* nothing it produced -- counts, MVs, segment ids -- is trusted */
++		vp9->last_valid = false;
++		return;
++	}
++
++	if (cur->segmentation)
++		memcpy(vp9->seg_map, vp9->prob_buf + CEDRUS_VP9_SEG_MAP,
++			      vp9->seg_map_size);
++
++	if (!(cur->flags & V4L2_VP9_FRAME_FLAG_REFRESH_FRAME_CTX))
++		goto out_update_last;
++
++	if (!(cur->flags & V4L2_VP9_FRAME_FLAG_PARALLEL_DEC_MODE)) {
++		bool frame_is_intra = cur->flags &
++			(V4L2_VP9_FRAME_FLAG_KEY_FRAME |
++			 V4L2_VP9_FRAME_FLAG_INTRA_ONLY);
++		struct v4l2_vp9_frame_context tx_skip;
++
++		cedrus_vp9_counts_from_hw(vp9);
++
++		if (frame_is_intra)
++			copy_tx_and_skip(&tx_skip, probs);
++		*probs = vp9->frame_context[fctx_idx];
++		if (frame_is_intra)
++			copy_tx_and_skip(probs, &tx_skip);
++
++		v4l2_vp9_adapt_coef_probs(probs, &vp9->symbols,
++					  !vp9->last_valid ||
++					  vp9->last.flags & V4L2_VP9_FRAME_FLAG_KEY_FRAME,
++					  frame_is_intra);
++		if (!frame_is_intra)
++			v4l2_vp9_adapt_noncoef_probs(probs, &vp9->symbols,
++						     cur->reference_mode,
++						     cur->interpolation_filter,
++						     cur->tx_mode, cur->flags);
++	}
++
++	vp9->frame_context[fctx_idx] = *probs;
++
++out_update_last:
++	vp9->last = *cur;
++	vp9->last_valid = true;
++}
++
++static void cedrus_vp9_write_probs(u8 *p, const struct v4l2_vp9_frame_context *fc,
++				   const struct v4l2_vp9_segmentation *seg)
++{
++	unsigned int i, j, k, l, m;
++
++	for (i = 0; i < 2; i++) {
++		p[P_TX8 + i] = fc->tx8[i][0];
++		for (j = 0; j < 2; j++)
++			p[P_TX16 + 4 * i + j] = fc->tx16[i][j];
++		for (j = 0; j < 3; j++)
++			p[P_TX32 + 4 * i + j] = fc->tx32[i][j];
++	}
++
++	for (i = 0; i < 4; i++)
++		for (j = 0; j < 2; j++)
++			for (k = 0; k < 2; k++)
++				for (l = 0; l < 6; l++)
++					for (m = 0; m < 6; m++)
++						memcpy(&p[P_COEF + i * 576 + j * 288 +
++							  k * 144 + l * 24 + m * 4],
++						       fc->coef[i][j][k][l][m], 3);
++
++	memcpy(&p[P_SKIP], fc->skip, 3);
++	for (i = 0; i < 7; i++)
++		memcpy(&p[P_INTER_MODE + 4 * i], fc->inter_mode[i], 3);
++	for (i = 0; i < 4; i++)
++		memcpy(&p[P_INTERP + 4 * i], fc->interp_filter[i], 2);
++	memcpy(&p[P_IS_INTER], fc->is_inter, 4);
++	memcpy(&p[P_COMP_MODE], fc->comp_mode, 5);
++	memcpy(&p[P_COMP_REF], fc->comp_ref, 5);
++	for (i = 0; i < 5; i++)
++		memcpy(&p[P_SINGLE_REF + 4 * i], fc->single_ref[i], 2);
++	for (i = 0; i < 4; i++)
++		memcpy(&p[P_Y_MODE + 16 * i], fc->y_mode[i], 9);
++	for (i = 0; i < 10; i++)
++		memcpy(&p[P_UV_MODE + 16 * i], fc->uv_mode[i], 9);
++	for (i = 0; i < 16; i++)
++		memcpy(&p[P_PARTITION + 4 * i], fc->partition[i], 3);
++
++	memcpy(&p[P_MV_JOINT], fc->mv.joint, 3);
++	for (i = 0; i < 2; i++) {
++		u8 *c = &p[P_MV_COMP(i)];
++
++		c[0] = fc->mv.sign[i];
++		c[1] = fc->mv.class0_bit[i];
++		c[2] = fc->mv.class0_hp[i];
++		c[3] = fc->mv.hp[i];
++		for (j = 0; j < 2; j++)
++			memcpy(&c[4 + 4 * j], fc->mv.class0_fr[i][j], 3);
++		memcpy(&c[0x0c], fc->mv.classes[i], 10);
++		memcpy(&c[0x1c], fc->mv.bits[i], 10);
++		memcpy(&c[0x28], fc->mv.fr[i], 3);
++	}
++
++	memcpy(&p[P_SEG_TREE], seg->tree_probs, 7);
++	memcpy(&p[P_SEG_PRED], seg->pred_probs, 3);
++}
++
++/* libvpx get_tile_offset(): a tile edge, in 8x8 units */
++static unsigned int cedrus_vp9_tile_offset(unsigned int idx, unsigned int mis,
++					   unsigned int log2)
++{
++	unsigned int sbs = (mis + 7) >> 3;
++	unsigned int offset = ((idx * sbs) >> log2) << 3;
++
++	return min(offset, mis);
++}
++
++static void cedrus_vp9_tile_regs(unsigned int mi_rows, unsigned int mi_cols,
++				 unsigned int log2_rows, unsigned int log2_cols,
++				 unsigned int row, unsigned int col,
++				 u32 *start, u32 *end)
++{
++	unsigned int r0 = cedrus_vp9_tile_offset(row, mi_rows, log2_rows);
++	unsigned int r1 = cedrus_vp9_tile_offset(row + 1, mi_rows, log2_rows);
++	unsigned int c0 = cedrus_vp9_tile_offset(col, mi_cols, log2_cols);
++	unsigned int c1 = cedrus_vp9_tile_offset(col + 1, mi_cols, log2_cols);
++
++	*start = (c0 >> 3) | (r0 >> 3) << 16;
++	if (r0 == r1 || c0 == c1)
++		*start |= BIT(31);	/* empty tile */
++	*end = ((c1 - 1) >> 3) | ((r1 - 1) >> 3) << 16;
++}
++
++static int cedrus_vp9_lf_level(const struct v4l2_ctrl_vp9_frame *f,
++			       unsigned int seg, unsigned int ref,
++			       unsigned int mode)
++{
++	const struct v4l2_vp9_loop_filter *lf = &f->lf;
++	int lvl = lf->level;
++	int shift;
++
++	if ((f->seg.flags & V4L2_VP9_SEGMENTATION_FLAG_ENABLED) &&
++	    (f->seg.feature_enabled[seg] &
++	     V4L2_VP9_SEGMENT_FEATURE_ENABLED(V4L2_VP9_SEG_LVL_ALT_L))) {
++		int data = f->seg.feature_data[seg][V4L2_VP9_SEG_LVL_ALT_L];
++
++		lvl = (f->seg.flags & V4L2_VP9_SEGMENTATION_FLAG_ABS_OR_DELTA_UPDATE) ?
++		      data : lvl + data;
++		lvl = clamp(lvl, 0, 63);
++	}
++
++	if (!(lf->flags & V4L2_VP9_LOOP_FILTER_FLAG_DELTA_ENABLED))
++		return lvl;
++
++	shift = lvl >> 5;
++	lvl += lf->ref_deltas[ref] * (1 << shift);
++	if (ref)
++		lvl += lf->mode_deltas[mode] * (1 << shift);
++
++	return clamp(lvl, 0, 63);
++}
++
++static void cedrus_vp9_sram(struct cedrus_ctx *ctx,
++			    const struct v4l2_ctrl_vp9_frame *f)
++{
++	struct cedrus_dev *dev = ctx->dev;
++	const struct v4l2_vp9_quantization *q = &f->quant;
++	bool seg_on = f->seg.flags & V4L2_VP9_SEGMENTATION_FLAG_ENABLED;
++	u32 y[8], uv[8];
++	unsigned int s;
++
++	for (s = 0; s < 8; s++) {
++		int qi = q->base_q_idx;
++
++		if (seg_on && (f->seg.feature_enabled[s] &
++			       V4L2_VP9_SEGMENT_FEATURE_ENABLED(V4L2_VP9_SEG_LVL_ALT_Q))) {
++			int data = f->seg.feature_data[s][V4L2_VP9_SEG_LVL_ALT_Q];
++
++			qi = (f->seg.flags &
++			      V4L2_VP9_SEGMENTATION_FLAG_ABS_OR_DELTA_UPDATE) ?
++			     data : qi + data;
++		}
++		qi = clamp(qi, 0, 255);
++
++		y[s] = dc_qlookup[clamp(qi + q->delta_q_y_dc, 0, 255)] |
++		       ac_qlookup[qi] << 16;
++		uv[s] = dc_qlookup[clamp(qi + q->delta_q_uv_dc, 0, 255)] |
++			ac_qlookup[clamp(qi + q->delta_q_uv_ac, 0, 255)] << 16;
++	}
++
++	cedrus_write(dev, VE_DEC_H265_SRAM_OFFSET, VE_DEC_VP9_SRAM_DEQUANT);
++	for (s = 0; s < 8; s++)
++		cedrus_write(dev, VE_DEC_H265_SRAM_DATA, y[s]);
++	for (s = 0; s < 8; s++)
++		cedrus_write(dev, VE_DEC_H265_SRAM_DATA, uv[s]);
++
++	cedrus_write(dev, VE_DEC_H265_SRAM_OFFSET, VE_DEC_VP9_SRAM_LF);
++	for (s = 0; s < 8; s++) {
++		/* intra mode 1 is never used and its byte stays zero */
++		cedrus_write(dev, VE_DEC_H265_SRAM_DATA,
++			     cedrus_vp9_lf_level(f, s, 0, 0) |
++			     cedrus_vp9_lf_level(f, s, 1, 0) << 16 |
++			     cedrus_vp9_lf_level(f, s, 1, 1) << 24);
++		cedrus_write(dev, VE_DEC_H265_SRAM_DATA,
++			     cedrus_vp9_lf_level(f, s, 2, 0) |
++			     cedrus_vp9_lf_level(f, s, 2, 1) << 8 |
++			     cedrus_vp9_lf_level(f, s, 3, 0) << 16 |
++			     cedrus_vp9_lf_level(f, s, 3, 1) << 24);
++	}
++}
++
++static u32 cedrus_vp9_scale(unsigned int ref, unsigned int cur)
++{
++	u32 fp = 1 << 14;
++
++	/* vp9_setup_scale_factors_for_frame(): invalid ratios read as 1:1 */
++	if (2 * cur >= ref && cur <= 16 * ref)
++		fp = (ref << 14) / cur;
++
++	return (fp & 0xffff) << 5 | (((fp >> 10) - 1) & 0x1f);
++}
++
++static int cedrus_vp9_setup(struct cedrus_ctx *ctx, struct cedrus_run *run)
++{
++	struct cedrus_vp9_ctx *vp9 = ctx->codec.vp9.priv;
++	const struct v4l2_ctrl_vp9_frame *f = run->vp9.frame;
++	const struct v4l2_ctrl_vp9_compressed_hdr *hdr = run->vp9.compressed_hdr;
++	struct cedrus_dev *dev = ctx->dev;
++	struct vb2_queue *cap_q;
++	struct cedrus_buffer *dst_cbuf = vb2_v4l2_to_cedrus_buffer(run->dst);
++	unsigned int width = f->frame_width_minus_1 + 1;
++	unsigned int height = f->frame_height_minus_1 + 1;
++	unsigned int mi_cols = DIV_ROUND_UP(width, 8);
++	unsigned int mi_rows = DIV_ROUND_UP(height, 8);
++	unsigned int log2c = f->tile_cols_log2, log2r = f->tile_rows_log2;
++	bool intra = f->flags & (V4L2_VP9_FRAME_FLAG_KEY_FRAME |
++				 V4L2_VP9_FRAME_FLAG_INTRA_ONLY);
++	bool seg_on = f->seg.flags & V4L2_VP9_SEGMENTATION_FLAG_ENABLED;
++	bool lossless, prev_mvs;
++	dma_addr_t src_addr;
++	unsigned int hdr_bytes, payload, fctx_idx, r, c, i;
++	u32 reg, *tile;
++
++	if (f->bit_depth != 8 || f->profile != 0 ||
++	    !(f->flags & V4L2_VP9_FRAME_FLAG_X_SUBSAMPLING) ||
++	    !(f->flags & V4L2_VP9_FRAME_FLAG_Y_SUBSAMPLING))
++		return -EINVAL;
++	if (width > ctx->src_fmt.width || height > ctx->src_fmt.height)
++		return -EINVAL;
++	if (cedrus_vp9_sb64(width) * cedrus_vp9_sb64(height) * 32 >
++	    CEDRUS_VP9_SEG_MAP_MAX)
++		return -EINVAL;
++
++	/* The previous frame is off the engine: adapt and save its context. */
++	cedrus_vp9_finish(ctx);
++
++	/*
++	 * An inter frame of a different size from the frame before it predicts
++	 * from scaled references, which this engine is not programmed for:
++	 * run anyway, it reads past its reference buffers (IOMMU faults, then
++	 * the watchdog). Refuse the frame; the next key frame recovers.
++	 */
++	if (!intra && (!vp9->last_valid || width != vp9->last.width ||
++		       height != vp9->last.height))
++		return -EINVAL;
++
++	cap_q = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
++
++	/* 6.1 frame(): the parts of uncompressed_header() userspace left us */
++	fctx_idx = v4l2_vp9_reset_frame_ctx(f, vp9->frame_context);
++	vp9->probs = vp9->frame_context[fctx_idx];
++	v4l2_vp9_fw_update_probs(&vp9->probs, hdr, f);
++
++	lossless = !f->quant.base_q_idx && !f->quant.delta_q_y_dc &&
++		   !f->quant.delta_q_uv_dc && !f->quant.delta_q_uv_ac;
++
++	/* libvpx use_prev_frame_mvs */
++	prev_mvs = vp9->last_valid &&
++		   !(f->flags & V4L2_VP9_FRAME_FLAG_ERROR_RESILIENT) &&
++		   width == vp9->last.width && height == vp9->last.height &&
++		   !(vp9->last.flags & V4L2_VP9_FRAME_FLAG_INTRA_ONLY) &&
++		   (vp9->last.flags & V4L2_VP9_FRAME_FLAG_SHOW_FRAME);
++
++	/*
++	 * The engine writes no motion vectors for an intra frame, so after a
++	 * mid-stream key frame the buffer still holds the frame before it --
++	 * and the next frame, which may use them, predicts from stale vectors
++	 * (measured: bit-exact up to the second key frame, drifting after).
++	 * Zero reads as intra, which is what the stream's first frame gets.
++	 */
++	if (intra)
++		memset(vp9->mv_buf, 0, vp9->mv_size);
++
++	/* The segment map starts over wherever the spec resets the past. */
++	vp9->seg_map_size = cedrus_vp9_sb64(width) * cedrus_vp9_sb64(height) * 32;
++	if (intra || (f->flags & V4L2_VP9_FRAME_FLAG_ERROR_RESILIENT) ||
++	    width != vp9->last.width || height != vp9->last.height)
++		memset(vp9->seg_map, 0, CEDRUS_VP9_SEG_MAP_MAX);
++
++	/* The buffer: tile table, probabilities, zeroed counts, segment map. */
++	memset(vp9->prob_buf, 0, CEDRUS_VP9_SEG_MAP);
++	tile = (u32 *)vp9->prob_buf;
++	for (r = 0; r < (1u << log2r); r++)
++		for (c = 0; c < (1u << log2c); c++) {
++			u32 start, end;
++
++			if (!r && !c)
++				continue;
++			cedrus_vp9_tile_regs(mi_rows, mi_cols, log2r, log2c,
++					     r, c, &start, &end);
++			tile[2] = start;
++			tile[3] = end;
++			tile += 4;
++		}
++	cedrus_vp9_write_probs(vp9->prob_buf + CEDRUS_VP9_PROBS, &vp9->probs,
++			       &f->seg);
++	if (seg_on)
++		memcpy(vp9->prob_buf + CEDRUS_VP9_SEG_MAP, vp9->seg_map,
++		       vp9->seg_map_size);
++	else
++		memset(vp9->prob_buf + CEDRUS_VP9_SEG_MAP, 0, vp9->seg_map_size);
++
++	/* What the finish of this frame needs to know about it. */
++	vp9->cur = (struct cedrus_vp9_frame_info) {
++		.flags = f->flags,
++		.width = width,
++		.height = height,
++		.frame_context_idx = fctx_idx,
++		.reference_mode = f->reference_mode,
++		.interpolation_filter = f->interpolation_filter,
++		.tx_mode = hdr->tx_mode,
++		.segmentation = seg_on,
++	};
++	dst_cbuf->codec.vp9.width = width;
++	dst_cbuf->codec.vp9.height = height;
++
++	cedrus_engine_enable(ctx);
++
++	/* frame header */
++	reg = VE_DEC_VP9_HDR_ALWAYS |
++	      VE_DEC_VP9_HDR_BIT_DEPTH(f->bit_depth) |
++	      VE_DEC_VP9_HDR_INTERP(f->interpolation_filter) |
++	      VE_DEC_VP9_HDR_SHARPNESS(f->lf.sharpness) |
++	      VE_DEC_VP9_HDR_TX_MODE(hdr->tx_mode) |
++	      VE_DEC_VP9_HDR_REF_MODE(f->reference_mode);
++	if ((1 << log2c << log2r) > 1)
++		reg |= VE_DEC_VP9_HDR_MULTI_TILE;
++	if (!intra)
++		reg |= VE_DEC_VP9_HDR_INTER;
++	/* V4L2_VP9_SIGN_BIAS_LAST/GOLDEN/ALT are bits 0..2 */
++	for (i = 1; i <= 3; i++)
++		if (f->ref_frame_sign_bias & BIT(i - 1))
++			reg |= VE_DEC_VP9_HDR_SIGN_BIAS(i);
++	if (f->flags & V4L2_VP9_FRAME_FLAG_ALLOW_HIGH_PREC_MV)
++		reg |= VE_DEC_VP9_HDR_ALLOW_HP;
++	if (f->lf.level && (f->lf.flags & V4L2_VP9_LOOP_FILTER_FLAG_DELTA_ENABLED))
++		reg |= VE_DEC_VP9_HDR_LF_DELTA;
++	if (lossless)
++		reg |= VE_DEC_VP9_HDR_LOSSLESS;
++	if (seg_on)
++		reg |= VE_DEC_VP9_HDR_SEG_ENABLED;
++	if (f->seg.flags & V4L2_VP9_SEGMENTATION_FLAG_UPDATE_MAP)
++		reg |= VE_DEC_VP9_HDR_SEG_UPDATE_MAP;
++	if (f->seg.flags & V4L2_VP9_SEGMENTATION_FLAG_TEMPORAL_UPDATE)
++		reg |= VE_DEC_VP9_HDR_SEG_TEMPORAL;
++	if (prev_mvs)
++		reg |= VE_DEC_VP9_HDR_PREV_MVS;
++	if (!(f->flags & (V4L2_VP9_FRAME_FLAG_ERROR_RESILIENT |
++			  V4L2_VP9_FRAME_FLAG_PARALLEL_DEC_MODE)))
++		reg |= VE_DEC_VP9_HDR_COUNT;
++	cedrus_write(dev, VE_DEC_VP9_HDR, reg);
++
++	cedrus_write(dev, VE_DEC_VP9_PIC_SIZE,
++		     VE_DEC_H265_DEC_PIC_SIZE_WIDTH(width) |
++		     VE_DEC_H265_DEC_PIC_SIZE_HEIGHT(height));
++
++	/* references */
++	if (intra) {
++		cedrus_write(dev, VE_DEC_VP9_REF_SCALE1(0),
++			     VE_DEC_VP9_LAST_SCALE1_ALIGN);
++	} else {
++		const u64 ts[3] = { f->last_frame_ts, f->golden_frame_ts,
++				    f->alt_frame_ts };
++
++		for (i = 0; i < 3; i++) {
++			struct vb2_buffer *ref = vb2_find_buffer(cap_q, ts[i]);
++			unsigned int rw = width, rh = height;
++			u32 scale1;
++
++			if (ref) {
++				struct cedrus_buffer *rb = vb2_to_cedrus_buffer(ref);
++
++				rw = rb->codec.vp9.width ?: width;
++				rh = rb->codec.vp9.height ?: height;
++			} else {
++				/* a missing reference predicts from this frame */
++				ref = &run->dst->vb2_buf;
++			}
++
++			cedrus_write(dev, cedrus_vp9_ref_luma[i],
++				     VE_DEC_VP9_ADDR(cedrus_dst_buf_addr(ctx, ref, 0)));
++			cedrus_write(dev, cedrus_vp9_ref_chroma[i],
++				     VE_DEC_VP9_ADDR(cedrus_dst_buf_addr(ctx, ref, 1)));
++			cedrus_write(dev, VE_DEC_VP9_REF_SIZE(i),
++				     VE_DEC_H265_DEC_PIC_SIZE_WIDTH(rw) |
++				     VE_DEC_H265_DEC_PIC_SIZE_HEIGHT(rh));
++			cedrus_write(dev, VE_DEC_VP9_REF_SCALE0(i),
++				     cedrus_vp9_scale(rw, width));
++			scale1 = cedrus_vp9_scale(rh, height);
++			if (!i)
++				scale1 |= VE_DEC_VP9_LAST_SCALE1_ALIGN;
++			/*
++			 * Golden's y scale is at [31:16], not [20:5] like the
++			 * other five fields. The vendor writes it there, and
++			 * the [20:5] placement corrupts every golden-predicted
++			 * block even at 1:1 (measured: frame 3 of any stream,
++			 * the first whose golden differs from last).
++			 */
++			if (i == 1)
++				scale1 = ((scale1 >> 5) & 0xffff) << 16 | (scale1 & 0x1f);
++			cedrus_write(dev, VE_DEC_VP9_REF_SCALE1(i), scale1);
++			if (vp9_debug & 1)
++				dev_info(dev->dev, "vp9 ref%u ts=%llu %s idx=%d %ux%u y=%pad\n",
++					 i, ts[i], ref == &run->dst->vb2_buf ? "MISSING" : "found",
++					 ref->index, rw, rh, &(dma_addr_t){ cedrus_dst_buf_addr(ctx, ref, 0) });
++		}
++	}
++
++	/* segmentation features */
++	reg = 0;
++	if (seg_on)
++		for (i = 0; i < 8; i++) {
++			u8 en = f->seg.feature_enabled[i];
++
++			if (en & V4L2_VP9_SEGMENT_FEATURE_ENABLED(V4L2_VP9_SEG_LVL_REF_FRAME))
++				reg |= BIT(i) |
++				       (f->seg.feature_data[i][V4L2_VP9_SEG_LVL_REF_FRAME] & 3)
++				       << (16 + 2 * i);
++			if (en & V4L2_VP9_SEGMENT_FEATURE_ENABLED(V4L2_VP9_SEG_LVL_SKIP))
++				reg |= BIT(8 + i);
++		}
++	cedrus_write(dev, VE_DEC_VP9_SEG_FEATURE, reg);
++
++	cedrus_vp9_sram(ctx, f);
++
++	/* buffers */
++	cedrus_write(dev, VE_DEC_VP9_NEIGHBOR_ADDR, VE_DEC_VP9_ADDR(vp9->neighbor_dma));
++	cedrus_write(dev, VE_DEC_VP9_PROB_ADDR, VE_DEC_VP9_ADDR(vp9->prob_dma));
++	cedrus_vp9_tile_regs(mi_rows, mi_cols, log2r, log2c, 0, 0, &reg, &i);
++	cedrus_write(dev, VE_DEC_VP9_TILE_START, reg);
++	cedrus_write(dev, VE_DEC_VP9_TILE_END, i);
++	cedrus_write(dev, VE_DEC_VP9_COL_MV_ADDR, VE_DEC_VP9_ADDR(vp9->mv_dma));
++
++	if (vp9_debug & 1)
++		dev_info(dev->dev, "vp9 frame ts=%llu dst idx=%d flags=%#x %ux%u fctx=%u tx=%u interp=%u\n",
++			 run->dst->vb2_buf.timestamp, run->dst->vb2_buf.index, f->flags,
++			 width, height, fctx_idx, hdr->tx_mode, f->interpolation_filter);
++	cedrus_write(dev, VE_DEC_VP9_CUR_LUMA,
++		     VE_DEC_VP9_ADDR(cedrus_dst_buf_addr(ctx, &run->dst->vb2_buf, 0)));
++	cedrus_write(dev, VE_DEC_VP9_CUR_CHROMA,
++		     VE_DEC_VP9_ADDR(cedrus_dst_buf_addr(ctx, &run->dst->vb2_buf, 1)));
++	cedrus_write(dev, VE_DEC_VP9_SD_CTRL, 0);
++
++	/* bitstream: the tile data only, past both headers */
++	src_addr = vb2_dma_contig_plane_dma_addr(&run->src->vb2_buf, 0);
++	payload = vb2_get_plane_payload(&run->src->vb2_buf, 0);
++	hdr_bytes = f->uncompressed_header_size + f->compressed_header_size;
++	if (hdr_bytes >= payload)
++		return -EINVAL;
++
++	cedrus_wait_for(dev, VE_DEC_H265_STATUS, VE_DEC_H265_STATUS_BS_DMA_BUSY);
++	cedrus_write(dev, VE_DEC_H265_BITS_OFFSET, hdr_bytes * 8);
++	cedrus_write(dev, VE_DEC_H265_BITS_LEN, (payload - hdr_bytes) * 8);
++	cedrus_write(dev, VE_DEC_H265_BITS_END_ADDR,
++		     VE_DEC_VP9_ADDR(src_addr +
++				     vb2_plane_size(&run->src->vb2_buf, 0)));
++	cedrus_write(dev, VE_DEC_H265_BITS_ADDR,
++		     VE_DEC_H265_BITS_ADDR_BASE(src_addr) |
++		     VE_DEC_H265_BITS_ADDR_VALID_SLICE_DATA |
++		     VE_DEC_H265_BITS_ADDR_LAST_SLICE_DATA |
++		     VE_DEC_H265_BITS_ADDR_FIRST_SLICE_DATA);
++
++	/* the vendor sets DDR consistency for one narrow width band only */
++	reg = VE_DEC_H265_CTRL_IRQ_MASK;
++	if (width > 128 && width <= 192 && height > 64)
++		reg |= VE_DEC_H265_CTRL_DDR_CONSISTENCY_EN;
++	cedrus_write(dev, VE_DEC_H265_CTRL, reg);
++
++	vp9->pending = true;
++	vp9->ok = false;
++
++	return 0;
++}
++
++static void cedrus_vp9_trigger(struct cedrus_ctx *ctx)
++{
++	struct cedrus_dev *dev = ctx->dev;
++
++	cedrus_write(dev, VE_DEC_H265_TRIGGER, VE_DEC_H265_TRIGGER_INIT_SWDEC);
++	cedrus_write(dev, VE_DEC_H265_TRIGGER, VE_DEC_H265_TRIGGER_DEC_SLICE);
++}
++
++static void cedrus_vp9_free(struct cedrus_ctx *ctx)
++{
++	struct cedrus_vp9_ctx *vp9 = ctx->codec.vp9.priv;
++	struct device *d = ctx->dev->dev;
++
++	if (!vp9)
++		return;
++	if (vp9->prob_buf)
++		dma_free_coherent(d, CEDRUS_VP9_PROB_BUF_SIZE, vp9->prob_buf,
++				  vp9->prob_dma);
++	if (vp9->neighbor_buf)
++		dma_free_attrs(d, CEDRUS_VP9_NEIGHBOR_BUF_SIZE, vp9->neighbor_buf,
++			       vp9->neighbor_dma, DMA_ATTR_NO_KERNEL_MAPPING);
++	if (vp9->mv_buf)
++		dma_free_coherent(d, vp9->mv_size, vp9->mv_buf, vp9->mv_dma);
++	kfree(vp9->seg_map);
++	kfree(vp9);
++	ctx->codec.vp9.priv = NULL;
++}
++
++static int cedrus_vp9_start(struct cedrus_ctx *ctx)
++{
++	struct device *d = ctx->dev->dev;
++	struct cedrus_vp9_ctx *vp9;
++
++	vp9 = kzalloc(sizeof(*vp9), GFP_KERNEL);
++	if (!vp9)
++		return -ENOMEM;
++	ctx->codec.vp9.priv = vp9;
++
++	vp9->prob_buf = dma_alloc_coherent(d, CEDRUS_VP9_PROB_BUF_SIZE,
++					   &vp9->prob_dma, GFP_KERNEL);
++	vp9->neighbor_buf = dma_alloc_attrs(d, CEDRUS_VP9_NEIGHBOR_BUF_SIZE,
++					    &vp9->neighbor_dma, GFP_KERNEL,
++					    DMA_ATTR_NO_KERNEL_MAPPING);
++	vp9->mv_size = cedrus_vp9_mv_size(ctx->src_fmt.width,
++					  ctx->src_fmt.height);
++	/* The engine reads the previous frame's MVs from it: start clean. */
++	vp9->mv_buf = dma_alloc_coherent(d, vp9->mv_size, &vp9->mv_dma,
++					 GFP_KERNEL);
++	vp9->seg_map = kzalloc(CEDRUS_VP9_SEG_MAP_MAX, GFP_KERNEL);
++
++	if (!vp9->prob_buf || !vp9->neighbor_buf || !vp9->mv_buf ||
++	    !vp9->seg_map) {
++		cedrus_vp9_free(ctx);
++		return -ENOMEM;
++	}
++
++	/* The first frame is a key frame; this is only a safe default. */
++	vp9->probs = v4l2_vp9_default_probs;
++
++	return 0;
++}
++
++static void cedrus_vp9_stop(struct cedrus_ctx *ctx)
++{
++	cedrus_vp9_free(ctx);
++}
++
++struct cedrus_dec_ops cedrus_dec_ops_vp9 = {
++	.irq_clear	= cedrus_vp9_irq_clear,
++	.irq_disable	= cedrus_vp9_irq_disable,
++	.irq_status	= cedrus_vp9_irq_status,
++	.setup		= cedrus_vp9_setup,
++	.start		= cedrus_vp9_start,
++	.stop		= cedrus_vp9_stop,
++	.trigger	= cedrus_vp9_trigger,
++};
+diff --color -Naur pa/drivers/staging/media/sunxi/cedrus/Kconfig pb/drivers/staging/media/sunxi/cedrus/Kconfig
+--- a/drivers/staging/media/sunxi/cedrus/Kconfig
++++ b/drivers/staging/media/sunxi/cedrus/Kconfig
+@@ -9,6 +9,7 @@
+ 	select SUNXI_SRAM
+ 	select VIDEOBUF2_DMA_CONTIG
+ 	select V4L2_MEM2MEM_DEV
++	select V4L2_VP9
+ 	help
+ 	  Support for the VPU found in Allwinner SoCs, also known as the Cedar
+ 	  video engine.
+diff --color -Naur pa/drivers/staging/media/sunxi/cedrus/Makefile pb/drivers/staging/media/sunxi/cedrus/Makefile
+--- a/drivers/staging/media/sunxi/cedrus/Makefile
++++ b/drivers/staging/media/sunxi/cedrus/Makefile
+@@ -3,4 +3,4 @@
+ 
+ sunxi-cedrus-y = cedrus.o cedrus_video.o cedrus_hw.o cedrus_dec.o \
+ 		 cedrus_mpeg2.o cedrus_h264.o cedrus_h265.o \
+-		 cedrus_vp8.o
++		 cedrus_vp8.o cedrus_vp9.o

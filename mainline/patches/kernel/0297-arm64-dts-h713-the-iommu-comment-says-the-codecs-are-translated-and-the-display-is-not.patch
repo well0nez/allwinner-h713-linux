@@ -1,0 +1,43 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: the IOMMU comment says the codecs are translated and the display is not
+
+0024e turned CONFIG_SUN50I_IOMMU off because nothing decoded, and its
+comment above the node says so. The media side project (package B,
+13.10.2026) turns it on again for the decoders, as cstenger runs them:
+the VE as masters 0 and 1 (iommus from 0042), later the AV1 core as
+master 5. The display stays physical - the H713 variant of the driver
+(0041) starts with every master bypassing and translates only the ones
+a device asks for, and no display node asks.
+
+Comment only; the node and the VE's iommus are unchanged.
+---
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1258,14 +1258,18 @@ ohci2: usb@4300400 {
+ 		};
+ 
+ 		/*
+-		 * IOMMU - disabled, and not used by Panfrost, which maps its
+-		 * buffers through the Mali's own MMU (io-pgtable LPAE). The
+-		 * stock kernel puts the codecs and the TV capture/display path
+-		 * behind its IOMMU, never the GPU. CONFIG_SUN50I_IOMMU is off
+-		 * since 0024e: with this node disabled the symbol was dead code
+-		 * (the older warning about ARM_DMA_USE_IOMMU was an ARM32 one
+-		 * and does not apply on arm64). Address 0x02010000 is the H713
+-		 * IOMMU MMIO base (unverified).
++		 * IOMMU - not used by Panfrost, which maps its buffers through
++		 * the Mali's own MMU (io-pgtable LPAE). The stock kernel puts
++		 * the codecs and the TV capture/display path behind its IOMMU,
++		 * never the GPU. CONFIG_SUN50I_IOMMU was off from 0024e on,
++		 * when nothing decoded; with the decoders (cedrus, later AV1)
++		 * it is on again, and only the masters that ask for it below
++		 * are translated: the VE as masters 0 and 1. The display
++		 * (AFBD, the capture ring, the MIPS firmware's descriptors)
++		 * stays physical - the variant starts with every master
++		 * bypassing, see the driver. (The older warning about
++		 * ARM_DMA_USE_IOMMU was an ARM32 one and does not apply on
++		 * arm64.) The address is verified, see the node below.
+ 		 */
+ 		/*
+ 		 * DISABLED 2026-08-09 -- this node is inert on H713 and was
