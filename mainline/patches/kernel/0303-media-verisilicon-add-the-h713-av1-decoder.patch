@@ -1,0 +1,3594 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: verisilicon: add the H713 AV1 decoder
+
+The Allwinner H713 carries a Google AV1 decoder core (core ID 0x0003b16d,
+AV1 baseline): a sibling of the VPU981 with the same CDF layout and much
+of the same register vocabulary, but its registers are one packed
+1168-byte bit vector -- 119 fields straddle 32-bit words -- written out
+whole, its references are always stored compressed (with a DRAM-resident
+reference-decompressor configuration), and the display picture comes out
+of its secondary output: NV12 for 8-bit sequences, and for 10-bit ones
+V4L2_PIX_FMT_P010_LSB (patch 0150), P010 with the samples in bits 9:0 --
+the core cannot MSB-align them.
+
+sunxi_h713_av1_gen.c builds the register image and every CPU-written
+buffer from the V4L2 stateless AV1 controls. It is a pure function, derived
+from the VPU981 code, and it is checked against the vendor library running
+under emulation on the same streams -- every named field, every bit no name
+covers, every buffer the vendor points the core at, and the CPU-written
+buffers byte for byte: 312 of 312 frames identical over 48 clips
+(tools/re/av1/rig/gate.sh in the H713 tree). The register field table is
+generated from the vendor's own register model; two bits its printer never
+names are added by hand: allow_warped_motion at bit 9275 of the image, and
+bit 3879 of the decompressor configuration, set when a frame is its own
+reference (intra block copy).
+
+sunxi_h713_av1_hw.c is the hantro glue: the fixed working buffers, a
+compressed reconstruction/header/MV set per reference slot (allocated on
+first use, grown on demand), the flush-and-start, the interrupt, and the
+video engine's clocks and reset, which the core needs but which belong to
+cedrus -- a runtime-PM device link to the VE keeps them up while this
+device is active, and probe refuses a VE clock above 432 MHz.
+
+Three rules the hardware enforces, each found by a stalled or wedged SoC:
+
+  - The reset must be released with the core's bus and MBUS clocks running.
+    hantro_probe releases it with them only prepared, and a core brought out
+    of reset that way stalls on its first memory transfer -- permanently,
+    until a power cycle. The variant enables the clocks, reset held, before
+    hantro releases it, and keeps them on.
+  - The interrupt line reads pending at boot and the handler reads the
+    core's registers, so the variant requests the line disabled and arms it
+    only for a frame in flight.
+  - Image words 0 and 1 (ID and configuration) are never written, the rest
+    go in top-down with the start bit held back, and nothing is written
+    while the start bit is set.
+
+The core is reset when the first stream powers it, after a frame that ends
+in an error interrupt, and on a watchdog timeout -- never at the start of a
+second stream, which could be in the middle of the first one's frame.
+
+Tested on the HY200 against libdav1d, every frame by MD5 (GStreamer's
+v4l2slav1dec through tools/video/av1-gate.sh, and ffmpeg's VA-API hwaccel
+through libva-v4l2-request): 16 basic streams, then a 37-clip coding-tool
+matrix -- tile grids to 8x4 at 3840x2160, uneven tiles, four tile groups per
+frame, seven film-grain vectors (update_grain=0 included), superres (fixed
+and random), reference scaling, intra block copy and palette, monochrome,
+lossless, segmentation, delta-q/delta-lf, S-frames, still pictures, odd and
+tiny sizes -- and 4K; soaks of 900, 600, 2318 and 1199 frames from libaom and
+SVT-AV1; eight resolution changes in one stream; 40 flushing seeks; and AV1
+decoding alongside cedrus and alongside other AV1 streams starting and
+stopping. All bit-exact, with no driver complaint.
+10-bit (P010_LSB capture, 2026-10-01): a 10-frame 1280x720 libaom clip is
+bit-exact against libdav1d (100.000% of Y, U and V through VA-API, padding
+bits zero) and a 300-frame one matches frame for frame; it plays zero-copy on
+the H713 video plane (P010 + ALLWINNER_LSB10) through mpv and through
+GStreamer's kmssink, panel-checked, with the 8-bit gates unchanged.
+
+The controls are checked for what the V4L2 core leaves unchecked and this
+code would trip over -- tile layouts larger than the tile buffer (128 tiles),
+tile data outside the bitstream buffer, references out of range, a frame that
+does not fit the capture buffer -- and such a frame fails alone.
+
+Saved CDFs belong to decoded frames, not reference slots: a frame finds its
+primary reference's CDFs by timestamp, like everything else about it, so the
+driver needs no refresh_frame_flags (which VA-API does not carry) and stays
+right when show_existing_frame of a key frame refills every slot.
+Likewise the order hints saved with each reference for motion-field
+projection are those of the references the driver decoded, not the ones
+userspace reports: a client whose parser and DPB have come apart would
+otherwise have the core project through frames that are not there.
+
+Capture is NV12 for 8-bit sequences and P010_LSB for 10-bit ones, chosen by
+the sequence's bit depth (match_depth).
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0147-media-verisilicon-add-the-h713-av1-decoder.patch (0147-media-verisilicon-add-the-h713-av1-decoder.patch, commit a7aa64d)
+---
+diff --color -Naur pa/drivers/media/platform/verisilicon/hantro_drv.c pb/drivers/media/platform/verisilicon/hantro_drv.c
+--- a/drivers/media/platform/verisilicon/hantro_drv.c
++++ b/drivers/media/platform/verisilicon/hantro_drv.c
+@@ -739,6 +739,7 @@
+ #endif
+ #ifdef CONFIG_VIDEO_HANTRO_SUNXI
+ 	{ .compatible = "allwinner,sun50i-h6-vpu-g2", .data = &sunxi_vpu_variant, },
++	{ .compatible = "allwinner,sun50i-h713-av1", .data = &sun50i_h713_av1_variant, },
+ #endif
+ #ifdef CONFIG_VIDEO_HANTRO_STM32MP25
+ 	{ .compatible = "st,stm32mp25-vdec", .data = &stm32mp25_vdec_variant, },
+diff --color -Naur pa/drivers/media/platform/verisilicon/hantro.h pb/drivers/media/platform/verisilicon/hantro.h
+--- a/drivers/media/platform/verisilicon/hantro.h
++++ b/drivers/media/platform/verisilicon/hantro.h
+@@ -245,7 +245,10 @@
+  * @hevc_dec:		HEVC-decoding context.
+  * @vp9_dec:		VP9-decoding context.
+  * @av1_dec:		AV1-decoding context.
++ * @h713_av1_dec:	H713 AV1-decoding context.
+  */
++struct sunxi_h713_av1_dec_ctx;
++
+ struct hantro_ctx {
+ 	struct hantro_dev *dev;
+ 	struct v4l2_fh fh;
+@@ -276,6 +279,7 @@
+ 		struct hantro_hevc_dec_hw_ctx hevc_dec;
+ 		struct hantro_vp9_dec_hw_ctx vp9_dec;
+ 		struct hantro_av1_dec_hw_ctx av1_dec;
++		struct sunxi_h713_av1_dec_ctx *h713_av1_dec;
+ 	};
+ };
+ 
+diff --color -Naur pa/drivers/media/platform/verisilicon/hantro_hw.h pb/drivers/media/platform/verisilicon/hantro_hw.h
+--- a/drivers/media/platform/verisilicon/hantro_hw.h
++++ b/drivers/media/platform/verisilicon/hantro_hw.h
+@@ -417,6 +417,7 @@
+ extern const struct hantro_variant rk3588_vpu981_variant;
+ extern const struct hantro_variant sama5d4_vdec_variant;
+ extern const struct hantro_variant sunxi_vpu_variant;
++extern const struct hantro_variant sun50i_h713_av1_variant;
+ extern const struct hantro_variant stm32mp25_vdec_variant;
+ extern const struct hantro_variant stm32mp25_venc_variant;
+ 
+diff --color -Naur pa/drivers/media/platform/verisilicon/Kconfig pb/drivers/media/platform/verisilicon/Kconfig
+--- a/drivers/media/platform/verisilicon/Kconfig
++++ b/drivers/media/platform/verisilicon/Kconfig
+@@ -61,9 +61,11 @@
+ 	bool "Hantro VPU Allwinner support"
+ 	depends on VIDEO_HANTRO
+ 	depends on ARCH_SUNXI || COMPILE_TEST
++	select VIDEO_HANTRO_AV1
+ 	default y
+ 	help
+-	  Enable support for H6 SoC.
++	  Enable support for the H6 SoC's G2 VPU and the H713 SoC's AV1
++	  decoder.
+ 
+ config VIDEO_HANTRO_STM32MP25
+ 	bool "Hantro STM32MP25 support"
+diff --color -Naur pa/drivers/media/platform/verisilicon/Makefile pb/drivers/media/platform/verisilicon/Makefile
+--- a/drivers/media/platform/verisilicon/Makefile
++++ b/drivers/media/platform/verisilicon/Makefile
+@@ -40,7 +40,9 @@
+ 		rockchip_av1_entropymode.o
+ 
+ hantro-vpu-$(CONFIG_VIDEO_HANTRO_SUNXI) += \
+-		sunxi_vpu_hw.o
++		sunxi_vpu_hw.o \
++		sunxi_h713_av1_hw.o \
++		sunxi_h713_av1_gen.o
+ 
+ hantro-vpu-$(CONFIG_VIDEO_HANTRO_STM32MP25) += \
+ 		stm32mp25_vpu_hw.o
+diff --color -Naur pa/drivers/media/platform/verisilicon/sunxi_h713_av1_compat.h pb/drivers/media/platform/verisilicon/sunxi_h713_av1_compat.h
+--- /dev/null
++++ b/drivers/media/platform/verisilicon/sunxi_h713_av1_compat.h
+@@ -0,0 +1,65 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Lets sunxi_h713_av1_gen.c build in the kernel and in the host test rig
++ * (tools/re/av1/rig). Kernel: plain kernel headers. Host: the handful of
++ * kernel helpers the generator uses.
++ */
++#ifndef SUNXI_H713_AV1_COMPAT_H_
++#define SUNXI_H713_AV1_COMPAT_H_
++
++#ifdef __KERNEL__
++#include <linux/errno.h>
++#include <linux/kernel.h>
++#include <linux/minmax.h>
++#include <linux/slab.h>
++#include <linux/string.h>
++#include <linux/unaligned.h>
++#include <linux/v4l2-controls.h>
++#else
++#include <errno.h>
++#include <stdbool.h>
++#include <stddef.h>
++#include <stdint.h>
++#include <stdlib.h>
++#include <string.h>
++#include <linux/v4l2-controls.h>
++
++typedef uint8_t u8;
++typedef uint16_t u16;
++typedef uint32_t u32;
++typedef uint64_t u64;
++typedef int8_t s8;
++typedef int16_t s16;
++typedef int32_t s32;
++typedef int64_t s64;
++
++#define S16_MIN		(-32768)
++#define S16_MAX		32767
++#define GFP_KERNEL	0
++#define kzalloc(n, f)	calloc(1, (n))
++#define kfree(p)	free(p)
++#define lower_32_bits(x)	((u32)(x))
++#define ALIGN(x, a)	(((x) + (a) - 1) & ~((__typeof__(x))(a) - 1))
++#define DIV_ROUND_UP(n, d)	(((n) + (d) - 1) / (d))
++#define min_t(t, a, b)	((t)(a) < (t)(b) ? (t)(a) : (t)(b))
++#define max_t(t, a, b)	((t)(a) > (t)(b) ? (t)(a) : (t)(b))
++#ifndef H713_NO_CLAMP	/* rockchip_av1_filmgrain.c has its own clamp() */
++#define clamp(v, lo, hi)	((v) < (lo) ? (lo) : (v) > (hi) ? (hi) : (v))
++#define clamp_val(v, lo, hi)	clamp((v), (lo), (hi))
++#endif
++#define BIT(n)		(1u << (n))
++
++static inline void put_unaligned_le16(u16 v, void *p)
++{
++	u8 *b = p;
++	b[0] = v; b[1] = v >> 8;
++}
++
++static inline void put_unaligned_le32(u32 v, void *p)
++{
++	u8 *b = p;
++	b[0] = v; b[1] = v >> 8; b[2] = v >> 16; b[3] = v >> 24;
++}
++#endif
++
++#endif
+diff --color -Naur pa/drivers/media/platform/verisilicon/sunxi_h713_av1_gen.c pb/drivers/media/platform/verisilicon/sunxi_h713_av1_gen.c
+--- /dev/null
++++ b/drivers/media/platform/verisilicon/sunxi_h713_av1_gen.c
+@@ -0,0 +1,1463 @@
++// SPDX-License-Identifier: GPL-2.0-only
++/*
++ * H713 AV1 decoder: register-image generation. See sunxi_h713_av1_gen.h.
++ *
++ * Ported from rockchip_vpu981_hw_av1_dec.c:
++ *   Copyright (c) 2023, Collabora
++ *   Author: Benjamin Gaignard <benjamin.gaignard@collabora.com>
++ *
++ * Where the H713 differs from the VPU981, the vendor library's own register
++ * images (captured by running it under emulation, tools/re/av1/) are the
++ * reference; those places say so.
++ */
++
++#include "sunxi_h713_av1_compat.h"
++#include "sunxi_h713_av1_gen.h"
++#include "rockchip_av1_entropymode.h"
++#include "rockchip_av1_filmgrain.h"
++
++#define GM_GLOBAL_MODELS_PER_FRAME	7
++#define AV1_REF_SCALE_SHIFT		14
++#define AV1_INVALID_IDX			-1
++#define MAX_FRAME_DISTANCE		31
++#define AV1_PRIMARY_REF_NONE		7
++
++#define V4L2_AV1_SEG_LVL_ALT_LF_Y_H	2
++#define V4L2_AV1_SEG_LVL_ALT_LF_U	3
++#define V4L2_AV1_SEG_LVL_ALT_LF_V	4
++
++#define SUPERRES_SCALE_BITS		3
++#define SCALE_NUMERATOR			8
++#define SUPERRES_SCALE_DENOMINATOR_MIN	(SCALE_NUMERATOR + 1)
++#define RS_SUBPEL_BITS			6
++#define RS_SCALE_SUBPEL_BITS		14
++#define RS_SCALE_SUBPEL_MASK		((1 << RS_SCALE_SUBPEL_BITS) - 1)
++#define RS_SCALE_EXTRA_BITS		(RS_SCALE_SUBPEL_BITS - RS_SUBPEL_BITS)
++
++/*
++ * allow_warped_motion: the image's last bit (ac_int<9276> bit 9275). The
++ * vendor's register printer never names it, so the generated field table has
++ * no entry; found by comparing the unnamed bits of vendor and rig images on
++ * streams that allow warped motion (2026-09-30). Without it the core parses
++ * such frames without the warp syntax: corrupt pictures, errors, stalls.
++ */
++#define H713_AV1_ALLOW_WARPED_MOTION	H713_AV1_FIELD(9275, 1)
++
++#define IS_INTRA(type) ((type) == V4L2_AV1_KEY_FRAME || (type) == V4L2_AV1_INTRA_ONLY_FRAME)
++
++#define LST_BUF_IDX	(V4L2_AV1_REF_LAST_FRAME - V4L2_AV1_REF_LAST_FRAME)
++#define LST2_BUF_IDX	(V4L2_AV1_REF_LAST2_FRAME - V4L2_AV1_REF_LAST_FRAME)
++#define GLD_BUF_IDX	(V4L2_AV1_REF_GOLDEN_FRAME - V4L2_AV1_REF_LAST_FRAME)
++#define BWD_BUF_IDX	(V4L2_AV1_REF_BWDREF_FRAME - V4L2_AV1_REF_LAST_FRAME)
++#define ALT2_BUF_IDX	(V4L2_AV1_REF_ALTREF2_FRAME - V4L2_AV1_REF_LAST_FRAME)
++#define ALT_BUF_IDX	(V4L2_AV1_REF_ALTREF_FRAME - V4L2_AV1_REF_LAST_FRAME)
++
++#define DIV_LUT_PREC_BITS	14
++#define DIV_LUT_BITS		8
++#define DIV_LUT_NUM		(1 << DIV_LUT_BITS)
++#define WARP_PARAM_REDUCE_BITS	6
++#define WARPEDMODEL_PREC_BITS	16
++
++#define AV1_DIV_ROUND_UP_POW2(value, n)	(((value) + ((1LL << (n)) >> 1)) >> (n))
++#define AV1_DIV_ROUND_UP_POW2_SIGNED(value, n) \
++	(((value) < 0) ? -AV1_DIV_ROUND_UP_POW2(-(value), (n)) \
++		       : AV1_DIV_ROUND_UP_POW2((value), (n)))
++
++#define W(h, field, val)	h713_av1_set((h)->regs, H713_AV1_##field, (u32)(val))
++#define WADDR(h, field, a)	W(h, field, lower_32_bits(a))
++
++enum { H713_TX_ONLY_4X4 = 0, H713_TX_32X32 = 3, H713_TX_SELECT = 4 };
++
++static const short div_lut[DIV_LUT_NUM + 1] = {
++	16384, 16320, 16257, 16194, 16132, 16070, 16009, 15948, 15888, 15828, 15768,
++	15709, 15650, 15592, 15534, 15477, 15420, 15364, 15308, 15252, 15197, 15142,
++	15087, 15033, 14980, 14926, 14873, 14821, 14769, 14717, 14665, 14614, 14564,
++	14513, 14463, 14413, 14364, 14315, 14266, 14218, 14170, 14122, 14075, 14028,
++	13981, 13935, 13888, 13843, 13797, 13752, 13707, 13662, 13618, 13574, 13530,
++	13487, 13443, 13400, 13358, 13315, 13273, 13231, 13190, 13148, 13107, 13066,
++	13026, 12985, 12945, 12906, 12866, 12827, 12788, 12749, 12710, 12672, 12633,
++	12596, 12558, 12520, 12483, 12446, 12409, 12373, 12336, 12300, 12264, 12228,
++	12193, 12157, 12122, 12087, 12053, 12018, 11984, 11950, 11916, 11882, 11848,
++	11815, 11782, 11749, 11716, 11683, 11651, 11619, 11586, 11555, 11523, 11491,
++	11460, 11429, 11398, 11367, 11336, 11305, 11275, 11245, 11215, 11185, 11155,
++	11125, 11096, 11067, 11038, 11009, 10980, 10951, 10923, 10894, 10866, 10838,
++	10810, 10782, 10755, 10727, 10700, 10673, 10645, 10618, 10592, 10565, 10538,
++	10512, 10486, 10460, 10434, 10408, 10382, 10356, 10331, 10305, 10280, 10255,
++	10230, 10205, 10180, 10156, 10131, 10107, 10082, 10058, 10034, 10010, 9986,
++	9963,  9939,  9916,  9892,  9869,  9846,  9823,  9800,  9777,  9754,  9732,
++	9709,  9687,  9664,  9642,  9620,  9598,  9576,  9554,  9533,  9511,  9489,
++	9468,  9447,  9425,  9404,  9383,  9362,  9341,  9321,  9300,  9279,  9259,
++	9239,  9218,  9198,  9178,  9158,  9138,  9118,  9098,  9079,  9059,  9039,
++	9020,  9001,  8981,  8962,  8943,  8924,  8905,  8886,  8867,  8849,  8830,
++	8812,  8793,  8775,  8756,  8738,  8720,  8702,  8684,  8666,  8648,  8630,
++	8613,  8595,  8577,  8560,  8542,  8525,  8508,  8490,  8473,  8456,  8439,
++	8422,  8405,  8389,  8372,  8355,  8339,  8322,  8306,  8289,  8273,  8257,
++	8240,  8224,  8208,  8192,
++};
++
++/* ---- reference bookkeeping (as VPU981) ---------------------------------- */
++
++static int get_frame_index(struct h713_av1 *h, int ref)
++{
++	int i, idx = h->frame->ref_frame_idx[ref];
++	u64 ts;
++
++	if (idx >= V4L2_AV1_TOTAL_REFS_PER_FRAME || idx < 0)
++		return AV1_INVALID_IDX;
++	ts = h->frame->reference_frame_ts[idx];
++	for (i = 0; i < H713_AV1_MAX_FRAMES; i++)
++		if (h->refs[i].used && h->refs[i].timestamp == ts)
++			return i;
++	return AV1_INVALID_IDX;
++}
++
++static int get_order_hint(struct h713_av1 *h, int ref)
++{
++	int idx = get_frame_index(h, ref);
++
++	return idx != AV1_INVALID_IDX ? h->refs[idx].order_hint : 0;
++}
++
++static int frame_ref(struct h713_av1 *h, u64 timestamp)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	int i, j;
++
++	for (i = 0; i < H713_AV1_MAX_FRAMES; i++) {
++		struct h713_av1_ref *r = &h->refs[i];
++
++		if (r->used)
++			continue;
++		/*
++		 * Superres upscales before the frame is stored, so as a reference
++		 * it is upscaled_width wide; the motion-field test wants the
++		 * coded size.
++		 */
++		r->coded_width = f->frame_width_minus_1 + 1;
++		r->width = max_t(int, f->upscaled_width, r->coded_width);
++		r->height = f->frame_height_minus_1 + 1;
++		r->mi_cols = DIV_ROUND_UP(r->coded_width, 8);
++		r->mi_rows = DIV_ROUND_UP(r->height, 8);
++		r->timestamp = timestamp;
++		r->frame_type = f->frame_type;
++		r->order_hint = f->order_hint;
++		/*
++		 * The order hints of this frame's references, kept for motion
++		 * field projection when it is a reference itself. Taken from
++		 * the references this driver decoded, not from userspace: a
++		 * client whose parser state and DPB have come apart (ffmpeg
++		 * after a packet it abandoned half-way) sends hints for frames
++		 * that are not the ones in the slots, and projection from
++		 * those does not describe the frames the core will read.
++		 */
++		for (j = 0; j < V4L2_AV1_TOTAL_REFS_PER_FRAME; j++) {
++			int idx = j ? get_frame_index(h, j - 1) : AV1_INVALID_IDX;
++
++			r->order_hints[j] = idx >= 0 && idx != i ?
++					    h->refs[idx].order_hint : f->order_hints[j];
++		}
++		r->used = true;
++		h->cur = i;
++		return i;
++	}
++	return AV1_INVALID_IDX;
++}
++
++static void clean_refs(struct h713_av1 *h)
++{
++	int idx, ref;
++
++	for (idx = 0; idx < H713_AV1_MAX_FRAMES; idx++) {
++		bool used = false;
++
++		if (!h->refs[idx].used)
++			continue;
++		for (ref = 0; ref < V4L2_AV1_TOTAL_REFS_PER_FRAME; ref++)
++			if (h->frame->reference_frame_ts[ref] == h->refs[idx].timestamp)
++				used = true;
++		if (!used)
++			h->refs[idx].used = false;
++	}
++}
++
++static int get_dist(struct h713_av1 *h, int a, int b)
++{
++	int bits = h->seq->order_hint_bits - 1;
++	int diff, m;
++
++	if (!h->seq->order_hint_bits)
++		return 0;
++	diff = a - b;
++	m = 1 << bits;
++	return (diff & (m - 1)) - (diff & m);
++}
++
++/* ---- global motion ------------------------------------------------------ */
++
++static int get_msb(u32 n)
++{
++	return n ? 31 ^ __builtin_clz(n) : 0;
++}
++
++static short resolve_divisor_32(u32 d, short *shift)
++{
++	int f;
++	u64 e;
++
++	*shift = get_msb(d);
++	e = d - ((u32)1 << *shift);
++	if (*shift > DIV_LUT_BITS)
++		f = AV1_DIV_ROUND_UP_POW2(e, *shift - DIV_LUT_BITS);
++	else
++		f = e << (DIV_LUT_BITS - *shift);
++	if (f > DIV_LUT_NUM)
++		return -1;
++	*shift += DIV_LUT_PREC_BITS;
++	return div_lut[f];
++}
++
++static void get_shear_params(const s32 *mat, s64 *alpha, s64 *beta, s64 *gamma,
++			     s64 *delta)
++{
++	short shift, y;
++	long long gv, dv;
++
++	if (mat[2] <= 0)
++		return;
++	*alpha = clamp_val(mat[2] - (1 << WARPEDMODEL_PREC_BITS), S16_MIN, S16_MAX);
++	*beta = clamp_val(mat[3], S16_MIN, S16_MAX);
++	y = resolve_divisor_32(abs(mat[2]), &shift) * (mat[2] < 0 ? -1 : 1);
++	gv = ((long long)mat[4] * (1 << WARPEDMODEL_PREC_BITS)) * y;
++	*gamma = clamp_val((int)AV1_DIV_ROUND_UP_POW2_SIGNED(gv, shift), S16_MIN, S16_MAX);
++	dv = ((long long)mat[3] * mat[4]) * y;
++	*delta = clamp_val(mat[5] - (int)AV1_DIV_ROUND_UP_POW2_SIGNED(dv, shift) -
++			   (1 << WARPEDMODEL_PREC_BITS), S16_MIN, S16_MAX);
++	*alpha = AV1_DIV_ROUND_UP_POW2_SIGNED(*alpha, WARP_PARAM_REDUCE_BITS) * (1 << WARP_PARAM_REDUCE_BITS);
++	*beta = AV1_DIV_ROUND_UP_POW2_SIGNED(*beta, WARP_PARAM_REDUCE_BITS) * (1 << WARP_PARAM_REDUCE_BITS);
++	*gamma = AV1_DIV_ROUND_UP_POW2_SIGNED(*gamma, WARP_PARAM_REDUCE_BITS) * (1 << WARP_PARAM_REDUCE_BITS);
++	*delta = AV1_DIV_ROUND_UP_POW2_SIGNED(*delta, WARP_PARAM_REDUCE_BITS) * (1 << WARP_PARAM_REDUCE_BITS);
++}
++
++static bool ref_is_scaled(struct h713_av1 *h, int ref)
++{
++	int idx;
++
++	if (IS_INTRA(h->frame->frame_type))
++		return false;
++	idx = get_frame_index(h, ref);
++	return idx >= 0 && (h->refs[idx].width != h->frame->frame_width_minus_1 + 1 ||
++			    h->refs[idx].height != h->frame->frame_height_minus_1 + 1);
++}
++
++/*
++ * 7 models x (6 x s32 params + 4 x s16 shear). The vendor writes the params
++ * in natural order; the VPU981 swaps [2] and [3].
++ */
++static void set_global_model(struct h713_av1 *h)
++{
++	const struct v4l2_av1_global_motion *gm = &h->frame->global_motion;
++	u8 *dst = h->b.global_model.cpu;
++	int ref, i;
++
++	memset(dst, 0, H713_AV1_GLOBAL_MODEL_SIZE);
++	for (ref = 0; ref < GM_GLOBAL_MODELS_PER_FRAME; ref++) {
++		const s32 *p = &gm->params[V4L2_AV1_REF_LAST_FRAME + ref][0];
++		s64 alpha = 0, beta = 0, gamma = 0, delta = 0;
++
++		for (i = 0; i < 6; i++) {
++			put_unaligned_le32(p[i], dst);
++			dst += 4;
++		}
++		if (ref_is_scaled(h, ref))
++			/* no warp from a scaled reference: the vendor's marker */
++			alpha = beta = gamma = delta = S16_MIN;
++		else if (gm->type[V4L2_AV1_REF_LAST_FRAME + ref] <= V4L2_AV1_WARP_MODEL_AFFINE)
++			get_shear_params(p, &alpha, &beta, &gamma, &delta);
++		put_unaligned_le16(alpha, dst);
++		put_unaligned_le16(beta, dst + 2);
++		put_unaligned_le16(gamma, dst + 4);
++		put_unaligned_le16(delta, dst + 6);
++		dst += 8;
++	}
++	WADDR(h, GLOBAL_MODEL_BASE, h->b.global_model.dma);
++}
++
++/* ---- tiles -------------------------------------------------------------- */
++
++/*
++ * Where the hardware's view of the tile data starts, as an offset into the
++ * bitstream buffer: the first tile's payload, or with several tiles the
++ * tile_size_bytes size field in front of it (every tile but the last carries
++ * one) -- the vendor points the stream there.
++ */
++static u32 tile_data_start(struct h713_av1 *h)
++{
++	const struct v4l2_av1_tile_info *ti = &h->frame->tile_info;
++
++	if (!h->tge)
++		return 0;
++	if (ti->tile_cols * ti->tile_rows > 1)
++		return h->tge[0].tile_offset - ti->tile_size_bytes;
++	return h->tge[0].tile_offset;
++}
++
++/*
++ * The buffer holds {width_in_sbs, height_in_sbs} per tile, column-major
++ * (tile_transpose), and at 0x100 one {start, end} pair per tile, also
++ * column-major, in bytes from tile_data_start(). The tile*_stream_size
++ * registers stay 0.
++ */
++static void set_tile_info(struct h713_av1 *h)
++{
++	const struct v4l2_av1_tile_info *ti = &h->frame->tile_info;
++	int cu_y = ti->context_update_tile_id / ti->tile_cols;
++	int cu_x = ti->context_update_tile_id % ti->tile_cols;
++	u8 *dst = h->b.tile_info.cpu;
++	u32 base = tile_data_start(h);
++	int c, r;
++
++	memset(dst, 0, H713_AV1_TILE_INFO_SIZE);
++	for (c = 0; c < ti->tile_cols; c++)
++		for (r = 0; r < ti->tile_rows; r++) {
++			int id = r * ti->tile_cols + c;
++			int slot = c * ti->tile_rows + r;
++			u32 start = h->tge[id].tile_offset - base;
++			u8 *pos = (u8 *)h->b.tile_info.cpu + 0x100 + 8 * slot;
++
++			*dst++ = ti->width_in_sbs_minus_1[c] + 1;
++			*dst++ = ti->height_in_sbs_minus_1[r] + 1;
++			put_unaligned_le32(start, pos);
++			put_unaligned_le32(start + h->tge[id].tile_size, pos + 4);
++		}
++
++	/*
++	 * Multi-tile: the vertical-filter column buffer, one buffer read and
++	 * written (Vp9AsicAllocateFilterBlockMem). Left 0, the core stalls.
++	 */
++	if (ti->tile_cols > 1 || ti->tile_rows > 1) {
++		WADDR(h, VERT_FILT_READ_BASE, h->b.vert_filt.dma);
++		WADDR(h, VERT_FILT_WRITE_BASE, h->b.vert_filt.dma);
++	}
++	W(h, MULTICORE_EXPECT_CONTEXT_UPDATE, cu_x == 0);
++	W(h, TILE_ENABLE, ti->tile_cols > 1 || ti->tile_rows > 1);
++	for (c = 0; (1 << c) < ti->tile_cols; c++)
++		;
++	W(h, LOG2_TILE_COLS, c);	/* ceil(log2(tile_cols)) */
++	W(h, AV1_TILE_COLS, ti->tile_cols);
++	W(h, AV1_TILE_ROWS, ti->tile_rows);
++	W(h, CONTEXT_UPDATE_TILE_ID, cu_x * ti->tile_rows + cu_y);
++	W(h, TILE_TRANSPOSE, 1);
++	if (ti->tile_cols > 1 || ti->tile_rows > 1)
++		W(h, DEC_TILE_SIZE_MAG, ti->tile_size_bytes - 1);
++	else
++		W(h, DEC_TILE_SIZE_MAG, 3);
++	WADDR(h, TILE_BASE, h->b.tile_info.dma);
++}
++
++/* ---- references --------------------------------------------------------- */
++
++static void set_frame_sign_bias(struct h713_av1 *h)
++{
++	int i;
++
++	if (!h->seq->order_hint_bits || IS_INTRA(h->frame->frame_type)) {
++		for (i = 0; i < V4L2_AV1_TOTAL_REFS_PER_FRAME; i++)
++			h->ref_frame_sign_bias[i] = 0;
++		return;
++	}
++	for (i = 0; i < V4L2_AV1_TOTAL_REFS_PER_FRAME - 1; i++)
++		if (get_frame_index(h, i) >= 0) {
++			int rel = get_dist(h, get_order_hint(h, i), h->frame->order_hint);
++
++			h->ref_frame_sign_bias[i + 1] = rel <= 0 ? 0 : 1;
++		}
++}
++
++static const struct h713_av1_field ref_width[7] = {
++	H713_AV1_REF0_WIDTH, H713_AV1_REF1_WIDTH, H713_AV1_REF2_WIDTH, H713_AV1_REF3_WIDTH,
++	H713_AV1_REF4_WIDTH, H713_AV1_REF5_WIDTH, H713_AV1_REF6_WIDTH };
++static const struct h713_av1_field ref_height[7] = {
++	H713_AV1_REF0_HEIGHT, H713_AV1_REF1_HEIGHT, H713_AV1_REF2_HEIGHT, H713_AV1_REF3_HEIGHT,
++	H713_AV1_REF4_HEIGHT, H713_AV1_REF5_HEIGHT, H713_AV1_REF6_HEIGHT };
++static const struct h713_av1_field ref_hscale[7] = {
++	H713_AV1_REF0_HOR_SCALE, H713_AV1_REF1_HOR_SCALE, H713_AV1_REF2_HOR_SCALE,
++	H713_AV1_REF3_HOR_SCALE, H713_AV1_REF4_HOR_SCALE, H713_AV1_REF5_HOR_SCALE,
++	H713_AV1_REF6_HOR_SCALE };
++static const struct h713_av1_field ref_vscale[7] = {
++	H713_AV1_REF0_VER_SCALE, H713_AV1_REF1_VER_SCALE, H713_AV1_REF2_VER_SCALE,
++	H713_AV1_REF3_VER_SCALE, H713_AV1_REF4_VER_SCALE, H713_AV1_REF5_VER_SCALE,
++	H713_AV1_REF6_VER_SCALE };
++static const struct h713_av1_field ref_sign[7] = {
++	H713_AV1_REF0_SIGN_BIAS, H713_AV1_REF1_SIGN_BIAS, H713_AV1_REF2_SIGN_BIAS,
++	H713_AV1_REF3_SIGN_BIAS, H713_AV1_REF4_SIGN_BIAS, H713_AV1_REF5_SIGN_BIAS,
++	H713_AV1_REF6_SIGN_BIAS };
++static const struct h713_av1_field ref_gm[7] = {
++	H713_AV1_REF0_GM_MODE, H713_AV1_REF1_GM_MODE, H713_AV1_REF2_GM_MODE,
++	H713_AV1_REF3_GM_MODE, H713_AV1_REF4_GM_MODE, H713_AV1_REF5_GM_MODE,
++	H713_AV1_REF6_GM_MODE };
++static const struct h713_av1_field ref_lum[7] = {
++	H713_AV1_REF0_LUM_BASE, H713_AV1_REF1_LUM_BASE, H713_AV1_REF2_LUM_BASE,
++	H713_AV1_REF3_LUM_BASE, H713_AV1_REF4_LUM_BASE, H713_AV1_REF5_LUM_BASE,
++	H713_AV1_REF6_LUM_BASE };
++static const struct h713_av1_field ref_cb[7] = {
++	H713_AV1_REF0_CB_BASE, H713_AV1_REF1_CB_BASE, H713_AV1_REF2_CB_BASE,
++	H713_AV1_REF3_CB_BASE, H713_AV1_REF4_CB_BASE, H713_AV1_REF5_CB_BASE,
++	H713_AV1_REF6_CB_BASE };
++static const struct h713_av1_field ref_cr[7] = {
++	H713_AV1_REF0_CR_BASE, H713_AV1_REF1_CR_BASE, H713_AV1_REF2_CR_BASE,
++	H713_AV1_REF3_CR_BASE, H713_AV1_REF4_CR_BASE, H713_AV1_REF5_CR_BASE,
++	H713_AV1_REF6_CR_BASE };
++
++static bool set_ref(struct h713_av1 *h, int ref, int idx, int width, int height)
++{
++	int cur_w = h->frame->frame_width_minus_1 + 1;
++	int cur_h = h->frame->frame_height_minus_1 + 1;
++	int scale_w = ((width << AV1_REF_SCALE_SHIFT) + cur_w / 2) / cur_w;
++	int scale_h = ((height << AV1_REF_SCALE_SHIFT) + cur_h / 2) / cur_h;
++	const struct h713_av1_frame_bufs *fb = &h->refs[idx].bufs;
++
++	h713_av1_set(h->regs, ref_height[ref], height);
++	h713_av1_set(h->regs, ref_width[ref], width);
++	/* the VPU981 writes these crosswise; here hor is the width ratio */
++	h713_av1_set(h->regs, ref_hscale[ref], scale_w);
++	h713_av1_set(h->regs, ref_vscale[ref], scale_h);
++	/* compressed reference: luma data, then one header for both chroma */
++	h713_av1_set(h->regs, ref_lum[ref], lower_32_bits(fb->rec));
++	h713_av1_set(h->regs, ref_cb[ref], lower_32_bits(fb->hdr));
++	h713_av1_set(h->regs, ref_cr[ref], lower_32_bits(fb->hdr));
++
++	return scale_w != (1 << AV1_REF_SCALE_SHIFT) || scale_h != (1 << AV1_REF_SCALE_SHIFT);
++}
++
++/* ---- segmentation ------------------------------------------------------- */
++
++#define SEGF(n) H713_AV1_QUANT_SCALE_IDX_SEG##n, H713_AV1_FILT_LEVEL_DELTA0_SEG##n, \
++	H713_AV1_FILT_LEVEL_DELTA1_SEG##n, H713_AV1_FILT_LEVEL_DELTA2_SEG##n, \
++	H713_AV1_FILT_LEVEL_DELTA3_SEG##n, H713_AV1_REFPIC_SEG##n, \
++	H713_AV1_SKIP_SEG##n, H713_AV1_GLOBAL_MV_SEG##n
++static const struct h713_av1_field seg_fields[8][8] = {
++	{ SEGF(0) }, { SEGF(1) }, { SEGF(2) }, { SEGF(3) },
++	{ SEGF(4) }, { SEGF(5) }, { SEGF(6) }, { SEGF(7) },
++};
++
++/*
++ * The vendor raises the core's error-resilient bit not only when the frame
++ * header does, but whenever what the previous frame left behind cannot
++ * apply: the stored size differs from the last decoded frame's (which also
++ * covers a stream's first frame), or the coded size differs from the
++ * primary reference's.
++ */
++static bool error_resilient(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	const struct h713_av1_ref *cur = &h->refs[h->cur];
++
++	if (f->flags & V4L2_AV1_FRAME_FLAG_ERROR_RESILIENT_MODE)
++		return true;
++	if (cur->width != h->prev_width || cur->height != h->prev_height)
++		return true;
++	if (!IS_INTRA(f->frame_type) && f->primary_ref_frame < V4L2_AV1_REFS_PER_FRAME) {
++		int idx = get_frame_index(h, f->primary_ref_frame);
++
++		if (idx >= 0 && (h->refs[idx].coded_width != cur->coded_width ||
++				 h->refs[idx].height != cur->height))
++			return true;
++	}
++	return false;
++}
++
++static void set_segmentation(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	const struct v4l2_av1_segmentation *seg = &f->segmentation;
++	u32 segval[V4L2_AV1_MAX_SEGMENTS][V4L2_AV1_SEG_LVL_MAX] = { { 0 } };
++	u8 segsign = 0, preskip = 0, last_active = 0;
++	int i, j;
++
++	W(h, USE_TEMPORAL3_MVS, 0);
++	if ((seg->flags & V4L2_AV1_SEGMENTATION_FLAG_ENABLED) &&
++	    f->primary_ref_frame < V4L2_AV1_REFS_PER_FRAME) {
++		int idx = get_frame_index(h, f->primary_ref_frame);
++
++		if (idx >= 0) {
++			/* the previous segment map rides in the primary ref's MV buffer */
++			WADDR(h, TEMPORAL3_READ_BASE, h->refs[idx].bufs.mv);
++			W(h, USE_TEMPORAL3_MVS, 1);
++		}
++	}
++
++	W(h, SEGMENT_TEMP_UPD_E, !!(seg->flags & V4L2_AV1_SEGMENTATION_FLAG_TEMPORAL_UPDATE));
++	W(h, SEGMENT_UPD_E, !!(seg->flags & V4L2_AV1_SEGMENTATION_FLAG_UPDATE_MAP));
++	W(h, SEGMENT_E, !!(seg->flags & V4L2_AV1_SEGMENTATION_FLAG_ENABLED));
++	W(h, ERROR_RESILIENT, error_resilient(h));
++	if (IS_INTRA(f->frame_type) || (f->flags & V4L2_AV1_FRAME_FLAG_ERROR_RESILIENT_MODE))
++		W(h, USE_TEMPORAL3_MVS, 0);
++
++	if (seg->flags & V4L2_AV1_SEGMENTATION_FLAG_ENABLED) {
++		for (i = 0; i < V4L2_AV1_MAX_SEGMENTS; i++) {
++			u8 en = seg->feature_enabled[i];
++			const s16 *d = seg->feature_data[i];
++
++			if (en & V4L2_AV1_SEGMENT_FEATURE_ENABLED(V4L2_AV1_SEG_LVL_ALT_Q)) {
++				segval[i][V4L2_AV1_SEG_LVL_ALT_Q] = clamp(abs(d[V4L2_AV1_SEG_LVL_ALT_Q]), 0, 255);
++				segsign |= (d[V4L2_AV1_SEG_LVL_ALT_Q] < 0) << i;
++			}
++			for (j = V4L2_AV1_SEG_LVL_ALT_LF_Y_V; j <= V4L2_AV1_SEG_LVL_ALT_LF_V; j++)
++				if (en & V4L2_AV1_SEGMENT_FEATURE_ENABLED(j))
++					segval[i][j] = clamp(abs(d[j]), -63, 63);
++			if (f->frame_type && (en & V4L2_AV1_SEGMENT_FEATURE_ENABLED(V4L2_AV1_SEG_LVL_REF_FRAME)))
++				segval[i][V4L2_AV1_SEG_LVL_REF_FRAME]++;
++			if (en & V4L2_AV1_SEGMENT_FEATURE_ENABLED(V4L2_AV1_SEG_LVL_REF_SKIP))
++				segval[i][V4L2_AV1_SEG_LVL_REF_SKIP] = 1;
++			if (en & V4L2_AV1_SEGMENT_FEATURE_ENABLED(V4L2_AV1_SEG_LVL_REF_GLOBALMV))
++				segval[i][V4L2_AV1_SEG_LVL_REF_GLOBALMV] = 1;
++		}
++	}
++	for (i = 0; i < V4L2_AV1_MAX_SEGMENTS; i++)
++		for (j = 0; j < V4L2_AV1_SEG_LVL_MAX; j++)
++			if (seg->feature_enabled[i] & V4L2_AV1_SEGMENT_FEATURE_ENABLED(j)) {
++				preskip |= j >= V4L2_AV1_SEG_LVL_REF_FRAME;
++				last_active = max_t(u8, i, last_active);
++			}
++
++	W(h, LAST_ACTIVE_SEG, last_active);
++	W(h, PRESKIP_SEGID, preskip);
++	W(h, SEG_QUANT_SIGN, segsign);
++	for (i = 0; i < V4L2_AV1_MAX_SEGMENTS; i++)
++		for (j = 0; j < V4L2_AV1_SEG_LVL_MAX; j++)
++			h713_av1_set(h->regs, seg_fields[i][j], segval[i][j]);
++}
++
++static bool is_lossless(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	const struct v4l2_av1_quantization *q = &f->quantization;
++	int i;
++
++	for (i = 0; i < V4L2_AV1_MAX_SEGMENTS; i++) {
++		int qi = q->base_q_idx;
++
++		if (f->segmentation.feature_enabled[i] &
++		    V4L2_AV1_SEGMENT_FEATURE_ENABLED(V4L2_AV1_SEG_LVL_ALT_Q))
++			qi += f->segmentation.feature_data[i][V4L2_AV1_SEG_LVL_ALT_Q];
++		qi = clamp(qi, 0, 255);
++		if (qi || q->delta_q_y_dc || q->delta_q_u_dc || q->delta_q_u_ac ||
++		    q->delta_q_v_dc || q->delta_q_v_ac)
++			return false;
++	}
++	return true;
++}
++
++/* ---- loop filter -------------------------------------------------------- */
++
++static const struct h713_av1_field filt_ref_delta[V4L2_AV1_TOTAL_REFS_PER_FRAME] = {
++	H713_AV1_FILT_REF0_DELTA, H713_AV1_FILT_REF1_DELTA, H713_AV1_FILT_REF2_DELTA,
++	H713_AV1_FILT_REF3_DELTA, H713_AV1_FILT_REF4_DELTA, H713_AV1_FILT_REF5_DELTA,
++	H713_AV1_FILT_REF6_DELTA, H713_AV1_FILT_REF7_DELTA,
++};
++
++/*
++ * Levels 2/3 (U, V) and the deltas the vendor carries over from earlier
++ * frames when the bitstream does not code them; they are don't-cares there
++ * and this writes what the frame header says.
++ */
++static void set_loopfilter(struct h713_av1 *h)
++{
++	const struct v4l2_av1_loop_filter *lf = &h->frame->loop_filter;
++	int i;
++
++	if (lf->flags & V4L2_AV1_LOOP_FILTER_FLAG_DELTA_ENABLED) {
++		for (i = 0; i < V4L2_AV1_TOTAL_REFS_PER_FRAME; i++)
++			h713_av1_set(h->regs, filt_ref_delta[i], lf->ref_deltas[i]);
++		W(h, FILT_MODE0_DELTA, lf->mode_deltas[0]);
++		W(h, FILT_MODE1_DELTA, lf->mode_deltas[1]);
++	}
++
++	W(h, FILTERING_DIS, lf->level[0] == 0 && lf->level[1] == 0);
++	W(h, FILT_LEVEL_BASE_GT32, lf->level[0] > 32);
++	W(h, FILTER_SHARPNESS, lf->sharpness);
++	W(h, BASE_LF_LEVEL_0, lf->level[0]);
++	W(h, BASE_LF_LEVEL_1, lf->level[1]);
++	W(h, BASE_LF_LEVEL_2, lf->level[2]);
++	W(h, BASE_LF_LEVEL_3, lf->level[3]);
++}
++
++/* ---- probabilities ------------------------------------------------------ */
++
++/*
++ * This frame starts from its primary reference's saved CDFs, or from the
++ * defaults (whose coefficient part depends on base_q_idx); what it starts
++ * from is also what it saves, until the core's adapted CDFs replace them.
++ */
++static void set_prob(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	struct h713_av1_cdf *c = h->cdf;
++	struct av1cdfs *src = &c->default_cdfs;
++	struct mvcdfs *src_ndvc = &c->default_cdfs_ndvc;
++	int idx = AV1_INVALID_IDX;
++
++	if (!(f->flags & V4L2_AV1_FRAME_FLAG_ERROR_RESILIENT_MODE) &&
++	    !IS_INTRA(f->frame_type) && f->primary_ref_frame != AV1_PRIMARY_REF_NONE)
++		idx = get_frame_index(h, f->primary_ref_frame);
++	if (idx >= 0) {
++		src = &c->frame[idx];
++		src_ndvc = &c->frame_ndvc[idx];
++	} else {
++		rockchip_av1_default_coeff_probs(f->quantization.base_q_idx, src);
++	}
++	c->frame[h->cur] = *src;
++	c->frame_ndvc[h->cur] = *src_ndvc;
++
++	memcpy(h->b.prob.cpu, &c->frame[h->cur], sizeof(struct av1cdfs));
++	if (IS_INTRA(f->frame_type))
++		memcpy((u8 *)h->b.prob.cpu + offsetof(struct av1cdfs, mv_cdf),
++		       &c->frame_ndvc[h->cur], sizeof(struct mvcdfs));
++
++	WADDR(h, PROB_TAB_OUT_BASE, h->b.prob_out.dma);
++	WADDR(h, PROB_TAB_BASE, h->b.prob.dma);
++}
++
++/*
++ * The core's adapted CDFs become this frame's. On an intra frame the MV
++ * part of the table carried the intra-block-copy (ndvc) CDFs, so that is
++ * where they go, and the frame keeps the MV CDFs it started with.
++ */
++static void update_prob(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	struct h713_av1_cdf *c = h->cdf;
++	struct av1cdfs *out = h->b.prob_out.cpu;
++	struct av1cdfs *cur = &c->frame[h->cur];
++	struct mvcdfs mv = cur->mv_cdf;
++
++	if (f->flags & V4L2_AV1_FRAME_FLAG_DISABLE_FRAME_END_UPDATE_CDF)
++		return;
++	*cur = *out;
++	if (IS_INTRA(f->frame_type)) {
++		cur->mv_cdf = mv;
++		c->frame_ndvc[h->cur] = out->mv_cdf;
++	}
++}
++
++/*
++ * ---- film grain ----
++ * The VPU981's 0x3300-byte buffer, except that the 32x32 Cb and Cr grain
++ * blocks are planar (Cb, then Cr) where the VPU981 interleaves them.
++ */
++
++struct h713_av1_film_grain {
++	u8 scaling_lut_y[256];
++	u8 scaling_lut_cb[256];
++	u8 scaling_lut_cr[256];
++	s16 cropped_luma_grain_block[4096];
++	s16 cropped_cb_grain_block[1024];
++	s16 cropped_cr_grain_block[1024];
++};
++
++static void init_scaling_function(const u8 *values, const u8 *scaling,
++				  u8 num_points, u8 *lut)
++{
++	int i, point;
++
++	if (!num_points) {
++		memset(lut, 0, 256);
++		return;
++	}
++	for (point = 0; point < num_points - 1; point++) {
++		int x;
++		s32 dy = scaling[point + 1] - scaling[point];
++		s32 dx = values[point + 1] - values[point];
++		s64 delta = dx ? dy * ((65536 + (dx >> 1)) / dx) : 0;
++
++		for (x = 0; x < dx; x++)
++			lut[values[point] + x] = scaling[point] + (s32)((x * delta + 32768) >> 16);
++	}
++	for (i = values[num_points - 1]; i < 256; i++)
++		lut[i] = scaling[num_points - 1];
++}
++
++static void set_fgs(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_film_grain *fg = h->film_grain;
++	struct h713_av1_film_grain *mem = h->b.film_grain.cpu;
++	s32 (*ar_y)[24], (*ar_cb)[25], (*ar_cr)[25];
++	s32 (*luma)[73][82], (*cb)[38][44], (*cr)[38][44];
++	s32 lag, shift, gss, bitdepth, center, gmin, gmax;
++	int i, j;
++
++	W(h, APPLY_GRAIN, 0);
++	if (!fg || !(fg->flags & V4L2_AV1_FILM_GRAIN_FLAG_APPLY_GRAIN)) {
++		W(h, NUM_Y_POINTS_B, 0); W(h, NUM_CB_POINTS_B, 0); W(h, NUM_CR_POINTS_B, 0);
++		W(h, SCALING_SHIFT, 0); W(h, CB_MULT, 0); W(h, CB_LUMA_MULT, 0);
++		W(h, CB_OFFSET, 0); W(h, CR_MULT, 0); W(h, CR_LUMA_MULT, 0);
++		W(h, CR_OFFSET, 0); W(h, OVERLAP_FLAG, 0);
++		W(h, CLIP_TO_RESTRICTED_RANGE, 0); W(h, CHROMA_SCALING_FROM_LUMA, 0);
++		W(h, RANDOM_SEED, 0);
++		/* the vendor points it at the buffer whenever the sequence has grain */
++		if (fg)
++			WADDR(h, FILM_GRAIN_BASE, h->b.film_grain.dma);
++		else
++			W(h, FILM_GRAIN_BASE, 0);
++		return;
++	}
++
++	ar_y = kzalloc(sizeof(*ar_y), GFP_KERNEL);
++	ar_cb = kzalloc(sizeof(*ar_cb), GFP_KERNEL);
++	ar_cr = kzalloc(sizeof(*ar_cr), GFP_KERNEL);
++	luma = kzalloc(sizeof(*luma), GFP_KERNEL);
++	cb = kzalloc(sizeof(*cb), GFP_KERNEL);
++	cr = kzalloc(sizeof(*cr), GFP_KERNEL);
++	if (!ar_y || !ar_cb || !ar_cr || !luma || !cb || !cr)
++		goto out;
++
++	W(h, APPLY_GRAIN, 1);
++	W(h, NUM_Y_POINTS_B, fg->num_y_points > 0);
++	W(h, NUM_CB_POINTS_B, fg->num_cb_points > 0);
++	W(h, NUM_CR_POINTS_B, fg->num_cr_points > 0);
++	W(h, SCALING_SHIFT, fg->grain_scaling_minus_8 + 8);
++	if (!(fg->flags & V4L2_AV1_FILM_GRAIN_FLAG_CHROMA_SCALING_FROM_LUMA)) {
++		W(h, CB_MULT, fg->cb_mult - 128);
++		W(h, CB_LUMA_MULT, fg->cb_luma_mult - 128);
++		W(h, CB_OFFSET, fg->cb_offset - 256);
++		W(h, CR_MULT, fg->cr_mult - 128);
++		W(h, CR_LUMA_MULT, fg->cr_luma_mult - 128);
++		W(h, CR_OFFSET, fg->cr_offset - 256);
++	} else {
++		W(h, CB_MULT, 0); W(h, CB_LUMA_MULT, 0); W(h, CB_OFFSET, 0);
++		W(h, CR_MULT, 0); W(h, CR_LUMA_MULT, 0); W(h, CR_OFFSET, 0);
++	}
++	W(h, OVERLAP_FLAG, !!(fg->flags & V4L2_AV1_FILM_GRAIN_FLAG_OVERLAP));
++	W(h, CLIP_TO_RESTRICTED_RANGE, !!(fg->flags & V4L2_AV1_FILM_GRAIN_FLAG_CLIP_TO_RESTRICTED_RANGE));
++	W(h, CHROMA_SCALING_FROM_LUMA, !!(fg->flags & V4L2_AV1_FILM_GRAIN_FLAG_CHROMA_SCALING_FROM_LUMA));
++	W(h, RANDOM_SEED, fg->grain_seed);
++
++	init_scaling_function(fg->point_y_value, fg->point_y_scaling, fg->num_y_points, mem->scaling_lut_y);
++	if (fg->flags & V4L2_AV1_FILM_GRAIN_FLAG_CHROMA_SCALING_FROM_LUMA) {
++		memcpy(mem->scaling_lut_cb, mem->scaling_lut_y, 256);
++		memcpy(mem->scaling_lut_cr, mem->scaling_lut_y, 256);
++	} else {
++		init_scaling_function(fg->point_cb_value, fg->point_cb_scaling, fg->num_cb_points, mem->scaling_lut_cb);
++		init_scaling_function(fg->point_cr_value, fg->point_cr_scaling, fg->num_cr_points, mem->scaling_lut_cr);
++	}
++
++	for (i = 0; i < V4L2_AV1_AR_COEFFS_SIZE; i++) {
++		if (i < 24)
++			(*ar_y)[i] = fg->ar_coeffs_y_plus_128[i] - 128;
++		(*ar_cb)[i] = fg->ar_coeffs_cb_plus_128[i] - 128;
++		(*ar_cr)[i] = fg->ar_coeffs_cr_plus_128[i] - 128;
++	}
++	lag = fg->ar_coeff_lag;
++	shift = fg->ar_coeff_shift_minus_6 + 6;
++	gss = fg->grain_scale_shift;
++	bitdepth = h->bit_depth;
++	center = 128 << (bitdepth - 8);
++	gmin = 0 - center;
++	gmax = (256 << (bitdepth - 8)) - 1 - center;
++
++	rockchip_av1_generate_luma_grain_block(luma, bitdepth, fg->num_y_points, gss,
++					       lag, ar_y, shift, gmin, gmax, fg->grain_seed);
++	rockchip_av1_generate_chroma_grain_block(luma, cb, cr, bitdepth,
++						 fg->num_y_points, fg->num_cb_points,
++						 fg->num_cr_points, gss, lag, ar_cb,
++						 ar_cr, shift, gmin, gmax,
++						 !!(fg->flags & V4L2_AV1_FILM_GRAIN_FLAG_CHROMA_SCALING_FROM_LUMA),
++						 fg->grain_seed);
++
++	for (i = 0; i < 64; i++)
++		for (j = 0; j < 64; j++)
++			mem->cropped_luma_grain_block[i * 64 + j] = (*luma)[i + 9][j + 9];
++	for (i = 0; i < 32; i++)
++		for (j = 0; j < 32; j++) {
++			mem->cropped_cb_grain_block[i * 32 + j] = (*cb)[i + 6][j + 6];
++			mem->cropped_cr_grain_block[i * 32 + j] = (*cr)[i + 6][j + 6];
++		}
++	WADDR(h, FILM_GRAIN_BASE, h->b.film_grain.dma);
++out:
++	kfree(ar_y); kfree(ar_cb); kfree(ar_cr);
++	kfree(luma); kfree(cb); kfree(cr);
++}
++
++/* ---- CDEF, loop restoration, superres, dimensions ----------------------- */
++
++static void set_cdef(struct h713_av1 *h)
++{
++	const struct v4l2_av1_cdef *cdef = &h->frame->cdef;
++	u32 lp = 0, cp = 0;
++	u16 ls = 0, cs = 0;
++	int i;
++
++	/* the sequence's switch, whatever this frame's strengths (the VPU981 tests those) */
++	W(h, ENABLE_CDEF, !!(h->seq->flags & V4L2_AV1_SEQUENCE_FLAG_ENABLE_CDEF));
++	W(h, CDEF_BITS, cdef->bits);
++	W(h, CDEF_DAMPING, cdef->damping_minus_3);
++	for (i = 0; i < (1 << cdef->bits); i++) {
++		lp |= cdef->y_pri_strength[i] << (i * 4);
++		ls |= (cdef->y_sec_strength[i] == 4 ? 3 : cdef->y_sec_strength[i]) << (i * 2);
++		cp |= cdef->uv_pri_strength[i] << (i * 4);
++		cs |= (cdef->uv_sec_strength[i] == 4 ? 3 : cdef->uv_sec_strength[i]) << (i * 2);
++	}
++	W(h, CDEF_LUMA_PRIMARY_STRENGTH, lp);
++	W(h, CDEF_LUMA_SECONDARY_STRENGTH, ls);
++	W(h, CDEF_CHROMA_PRIMARY_STRENGTH, cp);
++	W(h, CDEF_CHROMA_SECONDARY_STRENGTH, cs);
++}
++
++static void set_lr(struct h713_av1 *h)
++{
++	const struct v4l2_av1_loop_restoration *lr = &h->frame->loop_restoration;
++	u8 size[V4L2_AV1_NUM_PLANES_MAX] = { 3, 3, 3 };
++	u16 type = 0, unit = 0;
++	int i;
++
++	if (lr->flags & V4L2_AV1_LOOP_RESTORATION_FLAG_USES_LR) {
++		size[0] = 1 + lr->lr_unit_shift;
++		size[1] = size[2] = 1 + lr->lr_unit_shift - lr->lr_uv_shift;
++	}
++	for (i = 0; i < V4L2_AV1_NUM_PLANES_MAX; i++) {
++		type |= lr->frame_restoration_type[i] << (i * 2);
++		unit |= size[i] << (i * 2);
++	}
++	W(h, LR_TYPE, type);
++	W(h, LR_UNIT_SIZE, unit);
++}
++
++static void set_superres(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	u8 denom = SCALE_NUMERATOR;
++	int step_l = RS_SCALE_SUBPEL_BITS, step_c = RS_SCALE_SUBPEL_BITS;
++	int init_l = 0, init_c = 0, scaled = 0;
++	int min_w = min_t(u32, 16, f->upscaled_width);
++	int width;
++
++	if (f->flags & V4L2_AV1_FRAME_FLAG_USE_SUPERRES)
++		denom = f->superres_denom;
++	if (denom > SCALE_NUMERATOR) {
++		width = (f->upscaled_width * SCALE_NUMERATOR + denom / 2) / denom;
++		if (width < min_w)
++			width = min_w;
++		if (width != f->upscaled_width) {
++			int up_l = f->upscaled_width, down_l = width;
++			int down_c = (down_l + 1) >> 1, up_c = (up_l + 1) >> 1;
++			int sl = ((down_l << RS_SCALE_SUBPEL_BITS) + up_l / 2) / up_l;
++			int sc = ((down_c << RS_SCALE_SUBPEL_BITS) + up_c / 2) / up_c;
++			int el = up_l * sl - (down_l << RS_SCALE_SUBPEL_BITS);
++			int ec = up_c * sc - (down_c << RS_SCALE_SUBPEL_BITS);
++
++			scaled = 1;
++			init_l = ((-((up_l - down_l) << (RS_SCALE_SUBPEL_BITS - 1)) + up_l / 2) / up_l +
++				  (1 << (RS_SCALE_EXTRA_BITS - 1)) - el / 2) & RS_SCALE_SUBPEL_MASK;
++			init_c = ((-((up_c - down_c) << (RS_SCALE_SUBPEL_BITS - 1)) + up_c / 2) / up_c +
++				  (1 << (RS_SCALE_EXTRA_BITS - 1)) - ec / 2) & RS_SCALE_SUBPEL_MASK;
++			step_l = sl;
++			step_c = sc;
++		}
++	}
++	W(h, SUPERRES_PIC_WIDTH, f->upscaled_width);
++	W(h, SCALE_DENOM_MINUS9, (f->flags & V4L2_AV1_FRAME_FLAG_USE_SUPERRES) ?
++				 f->superres_denom - SUPERRES_SCALE_DENOMINATOR_MIN :
++				 f->superres_denom);
++	W(h, SUPERRES_LUMA_STEP, step_l);
++	W(h, SUPERRES_CHROMA_STEP, step_c);
++	W(h, SUPERRES_INIT_LUMA_SUBPEL_X, init_l);
++	W(h, SUPERRES_INIT_CHROMA_SUBPEL_X, init_c);
++	W(h, SUPERRES_IS_SCALED, scaled);
++}
++
++static void set_picture_dimensions(struct h713_av1 *h)
++{
++	int w = h->frame->frame_width_minus_1 + 1;
++	int ht = h->frame->frame_height_minus_1 + 1;
++
++	/*
++	 * Pixels, not 8x8 blocks as on the VPU981 (vendor: 0x500 x 0x2d0), but
++	 * rounded up to whole 8x8 blocks, with the padding that adds alongside.
++	 */
++	W(h, PIC_WIDTH, ALIGN(w, 8));
++	W(h, PIC_HEIGHT, ALIGN(ht, 8));
++	W(h, PIC_WIDTH_PAD, ALIGN(w, 8) - w);
++	W(h, PIC_HEIGHT_PAD, ALIGN(ht, 8) - ht);
++	W(h, SLICE_HEIGHT, ALIGN(ht, 8));
++	W(h, PP_PIC_WIDTH, ALIGN(w, 8));
++	W(h, PP_PIC_HEIGHT, ALIGN(ht, 8));
++	set_superres(h);
++}
++
++/* ---- motion-field projection (as VPU981) -------------------------------- */
++
++static const struct h713_av1_field mf_off[3][7] = {
++	{ H713_AV1_MF1_LAST_OFFSET, H713_AV1_MF1_LAST2_OFFSET, H713_AV1_MF1_LAST3_OFFSET,
++	  H713_AV1_MF1_GOLDEN_OFFSET, H713_AV1_MF1_BWDREF_OFFSET, H713_AV1_MF1_ALTREF2_OFFSET,
++	  H713_AV1_MF1_ALTREF_OFFSET },
++	{ H713_AV1_MF2_LAST_OFFSET, H713_AV1_MF2_LAST2_OFFSET, H713_AV1_MF2_LAST3_OFFSET,
++	  H713_AV1_MF2_GOLDEN_OFFSET, H713_AV1_MF2_BWDREF_OFFSET, H713_AV1_MF2_ALTREF2_OFFSET,
++	  H713_AV1_MF2_ALTREF_OFFSET },
++	{ H713_AV1_MF3_LAST_OFFSET, H713_AV1_MF3_LAST2_OFFSET, H713_AV1_MF3_LAST3_OFFSET,
++	  H713_AV1_MF3_GOLDEN_OFFSET, H713_AV1_MF3_BWDREF_OFFSET, H713_AV1_MF3_ALTREF2_OFFSET,
++	  H713_AV1_MF3_ALTREF_OFFSET },
++};
++static const struct h713_av1_field cur_off[7] = {
++	H713_AV1_CUR_LAST_OFFSET, H713_AV1_CUR_LAST2_OFFSET, H713_AV1_CUR_LAST3_OFFSET,
++	H713_AV1_CUR_GOLDEN_OFFSET, H713_AV1_CUR_BWDREF_OFFSET, H713_AV1_CUR_ALTREF2_OFFSET,
++	H713_AV1_CUR_ALTREF_OFFSET };
++static const struct h713_av1_field cur_roff[7] = {
++	H713_AV1_CUR_LAST_ROFFSET, H713_AV1_CUR_LAST2_ROFFSET, H713_AV1_CUR_LAST3_ROFFSET,
++	H713_AV1_CUR_GOLDEN_ROFFSET, H713_AV1_CUR_BWDREF_ROFFSET, H713_AV1_CUR_ALTREF2_ROFFSET,
++	H713_AV1_CUR_ALTREF_ROFFSET };
++static const struct h713_av1_field use_tmv[3] = {
++	H713_AV1_USE_TEMPORAL0_MVS, H713_AV1_USE_TEMPORAL1_MVS, H713_AV1_USE_TEMPORAL2_MVS };
++/* the MVs each projection reads: mf1..3 -> temporal, temporal1, temporal2 */
++static const struct h713_av1_field tmv_base[3] = {
++	H713_AV1_TEMPORAL_READ_BASE, H713_AV1_TEMPORAL1_READ_BASE, H713_AV1_TEMPORAL2_READ_BASE };
++static const struct h713_av1_field mf_type[3] = {
++	H713_AV1_MF1_TYPE, H713_AV1_MF2_TYPE, H713_AV1_MF3_TYPE };
++
++static bool mf_candidate(struct h713_av1 *h, int ref, int cur_mi_cols, int cur_mi_rows)
++{
++	int idx = get_frame_index(h, ref);
++
++	return idx >= 0 && h->refs[idx].mi_cols == cur_mi_cols &&
++	       h->refs[idx].mi_rows == cur_mi_rows && !IS_INTRA(h->refs[idx].frame_type);
++}
++
++static void set_other_frames(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	bool use_ref_mvs = !!(f->flags & V4L2_AV1_FRAME_FLAG_USE_REF_FRAME_MVS);
++	int cur_off_hint = f->order_hint;
++	int alt_o = get_order_hint(h, ALT_BUF_IDX), gld_o = get_order_hint(h, GLD_BUF_IDX);
++	int bwd_o = get_order_hint(h, BWD_BUF_IDX), alt2_o = get_order_hint(h, ALT2_BUF_IDX);
++	int cur_mi_cols = DIV_ROUND_UP(f->frame_width_minus_1 + 1, 8);
++	int cur_mi_rows = DIV_ROUND_UP(f->frame_height_minus_1 + 1, 8);
++	int sel[3] = { 0, 0, 0 }, types[3] = { 0, 0, 0 };
++	int co[7], cro[7];
++	int stamp = 2, n = 0, rf, idx, k;
++
++	idx = get_frame_index(h, LST_BUF_IDX);
++	if (idx >= 0) {
++		bool overlay = h->refs[idx].order_hints[V4L2_AV1_REF_ALTREF_FRAME] == gld_o;
++
++		if (!overlay && mf_candidate(h, LST_BUF_IDX, cur_mi_cols, cur_mi_rows)) {
++			types[n] = V4L2_AV1_REF_LAST_FRAME;
++			sel[n++] = LST_BUF_IDX;
++		}
++		stamp--;
++	}
++	if (get_dist(h, bwd_o, cur_off_hint) > 0 &&
++	    mf_candidate(h, BWD_BUF_IDX, cur_mi_cols, cur_mi_rows)) {
++		types[n] = V4L2_AV1_REF_BWDREF_FRAME;
++		sel[n++] = BWD_BUF_IDX;
++		stamp--;
++	}
++	if (get_dist(h, alt2_o, cur_off_hint) > 0 &&
++	    mf_candidate(h, ALT2_BUF_IDX, cur_mi_cols, cur_mi_rows)) {
++		types[n] = V4L2_AV1_REF_ALTREF2_FRAME;
++		sel[n++] = ALT2_BUF_IDX;
++		stamp--;
++	}
++	if (get_dist(h, alt_o, cur_off_hint) > 0 && stamp >= 0 &&
++	    mf_candidate(h, ALT_BUF_IDX, cur_mi_cols, cur_mi_rows)) {
++		types[n] = V4L2_AV1_REF_ALTREF_FRAME;
++		sel[n++] = ALT_BUF_IDX;
++		stamp--;
++	}
++	if (stamp >= 0 && n < 3 && mf_candidate(h, LST2_BUF_IDX, cur_mi_cols, cur_mi_rows)) {
++		types[n] = V4L2_AV1_REF_LAST2_FRAME;
++		sel[n++] = LST2_BUF_IDX;
++		stamp--;
++	}
++
++	for (rf = 0; rf < V4L2_AV1_TOTAL_REFS_PER_FRAME - 1; rf++) {
++		if (get_frame_index(h, rf) >= 0) {
++			int oh = get_order_hint(h, rf);
++
++			co[rf] = get_dist(h, cur_off_hint, oh);
++			cro[rf] = get_dist(h, oh, cur_off_hint);
++		} else {
++			co[rf] = cro[rf] = 0;
++		}
++	}
++
++	/* the vendor points the first MV read at LAST's MVs even when unused */
++	idx = get_frame_index(h, LST_BUF_IDX);
++	if (f->flags & V4L2_AV1_FRAME_FLAG_ALLOW_INTRABC)
++		idx = h->cur;	/* intra block copy: the frame is its own reference */
++	if (idx >= 0)
++		WADDR(h, TEMPORAL_READ_BASE, h->refs[idx].bufs.mv);
++	for (k = 0; k < 3; k++) {
++		h713_av1_set(h->regs, use_tmv[k], 0);
++		for (rf = 0; rf < 7; rf++)
++			h713_av1_set(h->regs, mf_off[k][rf], 0);
++		if (use_ref_mvs && n > k &&
++		    co[types[k] - V4L2_AV1_REF_LAST_FRAME] <= MAX_FRAME_DISTANCE &&
++		    co[types[k] - V4L2_AV1_REF_LAST_FRAME] >= -MAX_FRAME_DISTANCE) {
++			int oh = get_order_hint(h, sel[k]);
++			int ri = get_frame_index(h, sel[k]);
++			u32 *ohs = h->refs[ri].order_hints;
++
++			h713_av1_set(h->regs, use_tmv[k], 1);
++			h713_av1_set(h->regs, tmv_base[k], lower_32_bits(h->refs[ri].bufs.mv));
++			for (rf = 0; rf < 7; rf++)
++				h713_av1_set(h->regs, mf_off[k][rf],
++					     get_dist(h, oh, ohs[V4L2_AV1_REF_LAST_FRAME + rf]));
++		}
++		/* the AV1 reference type itself; the VPU981 writes it minus one */
++		h713_av1_set(h->regs, mf_type[k], types[k]);
++	}
++	for (rf = 0; rf < 7; rf++) {
++		h713_av1_set(h->regs, cur_off[rf], co[rf]);
++		h713_av1_set(h->regs, cur_roff[rf], cro[rf]);
++	}
++}
++
++/*
++ * The reference decompressor. References are stored compressed (luma, Cb and
++ * Cr streams back to back in the frame's rec buffer, one header buffer), and
++ * the core fetches them through a separate decompressor whose configuration
++ * it reads from DRAM at pdec_config_base: PdecSwRegs, 496 bytes, one "input"
++ * per AV1 reference (in0 = LAST .. in6 = ALTREF). It mirrors the vendor's
++ * AsicRefDecompressionSetup (MapPdecGen/Dim/Entropy/BaseSwRegs,
++ * SetupPdecBaseRegs, WritePdecRegsToDram). Intra frames get none.
++ */
++#define PDEC_ENT(i, p) { H713_PDEC_IN##i##_PLANE##p##_ENTROPY0, \
++	H713_PDEC_IN##i##_PLANE##p##_ENTROPY1, H713_PDEC_IN##i##_PLANE##p##_ENTROPY2, \
++	H713_PDEC_IN##i##_PLANE##p##_ENTROPY3, H713_PDEC_IN##i##_PLANE##p##_ENTROPY4, \
++	H713_PDEC_IN##i##_PLANE##p##_ENTROPY5, H713_PDEC_IN##i##_PLANE##p##_ENTROPY6, \
++	H713_PDEC_IN##i##_PLANE##p##_ENTROPY7 }
++#define PDEC_PLANES(i, f) { H713_PDEC_IN##i##_PLANE0_##f, \
++	H713_PDEC_IN##i##_PLANE1_##f, H713_PDEC_IN##i##_PLANE2_##f }
++#define PDEC_IN(i) { \
++	.strm = PDEC_PLANES(i, STRM_BASE), .hdr = PDEC_PLANES(i, HDR_BASE), \
++	.w = PDEC_PLANES(i, WIDTH), .h = PDEC_PLANES(i, HEIGHT), \
++	.ent = { PDEC_ENT(i, 0), PDEC_ENT(i, 1), PDEC_ENT(i, 2) } }
++
++static const struct {
++	struct h713_av1_field strm[3], hdr[3], w[3], h[3], ent[3][8];
++} pdec_in[7] = {
++	PDEC_IN(0), PDEC_IN(1), PDEC_IN(2), PDEC_IN(3),
++	PDEC_IN(4), PDEC_IN(5), PDEC_IN(6),
++};
++
++/* Worst-case compressed bytes per 64x4 luma / 32x4 chroma block (GetMaxCBSizeBytes). */
++#define PDEC_CB_LUMA_BYTES	384
++#define PDEC_CB_CHROMA_BYTES	192
++
++static void set_pdec(struct h713_av1 *h, const int *idx)
++{
++	u32 p[H713_PDEC_SIZE / 4] = { 0 };
++	int i, j;
++
++	/*
++	 * Constants outside any printed member: the header/cache/bit-depth
++	 * config bits (bits 0-9) and sw_cb_size = {0, 4, 4} (bits 3780-3788).
++	 */
++	p[0] |= 0x3aa;
++	p[3785 / 32] |= BIT(3785 % 32);
++	p[3788 / 32] |= BIT(3788 % 32);
++	/* one more unnamed bit, set only when the frame is its own reference */
++	if (h->frame->flags & V4L2_AV1_FRAME_FLAG_ALLOW_INTRABC)
++		p[3879 / 32] |= BIT(3879 % 32);
++
++	/* MapPdecGenSwRegs: fixed routing, plus three bits of the main image */
++	h713_av1_set(p, H713_PDEC_PDEC_E, 1);
++	h713_av1_set(p, H713_PDEC_DEDICATED_PDEC_E, !h713_av1_get(h->regs, H713_AV1_MODE_DEC));
++	h713_av1_set(p, H713_PDEC_CB_HEADER_DRAM_ID, 6);
++	h713_av1_set(p, H713_PDEC_CB_STRM_DRAM_ID, 2);
++	h713_av1_set(p, H713_PDEC_CB_PLANE_MODE, 1);
++	h713_av1_set(p, H713_PDEC_CB_HEADER_DRAM_SEL, 1);
++	h713_av1_set(p, H713_PDEC_BIT_DEPTH, h713_av1_get(h->regs, H713_AV1_BITDEPTH));
++	h713_av1_set(p, H713_PDEC_FLUSH_ALL, h713_av1_get(h->regs, H713_AV1_MODE_DEC));
++	h713_av1_set(p, H713_PDEC_CHROMA_SKIP, h713_av1_get(h->regs, H713_AV1_CODING_MODE) == 2);
++
++	for (i = 0; i < 7; i++) {
++		const struct h713_av1_ref *r = &h->refs[idx[i]];
++		u32 w = h713_av1_get(h->regs, ref_width[i]);
++		u32 ht = h713_av1_get(h->regs, ref_height[i]);
++		u32 pw[3], ph[3], base;
++
++		/* MapPdecDimSwRegs: 8-aligned luma, chroma width 4-aligned */
++		pw[0] = (w + 7) & 0x3ff8;
++		ph[0] = (ht + 7) & ~7u;
++		pw[1] = pw[2] = ((w + 7) >> 1) & 0x1ffc;
++		ph[1] = ph[2] = ph[0] >> 1;
++
++		/* SetupPdecBaseRegs: the three planes' streams back to back */
++		base = lower_32_bits(r->bufs.rec);
++		for (j = 0; j < 3; j++) {
++			h713_av1_set(p, pdec_in[i].w[j], pw[j]);
++			h713_av1_set(p, pdec_in[i].h[j], ph[j]);
++			h713_av1_set(p, pdec_in[i].strm[j], base);
++			/*
++			 * One header buffer for all planes. The vendor fills
++			 * plane 1/2 before this frame's plane 0, so its copies
++			 * lag a frame (0 on frame 1) and evidently go unused.
++			 */
++			h713_av1_set(p, pdec_in[i].hdr[j], lower_32_bits(r->bufs.hdr));
++			if (j == 0)
++				base += DIV_ROUND_UP(pw[0], 64) * DIV_ROUND_UP(ph[0], 4) *
++					PDEC_CB_LUMA_BYTES;
++			else
++				base += DIV_ROUND_UP(pw[j], 32) * DIV_ROUND_UP(ph[j], 4) *
++					PDEC_CB_CHROMA_BYTES;
++		}
++
++		/* MapPdecEntropySwRegs: the modes this reference was written with */
++		for (j = 0; j < 8; j++) {
++			h713_av1_set(p, pdec_in[i].ent[0][j], r->fc_luma[j] & 7);
++			h713_av1_set(p, pdec_in[i].ent[1][j], r->fc_chroma[j] & 7);
++			h713_av1_set(p, pdec_in[i].ent[2][j], r->fc_chroma[j] & 7);
++		}
++	}
++
++	memset(h->b.pdec.cpu, 0, h->b.pdec.size);
++	memcpy(h->b.pdec.cpu, p, sizeof(p));
++	WADDR(h, PDEC_CONFIG_BASE, h->b.pdec.dma);
++}
++
++static void set_reference_frames(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	bool intrabc = !!(f->flags & V4L2_AV1_FRAME_FLAG_ALLOW_INTRABC);
++	bool scale = false;
++	int idx_of[7];
++	int i;
++
++	if (IS_INTRA(f->frame_type) && !intrabc)
++		return;
++
++	set_frame_sign_bias(h);
++	for (i = V4L2_AV1_REF_LAST_FRAME; i < V4L2_AV1_TOTAL_REFS_PER_FRAME; i++) {
++		int ref = i - 1, idx = 0, w, ht;
++
++		if (intrabc) {
++			idx = h->cur;
++			w = f->frame_width_minus_1 + 1;
++			ht = f->frame_height_minus_1 + 1;
++		} else {
++			if (get_frame_index(h, ref) > 0)
++				idx = get_frame_index(h, ref);
++			w = h->refs[idx].width;
++			ht = h->refs[idx].height;
++		}
++		scale |= set_ref(h, ref, idx, w, ht);
++		h713_av1_set(h->regs, ref_sign[ref], h->ref_frame_sign_bias[i]);
++		idx_of[ref] = idx;
++	}
++	W(h, REF_SCALING_ENABLE, scale);
++	for (i = 0; i < 7; i++)
++		h713_av1_set(h->regs, ref_gm[i], f->global_motion.type[V4L2_AV1_REF_LAST_FRAME + i]);
++
++	set_other_frames(h);
++	set_pdec(h, idx_of);
++}
++
++/* ---- the rest of the frame header --------------------------------------- */
++
++static int hw_tx_mode(enum v4l2_av1_tx_mode m)
++{
++	switch (m) {
++	case V4L2_AV1_TX_MODE_ONLY_4X4:
++		return H713_TX_ONLY_4X4;
++	case V4L2_AV1_TX_MODE_SELECT:
++		return H713_TX_SELECT;
++	default:
++		return H713_TX_32X32;
++	}
++}
++
++static void set_parameters(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	const struct v4l2_ctrl_av1_sequence *s = h->seq;
++	const struct v4l2_av1_quantization *q = &f->quantization;
++
++	W(h, SKIP_MODE_FLAG, !!(f->flags & V4L2_AV1_FRAME_FLAG_SKIP_MODE_PRESENT));
++	W(h, TEMPORAL_MV_E, !!(f->flags & V4L2_AV1_FRAME_FLAG_USE_REF_FRAME_MVS));
++	W(h, DELTA_LF_RES_LOG, f->loop_filter.delta_lf_res);
++	W(h, DELTA_LF_MULTI, !!(f->loop_filter.flags & V4L2_AV1_LOOP_FILTER_FLAG_DELTA_LF_MULTI));
++	W(h, DELTA_LF_PRESENT, !!(f->loop_filter.flags & V4L2_AV1_LOOP_FILTER_FLAG_DELTA_LF_PRESENT));
++	W(h, DISABLE_CDF_UPDATE, !!(f->flags & V4L2_AV1_FRAME_FLAG_DISABLE_CDF_UPDATE));
++	W(h, SHOW_FRAME, !!(f->flags & V4L2_AV1_FRAME_FLAG_SHOW_FRAME));
++	W(h, SECONDARY_OUTPUT_HBD, h->bit_depth > 8);
++	/* no raster for a frame that can never be displayed */
++	W(h, SECONDARY_OUTPUT_E, !!(f->flags & (V4L2_AV1_FRAME_FLAG_SHOW_FRAME |
++						V4L2_AV1_FRAME_FLAG_SHOWABLE_FRAME)));
++	W(h, SWITCHABLE_MOTION_MODE, !!(f->flags & V4L2_AV1_FRAME_FLAG_IS_MOTION_MODE_SWITCHABLE));
++	W(h, ALLOW_WARPED_MOTION, !!(f->flags & V4L2_AV1_FRAME_FLAG_ALLOW_WARPED_MOTION));
++	W(h, ALLOW_MASKED_COMPOUND, !!(s->flags & V4L2_AV1_SEQUENCE_FLAG_ENABLE_MASKED_COMPOUND));
++	W(h, ALLOW_INTERINTRA, !!(s->flags & V4L2_AV1_SEQUENCE_FLAG_ENABLE_INTERINTRA_COMPOUND));
++	W(h, ENABLE_INTRA_EDGE_FILTER, !!(s->flags & V4L2_AV1_SEQUENCE_FLAG_ENABLE_INTRA_EDGE_FILTER));
++	W(h, ALLOW_FILTER_INTRA, !!(s->flags & V4L2_AV1_SEQUENCE_FLAG_ENABLE_FILTER_INTRA));
++	W(h, ENABLE_JNT_COMP, !!(s->flags & V4L2_AV1_SEQUENCE_FLAG_ENABLE_JNT_COMP));
++	W(h, ENABLE_DUAL_FILTER, !!(s->flags & V4L2_AV1_SEQUENCE_FLAG_ENABLE_DUAL_FILTER));
++	W(h, REDUCED_TX_SET_USED, !!(f->flags & V4L2_AV1_FRAME_FLAG_REDUCED_TX_SET));
++	W(h, ALLOW_SCREEN_CONTENT_TOOLS, !!(f->flags & V4L2_AV1_FRAME_FLAG_ALLOW_SCREEN_CONTENT_TOOLS));
++	W(h, ALLOW_INTRABC, !!(f->flags & V4L2_AV1_FRAME_FLAG_ALLOW_INTRABC));
++	/* the spec forces it on intra frames; the vendor writes 0 there */
++	W(h, FORCE_INTEGER_MV, !IS_INTRA(f->frame_type) &&
++			       (f->flags & V4L2_AV1_FRAME_FLAG_ALLOW_SCREEN_CONTENT_TOOLS) &&
++			       (f->flags & V4L2_AV1_FRAME_FLAG_FORCE_INTEGER_MV));
++	W(h, MONOCHROME, !!(s->flags & V4L2_AV1_SEQUENCE_FLAG_MONO_CHROME));
++	W(h, DELTA_Q_RES_LOG, q->delta_q_res);
++	W(h, DELTA_Q_PRESENT, !!(q->flags & V4L2_AV1_QUANTIZATION_FLAG_DELTA_Q_PRESENT));
++	W(h, PIC_TYPE, !IS_INTRA(f->frame_type));
++	W(h, QUANT_BASE_QINDEX, q->base_q_idx);
++	W(h, BITDEPTH, h->bit_depth > 8);
++	W(h, MCOMP_FILTER_TYPE, f->interpolation_filter);
++	W(h, HIGH_PREC_MV_E, !!(f->flags & V4L2_AV1_FRAME_FLAG_ALLOW_HIGH_PRECISION_MV));
++	W(h, HYBRID_PRED_ENABLE, !!(f->flags & V4L2_AV1_FRAME_FLAG_REFERENCE_SELECT));
++	W(h, TRANSFORM_MODE, hw_tx_mode(f->tx_mode));
++	W(h, SB_SIZE, !!(s->flags & V4L2_AV1_SEQUENCE_FLAG_USE_128X128_SUPERBLOCK));
++	W(h, QUANT_DELTA_Y_DC, q->delta_q_y_dc);
++	W(h, QUANT_DELTA_UV_DC, q->delta_q_u_dc);
++	W(h, QUANT_DELTA_UV_AC, q->delta_q_u_ac);
++	W(h, QUANT_DELTA_V_DC, q->delta_q_v_dc);
++	W(h, QUANT_DELTA_V_AC, q->delta_q_v_ac);
++	if (q->flags & V4L2_AV1_QUANTIZATION_FLAG_USING_QMATRIX) {
++		W(h, QMLEVEL_Y, q->qm_y); W(h, QMLEVEL_U, q->qm_u); W(h, QMLEVEL_V, q->qm_v);
++	} else {
++		W(h, QMLEVEL_Y, 0xf); W(h, QMLEVEL_U, 0xf); W(h, QMLEVEL_V, 0xf);
++	}
++	W(h, LOSSLESS_E, is_lossless(h));
++	/* raw, 0 when unused (the VPU981 writes 1 there; the vendor does not) */
++	W(h, SKIP_REF0, f->skip_mode_frame[0]);
++	W(h, SKIP_REF1, f->skip_mode_frame[1]);
++}
++
++/* ---- buffers and fixed configuration ------------------------------------ */
++
++static void set_buffers(struct h713_av1 *h)
++{
++	u32 off = tile_data_start(h);
++
++	/*
++	 * input: a 32-byte aligned base, the tile data's byte offset from it in
++	 * strm_start_pos (5 bits), stream_len counted from the base
++	 */
++	WADDR(h, OUT_STREAM0_BASE, (h->src_dma + off) & ~0x1full);
++	W(h, STRM_START_POS, (h->src_dma + off) & 0x1f);
++	W(h, STREAM_LEN, h->src_len - off + ((h->src_dma + off) & 0x1f));
++
++	/* this frame: compressed reconstruction, its header, its MVs */
++	WADDR(h, REC_LUM_BASE, h->refs[h->cur].bufs.rec);
++	WADDR(h, REC_CH_BASE, h->refs[h->cur].bufs.hdr);
++	WADDR(h, REC_LUM_COMP_BASE, h->refs[h->cur].bufs.hdr);
++	WADDR(h, TEMPORAL_WRITE_BASE, h->refs[h->cur].bufs.mv);
++
++	/* display: NV12 through the secondary output */
++	WADDR(h, OUT_SECONDARY_LU_BASE, h->dst_luma);
++	WADDR(h, OUT_SECONDARY_CB_BASE, h->dst_chroma);
++	WADDR(h, OUT_SECONDARY_CR_BASE, h->dst_chroma);
++	WADDR(h, OUT_SECONDARY_COLBUF_BASE, h->b.sec_colbuf.dma);
++
++	/* fixed-size working buffers, as the vendor wires them */
++	WADDR(h, REF0_SINDEX_BASE, h->b.scratch.dma);
++	WADDR(h, OUT_SCALED_LU_BASE, h->b.scratch.dma + H713_AV1_SCRATCH_SCALED_OFF);
++	WADDR(h, FILTER_CTRL_INFO_COLBUF_BASE, h->b.filter_ctrl.dma);
++	WADDR(h, FILTER_LR_PARAMS_COLBUF_BASE, h->b.filter_ctrl.dma + H713_AV1_FILTER_LR_OFF);
++	WADDR(h, FILM_GRAIN_COLBUF_BASE, h->b.fg_colbuf.dma);
++	WADDR(h, FILTER_CDEF_DIR_COLBUF_BASE, h->b.cdef_colbuf.dma);
++	WADDR(h, REC_SINDEX_BASE, h->b.rec_sindex.dma);
++}
++
++/* Constants of every stock register image (tools/re/av1 captures). */
++static void set_fixed(struct h713_av1 *h)
++{
++	W(h, MODE_DEC, 1);
++	W(h, CODING_MODE, 1);
++	W(h, ENC_IRQ_ENABLE, 1);
++	W(h, CLOCK_GATE_ENABLE, 1);
++	W(h, TIMEOUT_ENABLE, 1);
++	W(h, TIMEOUT_LIMIT, 0x1000000);
++	W(h, REF_COMPRESS_E, 1);
++	W(h, SECONDARY_OUTPUT_FORMAT, 1);	/* NV12 */
++	W(h, ENC_OUT_SWAP, 0x1f);
++	W(h, AXI_RD_MAXBURST, 0x20);
++	W(h, AXI_WR_MAXBURST, 0x100);
++	W(h, ME_SUPER_INDEX_DISABLE, 1);
++	W(h, DEC_STREAM_ERROR_DETECTION, 1);
++	W(h, DEC_INVALID_MARKER_DETECTION, 1);
++	W(h, DEC_MV_ERROR_DETECTION, 1);
++	W(h, DEC_COEFF_ERROR_DETECTION, 1);
++	W(h, FC_CB_SIZE, 1);
++	W(h, FC_PLANE_MODE, 1);
++}
++
++/*
++ * Reference compression. The core compresses each reconstructed frame with
++ * one of eight entropy modes per 4x4-ish block class and counts how often it
++ * picked each; the vendor (FcUpdateModes) re-ranks the modes by those counts
++ * after every frame, most-used first, and the next frame codes with that
++ * ranking. The decompressor needs to know the ranking each reference was
++ * written with, so it travels with the frame (refs[].fc_*, used by pdec).
++ * The initial ranking is the vendor's .rodata table, set once per stream.
++ */
++static const u8 fc_default_modes[16] = {
++	2, 3, 4, 1, 0, 5, 6, 7,		/* luma */
++	1, 2, 0, 3, 4, 5, 6, 7,		/* chroma */
++};
++
++static const struct h713_av1_field fc_cur[16] = {
++	H713_AV1_FC_CUR_LUMA_ENTROPY0, H713_AV1_FC_CUR_LUMA_ENTROPY1,
++	H713_AV1_FC_CUR_LUMA_ENTROPY2, H713_AV1_FC_CUR_LUMA_ENTROPY3,
++	H713_AV1_FC_CUR_LUMA_ENTROPY4, H713_AV1_FC_CUR_LUMA_ENTROPY5,
++	H713_AV1_FC_CUR_LUMA_ENTROPY6, H713_AV1_FC_CUR_LUMA_ENTROPY7,
++	H713_AV1_FC_CUR_CHROMA_ENTROPY0, H713_AV1_FC_CUR_CHROMA_ENTROPY1,
++	H713_AV1_FC_CUR_CHROMA_ENTROPY2, H713_AV1_FC_CUR_CHROMA_ENTROPY3,
++	H713_AV1_FC_CUR_CHROMA_ENTROPY4, H713_AV1_FC_CUR_CHROMA_ENTROPY5,
++	H713_AV1_FC_CUR_CHROMA_ENTROPY6, H713_AV1_FC_CUR_CHROMA_ENTROPY7,
++};
++
++static const struct h713_av1_field fc_count[16] = {
++	H713_AV1_FC_LUMA_CUR_ENTROPY0_COUNT, H713_AV1_FC_LUMA_CUR_ENTROPY1_COUNT,
++	H713_AV1_FC_LUMA_CUR_ENTROPY2_COUNT, H713_AV1_FC_LUMA_CUR_ENTROPY3_COUNT,
++	H713_AV1_FC_LUMA_CUR_ENTROPY4_COUNT, H713_AV1_FC_LUMA_CUR_ENTROPY5_COUNT,
++	H713_AV1_FC_LUMA_CUR_ENTROPY6_COUNT, H713_AV1_FC_LUMA_CUR_ENTROPY7_COUNT,
++	H713_AV1_FC_CHROMA_CUR_ENTROPY0_COUNT, H713_AV1_FC_CHROMA_CUR_ENTROPY1_COUNT,
++	H713_AV1_FC_CHROMA_CUR_ENTROPY2_COUNT, H713_AV1_FC_CHROMA_CUR_ENTROPY3_COUNT,
++	H713_AV1_FC_CHROMA_CUR_ENTROPY4_COUNT, H713_AV1_FC_CHROMA_CUR_ENTROPY5_COUNT,
++	H713_AV1_FC_CHROMA_CUR_ENTROPY6_COUNT, H713_AV1_FC_CHROMA_CUR_ENTROPY7_COUNT,
++};
++
++static void set_fc_modes(struct h713_av1 *h)
++{
++	struct h713_av1_ref *r = &h->refs[h->cur];
++	int i;
++
++	for (i = 0; i < 16; i++)
++		h713_av1_set(h->regs, fc_cur[i], h->fc_modes[i] & 7);
++	memcpy(r->fc_luma, h->fc_modes, 8);
++	memcpy(r->fc_chroma, h->fc_modes + 8, 8);
++}
++
++/*
++ * Rank one plane's eight modes by count, descending. For ties the vendor's
++ * std::sort (libc++: sorting network + insertion sort for n = 8) keeps index
++ * order, so a stable insertion sort reproduces it; all-zero counts give the
++ * identity ranking, which is what the vendor shows after frame 0 in emulation.
++ */
++static void fc_rank(const u32 *counts, u8 *modes)
++{
++	u8 idx[8];
++	int i, j;
++
++	for (i = 0; i < 8; i++) {
++		u8 k = i;
++
++		for (j = i; j > 0 && counts[k] > counts[idx[j - 1]]; j--)
++			idx[j] = idx[j - 1];
++		idx[j] = k;
++	}
++	memcpy(modes, idx, 8);
++}
++
++static void update_fc_modes(struct h713_av1 *h)
++{
++	u32 counts[16];
++	int i;
++
++	for (i = 0; i < 16; i++)
++		counts[i] = h713_av1_get(h->regs, fc_count[i]);
++	fc_rank(counts, h->fc_modes);
++	fc_rank(counts + 8, h->fc_modes + 8);
++}
++
++int h713_av1_gen_init(struct h713_av1 *h)
++{
++	struct h713_av1_cdf *c = h->cdf;
++
++	memset(h->refs, 0, sizeof(h->refs));
++	h->prev_width = h->prev_height = 0;
++	rockchip_av1_set_default_cdfs(&c->default_cdfs, &c->default_cdfs_ndvc);
++	memcpy(h->fc_modes, fc_default_modes, sizeof(h->fc_modes));
++	return 0;
++}
++
++void h713_av1_frame_bufs_size(int width, int height, size_t *rec, size_t *hdr, size_t *mv)
++{
++	int sb_cols = DIV_ROUND_UP(width, 64), sb_rows = DIV_ROUND_UP(height, 64);
++
++	*rec = (size_t)sb_cols * sb_rows * 0x2400;
++	*hdr = (size_t)DIV_ROUND_UP(sb_cols, 8) * (ALIGN(height, 64) / 2) * 0x40;
++	*mv = (size_t)sb_cols * sb_rows * 0x400;
++}
++
++/*
++ * What the V4L2 core does not check in the controls and this code or the
++ * core would trip over: indices it uses unchecked, a tile layout larger than
++ * the tile buffer, tile data outside the bitstream buffer, and coding the
++ * core does not do (it is 4:2:0/4:0:0, 8 or 10 bit).
++ */
++static int check_frame(struct h713_av1 *h)
++{
++	const struct v4l2_ctrl_av1_frame *f = h->frame;
++	const struct v4l2_av1_tile_info *ti = &f->tile_info;
++	u32 ntiles = (u32)ti->tile_cols * ti->tile_rows;
++	u32 base, i;
++
++	if (h->seq->seq_profile != 0 || (h->seq->bit_depth != 8 && h->seq->bit_depth != 10) ||
++	    h->seq->order_hint_bits > 8)
++		return -EINVAL;
++	if (f->primary_ref_frame > AV1_PRIMARY_REF_NONE)
++		return -EINVAL;
++	if (f->primary_ref_frame < AV1_PRIMARY_REF_NONE && !IS_INTRA(f->frame_type) &&
++	    (f->ref_frame_idx[f->primary_ref_frame] < 0 ||
++	     f->ref_frame_idx[f->primary_ref_frame] >= H713_AV1_NUM_REF_FRAMES))
++		return -EINVAL;
++	if (!ti->tile_cols || !ti->tile_rows || ti->tile_cols > V4L2_AV1_MAX_TILE_COLS ||
++	    ti->tile_rows > V4L2_AV1_MAX_TILE_ROWS || ntiles > H713_AV1_MAX_TILES ||
++	    ti->context_update_tile_id >= ntiles)
++		return -EINVAL;
++	if (!h->tge || h->num_tge < ntiles)
++		return -EINVAL;
++	if (ntiles > 1 && (ti->tile_size_bytes < 1 || ti->tile_size_bytes > 4 ||
++			   h->tge[0].tile_offset < ti->tile_size_bytes))
++		return -EINVAL;
++	base = tile_data_start(h);
++	for (i = 0; i < ntiles; i++)
++		if (h->tge[i].tile_offset < base || h->tge[i].tile_offset > h->src_len ||
++		    h->tge[i].tile_size > h->src_len - h->tge[i].tile_offset)
++			return -EINVAL;
++	return 0;
++}
++
++int h713_av1_gen_slot(struct h713_av1 *h, u64 timestamp)
++{
++	int ret = check_frame(h);
++
++	if (ret)
++		return ret;
++	clean_refs(h);
++	return frame_ref(h, timestamp) < 0 ? -ENOSPC : h->cur;
++}
++
++int h713_av1_gen_frame(struct h713_av1 *h)
++{
++	memset(h->regs, 0, sizeof(h->regs));
++
++	set_fixed(h);
++	set_parameters(h);
++	set_global_model(h);
++	set_tile_info(h);
++	/* before the references: an intrabc frame decompresses itself */
++	set_fc_modes(h);
++	set_reference_frames(h);
++	set_segmentation(h);
++	set_loopfilter(h);
++	set_picture_dimensions(h);
++	set_cdef(h);
++	set_lr(h);
++	set_fgs(h);
++	set_prob(h);
++	set_buffers(h);
++	h->prev_width = h->refs[h->cur].width;
++	h->prev_height = h->refs[h->cur].height;
++	return 0;
++}
++
++void h713_av1_gen_done(struct h713_av1 *h)
++{
++	update_prob(h);
++	update_fc_modes(h);
++}
+diff --color -Naur pa/drivers/media/platform/verisilicon/sunxi_h713_av1_gen.h pb/drivers/media/platform/verisilicon/sunxi_h713_av1_gen.h
+--- /dev/null
++++ b/drivers/media/platform/verisilicon/sunxi_h713_av1_gen.h
+@@ -0,0 +1,168 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * H713 AV1 decoder: register-image generation.
++ *
++ * A pure function of the V4L2 AV1 controls and the decoder's reference
++ * state: it fills the 1168-byte register image and the CPU-written
++ * auxiliary buffers (tile info, global model, probabilities, film grain,
++ * reference-decompressor config). It touches no hardware, so the same file
++ * builds into the kernel driver and into a host test rig that compares its
++ * output with the vendor library's, frame by frame
++ * (docs/reference/av1-google-ip-interface.md).
++ *
++ * Derived from the Rockchip VPU981 AV1 code (rockchip_vpu981_hw_av1_dec.c,
++ * Collabora), a sibling core: same CDF layout, mostly the same register
++ * vocabulary, different register positions (a packed bit vector here, see
++ * sunxi_h713_av1_regs.h) and a different buffer set.
++ */
++#ifndef SUNXI_H713_AV1_GEN_H_
++#define SUNXI_H713_AV1_GEN_H_
++
++#include "sunxi_h713_av1_regs.h"
++#include "rockchip_av1_entropymode.h"
++
++#define H713_AV1_NUM_REF_FRAMES		8	/* AV1 reference slots */
++#define H713_AV1_MAX_FRAMES		16	/* decode buffers tracked */
++#define H713_AV1_NWORDS			(H713_AV1_REGS_SIZE / 4)
++
++/* Fixed-size buffers, sizes as the vendor allocates them. */
++#define H713_AV1_TILE_INFO_SIZE		0x500
++#define H713_AV1_MAX_TILES		128	/* what the tile buffer holds */
++#define H713_AV1_GLOBAL_MODEL_SIZE	0xe0
++#define H713_AV1_PROB_SIZE		0x2fe0
++#define H713_AV1_FILM_GRAIN_SIZE	0x3300
++#define H713_AV1_PDEC_SIZE		0x1000
++#define H713_AV1_SCRATCH_SIZE		0x50c000	/* ref0_sindex / out_scaled_lu */
++#define H713_AV1_SCRATCH_SCALED_OFF	0x66000
++#define H713_AV1_FILTER_CTRL_SIZE	0x4400		/* + LR params at 0x1100 */
++#define H713_AV1_FILTER_LR_OFF		0x1100
++#define H713_AV1_FG_COLBUF_SIZE		0x8800
++#define H713_AV1_CDEF_COLBUF_SIZE	0x1100
++#define H713_AV1_REC_SINDEX_SIZE	0x66000
++#define H713_AV1_SEC_COLBUF_SIZE	0x44000		/* out_secondary_colbuf, every size */
++/* multi-tile vertical filter: ALIGN_4K(ceil(h/64) * 0xa00); 4K height */
++#define H713_AV1_VERT_FILT_SIZE		0x17000
++
++struct h713_av1_dma {
++	void *cpu;
++	u64 dma;
++	size_t size;
++	bool kmap;	/* allocated with a kernel mapping */
++};
++
++/* One decoded frame's private buffers: compressed reconstruction + MVs. */
++struct h713_av1_frame_bufs {
++	u64 rec;	/* sb * 0x2400 */
++	u64 hdr;	/* compression header */
++	u64 mv;		/* sb * 0x400 */
++};
++
++struct h713_av1_ref {
++	bool used;
++	u64 timestamp;
++	int width, height;	/* as stored: the upscaled (superres) width */
++	int coded_width;	/* frame_width: before superres */
++	int mi_cols, mi_rows;
++	int frame_type;
++	u32 order_hint;
++	u32 order_hints[V4L2_AV1_TOTAL_REFS_PER_FRAME];
++	struct h713_av1_frame_bufs bufs;	/* the caller's, kept across reuse */
++	u8 fc_luma[8];		/* reference-compressor entropy modes */
++	u8 fc_chroma[8];
++};
++
++struct h713_av1_bufs {
++	struct h713_av1_dma tile_info, global_model, prob, prob_out;
++	struct h713_av1_dma film_grain, pdec, scratch, filter_ctrl;
++	struct h713_av1_dma fg_colbuf, cdef_colbuf, rec_sindex, sec_colbuf;
++	struct h713_av1_dma vert_filt;
++};
++
++/*
++ * CDF storage lives here, not in hantro_ctx, so the host rig can use it.
++ * The saved CDFs belong to a decoded FRAME (one per refs[] entry), not to a
++ * reference slot: a later frame finds its primary reference's CDFs the way
++ * it finds everything else about that reference, by timestamp. That needs no
++ * refresh_frame_flags -- which VA-API does not pass on -- and it stays right
++ * when show_existing_frame of a key frame refills every slot, which reaches
++ * the driver only as the slots' new timestamps.
++ */
++struct h713_av1_cdf {
++	struct av1cdfs default_cdfs;
++	struct mvcdfs default_cdfs_ndvc;
++	struct av1cdfs frame[H713_AV1_MAX_FRAMES];
++	struct mvcdfs frame_ndvc[H713_AV1_MAX_FRAMES];
++};
++
++struct h713_av1 {
++	/* per run, set by the caller */
++	const struct v4l2_ctrl_av1_sequence *seq;
++	const struct v4l2_ctrl_av1_frame *frame;
++	const struct v4l2_ctrl_av1_tile_group_entry *tge;
++	unsigned int num_tge;
++	const struct v4l2_ctrl_av1_film_grain *film_grain;
++	u64 src_dma;		/* bitstream buffer */
++	u32 src_len, src_size;
++	u64 dst_luma, dst_chroma;	/* NV12 capture (secondary output) */
++	int bit_depth;
++
++	/* persistent */
++	struct h713_av1_cdf *cdf;	/* ~120 KiB: allocate it */
++	struct h713_av1_bufs b;
++	struct h713_av1_ref refs[H713_AV1_MAX_FRAMES];
++	int cur;			/* index into refs[] */
++	u32 ref_frame_sign_bias[V4L2_AV1_TOTAL_REFS_PER_FRAME];
++	u8 fc_modes[16];		/* compressor modes: luma 0..7, chroma 8..15 */
++	int prev_width, prev_height;	/* the last decoded frame's stored size */
++
++	/* output */
++	u32 regs[H713_AV1_NWORDS];
++};
++
++/*
++ * Per frame, with the controls set: h713_av1_gen_slot() retires references
++ * no longer in use and picks this frame's slot in refs[] (or -ENOSPC); the
++ * caller makes sure refs[slot].bufs holds buffers of at least
++ * h713_av1_frame_bufs_size() for this frame; h713_av1_gen_frame() then
++ * builds the image and CPU-side buffers.
++ */
++int h713_av1_gen_slot(struct h713_av1 *h, u64 timestamp);
++void h713_av1_frame_bufs_size(int width, int height, size_t *rec, size_t *hdr, size_t *mv);
++int h713_av1_gen_frame(struct h713_av1 *h);
++/*
++ * After the hardware finished: pick up CDFs and re-rank the compressor
++ * modes. The caller first refreshes h->regs from the hardware (at least the
++ * fc_*_count words).
++ */
++void h713_av1_gen_done(struct h713_av1 *h);
++int h713_av1_gen_init(struct h713_av1 *h);
++
++static inline void h713_av1_set(u32 *img, struct h713_av1_field f, u32 val)
++{
++	unsigned int i;
++
++	for (i = 0; i < f.width; i++) {
++		unsigned int b = f.lo + i;
++
++		if (val & (1u << i))
++			img[b / 32] |= 1u << (b % 32);
++		else
++			img[b / 32] &= ~(1u << (b % 32));
++	}
++}
++
++static inline u32 h713_av1_get(const u32 *img, struct h713_av1_field f)
++{
++	unsigned int i;
++	u32 val = 0;
++
++	for (i = 0; i < f.width; i++) {
++		unsigned int b = f.lo + i;
++
++		if (img[b / 32] & (1u << (b % 32)))
++			val |= 1u << i;
++	}
++	return val;
++}
++
++#endif
+diff --color -Naur pa/drivers/media/platform/verisilicon/sunxi_h713_av1_hw.c pb/drivers/media/platform/verisilicon/sunxi_h713_av1_hw.c
+--- /dev/null
++++ b/drivers/media/platform/verisilicon/sunxi_h713_av1_hw.c
+@@ -0,0 +1,588 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Allwinner H713 AV1 decoder.
++ *
++ * The H713 carries a Google AV1 decoder core (core ID 0x0003b16d, AV1
++ * baseline only) next to its Allwinner video engine: a sibling of the
++ * VPU981 with the same CDF layout but a different register file -- one
++ * packed 1168-byte bit vector, written out whole -- and references that are
++ * always stored compressed. The display picture comes out through the
++ * core's secondary output: NV12 for 8-bit sequences, and for 10-bit ones
++ * P010's layout with each sample in the LOW 10 bits of its 16-bit word
++ * (V4L2_PIX_FMT_P010_LSB; DRM_FORMAT_P010 + DRM_FORMAT_MOD_ALLWINNER_LSB10).
++ * The core has no way to MSB-align it.
++ *
++ * The register image and every CPU-written buffer are built by
++ * sunxi_h713_av1_gen.c, a pure function of the V4L2 controls that a host
++ * rig checks against the vendor library frame by frame
++ * (tools/re/av1/rig/gate.sh in the H713 tree). This file is the glue:
++ * buffers, the flush-and-start, the interrupt, and the clock and reset
++ * the core borrows from the video engine.
++ *
++ * The core runs from the video engine's module clock and needs the VE's
++ * bus clock and reset released, all of which belong to cedrus. A runtime-PM
++ * device link to the VE (named by the allwinner,video-engine phandle) keeps
++ * them up whenever this device is active. Above 432 MHz the core stalls
++ * into its own timeout, so the VE clock must be at or below that.
++ *
++ * Three hardware rules, each learnt from a wedged or stalled SoC:
++ *  - the reset must be released with the core's bus and MBUS clocks running
++ *    (hantro releases it at probe with them only prepared, so they are
++ *    enabled before that and kept on); released unclocked, the core stalls
++ *    on its first memory transfer, and nothing short of a power cycle
++ *    recovers it;
++ *  - the interrupt line reads pending at boot, and the handler reads the
++ *    core's registers, so the line is enabled only while a frame is in
++ *    flight;
++ *  - image words 0 and 1 (ID and configuration) are never written, and no
++ *    register is written while the start bit is still set.
++ */
++
++#include <linux/clk.h>
++#include <linux/delay.h>
++#include <linux/dma-mapping.h>
++#include <linux/interrupt.h>
++#include <linux/module.h>
++#include <linux/mutex.h>
++#include <linux/of.h>
++#include <linux/of_platform.h>
++#include <linux/platform_device.h>
++#include <linux/pm_runtime.h>
++#include <linux/reset.h>
++#include <linux/vmalloc.h>
++
++#include "hantro.h"
++#include "hantro_hw.h"
++#include "sunxi_h713_av1_gen.h"
++
++#define H713_AV1_CTRL			0x008	/* image word 2 */
++#define H713_AV1_CTRL_START		BIT(0)
++#define H713_AV1_IRQ_TIMEOUT		BIT(2)
++#define H713_AV1_IRQ_BUS_ERROR		BIT(3)
++#define H713_AV1_IRQ_FRAME_READY	BIT(4)
++#define H713_AV1_IRQ_DEC_ERROR		BIT(5)
++#define H713_AV1_IRQ			BIT(6)
++#define H713_AV1_IRQ_BITS		GENMASK(6, 2)
++#define H713_AV1_IRQ_ERRORS		(H713_AV1_IRQ_TIMEOUT | H713_AV1_IRQ_BUS_ERROR | \
++					 H713_AV1_IRQ_DEC_ERROR)
++
++#define H713_AV1_MAX_VE_RATE		432000000
++
++enum { SLOT_REC, SLOT_HDR, SLOT_MV, SLOT_NBUFS };
++
++static bool h713_av1_trace;
++module_param(h713_av1_trace, bool, 0644);
++MODULE_PARM_DESC(h713_av1_trace, "H713 AV1: log each frame, its register image and its interrupt");
++
++#define h713_trace(vpu, fmt, ...) \
++	do { if (h713_av1_trace) dev_info((vpu)->dev, fmt, ##__VA_ARGS__); } while (0)
++
++struct sunxi_h713_av1_hw {
++	int irq;
++	unsigned long armed;	/* bit 0: the line is enabled */
++	struct mutex lock;	/* streams */
++	unsigned int streams;	/* contexts holding the core powered */
++};
++
++static void h713_av1_irq_arm(struct hantro_dev *vpu)
++{
++	struct sunxi_h713_av1_hw *hw = vpu->variant_priv;
++
++	if (!test_and_set_bit(0, &hw->armed))
++		enable_irq(hw->irq);
++}
++
++static void h713_av1_irq_disarm(struct hantro_dev *vpu)
++{
++	struct sunxi_h713_av1_hw *hw = vpu->variant_priv;
++
++	if (test_and_clear_bit(0, &hw->armed))
++		disable_irq_nosync(hw->irq);
++}
++
++struct sunxi_h713_av1_dec_ctx {
++	bool powered;		/* holding the domain and clocks while streaming */
++	struct h713_av1 gen;
++	struct h713_av1_cdf *cdf;
++	/* each reference slot's compressed reconstruction, header and MVs */
++	struct h713_av1_dma slot[H713_AV1_MAX_FRAMES][SLOT_NBUFS];
++};
++
++static int h713_av1_alloc(struct hantro_dev *vpu, struct h713_av1_dma *d,
++			  size_t size, bool cpu)
++{
++	d->size = size;
++	d->kmap = cpu;
++	d->cpu = dma_alloc_attrs(vpu->dev, size, &d->dma, GFP_KERNEL,
++				 cpu ? 0 : DMA_ATTR_NO_KERNEL_MAPPING);
++	return d->cpu ? 0 : -ENOMEM;
++}
++
++static void h713_av1_free(struct hantro_dev *vpu, struct h713_av1_dma *d)
++{
++	if (d->cpu)
++		dma_free_attrs(vpu->dev, d->size, d->cpu, d->dma,
++			       d->kmap ? 0 : DMA_ATTR_NO_KERNEL_MAPPING);
++	d->cpu = NULL;
++}
++
++/* The fixed buffers: which the CPU writes or reads, and their sizes. */
++static const struct {
++	size_t off;	/* in struct h713_av1_bufs */
++	size_t size;
++	bool cpu;
++} h713_av1_fixed[] = {
++	{ offsetof(struct h713_av1_bufs, tile_info), H713_AV1_TILE_INFO_SIZE, true },
++	{ offsetof(struct h713_av1_bufs, global_model), H713_AV1_GLOBAL_MODEL_SIZE, true },
++	{ offsetof(struct h713_av1_bufs, prob), H713_AV1_PROB_SIZE, true },
++	{ offsetof(struct h713_av1_bufs, prob_out), H713_AV1_PROB_SIZE, true },
++	{ offsetof(struct h713_av1_bufs, film_grain), H713_AV1_FILM_GRAIN_SIZE, true },
++	{ offsetof(struct h713_av1_bufs, pdec), H713_AV1_PDEC_SIZE, true },
++	{ offsetof(struct h713_av1_bufs, scratch), H713_AV1_SCRATCH_SIZE, false },
++	{ offsetof(struct h713_av1_bufs, filter_ctrl), H713_AV1_FILTER_CTRL_SIZE, false },
++	{ offsetof(struct h713_av1_bufs, fg_colbuf), H713_AV1_FG_COLBUF_SIZE, false },
++	{ offsetof(struct h713_av1_bufs, cdef_colbuf), H713_AV1_CDEF_COLBUF_SIZE, false },
++	{ offsetof(struct h713_av1_bufs, rec_sindex), H713_AV1_REC_SINDEX_SIZE, false },
++	{ offsetof(struct h713_av1_bufs, sec_colbuf), H713_AV1_SEC_COLBUF_SIZE, false },
++	{ offsetof(struct h713_av1_bufs, vert_filt), H713_AV1_VERT_FILT_SIZE, false },
++};
++
++static struct h713_av1_dma *fixed_buf(struct sunxi_h713_av1_dec_ctx *a, int i)
++{
++	return (void *)&a->gen.b + h713_av1_fixed[i].off;
++}
++
++static void h713_av1_block_reset(struct hantro_dev *vpu)
++{
++	reset_control_assert(vpu->resets);
++	udelay(10);
++	reset_control_deassert(vpu->resets);
++}
++
++static void sunxi_h713_av1_dec_exit(struct hantro_ctx *ctx)
++{
++	struct sunxi_h713_av1_dec_ctx *a = ctx->h713_av1_dec;
++	struct hantro_dev *vpu = ctx->dev;
++	int i, j;
++
++	if (!a)
++		return;
++	if (a->powered) {
++		struct sunxi_h713_av1_hw *hw = vpu->variant_priv;
++
++		mutex_lock(&hw->lock);
++		hw->streams--;
++		clk_bulk_disable(vpu->variant->num_clocks, vpu->clocks);
++		pm_runtime_put_autosuspend(vpu->dev);
++		mutex_unlock(&hw->lock);
++	}
++	for (i = 0; i < H713_AV1_MAX_FRAMES; i++)
++		for (j = 0; j < SLOT_NBUFS; j++)
++			h713_av1_free(vpu, &a->slot[i][j]);
++	for (i = 0; i < ARRAY_SIZE(h713_av1_fixed); i++)
++		h713_av1_free(vpu, fixed_buf(a, i));
++	vfree(a->cdf);
++	kfree(a);
++	ctx->h713_av1_dec = NULL;
++}
++
++static int sunxi_h713_av1_dec_init(struct hantro_ctx *ctx)
++{
++	struct hantro_dev *vpu = ctx->dev;
++	struct sunxi_h713_av1_hw *hw = vpu->variant_priv;
++	struct sunxi_h713_av1_dec_ctx *a;
++	int i, ret;
++
++	a = kzalloc(sizeof(*a), GFP_KERNEL);
++	if (!a)
++		return -ENOMEM;
++	ctx->h713_av1_dec = a;
++
++	a->cdf = vzalloc(sizeof(*a->cdf));
++	if (!a->cdf) {
++		ret = -ENOMEM;
++		goto err;
++	}
++	for (i = 0; i < ARRAY_SIZE(h713_av1_fixed); i++) {
++		ret = h713_av1_alloc(vpu, fixed_buf(a, i), h713_av1_fixed[i].size,
++				     h713_av1_fixed[i].cpu);
++		if (ret)
++			goto err;
++	}
++
++	a->gen.cdf = a->cdf;
++	ret = h713_av1_gen_init(&a->gen);
++	if (ret)
++		goto err;
++
++	/*
++	 * Power and clocks for the whole stream. The first stream to power
++	 * the core also resets it; a later one must not, because the core may
++	 * be in the middle of another context's frame.
++	 */
++	mutex_lock(&hw->lock);
++	ret = pm_runtime_resume_and_get(vpu->dev);
++	if (ret < 0)
++		goto err_unlock;
++	ret = clk_bulk_enable(vpu->variant->num_clocks, vpu->clocks);
++	if (ret) {
++		pm_runtime_put_autosuspend(vpu->dev);
++		goto err_unlock;
++	}
++	a->powered = true;
++	if (!hw->streams++)
++		h713_av1_block_reset(vpu);
++	mutex_unlock(&hw->lock);
++	return 0;
++
++err_unlock:
++	mutex_unlock(&hw->lock);
++
++err:
++	sunxi_h713_av1_dec_exit(ctx);
++	return ret;
++}
++
++/*
++ * A slot keeps its buffers once allocated -- slots are reused lowest-first,
++ * so a stream settles on the handful it needs -- and grows them when a frame
++ * needs more than they hold.
++ */
++static int h713_av1_slot_bufs(struct hantro_ctx *ctx, int slot, int w, int h)
++{
++	struct sunxi_h713_av1_dec_ctx *a = ctx->h713_av1_dec;
++	struct h713_av1_dma *d = a->slot[slot];
++	size_t size[SLOT_NBUFS];
++	int j, ret;
++
++	h713_av1_frame_bufs_size(w, h, &size[SLOT_REC], &size[SLOT_HDR], &size[SLOT_MV]);
++	for (j = 0; j < SLOT_NBUFS; j++) {
++		if (d[j].cpu && d[j].size >= size[j])
++			continue;
++		h713_av1_free(ctx->dev, &d[j]);
++		ret = h713_av1_alloc(ctx->dev, &d[j], size[j], false);
++		if (ret)
++			return ret;
++	}
++	a->gen.refs[slot].bufs.rec = d[SLOT_REC].dma;
++	a->gen.refs[slot].bufs.hdr = d[SLOT_HDR].dma;
++	a->gen.refs[slot].bufs.mv = d[SLOT_MV].dma;
++	return 0;
++}
++
++static int sunxi_h713_av1_dec_run(struct hantro_ctx *ctx)
++{
++	struct sunxi_h713_av1_dec_ctx *a = ctx->h713_av1_dec;
++	struct hantro_dev *vpu = ctx->dev;
++	struct h713_av1 *h = &a->gen;
++	struct vb2_v4l2_buffer *src, *dst;
++	struct v4l2_ctrl *tge;
++	u32 width, height;
++	int slot, ret, i;
++
++	hantro_start_prepare_run(ctx);
++
++	src = hantro_get_src_buf(ctx);
++	dst = hantro_get_dst_buf(ctx);
++
++	h->seq = hantro_get_ctrl(ctx, V4L2_CID_STATELESS_AV1_SEQUENCE);
++	h->frame = hantro_get_ctrl(ctx, V4L2_CID_STATELESS_AV1_FRAME);
++	h->film_grain = hantro_get_ctrl(ctx, V4L2_CID_STATELESS_AV1_FILM_GRAIN);
++	tge = v4l2_ctrl_find(&ctx->ctrl_handler, V4L2_CID_STATELESS_AV1_TILE_GROUP_ENTRY);
++	if (WARN_ON(!h->seq || !h->frame || !tge)) {
++		ret = -EINVAL;
++		goto out;
++	}
++	h->tge = tge->p_cur.p;
++	h->num_tge = tge->elems;
++	if (!(h->seq->flags & V4L2_AV1_SEQUENCE_FLAG_FILM_GRAIN_PARAMS_PRESENT))
++		h->film_grain = NULL;
++	h->bit_depth = h->seq->bit_depth;
++
++	h->src_dma = vb2_dma_contig_plane_dma_addr(&src->vb2_buf, 0);
++	h->src_len = vb2_get_plane_payload(&src->vb2_buf, 0);
++	h->src_size = vb2_plane_size(&src->vb2_buf, 0);
++	h->dst_luma = hantro_get_dec_buf_addr(ctx, &dst->vb2_buf);
++	h->dst_chroma = h->dst_luma +
++			ctx->dst_fmt.plane_fmt[0].bytesperline * ctx->dst_fmt.height;
++
++	/*
++	 * The picture is stored and shown after superres, so at the upscaled
++	 * width. The core lays the raster out at a stride of the width rounded
++	 * up to 64 (in samples: two bytes each at 10 bits) -- there is no
++	 * stride it is told -- so a frame has to fit the capture buffer that
++	 * way, whatever size the format was set to.
++	 */
++	width = max_t(u32, h->frame->upscaled_width, h->frame->frame_width_minus_1 + 1);
++	height = h->frame->frame_height_minus_1 + 1;
++	if (width > FMT_4K_WIDTH || height > FMT_4K_HEIGHT ||
++	    ALIGN(width, 64) * (h->bit_depth > 8 ? 2 : 1) >
++	    ctx->dst_fmt.plane_fmt[0].bytesperline ||
++	    ALIGN(height, 8) > ctx->dst_fmt.height) {
++		ret = -EINVAL;
++		goto out;
++	}
++
++	slot = h713_av1_gen_slot(h, src->vb2_buf.timestamp);
++	if (slot < 0) {
++		ret = slot;
++		goto out;
++	}
++	ret = h713_av1_slot_bufs(ctx, slot, width, height);
++	if (ret)
++		goto out;
++	ret = h713_av1_gen_frame(h);
++
++out:
++	hantro_end_prepare_run(ctx);
++	if (ret) {
++		/*
++		 * Finish the job here, watchdog included, and report success
++		 * to device_run: an error return would make it finish the job
++		 * a second time.
++		 */
++		dev_warn_ratelimited(vpu->dev, "cannot set up the frame: %d\n", ret);
++		hantro_irq_done(vpu, VB2_BUF_STATE_ERROR);
++		return 0;
++	}
++
++	h713_trace(vpu, "frame: slot %d %ux%u type %u show %u, src %pad+%u dst %pad\n",
++		   slot, h->frame->frame_width_minus_1 + 1, h->frame->frame_height_minus_1 + 1,
++		   h->frame->frame_type, !!(h->frame->flags & V4L2_AV1_FRAME_FLAG_SHOW_FRAME),
++		   &h->src_dma, h->src_len, &h->dst_luma);
++	if (h713_av1_trace) {
++		print_hex_dump(KERN_INFO, "h713av1 img ", DUMP_PREFIX_OFFSET, 32, 4,
++			       h->regs, sizeof(h->regs), false);
++		/*
++		 * Let the dump leave the machine before the core starts: when
++		 * a frame hangs the SoC, this image is the evidence. Debug only.
++		 */
++		mdelay(50);
++	}
++
++	/* After an error interrupt the core can still be busy: reset it first. */
++	if (readl_relaxed(vpu->dec_base + H713_AV1_CTRL) & H713_AV1_CTRL_START) {
++		dev_warn_ratelimited(vpu->dev, "core still busy; resetting it\n");
++		h713_av1_block_reset(vpu);
++	}
++
++	/*
++	 * As the vendor's AsicFlushRegs: words 0 and 1 are left alone, the rest
++	 * go in top-down with the start bit held back, then start on its own.
++	 */
++	for (i = H713_AV1_NWORDS - 1; i >= 2; i--)
++		writel_relaxed(i == H713_AV1_CTRL / 4 ? h->regs[i] & ~H713_AV1_CTRL_START :
++			       h->regs[i], vpu->dec_base + 4 * i);
++	wmb();
++	h713_av1_irq_arm(vpu);
++	writel(h->regs[H713_AV1_CTRL / 4] | H713_AV1_CTRL_START,
++	       vpu->dec_base + H713_AV1_CTRL);
++	return 0;
++}
++
++/* The core wrote its compressor statistics back into the image; fetch them. */
++static void sunxi_h713_av1_dec_done(struct hantro_ctx *ctx)
++{
++	struct sunxi_h713_av1_dec_ctx *a = ctx->h713_av1_dec;
++	int i;
++
++	for (i = 0; i < H713_AV1_NWORDS; i++)
++		a->gen.regs[i] = readl_relaxed(ctx->dev->dec_base + 4 * i);
++	h713_av1_gen_done(&a->gen);
++}
++
++/* Timeout: clearing the start bit does not stop the core; the reset does. */
++static void sunxi_h713_av1_dec_reset(struct hantro_ctx *ctx)
++{
++	h713_av1_irq_disarm(ctx->dev);
++	h713_av1_block_reset(ctx->dev);
++}
++
++static irqreturn_t sunxi_h713_av1_irq(int irq, void *dev_id)
++{
++	struct hantro_dev *vpu = dev_id;
++	enum vb2_buffer_state state;
++	u32 ctrl;
++
++	/* one interrupt per frame; a line stuck high must not storm */
++	h713_av1_irq_disarm(vpu);
++
++	ctrl = readl_relaxed(vpu->dec_base + H713_AV1_CTRL);
++	h713_trace(vpu, "irq: ctrl 0x%08x\n", ctrl);
++	if (!(ctrl & H713_AV1_IRQ_BITS)) {
++		/* no cause: leave the job to the watchdog, which resets */
++		dev_warn_ratelimited(vpu->dev, "interrupt without a cause, 0x%08x\n", ctrl);
++		return IRQ_HANDLED;
++	}
++	writel_relaxed(ctrl & ~(H713_AV1_IRQ_BITS | H713_AV1_CTRL_START),
++		       vpu->dec_base + H713_AV1_CTRL);
++
++	state = (ctrl & H713_AV1_IRQ_FRAME_READY) && !(ctrl & H713_AV1_IRQ_ERRORS) ?
++		VB2_BUF_STATE_DONE : VB2_BUF_STATE_ERROR;
++	if (state == VB2_BUF_STATE_ERROR) {
++		dev_warn_ratelimited(vpu->dev, "decode failed, status 0x%08x\n", ctrl);
++		/* whatever state the failed frame left the core in, start clean */
++		h713_av1_block_reset(vpu);
++	}
++
++	hantro_irq_done(vpu, state);
++	return IRQ_HANDLED;
++}
++
++static void h713_av1_clocks_off(void *data)
++{
++	struct hantro_dev *vpu = data;
++
++	clk_bulk_disable_unprepare(vpu->variant->num_clocks, vpu->clocks);
++}
++
++static int sunxi_h713_av1_hw_init(struct hantro_dev *vpu)
++{
++	struct sunxi_h713_av1_hw *hw;
++	struct device_node *np;
++	struct platform_device *ve;
++	struct device_link *link;
++	struct clk *mod;
++	unsigned long rate;
++	int ret;
++
++	hw = devm_kzalloc(vpu->dev, sizeof(*hw), GFP_KERNEL);
++	if (!hw)
++		return -ENOMEM;
++	mutex_init(&hw->lock);
++	vpu->variant_priv = hw;
++
++	/* requested disabled: armed per frame only (see the top of this file) */
++	hw->irq = platform_get_irq(vpu->pdev, 0);
++	if (hw->irq < 0)
++		return hw->irq;
++	ret = devm_request_irq(vpu->dev, hw->irq, sunxi_h713_av1_irq, IRQF_NO_AUTOEN,
++			       dev_name(vpu->dev), vpu);
++	if (ret)
++		return ret;
++
++	/*
++	 * hantro_probe releases the reset after this init with the clocks only
++	 * prepared; the core must come out of reset clocked. Enable them now,
++	 * with the reset held, and keep them on for the device's lifetime.
++	 */
++	reset_control_assert(vpu->resets);
++	ret = clk_bulk_prepare_enable(vpu->variant->num_clocks, vpu->clocks);
++	if (ret)
++		return ret;
++	ret = devm_add_action_or_reset(vpu->dev, h713_av1_clocks_off, vpu);
++	if (ret)
++		return ret;
++
++	np = of_parse_phandle(vpu->dev->of_node, "allwinner,video-engine", 0);
++	if (!np) {
++		dev_err(vpu->dev, "no allwinner,video-engine phandle\n");
++		return -ENODEV;
++	}
++	ve = of_find_device_by_node(np);
++	if (!ve) {
++		ret = -EPROBE_DEFER;
++		goto out_node;
++	}
++	if (!device_is_bound(&ve->dev)) {
++		ret = -EPROBE_DEFER;
++		goto out_dev;
++	}
++
++	mod = of_clk_get_by_name(np, "mod");
++	if (IS_ERR(mod)) {
++		ret = PTR_ERR(mod);
++		goto out_dev;
++	}
++	rate = clk_get_rate(mod);
++	clk_put(mod);
++	if (rate > H713_AV1_MAX_VE_RATE) {
++		dev_err(vpu->dev, "VE clock %lu Hz: the core stalls above %u Hz\n",
++			rate, H713_AV1_MAX_VE_RATE);
++		ret = -EINVAL;
++		goto out_dev;
++	}
++
++	link = device_link_add(vpu->dev, &ve->dev,
++			       DL_FLAG_PM_RUNTIME | DL_FLAG_AUTOREMOVE_CONSUMER);
++	if (!link) {
++		dev_err(vpu->dev, "cannot link to the video engine\n");
++		ret = -EINVAL;
++	}
++
++out_dev:
++	put_device(&ve->dev);
++out_node:
++	of_node_put(np);
++	return ret;
++}
++
++static const struct hantro_fmt sunxi_h713_av1_dec_fmts[] = {
++	{
++		.fourcc = V4L2_PIX_FMT_NV12,
++		.codec_mode = HANTRO_MODE_NONE,
++		.match_depth = true,
++		.frmsize = {
++			.min_width = 64,
++			.max_width = FMT_4K_WIDTH,
++			.step_width = 64,
++			.min_height = 64,
++			.max_height = FMT_4K_HEIGHT,
++			.step_height = 64,
++		},
++	},
++	{
++		/*
++		 * 10-bit sequences: the core's high-bit-depth display output
++		 * (secondary_output_hbd), P010 laid out with the samples in
++		 * bits 9:0. Bit-exact against libdav1d.
++		 */
++		.fourcc = V4L2_PIX_FMT_P010_LSB,
++		.codec_mode = HANTRO_MODE_NONE,
++		.match_depth = true,
++		.frmsize = {
++			.min_width = 64,
++			.max_width = FMT_4K_WIDTH,
++			.step_width = 64,
++			.min_height = 64,
++			.max_height = FMT_4K_HEIGHT,
++			.step_height = 64,
++		},
++	},
++	{
++		.fourcc = V4L2_PIX_FMT_AV1_FRAME,
++		.codec_mode = HANTRO_MODE_AV1_DEC,
++		.max_depth = 2,
++		.frmsize = {
++			.min_width = 64,
++			.max_width = FMT_4K_WIDTH,
++			.step_width = 64,
++			.min_height = 64,
++			.max_height = FMT_4K_HEIGHT,
++			.step_height = 64,
++		},
++	},
++};
++
++static const struct hantro_codec_ops sunxi_h713_av1_codec_ops[] = {
++	[HANTRO_MODE_AV1_DEC] = {
++		.run = sunxi_h713_av1_dec_run,
++		.init = sunxi_h713_av1_dec_init,
++		.exit = sunxi_h713_av1_dec_exit,
++		.done = sunxi_h713_av1_dec_done,
++		.reset = sunxi_h713_av1_dec_reset,
++	},
++};
++
++static const char * const sunxi_h713_av1_clk_names[] = { "bus", "mbus" };
++
++const struct hantro_variant sun50i_h713_av1_variant = {
++	.dec_fmts = sunxi_h713_av1_dec_fmts,
++	.num_dec_fmts = ARRAY_SIZE(sunxi_h713_av1_dec_fmts),
++	.codec = HANTRO_AV1_DECODER,
++	.codec_ops = sunxi_h713_av1_codec_ops,
++	.init = sunxi_h713_av1_hw_init,
++	/* no .irqs: the line is requested above, disabled */
++	.clk_names = sunxi_h713_av1_clk_names,
++	.num_clocks = ARRAY_SIZE(sunxi_h713_av1_clk_names),
++};
+diff --color -Naur pa/drivers/media/platform/verisilicon/sunxi_h713_av1_regs.h pb/drivers/media/platform/verisilicon/sunxi_h713_av1_regs.h
+--- /dev/null
++++ b/drivers/media/platform/verisilicon/sunxi_h713_av1_regs.h
+@@ -0,0 +1,1130 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * H713 AV1 decoder register fields, generated by tools/re/av1/gen-regs-h.py
++ * from the vendor register model (names and widths from its debug printer,
++ * bit offsets from emulating its serialiser). Do not edit by hand.
++ */
++#ifndef SUNXI_H713_AV1_REGS_H_
++#define SUNXI_H713_AV1_REGS_H_
++
++/* The whole register image, in bytes (292 words). */
++#define H713_AV1_REGS_SIZE	1168
++
++struct h713_av1_field {
++	u16 lo;
++	u16 width;
++};
++
++#define H713_AV1_FIELD(l, w) ((const struct h713_av1_field) { .lo = (l), .width = (w) })
++
++#define H713_AV1_ENC_ENABLE	H713_AV1_FIELD(64, 1)
++#define H713_AV1_MODE_DEC	H713_AV1_FIELD(65, 1)
++#define H713_AV1_ENC_IRQ_TIMEOUT	H713_AV1_FIELD(66, 1)
++#define H713_AV1_ENC_IRQ_BUS_ERROR	H713_AV1_FIELD(67, 1)
++#define H713_AV1_ENC_IRQ_FRAME_READY	H713_AV1_FIELD(68, 1)
++#define H713_AV1_DEC_IRQ_ERROR	H713_AV1_FIELD(69, 1)
++#define H713_AV1_ENC_IRQ	H713_AV1_FIELD(70, 1)
++#define H713_AV1_IDCT_OVERFLOW	H713_AV1_FIELD(71, 1)
++#define H713_AV1_OUT_STREAM_OVERFLOW	H713_AV1_FIELD(72, 1)
++#define H713_AV1_AXI_READ_DATA_OVERFLOW	H713_AV1_FIELD(73, 1)
++#define H713_AV1_AXI_WRITE_DATA_UNDERFLOW	H713_AV1_FIELD(74, 1)
++#define H713_AV1_ENC_IRQ_ENABLE	H713_AV1_FIELD(75, 1)
++#define H713_AV1_CLOCK_GATE_ENABLE	H713_AV1_FIELD(76, 1)
++#define H713_AV1_TIMEOUT_ENABLE	H713_AV1_FIELD(77, 1)
++#define H713_AV1_SEGMENT_E	H713_AV1_FIELD(78, 1)
++#define H713_AV1_SEGMENT_UPD_E	H713_AV1_FIELD(79, 1)
++#define H713_AV1_SEGMENT_TEMP_UPD_E	H713_AV1_FIELD(80, 1)
++#define H713_AV1_STATISTICS_ENABLE	H713_AV1_FIELD(81, 1)
++#define H713_AV1_REF_COMPRESS_E	H713_AV1_FIELD(82, 1)
++#define H713_AV1_AXI_READ_REQUEST_E	H713_AV1_FIELD(83, 1)
++#define H713_AV1_AXI_WRITE_REQUEST_E	H713_AV1_FIELD(84, 1)
++#define H713_AV1_CODING_MODE	H713_AV1_FIELD(85, 2)
++#define H713_AV1_AXI_RD_OVERFLOW_ID	H713_AV1_FIELD(87, 8)
++#define H713_AV1_SCALED_OUTPUT_E	H713_AV1_FIELD(95, 1)
++#define H713_AV1_PREPROCESS_ONLY	H713_AV1_FIELD(96, 1)
++#define H713_AV1_ECC_IRQ_PART1	H713_AV1_FIELD(97, 1)
++#define H713_AV1_ECC_IRQ_PART2	H713_AV1_FIELD(98, 1)
++#define H713_AV1_ECC_IRQ_PART3	H713_AV1_FIELD(99, 1)
++#define H713_AV1_ECC_IRQ_PART4	H713_AV1_FIELD(100, 1)
++#define H713_AV1_ECC_IRQ_PART5	H713_AV1_FIELD(101, 1)
++#define H713_AV1_ECC_IRQ_PART6	H713_AV1_FIELD(102, 1)
++#define H713_AV1_ECC_ENABLE	H713_AV1_FIELD(103, 1)
++#define H713_AV1_DEC_ERROR_CODE	H713_AV1_FIELD(104, 8)
++#define H713_AV1_SECONDARY_OUTPUT_E	H713_AV1_FIELD(112, 1)
++#define H713_AV1_SECONDARY_OUTPUT_HBD	H713_AV1_FIELD(113, 1)
++#define H713_AV1_SECONDARY_OUTPUT_FORMAT	H713_AV1_FIELD(114, 2)
++#define H713_AV1_SECONDARY_OUTPUT_TILED	H713_AV1_FIELD(116, 1)
++#define H713_AV1_RESERVED0	H713_AV1_FIELD(117, 11)
++#define H713_AV1_ENC_USED_HW_CYCLES	H713_AV1_FIELD(128, 32)
++#define H713_AV1_ENC_HW_DRAM_READ_BW	H713_AV1_FIELD(160, 32)
++#define H713_AV1_ENC_HW_DRAM_WRITE_BW	H713_AV1_FIELD(192, 32)
++#define H713_AV1_ENC_IN_SWAP	H713_AV1_FIELD(224, 5)
++#define H713_AV1_ENC_OUT_SWAP	H713_AV1_FIELD(229, 5)
++#define H713_AV1_ENC_PROB_TABLE_SWAP	H713_AV1_FIELD(234, 5)
++#define H713_AV1_ENC_COUNTERS_SWAP	H713_AV1_FIELD(239, 5)
++#define H713_AV1_ENC_STATISTICS_SWAP	H713_AV1_FIELD(244, 5)
++#define H713_AV1_ENC_FGBG_MAP_SWAP	H713_AV1_FIELD(249, 5)
++#define H713_AV1_RESERVED1	H713_AV1_FIELD(254, 2)
++#define H713_AV1_AXI_RD_ID	H713_AV1_FIELD(256, 8)
++#define H713_AV1_AXI_WR_ID	H713_AV1_FIELD(264, 8)
++#define H713_AV1_RESERVED2	H713_AV1_FIELD(272, 16)
++#define H713_AV1_OUT_STREAM_SIZE	H713_AV1_FIELD(288, 27)
++#define H713_AV1_RESERVED3	H713_AV1_FIELD(315, 5)
++#define H713_AV1_OUT_SCALED_LU_BASE_MSB	H713_AV1_FIELD(320, 32)
++#define H713_AV1_OUT_SCALED_LU_BASE	H713_AV1_FIELD(352, 32)
++#define H713_AV1_OUT_SCALED_CH_BASE_MSB	H713_AV1_FIELD(384, 32)
++#define H713_AV1_OUT_SCALED_CH_BASE	H713_AV1_FIELD(416, 32)
++#define H713_AV1_OUT_STREAM0_BASE_MSB	H713_AV1_FIELD(448, 32)
++#define H713_AV1_OUT_STREAM0_BASE	H713_AV1_FIELD(480, 32)
++#define H713_AV1_OUT_STATISTICS_BASE_MSB	H713_AV1_FIELD(512, 32)
++#define H713_AV1_OUT_STATISTICS_BASE	H713_AV1_FIELD(544, 32)
++#define H713_AV1_INPUT_PLANE0_BASE_MSB	H713_AV1_FIELD(576, 32)
++#define H713_AV1_INPUT_PLANE0_BASE	H713_AV1_FIELD(608, 32)
++#define H713_AV1_INPUT_PLANE1_BASE_MSB	H713_AV1_FIELD(640, 32)
++#define H713_AV1_INPUT_PLANE1_BASE	H713_AV1_FIELD(672, 32)
++#define H713_AV1_INPUT_PLANE2_BASE_MSB	H713_AV1_FIELD(704, 32)
++#define H713_AV1_INPUT_PLANE2_BASE	H713_AV1_FIELD(736, 32)
++#define H713_AV1_INPUT_PLANE3_BASE_MSB	H713_AV1_FIELD(768, 32)
++#define H713_AV1_INPUT_PLANE3_BASE	H713_AV1_FIELD(800, 32)
++#define H713_AV1_FGBG_MAP_BASE_MSB	H713_AV1_FIELD(832, 32)
++#define H713_AV1_FGBG_MAP_BASE	H713_AV1_FIELD(864, 32)
++#define H713_AV1_REF0_LUM_BASE_MSB	H713_AV1_FIELD(896, 32)
++#define H713_AV1_REF0_LUM_BASE	H713_AV1_FIELD(928, 32)
++#define H713_AV1_REF0_CB_BASE_MSB	H713_AV1_FIELD(960, 32)
++#define H713_AV1_REF0_CB_BASE	H713_AV1_FIELD(992, 32)
++#define H713_AV1_REF0_CR_BASE_MSB	H713_AV1_FIELD(1024, 32)
++#define H713_AV1_REF0_CR_BASE	H713_AV1_FIELD(1056, 32)
++#define H713_AV1_REF1_LUM_BASE_MSB	H713_AV1_FIELD(1088, 32)
++#define H713_AV1_REF1_LUM_BASE	H713_AV1_FIELD(1120, 32)
++#define H713_AV1_REF1_CB_BASE_MSB	H713_AV1_FIELD(1152, 32)
++#define H713_AV1_REF1_CB_BASE	H713_AV1_FIELD(1184, 32)
++#define H713_AV1_REF1_CR_BASE_MSB	H713_AV1_FIELD(1216, 32)
++#define H713_AV1_REF1_CR_BASE	H713_AV1_FIELD(1248, 32)
++#define H713_AV1_REF2_LUM_BASE_MSB	H713_AV1_FIELD(1280, 32)
++#define H713_AV1_REF2_LUM_BASE	H713_AV1_FIELD(1312, 32)
++#define H713_AV1_REF2_CB_BASE_MSB	H713_AV1_FIELD(1344, 32)
++#define H713_AV1_REF2_CB_BASE	H713_AV1_FIELD(1376, 32)
++#define H713_AV1_REF2_CR_BASE_MSB	H713_AV1_FIELD(1408, 32)
++#define H713_AV1_REF2_CR_BASE	H713_AV1_FIELD(1440, 32)
++#define H713_AV1_REC_LUM_BASE_MSB	H713_AV1_FIELD(1472, 32)
++#define H713_AV1_REC_LUM_BASE	H713_AV1_FIELD(1504, 32)
++#define H713_AV1_REC_CH_BASE_MSB	H713_AV1_FIELD(1536, 32)
++#define H713_AV1_REC_CH_BASE	H713_AV1_FIELD(1568, 32)
++#define H713_AV1_IN_LUM_BASE_MSB	H713_AV1_FIELD(1600, 32)
++#define H713_AV1_IN_LUM_BASE	H713_AV1_FIELD(1632, 32)
++#define H713_AV1_IN_CB_BASE_MSB	H713_AV1_FIELD(1664, 32)
++#define H713_AV1_IN_CB_BASE	H713_AV1_FIELD(1696, 32)
++#define H713_AV1_IN_CR_BASE_MSB	H713_AV1_FIELD(1728, 32)
++#define H713_AV1_IN_CR_BASE	H713_AV1_FIELD(1760, 32)
++#define H713_AV1_REC_LUM_COMP_BASE_MSB	H713_AV1_FIELD(1792, 32)
++#define H713_AV1_REC_LUM_COMP_BASE	H713_AV1_FIELD(1824, 32)
++#define H713_AV1_CTX_COUNTER_BASE_MSB	H713_AV1_FIELD(1856, 32)
++#define H713_AV1_CTX_COUNTER_BASE	H713_AV1_FIELD(1888, 32)
++#define H713_AV1_PROB_TAB_BASE_MSB	H713_AV1_FIELD(1920, 32)
++#define H713_AV1_PROB_TAB_BASE	H713_AV1_FIELD(1952, 32)
++#define H713_AV1_PROB_TAB_OUT_BASE_MSB	H713_AV1_FIELD(1984, 32)
++#define H713_AV1_PROB_TAB_OUT_BASE	H713_AV1_FIELD(2016, 32)
++#define H713_AV1_VERT_FILT_READ_BASE_MSB	H713_AV1_FIELD(2048, 32)
++#define H713_AV1_VERT_FILT_READ_BASE	H713_AV1_FIELD(2080, 32)
++#define H713_AV1_VERT_FILT_WRITE_BASE_MSB	H713_AV1_FIELD(2112, 32)
++#define H713_AV1_VERT_FILT_WRITE_BASE	H713_AV1_FIELD(2144, 32)
++#define H713_AV1_TEMPORAL_READ_BASE_MSB	H713_AV1_FIELD(2176, 32)
++#define H713_AV1_TEMPORAL_READ_BASE	H713_AV1_FIELD(2208, 32)
++#define H713_AV1_TEMPORAL_WRITE_BASE_MSB	H713_AV1_FIELD(2240, 32)
++#define H713_AV1_TEMPORAL_WRITE_BASE	H713_AV1_FIELD(2272, 32)
++#define H713_AV1_MULTICORE_SYNC_LEFT_BASE_MSB	H713_AV1_FIELD(2304, 32)
++#define H713_AV1_MULTICORE_SYNC_LEFT_BASE	H713_AV1_FIELD(2336, 32)
++#define H713_AV1_MULTICORE_SYNC_CURRENT_BASE_MSB	H713_AV1_FIELD(2368, 32)
++#define H713_AV1_MULTICORE_SYNC_CURRENT_BASE	H713_AV1_FIELD(2400, 32)
++#define H713_AV1_TILE_BASE_MSB	H713_AV1_FIELD(2432, 32)
++#define H713_AV1_TILE_BASE	H713_AV1_FIELD(2464, 32)
++#define H713_AV1_REF0_SINDEX_BASE_MSB	H713_AV1_FIELD(2496, 32)
++#define H713_AV1_REF0_SINDEX_BASE	H713_AV1_FIELD(2528, 32)
++#define H713_AV1_REF1_SINDEX_BASE_MSB	H713_AV1_FIELD(2560, 32)
++#define H713_AV1_REF1_SINDEX_BASE	H713_AV1_FIELD(2592, 32)
++#define H713_AV1_REF2_SINDEX_BASE_MSB	H713_AV1_FIELD(2624, 32)
++#define H713_AV1_REF2_SINDEX_BASE	H713_AV1_FIELD(2656, 32)
++#define H713_AV1_REC_SINDEX_BASE_MSB	H713_AV1_FIELD(2688, 32)
++#define H713_AV1_REC_SINDEX_BASE	H713_AV1_FIELD(2720, 32)
++#define H713_AV1_SCALER_TAP_BASE_MSB	H713_AV1_FIELD(2752, 32)
++#define H713_AV1_SCALER_TAP_BASE	H713_AV1_FIELD(2784, 32)
++#define H713_AV1_GLOBAL_MODEL_BASE_MSB	H713_AV1_FIELD(2816, 32)
++#define H713_AV1_GLOBAL_MODEL_BASE	H713_AV1_FIELD(2848, 32)
++#define H713_AV1_OUT_SECONDARY_LU_BASE_MSB	H713_AV1_FIELD(2880, 32)
++#define H713_AV1_OUT_SECONDARY_LU_BASE	H713_AV1_FIELD(2912, 32)
++#define H713_AV1_OUT_SECONDARY_CB_BASE_MSB	H713_AV1_FIELD(2944, 32)
++#define H713_AV1_OUT_SECONDARY_CB_BASE	H713_AV1_FIELD(2976, 32)
++#define H713_AV1_OUT_SECONDARY_CR_BASE_MSB	H713_AV1_FIELD(3008, 32)
++#define H713_AV1_OUT_SECONDARY_CR_BASE	H713_AV1_FIELD(3040, 32)
++#define H713_AV1_OUT_SECONDARY_COLBUF_BASE_MSB	H713_AV1_FIELD(3072, 32)
++#define H713_AV1_OUT_SECONDARY_COLBUF_BASE	H713_AV1_FIELD(3104, 32)
++#define H713_AV1_FILTER_CTRL_INFO_COLBUF_BASE_MSB	H713_AV1_FIELD(3136, 32)
++#define H713_AV1_FILTER_CTRL_INFO_COLBUF_BASE	H713_AV1_FIELD(3168, 32)
++#define H713_AV1_FILTER_LR_PARAMS_COLBUF_BASE_MSB	H713_AV1_FIELD(3200, 32)
++#define H713_AV1_FILTER_LR_PARAMS_COLBUF_BASE	H713_AV1_FIELD(3232, 32)
++#define H713_AV1_FILM_GRAIN_COLBUF_BASE_MSB	H713_AV1_FIELD(3264, 32)
++#define H713_AV1_FILM_GRAIN_COLBUF_BASE	H713_AV1_FIELD(3296, 32)
++#define H713_AV1_FILTER_CDEF_DIR_COLBUF_BASE_MSB	H713_AV1_FIELD(3328, 32)
++#define H713_AV1_FILTER_CDEF_DIR_COLBUF_BASE	H713_AV1_FIELD(3360, 32)
++#define H713_AV1_MOTION_TREE_STATS_BASE_MSB	H713_AV1_FIELD(3392, 32)
++#define H713_AV1_MOTION_TREE_STATS_BASE	H713_AV1_FIELD(3424, 32)
++#define H713_AV1_PDEC_CONFIG_BASE_MSB	H713_AV1_FIELD(3456, 32)
++#define H713_AV1_PDEC_CONFIG_BASE	H713_AV1_FIELD(3488, 32)
++#define H713_AV1_REF3_LUM_BASE_MSB	H713_AV1_FIELD(3520, 32)
++#define H713_AV1_REF3_LUM_BASE	H713_AV1_FIELD(3552, 32)
++#define H713_AV1_REF3_CB_BASE_MSB	H713_AV1_FIELD(3584, 32)
++#define H713_AV1_REF3_CB_BASE	H713_AV1_FIELD(3616, 32)
++#define H713_AV1_REF3_CR_BASE_MSB	H713_AV1_FIELD(3648, 32)
++#define H713_AV1_REF3_CR_BASE	H713_AV1_FIELD(3680, 32)
++#define H713_AV1_REF4_LUM_BASE_MSB	H713_AV1_FIELD(3712, 32)
++#define H713_AV1_REF4_LUM_BASE	H713_AV1_FIELD(3744, 32)
++#define H713_AV1_REF4_CB_BASE_MSB	H713_AV1_FIELD(3776, 32)
++#define H713_AV1_REF4_CB_BASE	H713_AV1_FIELD(3808, 32)
++#define H713_AV1_REF4_CR_BASE_MSB	H713_AV1_FIELD(3840, 32)
++#define H713_AV1_REF4_CR_BASE	H713_AV1_FIELD(3872, 32)
++#define H713_AV1_REF5_LUM_BASE_MSB	H713_AV1_FIELD(3904, 32)
++#define H713_AV1_REF5_LUM_BASE	H713_AV1_FIELD(3936, 32)
++#define H713_AV1_REF5_CB_BASE_MSB	H713_AV1_FIELD(3968, 32)
++#define H713_AV1_REF5_CB_BASE	H713_AV1_FIELD(4000, 32)
++#define H713_AV1_REF5_CR_BASE_MSB	H713_AV1_FIELD(4032, 32)
++#define H713_AV1_REF5_CR_BASE	H713_AV1_FIELD(4064, 32)
++#define H713_AV1_REF6_LUM_BASE_MSB	H713_AV1_FIELD(4096, 32)
++#define H713_AV1_REF6_LUM_BASE	H713_AV1_FIELD(4128, 32)
++#define H713_AV1_REF6_CB_BASE_MSB	H713_AV1_FIELD(4160, 32)
++#define H713_AV1_REF6_CB_BASE	H713_AV1_FIELD(4192, 32)
++#define H713_AV1_REF6_CR_BASE_MSB	H713_AV1_FIELD(4224, 32)
++#define H713_AV1_REF6_CR_BASE	H713_AV1_FIELD(4256, 32)
++#define H713_AV1_FILM_GRAIN_BASE_MSB	H713_AV1_FIELD(4288, 32)
++#define H713_AV1_FILM_GRAIN_BASE	H713_AV1_FIELD(4320, 32)
++#define H713_AV1_TEMPORAL1_READ_BASE_MSB	H713_AV1_FIELD(4352, 32)
++#define H713_AV1_TEMPORAL1_READ_BASE	H713_AV1_FIELD(4384, 32)
++#define H713_AV1_TEMPORAL2_READ_BASE_MSB	H713_AV1_FIELD(4416, 32)
++#define H713_AV1_TEMPORAL2_READ_BASE	H713_AV1_FIELD(4448, 32)
++#define H713_AV1_TEMPORAL3_READ_BASE_MSB	H713_AV1_FIELD(4480, 32)
++#define H713_AV1_TEMPORAL3_READ_BASE	H713_AV1_FIELD(4512, 32)
++#define H713_AV1_TILE0_STREAM_SIZE	H713_AV1_FIELD(4544, 24)
++#define H713_AV1_TILE1_STREAM_SIZE	H713_AV1_FIELD(4568, 24)
++#define H713_AV1_TILE2_STREAM_SIZE	H713_AV1_FIELD(4592, 24)
++#define H713_AV1_TILE3_STREAM_SIZE	H713_AV1_FIELD(4616, 24)
++#define H713_AV1_TILE4_STREAM_SIZE	H713_AV1_FIELD(4640, 24)
++#define H713_AV1_TILE5_STREAM_SIZE	H713_AV1_FIELD(4664, 24)
++#define H713_AV1_TILE6_STREAM_SIZE	H713_AV1_FIELD(4688, 24)
++#define H713_AV1_TILE7_STREAM_SIZE	H713_AV1_FIELD(4712, 24)
++#define H713_AV1_TILE8_STREAM_SIZE	H713_AV1_FIELD(4736, 24)
++#define H713_AV1_TILE9_STREAM_SIZE	H713_AV1_FIELD(4760, 24)
++#define H713_AV1_TILE10_STREAM_SIZE	H713_AV1_FIELD(4784, 24)
++#define H713_AV1_TILE11_STREAM_SIZE	H713_AV1_FIELD(4808, 24)
++#define H713_AV1_TILE12_STREAM_SIZE	H713_AV1_FIELD(4832, 24)
++#define H713_AV1_TILE13_STREAM_SIZE	H713_AV1_FIELD(4856, 24)
++#define H713_AV1_TILE14_STREAM_SIZE	H713_AV1_FIELD(4880, 24)
++#define H713_AV1_TILE15_STREAM_SIZE	H713_AV1_FIELD(4904, 24)
++#define H713_AV1_MULTICORE_MODE	H713_AV1_FIELD(4928, 2)
++#define H713_AV1_MULTICORE_SBX_OFFSET	H713_AV1_FIELD(4930, 7)
++#define H713_AV1_MULTICORE_POLL_PERIOD	H713_AV1_FIELD(4937, 16)
++#define H713_AV1_MULTICORE_FULL_WIDTH	H713_AV1_FIELD(4953, 8)
++#define H713_AV1_MULTICORE_TILE_COL	H713_AV1_FIELD(4961, 7)
++#define H713_AV1_MULTICORE_TILE_START_X	H713_AV1_FIELD(4968, 8)
++#define H713_AV1_MULTICORE_TILE_WIDTH	H713_AV1_FIELD(4976, 7)
++#define H713_AV1_MULTICORE_EXPECT_CONTEXT_UPDATE	H713_AV1_FIELD(4983, 1)
++#define H713_AV1_TIMEOUT_LIMIT	H713_AV1_FIELD(4984, 32)
++#define H713_AV1_CROP_HOR_OFFSET	H713_AV1_FIELD(5016, 13)
++#define H713_AV1_CROP_VER_OFFSET	H713_AV1_FIELD(5029, 13)
++#define H713_AV1_PIC_WIDTH	H713_AV1_FIELD(5042, 14)
++#define H713_AV1_PIC_HEIGHT	H713_AV1_FIELD(5056, 13)
++#define H713_AV1_SCALE_SRC_WIDTH	H713_AV1_FIELD(5069, 13)
++#define H713_AV1_SCALE_SRC_HEIGHT	H713_AV1_FIELD(5082, 13)
++#define H713_AV1_SCALE_DST_WIDTH	H713_AV1_FIELD(5095, 13)
++#define H713_AV1_SCALE_DST_HEIGHT	H713_AV1_FIELD(5108, 13)
++#define H713_AV1_DENOISE_ENABLED	H713_AV1_FIELD(5121, 1)
++#define H713_AV1_DENOISE_Y_VALUE	H713_AV1_FIELD(5122, 32)
++#define H713_AV1_DENOISE_U_VALUE	H713_AV1_FIELD(5154, 32)
++#define H713_AV1_DENOISE_V_VALUE	H713_AV1_FIELD(5186, 32)
++#define H713_AV1_LETTERBOX_LEFT_OFFSET	H713_AV1_FIELD(5218, 13)
++#define H713_AV1_LETTERBOX_RIGHT_OFFSET	H713_AV1_FIELD(5231, 13)
++#define H713_AV1_LETTERBOX_TOP_OFFSET	H713_AV1_FIELD(5244, 13)
++#define H713_AV1_LETTERBOX_BOT_OFFSET	H713_AV1_FIELD(5257, 13)
++#define H713_AV1_LETTERBOX_Y	H713_AV1_FIELD(5270, 10)
++#define H713_AV1_LETTERBOX_U	H713_AV1_FIELD(5280, 10)
++#define H713_AV1_LETTERBOX_V	H713_AV1_FIELD(5290, 10)
++#define H713_AV1_PIC_TYPE	H713_AV1_FIELD(5300, 1)
++#define H713_AV1_LUM_OFFSET	H713_AV1_FIELD(5301, 5)
++#define H713_AV1_CH_OFFSET	H713_AV1_FIELD(5306, 5)
++#define H713_AV1_LU_STRIDE	H713_AV1_FIELD(5311, 16)
++#define H713_AV1_CB_STRIDE	H713_AV1_FIELD(5327, 16)
++#define H713_AV1_CR_STRIDE	H713_AV1_FIELD(5343, 16)
++#define H713_AV1_INPUT_TILE	H713_AV1_FIELD(5359, 2)
++#define H713_AV1_INPUT_FLIP	H713_AV1_FIELD(5361, 1)
++#define H713_AV1_INPUT_ROT	H713_AV1_FIELD(5362, 2)
++#define H713_AV1_RGB_CONVERSION_COEFF_0	H713_AV1_FIELD(5364, 10)
++#define H713_AV1_RGB_CONVERSION_COEFF_1	H713_AV1_FIELD(5374, 10)
++#define H713_AV1_RGB_CONVERSION_COEFF_2	H713_AV1_FIELD(5384, 10)
++#define H713_AV1_RGB_CONVERSION_COEFF_3	H713_AV1_FIELD(5394, 10)
++#define H713_AV1_RGB_CONVERSION_COEFF_4	H713_AV1_FIELD(5404, 10)
++#define H713_AV1_RGB_CONVERSION_COEFF_5	H713_AV1_FIELD(5414, 10)
++#define H713_AV1_RGB_CONVERSION_COEFF_6	H713_AV1_FIELD(5424, 10)
++#define H713_AV1_RGB_CONVERSION_COEFF_7	H713_AV1_FIELD(5434, 10)
++#define H713_AV1_RGB_CONVERSION_COEFF_8	H713_AV1_FIELD(5444, 10)
++#define H713_AV1_RGB_CONVERSION_LUMA_OFFSET	H713_AV1_FIELD(5454, 1)
++#define H713_AV1_QUANT_DELTA_Y_DC	H713_AV1_FIELD(5455, 7)
++#define H713_AV1_QUANT_DELTA_UV_DC	H713_AV1_FIELD(5462, 7)
++#define H713_AV1_QUANT_DELTA_UV_AC	H713_AV1_FIELD(5469, 7)
++#define H713_AV1_QUANT_SCALE_IDX_SEG0	H713_AV1_FIELD(5476, 8)
++#define H713_AV1_QUANT_SCALE_IDX_SEG1	H713_AV1_FIELD(5484, 8)
++#define H713_AV1_QUANT_SCALE_IDX_SEG2	H713_AV1_FIELD(5492, 8)
++#define H713_AV1_QUANT_SCALE_IDX_SEG3	H713_AV1_FIELD(5500, 8)
++#define H713_AV1_QUANT_SCALE_IDX_SEG4	H713_AV1_FIELD(5508, 8)
++#define H713_AV1_QUANT_SCALE_IDX_SEG5	H713_AV1_FIELD(5516, 8)
++#define H713_AV1_QUANT_SCALE_IDX_SEG6	H713_AV1_FIELD(5524, 8)
++#define H713_AV1_QUANT_SCALE_IDX_SEG7	H713_AV1_FIELD(5532, 8)
++#define H713_AV1_QUANT_ROUND_SEG0_LUMA_DC	H713_AV1_FIELD(5540, 3)
++#define H713_AV1_QUANT_ROUND_SEG0_LUMA_AC	H713_AV1_FIELD(5543, 3)
++#define H713_AV1_QUANT_ROUND_SEG0_CHROMA_DC	H713_AV1_FIELD(5546, 3)
++#define H713_AV1_QUANT_ROUND_SEG0_CHROMA_AC	H713_AV1_FIELD(5549, 3)
++#define H713_AV1_QUANT_ROUND_SEG1_LUMA_DC	H713_AV1_FIELD(5552, 3)
++#define H713_AV1_QUANT_ROUND_SEG1_LUMA_AC	H713_AV1_FIELD(5555, 3)
++#define H713_AV1_QUANT_ROUND_SEG1_CHROMA_DC	H713_AV1_FIELD(5558, 3)
++#define H713_AV1_QUANT_ROUND_SEG1_CHROMA_AC	H713_AV1_FIELD(5561, 3)
++#define H713_AV1_QUANT_ROUND_SEG2_LUMA_DC	H713_AV1_FIELD(5564, 3)
++#define H713_AV1_QUANT_ROUND_SEG2_LUMA_AC	H713_AV1_FIELD(5567, 3)
++#define H713_AV1_QUANT_ROUND_SEG2_CHROMA_DC	H713_AV1_FIELD(5570, 3)
++#define H713_AV1_QUANT_ROUND_SEG2_CHROMA_AC	H713_AV1_FIELD(5573, 3)
++#define H713_AV1_QUANT_ROUND_SEG3_LUMA_DC	H713_AV1_FIELD(5576, 3)
++#define H713_AV1_QUANT_ROUND_SEG3_LUMA_AC	H713_AV1_FIELD(5579, 3)
++#define H713_AV1_QUANT_ROUND_SEG3_CHROMA_DC	H713_AV1_FIELD(5582, 3)
++#define H713_AV1_QUANT_ROUND_SEG3_CHROMA_AC	H713_AV1_FIELD(5585, 3)
++#define H713_AV1_QUANT_ROUND_SEG4_LUMA_DC	H713_AV1_FIELD(5588, 3)
++#define H713_AV1_QUANT_ROUND_SEG4_LUMA_AC	H713_AV1_FIELD(5591, 3)
++#define H713_AV1_QUANT_ROUND_SEG4_CHROMA_DC	H713_AV1_FIELD(5594, 3)
++#define H713_AV1_QUANT_ROUND_SEG4_CHROMA_AC	H713_AV1_FIELD(5597, 3)
++#define H713_AV1_QUANT_ROUND_SEG5_LUMA_DC	H713_AV1_FIELD(5600, 3)
++#define H713_AV1_QUANT_ROUND_SEG5_LUMA_AC	H713_AV1_FIELD(5603, 3)
++#define H713_AV1_QUANT_ROUND_SEG5_CHROMA_DC	H713_AV1_FIELD(5606, 3)
++#define H713_AV1_QUANT_ROUND_SEG5_CHROMA_AC	H713_AV1_FIELD(5609, 3)
++#define H713_AV1_QUANT_ROUND_SEG6_LUMA_DC	H713_AV1_FIELD(5612, 3)
++#define H713_AV1_QUANT_ROUND_SEG6_LUMA_AC	H713_AV1_FIELD(5615, 3)
++#define H713_AV1_QUANT_ROUND_SEG6_CHROMA_DC	H713_AV1_FIELD(5618, 3)
++#define H713_AV1_QUANT_ROUND_SEG6_CHROMA_AC	H713_AV1_FIELD(5621, 3)
++#define H713_AV1_QUANT_ROUND_SEG7_LUMA_DC	H713_AV1_FIELD(5624, 3)
++#define H713_AV1_QUANT_ROUND_SEG7_LUMA_AC	H713_AV1_FIELD(5627, 3)
++#define H713_AV1_QUANT_ROUND_SEG7_CHROMA_DC	H713_AV1_FIELD(5630, 3)
++#define H713_AV1_QUANT_ROUND_SEG7_CHROMA_AC	H713_AV1_FIELD(5633, 3)
++#define H713_AV1_DEADZONE_ENABLE	H713_AV1_FIELD(5636, 1)
++#define H713_AV1_DEADZONE_ACTIVITY_MASKING	H713_AV1_FIELD(5637, 1)
++#define H713_AV1_ROUND_DELTA_INTER	H713_AV1_FIELD(5638, 3)
++#define H713_AV1_FILT_LEVEL_SEG0	H713_AV1_FIELD(5641, 6)
++#define H713_AV1_FILT_LEVEL_SEG1	H713_AV1_FIELD(5647, 6)
++#define H713_AV1_FILT_LEVEL_BASE_GT32	H713_AV1_FIELD(5653, 1)
++#define H713_AV1_FILT_MODE0_DELTA	H713_AV1_FIELD(5654, 7)
++#define H713_AV1_FILT_MODE1_DELTA	H713_AV1_FIELD(5661, 7)
++#define H713_AV1_FILT_REF0_DELTA	H713_AV1_FIELD(5668, 7)
++#define H713_AV1_FILT_REF1_DELTA	H713_AV1_FIELD(5675, 7)
++#define H713_AV1_FILT_REF2_DELTA	H713_AV1_FIELD(5682, 7)
++#define H713_AV1_FILT_REF3_DELTA	H713_AV1_FIELD(5689, 7)
++#define H713_AV1_REF1_DISABLE	H713_AV1_FIELD(5696, 1)
++#define H713_AV1_REF2_DISABLE	H713_AV1_FIELD(5697, 1)
++#define H713_AV1_FILTERING_DIS	H713_AV1_FIELD(5698, 1)
++#define H713_AV1_FILTER_SHARPNESS	H713_AV1_FIELD(5699, 3)
++#define H713_AV1_REF0_WIDTH	H713_AV1_FIELD(5702, 14)
++#define H713_AV1_REF0_HEIGHT	H713_AV1_FIELD(5716, 13)
++#define H713_AV1_REF1_WIDTH	H713_AV1_FIELD(5729, 14)
++#define H713_AV1_REF1_HEIGHT	H713_AV1_FIELD(5743, 13)
++#define H713_AV1_REF2_WIDTH	H713_AV1_FIELD(5756, 14)
++#define H713_AV1_REF2_HEIGHT	H713_AV1_FIELD(5770, 13)
++#define H713_AV1_REF_SCALING_ENABLE	H713_AV1_FIELD(5783, 1)
++#define H713_AV1_REF0_HOR_SCALE	H713_AV1_FIELD(5784, 16)
++#define H713_AV1_REF0_VER_SCALE	H713_AV1_FIELD(5800, 16)
++#define H713_AV1_TILE1_SBCOL_POS	H713_AV1_FIELD(5816, 7)
++#define H713_AV1_TILE2_SBCOL_POS	H713_AV1_FIELD(5823, 7)
++#define H713_AV1_TILE3_SBCOL_POS	H713_AV1_FIELD(5830, 7)
++#define H713_AV1_TILE4_SBCOL_POS	H713_AV1_FIELD(5837, 7)
++#define H713_AV1_TILE5_SBCOL_POS	H713_AV1_FIELD(5844, 7)
++#define H713_AV1_TILE6_SBCOL_POS	H713_AV1_FIELD(5851, 7)
++#define H713_AV1_TILE7_SBCOL_POS	H713_AV1_FIELD(5858, 7)
++#define H713_AV1_TILE8_SBCOL_POS	H713_AV1_FIELD(5865, 7)
++#define H713_AV1_TILE9_SBCOL_POS	H713_AV1_FIELD(5872, 7)
++#define H713_AV1_TILE10_SBCOL_POS	H713_AV1_FIELD(5879, 7)
++#define H713_AV1_TILE11_SBCOL_POS	H713_AV1_FIELD(5886, 7)
++#define H713_AV1_TILE12_SBCOL_POS	H713_AV1_FIELD(5893, 7)
++#define H713_AV1_TILE13_SBCOL_POS	H713_AV1_FIELD(5900, 7)
++#define H713_AV1_TILE14_SBCOL_POS	H713_AV1_FIELD(5907, 7)
++#define H713_AV1_TILE15_SBCOL_POS	H713_AV1_FIELD(5914, 7)
++#define H713_AV1_HYBRID_PRED_ENABLE	H713_AV1_FIELD(5921, 1)
++#define H713_AV1_COMP_PRED_ONLY	H713_AV1_FIELD(5922, 1)
++#define H713_AV1_COMP_FIXED_REF	H713_AV1_FIELD(5923, 3)
++#define H713_AV1_COMP_VAR_REF0	H713_AV1_FIELD(5926, 3)
++#define H713_AV1_COMP_VAR_REF1	H713_AV1_FIELD(5929, 3)
++#define H713_AV1_REF0_SIGN_BIAS	H713_AV1_FIELD(5932, 1)
++#define H713_AV1_REF1_SIGN_BIAS	H713_AV1_FIELD(5933, 1)
++#define H713_AV1_REF2_SIGN_BIAS	H713_AV1_FIELD(5934, 1)
++#define H713_AV1_HIGH_PREC_MV_E	H713_AV1_FIELD(5935, 1)
++#define H713_AV1_TEMPORAL_MV_E	H713_AV1_FIELD(5936, 1)
++#define H713_AV1_TRANSFORM_MODE	H713_AV1_FIELD(5937, 3)
++#define H713_AV1_LOSSLESS_E	H713_AV1_FIELD(5940, 1)
++#define H713_AV1_MCOMP_FILTER_TYPE	H713_AV1_FIELD(5941, 3)
++#define H713_AV1_SIME_LAMBDA_MOTION	H713_AV1_FIELD(5944, 32)
++#define H713_AV1_SIME_LAMBDA_ZERO	H713_AV1_FIELD(5976, 32)
++#define H713_AV1_LAMBDA_0	H713_AV1_FIELD(6008, 32)
++#define H713_AV1_LAMBDA_2	H713_AV1_FIELD(6040, 32)
++#define H713_AV1_LAMBDA_3	H713_AV1_FIELD(6072, 32)
++#define H713_AV1_RDO_CH_SSE_MUL	H713_AV1_FIELD(6104, 4)
++#define H713_AV1_RDO_SEG1_MUL	H713_AV1_FIELD(6108, 8)
++#define H713_AV1_RDO_SEG2_MUL	H713_AV1_FIELD(6116, 8)
++#define H713_AV1_RDO_SEG3_MUL	H713_AV1_FIELD(6124, 8)
++#define H713_AV1_RDO_SEG4_MUL	H713_AV1_FIELD(6132, 8)
++#define H713_AV1_RDO_SEG5_MUL	H713_AV1_FIELD(6140, 8)
++#define H713_AV1_RDO_SEG6_MUL	H713_AV1_FIELD(6148, 8)
++#define H713_AV1_RDO_SEG7_MUL	H713_AV1_FIELD(6156, 8)
++#define H713_AV1_RDO_QP_ADJUST_ENABLE	H713_AV1_FIELD(6164, 1)
++#define H713_AV1_RDO_BUCKET0MINUS4_VAR_THR	H713_AV1_FIELD(6165, 10)
++#define H713_AV1_RDO_BUCKET1MINUS4_VAR_THR	H713_AV1_FIELD(6175, 10)
++#define H713_AV1_RDO_BUCKET2MINUS4_VAR_THR	H713_AV1_FIELD(6185, 10)
++#define H713_AV1_RDO_BUCKET3MINUS4_VAR_THR	H713_AV1_FIELD(6195, 10)
++#define H713_AV1_RDO_BUCKET4MINUS4_VAR_THR	H713_AV1_FIELD(6205, 10)
++#define H713_AV1_RDO_BUCKET5MINUS4_VAR_THR	H713_AV1_FIELD(6215, 10)
++#define H713_AV1_RDO_BUCKET6MINUS4_VAR_THR	H713_AV1_FIELD(6225, 10)
++#define H713_AV1_LAMBDA_DZ_I	H713_AV1_FIELD(6235, 32)
++#define H713_AV1_LAMBDA_DZ_P	H713_AV1_FIELD(6267, 32)
++#define H713_AV1_LAMBDA_DZ_CH_ADJ	H713_AV1_FIELD(6299, 4)
++#define H713_AV1_INTRA_INTER_PENALTY	H713_AV1_FIELD(6303, 8)
++#define H713_AV1_INTRA_DC_FAVOUR	H713_AV1_FIELD(6311, 16)
++#define H713_AV1_INTRA_CH_VARIANCE_THRESHOLD	H713_AV1_FIELD(6327, 16)
++#define H713_AV1_DISABLE_INTRA_4X4_TXFM	H713_AV1_FIELD(6343, 1)
++#define H713_AV1_FULL_PART_SEARCH_ENABLE	H713_AV1_FIELD(6344, 1)
++#define H713_AV1_PART_SEARCH_THRESHOLD0	H713_AV1_FIELD(6345, 16)
++#define H713_AV1_INTER_LU_VARIANCE_THRESHOLD	H713_AV1_FIELD(6361, 16)
++#define H713_AV1_INTER_SKIP_THRESHOLD	H713_AV1_FIELD(6377, 16)
++#define H713_AV1_ME_STATIC_THRESHOLD	H713_AV1_FIELD(6393, 16)
++#define H713_AV1_DISABLE_MOTION_SEARCH	H713_AV1_FIELD(6409, 1)
++#define H713_AV1_ME_REF0	H713_AV1_FIELD(6410, 3)
++#define H713_AV1_ME_REF1	H713_AV1_FIELD(6413, 3)
++#define H713_AV1_ME_REF2	H713_AV1_FIELD(6416, 3)
++#define H713_AV1_ME_REF3	H713_AV1_FIELD(6419, 3)
++#define H713_AV1_ME_REF4	H713_AV1_FIELD(6422, 3)
++#define H713_AV1_ME_REF5	H713_AV1_FIELD(6425, 3)
++#define H713_AV1_ME_REF6	H713_AV1_FIELD(6428, 3)
++#define H713_AV1_ME_NUM_REF	H713_AV1_FIELD(6431, 3)
++#define H713_AV1_RDO_SPIPE_CONTROL_REG	H713_AV1_FIELD(6434, 2)
++#define H713_AV1_RDO_SPIPE0_REF0	H713_AV1_FIELD(6436, 3)
++#define H713_AV1_RDO_SPIPE0_REF1	H713_AV1_FIELD(6439, 3)
++#define H713_AV1_RDO_SPIPE0_COMP_PRED	H713_AV1_FIELD(6442, 1)
++#define H713_AV1_RDO_SPIPE1_REF0	H713_AV1_FIELD(6443, 3)
++#define H713_AV1_RDO_SPIPE1_REF1	H713_AV1_FIELD(6446, 3)
++#define H713_AV1_RDO_SPIPE1_COMP_PRED	H713_AV1_FIELD(6449, 1)
++#define H713_AV1_RDO_SPIPE2_REF0	H713_AV1_FIELD(6450, 3)
++#define H713_AV1_RDO_SPIPE2_REF1	H713_AV1_FIELD(6453, 3)
++#define H713_AV1_RDO_SPIPE2_COMP_PRED	H713_AV1_FIELD(6456, 1)
++#define H713_AV1_RDO_AUTO_2WAY_REF_ENABLE	H713_AV1_FIELD(6457, 1)
++#define H713_AV1_RDO_ACTIVITY_MASKING	H713_AV1_FIELD(6458, 1)
++#define H713_AV1_RDO_MAX_RD_MULTIPLIER	H713_AV1_FIELD(6459, 10)
++#define H713_AV1_RDO_EDGE_BYPASS_ENABLE	H713_AV1_FIELD(6469, 1)
++#define H713_AV1_RDO_NUM_INTRA_MODE	H713_AV1_FIELD(6470, 2)
++#define H713_AV1_RDO_NUM_INTRA_TX	H713_AV1_FIELD(6472, 2)
++#define H713_AV1_RDO_NUM_INTER_TX	H713_AV1_FIELD(6474, 2)
++#define H713_AV1_RDO_NUM_INTER_TX_STATIC	H713_AV1_FIELD(6476, 2)
++#define H713_AV1_RDO_NUM_MCOMP_FILTER	H713_AV1_FIELD(6478, 2)
++#define H713_AV1_RDO_FAST_MCOMP_SWITCH	H713_AV1_FIELD(6480, 1)
++#define H713_AV1_RDO_DISABLE_ZMV_PIPE	H713_AV1_FIELD(6481, 1)
++#define H713_AV1_RDO_DISABLE_CHROMA	H713_AV1_FIELD(6482, 1)
++#define H713_AV1_RDO_DISABLE_KF_MODE	H713_AV1_FIELD(6483, 1)
++#define H713_AV1_SPLIT64_PENALTY	H713_AV1_FIELD(6484, 16)
++#define H713_AV1_SPLIT32_PENALTY	H713_AV1_FIELD(6500, 16)
++#define H713_AV1_SPLIT16_PENALTY	H713_AV1_FIELD(6516, 16)
++#define H713_AV1_MIXED_SEGMENT_PENALTY	H713_AV1_FIELD(6532, 16)
++#define H713_AV1_ME_CHROMA_WEIGHT	H713_AV1_FIELD(6548, 2)
++#define H713_AV1_ME_SUB_INDEX_ENABLE	H713_AV1_FIELD(6550, 1)
++#define H713_AV1_FC_CUR_LUMA_ENTROPY0	H713_AV1_FIELD(6551, 3)
++#define H713_AV1_FC_CUR_LUMA_ENTROPY1	H713_AV1_FIELD(6554, 3)
++#define H713_AV1_FC_CUR_LUMA_ENTROPY2	H713_AV1_FIELD(6557, 3)
++#define H713_AV1_FC_CUR_LUMA_ENTROPY3	H713_AV1_FIELD(6560, 3)
++#define H713_AV1_FC_CUR_LUMA_ENTROPY4	H713_AV1_FIELD(6563, 3)
++#define H713_AV1_FC_CUR_LUMA_ENTROPY5	H713_AV1_FIELD(6566, 3)
++#define H713_AV1_FC_CUR_LUMA_ENTROPY6	H713_AV1_FIELD(6569, 3)
++#define H713_AV1_FC_CUR_LUMA_ENTROPY7	H713_AV1_FIELD(6572, 3)
++#define H713_AV1_FC_CUR_CHROMA_ENTROPY0	H713_AV1_FIELD(6575, 3)
++#define H713_AV1_FC_CUR_CHROMA_ENTROPY1	H713_AV1_FIELD(6578, 3)
++#define H713_AV1_FC_CUR_CHROMA_ENTROPY2	H713_AV1_FIELD(6581, 3)
++#define H713_AV1_FC_CUR_CHROMA_ENTROPY3	H713_AV1_FIELD(6584, 3)
++#define H713_AV1_FC_CUR_CHROMA_ENTROPY4	H713_AV1_FIELD(6587, 3)
++#define H713_AV1_FC_CUR_CHROMA_ENTROPY5	H713_AV1_FIELD(6590, 3)
++#define H713_AV1_FC_CUR_CHROMA_ENTROPY6	H713_AV1_FIELD(6593, 3)
++#define H713_AV1_FC_CUR_CHROMA_ENTROPY7	H713_AV1_FIELD(6596, 3)
++#define H713_AV1_FC_LUMA_CUR_ENTROPY0_COUNT	H713_AV1_FIELD(6599, 24)
++#define H713_AV1_FC_LUMA_CUR_ENTROPY1_COUNT	H713_AV1_FIELD(6623, 24)
++#define H713_AV1_FC_LUMA_CUR_ENTROPY2_COUNT	H713_AV1_FIELD(6647, 24)
++#define H713_AV1_FC_LUMA_CUR_ENTROPY3_COUNT	H713_AV1_FIELD(6671, 24)
++#define H713_AV1_FC_LUMA_CUR_ENTROPY4_COUNT	H713_AV1_FIELD(6695, 24)
++#define H713_AV1_FC_LUMA_CUR_ENTROPY5_COUNT	H713_AV1_FIELD(6719, 24)
++#define H713_AV1_FC_LUMA_CUR_ENTROPY6_COUNT	H713_AV1_FIELD(6743, 24)
++#define H713_AV1_FC_LUMA_CUR_ENTROPY7_COUNT	H713_AV1_FIELD(6767, 24)
++#define H713_AV1_FC_CHROMA_CUR_ENTROPY0_COUNT	H713_AV1_FIELD(6791, 24)
++#define H713_AV1_FC_CHROMA_CUR_ENTROPY1_COUNT	H713_AV1_FIELD(6815, 24)
++#define H713_AV1_FC_CHROMA_CUR_ENTROPY2_COUNT	H713_AV1_FIELD(6839, 24)
++#define H713_AV1_FC_CHROMA_CUR_ENTROPY3_COUNT	H713_AV1_FIELD(6863, 24)
++#define H713_AV1_FC_CHROMA_CUR_ENTROPY4_COUNT	H713_AV1_FIELD(6887, 24)
++#define H713_AV1_FC_CHROMA_CUR_ENTROPY5_COUNT	H713_AV1_FIELD(6911, 24)
++#define H713_AV1_FC_CHROMA_CUR_ENTROPY6_COUNT	H713_AV1_FIELD(6935, 24)
++#define H713_AV1_FC_CHROMA_CUR_ENTROPY7_COUNT	H713_AV1_FIELD(6959, 24)
++#define H713_AV1_SUM_OF_VARIANCE	H713_AV1_FIELD(6983, 24)
++#define H713_AV1_FIRST_PASS	H713_AV1_FIELD(7007, 1)
++#define H713_AV1_TEMPORAL_FILTER_ENABLE	H713_AV1_FIELD(7008, 1)
++#define H713_AV1_TEMPORAL_FILTER_STRENGTH	H713_AV1_FIELD(7009, 4)
++#define H713_AV1_TEMPORAL_FILTER_THRESHOLD_LO	H713_AV1_FIELD(7013, 16)
++#define H713_AV1_TEMPORAL_FILTER_THRESHOLD_HI	H713_AV1_FIELD(7029, 16)
++#define H713_AV1_FP_MV_MASK_BITS	H713_AV1_FIELD(7045, 2)
++#define H713_AV1_PIC_WIDTH_PAD	H713_AV1_FIELD(7047, 3)
++#define H713_AV1_PIC_HEIGHT_PAD	H713_AV1_FIELD(7050, 3)
++#define H713_AV1_FILTER_SSE_ENABLE	H713_AV1_FIELD(7053, 1)
++#define H713_AV1_FILTER_SSE	H713_AV1_FIELD(7054, 64)
++#define H713_AV1_AXI_RD_MAXBURST	H713_AV1_FIELD(7118, 16)
++#define H713_AV1_AXI_WR_MAXBURST	H713_AV1_FIELD(7134, 16)
++#define H713_AV1_ENC_SB_COUNT_S1	H713_AV1_FIELD(7150, 16)
++#define H713_AV1_ENC_SB_COUNT_S4	H713_AV1_FIELD(7166, 16)
++#define H713_AV1_DEC_IN_SWAP	H713_AV1_FIELD(7182, 5)
++#define H713_AV1_DEC_OUT_SWAP	H713_AV1_FIELD(7187, 5)
++#define H713_AV1_FILT_LEVEL_SEG2	H713_AV1_FIELD(7192, 6)
++#define H713_AV1_FILT_LEVEL_SEG3	H713_AV1_FIELD(7198, 6)
++#define H713_AV1_FILT_LEVEL_SEG4	H713_AV1_FIELD(7204, 6)
++#define H713_AV1_FILT_LEVEL_SEG5	H713_AV1_FIELD(7210, 6)
++#define H713_AV1_FILT_LEVEL_SEG6	H713_AV1_FIELD(7216, 6)
++#define H713_AV1_FILT_LEVEL_SEG7	H713_AV1_FIELD(7222, 6)
++#define H713_AV1_REFPIC_SEG0	H713_AV1_FIELD(7228, 4)
++#define H713_AV1_REFPIC_SEG1	H713_AV1_FIELD(7232, 4)
++#define H713_AV1_REFPIC_SEG2	H713_AV1_FIELD(7236, 4)
++#define H713_AV1_REFPIC_SEG3	H713_AV1_FIELD(7240, 4)
++#define H713_AV1_REFPIC_SEG4	H713_AV1_FIELD(7244, 4)
++#define H713_AV1_REFPIC_SEG5	H713_AV1_FIELD(7248, 4)
++#define H713_AV1_REFPIC_SEG6	H713_AV1_FIELD(7252, 4)
++#define H713_AV1_REFPIC_SEG7	H713_AV1_FIELD(7256, 4)
++#define H713_AV1_SKIP_SEG0	H713_AV1_FIELD(7260, 1)
++#define H713_AV1_SKIP_SEG1	H713_AV1_FIELD(7261, 1)
++#define H713_AV1_SKIP_SEG2	H713_AV1_FIELD(7262, 1)
++#define H713_AV1_SKIP_SEG3	H713_AV1_FIELD(7263, 1)
++#define H713_AV1_SKIP_SEG4	H713_AV1_FIELD(7264, 1)
++#define H713_AV1_SKIP_SEG5	H713_AV1_FIELD(7265, 1)
++#define H713_AV1_SKIP_SEG6	H713_AV1_FIELD(7266, 1)
++#define H713_AV1_SKIP_SEG7	H713_AV1_FIELD(7267, 1)
++#define H713_AV1_STRM_START_POS	H713_AV1_FIELD(7268, 5)
++#define H713_AV1_STREAM_LEN	H713_AV1_FIELD(7273, 32)
++#define H713_AV1_BITDEPTH	H713_AV1_FIELD(7305, 1)
++#define H713_AV1_LOG2_TILE_COLS	H713_AV1_FIELD(7306, 3)
++#define H713_AV1_NUM_TILE_ROWS	H713_AV1_FIELD(7309, 3)
++#define H713_AV1_TILE_ENABLE	H713_AV1_FIELD(7312, 1)
++#define H713_AV1_REF1_HOR_SCALE	H713_AV1_FIELD(7313, 16)
++#define H713_AV1_REF1_VER_SCALE	H713_AV1_FIELD(7329, 16)
++#define H713_AV1_REF2_HOR_SCALE	H713_AV1_FIELD(7345, 16)
++#define H713_AV1_REF2_VER_SCALE	H713_AV1_FIELD(7361, 16)
++#define H713_AV1_APF_DISABLE	H713_AV1_FIELD(7377, 1)
++#define H713_AV1_APF_APF_SINGLE_PU_MODE	H713_AV1_FIELD(7378, 1)
++#define H713_AV1_APF_THRESHOLD	H713_AV1_FIELD(7379, 16)
++#define H713_AV1_ERROR_RESILIENT	H713_AV1_FIELD(7395, 1)
++#define H713_AV1_ME_SUPER_INDEX_DISABLE	H713_AV1_FIELD(7396, 1)
++#define H713_AV1_ME_EXTEND_WIDTH	H713_AV1_FIELD(7397, 1)
++#define H713_AV1_ME_EXTEND_HEIGHT	H713_AV1_FIELD(7398, 1)
++#define H713_AV1_ME_DUAL_SA_DISABLE	H713_AV1_FIELD(7399, 1)
++#define H713_AV1_ME_CHECKERBOARD_ENABLE	H713_AV1_FIELD(7400, 1)
++#define H713_AV1_INPUT_SCALE	H713_AV1_FIELD(7401, 1)
++#define H713_AV1_HOR_SCALE_FACTOR	H713_AV1_FIELD(7402, 24)
++#define H713_AV1_VER_SCALE_FACTOR	H713_AV1_FIELD(7426, 24)
++#define H713_AV1_HOR_SCALE_FACTOR_CH	H713_AV1_FIELD(7450, 24)
++#define H713_AV1_VER_SCALE_FACTOR_CH	H713_AV1_FIELD(7474, 24)
++#define H713_AV1_DEC_STREAM_ERROR_DETECTION	H713_AV1_FIELD(7498, 1)
++#define H713_AV1_DEC_INVALID_MARKER_DETECTION	H713_AV1_FIELD(7499, 1)
++#define H713_AV1_DEC_MV_ERROR_DETECTION	H713_AV1_FIELD(7500, 1)
++#define H713_AV1_DEC_COEFF_ERROR_DETECTION	H713_AV1_FIELD(7501, 1)
++#define H713_AV1_DEC_TILE_SIZE_MAG	H713_AV1_FIELD(7502, 2)
++#define H713_AV1_REDUCED_TX_SET_USED	H713_AV1_FIELD(7504, 1)
++#define H713_AV1_ALLOW_SCREEN_CONTENT_TOOLS	H713_AV1_FIELD(7505, 1)
++#define H713_AV1_ALLOW_INTRABC	H713_AV1_FIELD(7506, 1)
++#define H713_AV1_FORCE_INTEGER_MV	H713_AV1_FIELD(7507, 1)
++#define H713_AV1_ENTROPY_CODING_MODE	H713_AV1_FIELD(7508, 1)
++#define H713_AV1_SB_SIZE_SHIFT	H713_AV1_FIELD(7509, 2)
++#define H713_AV1_MIN_DRAM_BURST_SIZE	H713_AV1_FIELD(7511, 2)
++#define H713_AV1_QUANT_BASE_QINDEX	H713_AV1_FIELD(7513, 8)
++#define H713_AV1_NO_CHROMA_FLAG	H713_AV1_FIELD(7521, 1)
++#define H713_AV1_TX_8X8_MODE_FLAG	H713_AV1_FIELD(7522, 1)
++#define H713_AV1_RDO_INTRA_TX_8X8_MODE_FLAG	H713_AV1_FIELD(7523, 1)
++#define H713_AV1_RDO_INTER_TX_8X8_MODE_FLAG	H713_AV1_FIELD(7524, 1)
++#define H713_AV1_DISABLE_I16X16_H264	H713_AV1_FIELD(7525, 1)
++#define H713_AV1_DIRECT8X8_INFERENCE_FLAG	H713_AV1_FIELD(7526, 1)
++#define H713_AV1_STRM0_LAST_WORD	H713_AV1_FIELD(7527, 128)
++#define H713_AV1_STRM0_LAST_WORD_BITS	H713_AV1_FIELD(7655, 7)
++#define H713_AV1_REF0_DIST_SCALE_FACTOR	H713_AV1_FIELD(7662, 11)
++#define H713_AV1_REF1_DIST_SCALE_FACTOR	H713_AV1_FIELD(7673, 11)
++#define H713_AV1_NUM_REF_IDX_L0_ACTIVE_MINUS1	H713_AV1_FIELD(7684, 5)
++#define H713_AV1_NUM_REF_IDX_L1_ACTIVE_MINUS1	H713_AV1_FIELD(7689, 5)
++#define H713_AV1_H264_FILTER_OFFSET_A	H713_AV1_FIELD(7694, 5)
++#define H713_AV1_H264_FILTER_OFFSET_B	H713_AV1_FIELD(7699, 5)
++#define H713_AV1_H264_FILTER_QP_OFFSET_CB	H713_AV1_FIELD(7704, 7)
++#define H713_AV1_H264_FILTER_QP_OFFSET_CR	H713_AV1_FIELD(7711, 7)
++#define H713_AV1_INPUT_WIDTH	H713_AV1_FIELD(7718, 13)
++#define H713_AV1_INPUT_HEIGHT	H713_AV1_FIELD(7731, 13)
++#define H713_AV1_INPUT_FORMAT	H713_AV1_FIELD(7744, 4)
++#define H713_AV1_H264_CABAC_INIT_IDC	H713_AV1_FIELD(7748, 2)
++#define H713_AV1_RDO_ENTROPY_CODING_MODE	H713_AV1_FIELD(7750, 1)
++#define H713_AV1_SCALED_OUTPUT_8BPP_MODE	H713_AV1_FIELD(7751, 1)
++#define H713_AV1_SLICE_BEGIN_ROW	H713_AV1_FIELD(7752, 13)
++#define H713_AV1_SLICE_HEIGHT	H713_AV1_FIELD(7765, 13)
++#define H713_AV1_RDO_STATS	H713_AV1_FIELD(7778, 1)
++#define H713_AV1_REF_CACHE_MAP_MODE_DISABLE_H264	H713_AV1_FIELD(7779, 1)
++#define H713_AV1_PP_PIC_WIDTH	H713_AV1_FIELD(7780, 13)
++#define H713_AV1_PP_PIC_HEIGHT	H713_AV1_FIELD(7793, 13)
++#define H713_AV1_INPUT_SWING_CONV	H713_AV1_FIELD(7806, 2)
++#define H713_AV1_LU_INPUT_STRIDE	H713_AV1_FIELD(7808, 19)
++#define H713_AV1_CB_INPUT_STRIDE	H713_AV1_FIELD(7827, 19)
++#define H713_AV1_CR_INPUT_STRIDE	H713_AV1_FIELD(7846, 19)
++#define H713_AV1_DEC_REF_STORE_CACHE_SIZE	H713_AV1_FIELD(7865, 16)
++#define H713_AV1_ME_ROUND4_ENABLE	H713_AV1_FIELD(7881, 1)
++#define H713_AV1_ME_ROUND4_TX4X4_PENALTY	H713_AV1_FIELD(7882, 10)
++#define H713_AV1_ME_ROUND4_TX8X8_PENALTY	H713_AV1_FIELD(7892, 10)
++#define H713_AV1_ME_ROUND4_TX16X16_PENALTY	H713_AV1_FIELD(7902, 10)
++#define H713_AV1_TEMPORAL_FILTER_STRENGTH_CH	H713_AV1_FIELD(7912, 4)
++#define H713_AV1_TEMPORAL_FILTER_THRESHOLD_CH_LO	H713_AV1_FIELD(7916, 16)
++#define H713_AV1_TEMPORAL_FILTER_THRESHOLD_CH_HI	H713_AV1_FIELD(7932, 16)
++#define H713_AV1_QMLEVEL_Y	H713_AV1_FIELD(7948, 4)
++#define H713_AV1_QMLEVEL_U	H713_AV1_FIELD(7952, 4)
++#define H713_AV1_QMLEVEL_V	H713_AV1_FIELD(7956, 4)
++#define H713_AV1_THROTTLE_DRAM_REQ_DISABLE	H713_AV1_FIELD(7960, 1)
++#define H713_AV1_MONOCHROME	H713_AV1_FIELD(7961, 1)
++#define H713_AV1_AV1_TILE_COLS	H713_AV1_FIELD(7962, 7)
++#define H713_AV1_AV1_TILE_ROWS	H713_AV1_FIELD(7969, 7)
++#define H713_AV1_CONTEXT_UPDATE_TILE_ID	H713_AV1_FIELD(7976, 12)
++#define H713_AV1_TILE_TRANSPOSE	H713_AV1_FIELD(7988, 1)
++#define H713_AV1_FC_CB_SIZE	H713_AV1_FIELD(7989, 1)
++#define H713_AV1_FC_PLANE_MODE	H713_AV1_FIELD(7990, 1)
++#define H713_AV1_SEG_QUANT_SIGN	H713_AV1_FIELD(7991, 8)
++#define H713_AV1_MOTION_TREE_STATS_ENABLE	H713_AV1_FIELD(7999, 1)
++#define H713_AV1_DELTA_Q_PRESENT	H713_AV1_FIELD(8000, 1)
++#define H713_AV1_DELTA_Q_RES_LOG	H713_AV1_FIELD(8001, 2)
++#define H713_AV1_ALLOW_INTERINTRA	H713_AV1_FIELD(8003, 1)
++#define H713_AV1_ALLOW_MASKED_COMPOUND	H713_AV1_FIELD(8004, 1)
++#define H713_AV1_REF0_GM_MODE	H713_AV1_FIELD(8005, 2)
++#define H713_AV1_REF1_GM_MODE	H713_AV1_FIELD(8007, 2)
++#define H713_AV1_REF2_GM_MODE	H713_AV1_FIELD(8009, 2)
++#define H713_AV1_REF3_GM_MODE	H713_AV1_FIELD(8011, 2)
++#define H713_AV1_REF4_GM_MODE	H713_AV1_FIELD(8013, 2)
++#define H713_AV1_REF5_GM_MODE	H713_AV1_FIELD(8015, 2)
++#define H713_AV1_REF6_GM_MODE	H713_AV1_FIELD(8017, 2)
++#define H713_AV1_REF3_WIDTH	H713_AV1_FIELD(8019, 14)
++#define H713_AV1_REF3_HEIGHT	H713_AV1_FIELD(8033, 13)
++#define H713_AV1_REF4_WIDTH	H713_AV1_FIELD(8046, 14)
++#define H713_AV1_REF4_HEIGHT	H713_AV1_FIELD(8060, 13)
++#define H713_AV1_REF5_WIDTH	H713_AV1_FIELD(8073, 14)
++#define H713_AV1_REF5_HEIGHT	H713_AV1_FIELD(8087, 13)
++#define H713_AV1_REF6_WIDTH	H713_AV1_FIELD(8100, 14)
++#define H713_AV1_REF6_HEIGHT	H713_AV1_FIELD(8114, 13)
++#define H713_AV1_REF3_HOR_SCALE	H713_AV1_FIELD(8127, 16)
++#define H713_AV1_REF3_VER_SCALE	H713_AV1_FIELD(8143, 16)
++#define H713_AV1_REF4_HOR_SCALE	H713_AV1_FIELD(8159, 16)
++#define H713_AV1_REF4_VER_SCALE	H713_AV1_FIELD(8175, 16)
++#define H713_AV1_REF5_HOR_SCALE	H713_AV1_FIELD(8191, 16)
++#define H713_AV1_REF5_VER_SCALE	H713_AV1_FIELD(8207, 16)
++#define H713_AV1_REF6_HOR_SCALE	H713_AV1_FIELD(8223, 16)
++#define H713_AV1_REF6_VER_SCALE	H713_AV1_FIELD(8239, 16)
++#define H713_AV1_REF3_SIGN_BIAS	H713_AV1_FIELD(8255, 1)
++#define H713_AV1_REF4_SIGN_BIAS	H713_AV1_FIELD(8256, 1)
++#define H713_AV1_REF5_SIGN_BIAS	H713_AV1_FIELD(8257, 1)
++#define H713_AV1_REF6_SIGN_BIAS	H713_AV1_FIELD(8258, 1)
++#define H713_AV1_REF3_SA_SBX_OFFSET	H713_AV1_FIELD(8259, 4)
++#define H713_AV1_REF3_SA_SBY_OFFSET	H713_AV1_FIELD(8263, 4)
++#define H713_AV1_REF4_SA_SBX_OFFSET	H713_AV1_FIELD(8267, 4)
++#define H713_AV1_REF4_SA_SBY_OFFSET	H713_AV1_FIELD(8271, 4)
++#define H713_AV1_REF5_SA_SBX_OFFSET	H713_AV1_FIELD(8275, 4)
++#define H713_AV1_REF5_SA_SBY_OFFSET	H713_AV1_FIELD(8279, 4)
++#define H713_AV1_REF6_SA_SBX_OFFSET	H713_AV1_FIELD(8283, 4)
++#define H713_AV1_REF6_SA_SBY_OFFSET	H713_AV1_FIELD(8287, 4)
++#define H713_AV1_REF3_DIST_SCALE_FACTOR	H713_AV1_FIELD(8291, 11)
++#define H713_AV1_REF4_DIST_SCALE_FACTOR	H713_AV1_FIELD(8302, 11)
++#define H713_AV1_REF5_DIST_SCALE_FACTOR	H713_AV1_FIELD(8313, 11)
++#define H713_AV1_REF6_DIST_SCALE_FACTOR	H713_AV1_FIELD(8324, 11)
++#define H713_AV1_REF3_DISABLE	H713_AV1_FIELD(8335, 1)
++#define H713_AV1_REF4_DISABLE	H713_AV1_FIELD(8336, 1)
++#define H713_AV1_REF5_DISABLE	H713_AV1_FIELD(8337, 1)
++#define H713_AV1_REF6_DISABLE	H713_AV1_FIELD(8338, 1)
++#define H713_AV1_SHOW_FRAME	H713_AV1_FIELD(8339, 1)
++#define H713_AV1_ENABLE_DUAL_FILTER	H713_AV1_FIELD(8340, 1)
++#define H713_AV1_ENABLE_JNT_COMP	H713_AV1_FIELD(8341, 1)
++#define H713_AV1_ENABLE_CDEF	H713_AV1_FIELD(8342, 1)
++#define H713_AV1_QUANT_DELTA_V_DC	H713_AV1_FIELD(8343, 7)
++#define H713_AV1_QUANT_DELTA_V_AC	H713_AV1_FIELD(8350, 7)
++#define H713_AV1_ENABLE_INTRA_EDGE_FILTER	H713_AV1_FIELD(8357, 1)
++#define H713_AV1_ALLOW_FILTER_INTRA	H713_AV1_FIELD(8358, 1)
++#define H713_AV1_BASE_LF_LEVEL_0	H713_AV1_FIELD(8359, 6)
++#define H713_AV1_BASE_LF_LEVEL_1	H713_AV1_FIELD(8365, 6)
++#define H713_AV1_BASE_LF_LEVEL_2	H713_AV1_FIELD(8371, 6)
++#define H713_AV1_BASE_LF_LEVEL_3	H713_AV1_FIELD(8377, 6)
++#define H713_AV1_FILT_LEVEL_DELTA0_SEG0	H713_AV1_FIELD(8383, 7)
++#define H713_AV1_FILT_LEVEL_DELTA0_SEG1	H713_AV1_FIELD(8390, 7)
++#define H713_AV1_FILT_LEVEL_DELTA0_SEG2	H713_AV1_FIELD(8397, 7)
++#define H713_AV1_FILT_LEVEL_DELTA0_SEG3	H713_AV1_FIELD(8404, 7)
++#define H713_AV1_FILT_LEVEL_DELTA0_SEG4	H713_AV1_FIELD(8411, 7)
++#define H713_AV1_FILT_LEVEL_DELTA0_SEG5	H713_AV1_FIELD(8418, 7)
++#define H713_AV1_FILT_LEVEL_DELTA0_SEG6	H713_AV1_FIELD(8425, 7)
++#define H713_AV1_FILT_LEVEL_DELTA0_SEG7	H713_AV1_FIELD(8432, 7)
++#define H713_AV1_FILT_LEVEL_DELTA1_SEG0	H713_AV1_FIELD(8439, 7)
++#define H713_AV1_FILT_LEVEL_DELTA1_SEG1	H713_AV1_FIELD(8446, 7)
++#define H713_AV1_FILT_LEVEL_DELTA1_SEG2	H713_AV1_FIELD(8453, 7)
++#define H713_AV1_FILT_LEVEL_DELTA1_SEG3	H713_AV1_FIELD(8460, 7)
++#define H713_AV1_FILT_LEVEL_DELTA1_SEG4	H713_AV1_FIELD(8467, 7)
++#define H713_AV1_FILT_LEVEL_DELTA1_SEG5	H713_AV1_FIELD(8474, 7)
++#define H713_AV1_FILT_LEVEL_DELTA1_SEG6	H713_AV1_FIELD(8481, 7)
++#define H713_AV1_FILT_LEVEL_DELTA1_SEG7	H713_AV1_FIELD(8488, 7)
++#define H713_AV1_FILT_LEVEL_DELTA2_SEG0	H713_AV1_FIELD(8495, 7)
++#define H713_AV1_FILT_LEVEL_DELTA2_SEG1	H713_AV1_FIELD(8502, 7)
++#define H713_AV1_FILT_LEVEL_DELTA2_SEG2	H713_AV1_FIELD(8509, 7)
++#define H713_AV1_FILT_LEVEL_DELTA2_SEG3	H713_AV1_FIELD(8516, 7)
++#define H713_AV1_FILT_LEVEL_DELTA2_SEG4	H713_AV1_FIELD(8523, 7)
++#define H713_AV1_FILT_LEVEL_DELTA2_SEG5	H713_AV1_FIELD(8530, 7)
++#define H713_AV1_FILT_LEVEL_DELTA2_SEG6	H713_AV1_FIELD(8537, 7)
++#define H713_AV1_FILT_LEVEL_DELTA2_SEG7	H713_AV1_FIELD(8544, 7)
++#define H713_AV1_FILT_LEVEL_DELTA3_SEG0	H713_AV1_FIELD(8551, 7)
++#define H713_AV1_FILT_LEVEL_DELTA3_SEG1	H713_AV1_FIELD(8558, 7)
++#define H713_AV1_FILT_LEVEL_DELTA3_SEG2	H713_AV1_FIELD(8565, 7)
++#define H713_AV1_FILT_LEVEL_DELTA3_SEG3	H713_AV1_FIELD(8572, 7)
++#define H713_AV1_FILT_LEVEL_DELTA3_SEG4	H713_AV1_FIELD(8579, 7)
++#define H713_AV1_FILT_LEVEL_DELTA3_SEG5	H713_AV1_FIELD(8586, 7)
++#define H713_AV1_FILT_LEVEL_DELTA3_SEG6	H713_AV1_FIELD(8593, 7)
++#define H713_AV1_FILT_LEVEL_DELTA3_SEG7	H713_AV1_FIELD(8600, 7)
++#define H713_AV1_GLOBAL_MV_SEG0	H713_AV1_FIELD(8607, 1)
++#define H713_AV1_GLOBAL_MV_SEG1	H713_AV1_FIELD(8608, 1)
++#define H713_AV1_GLOBAL_MV_SEG2	H713_AV1_FIELD(8609, 1)
++#define H713_AV1_GLOBAL_MV_SEG3	H713_AV1_FIELD(8610, 1)
++#define H713_AV1_GLOBAL_MV_SEG4	H713_AV1_FIELD(8611, 1)
++#define H713_AV1_GLOBAL_MV_SEG5	H713_AV1_FIELD(8612, 1)
++#define H713_AV1_GLOBAL_MV_SEG6	H713_AV1_FIELD(8613, 1)
++#define H713_AV1_GLOBAL_MV_SEG7	H713_AV1_FIELD(8614, 1)
++#define H713_AV1_DELTA_LF_PRESENT	H713_AV1_FIELD(8615, 1)
++#define H713_AV1_DELTA_LF_MULTI	H713_AV1_FIELD(8616, 1)
++#define H713_AV1_DELTA_LF_RES_LOG	H713_AV1_FIELD(8617, 2)
++#define H713_AV1_SWITCHABLE_MOTION_MODE	H713_AV1_FIELD(8619, 1)
++#define H713_AV1_USE_TEMPORAL0_MVS	H713_AV1_FIELD(8620, 1)
++#define H713_AV1_USE_TEMPORAL1_MVS	H713_AV1_FIELD(8621, 1)
++#define H713_AV1_USE_TEMPORAL2_MVS	H713_AV1_FIELD(8622, 1)
++#define H713_AV1_USE_TEMPORAL3_MVS	H713_AV1_FIELD(8623, 1)
++#define H713_AV1_CUR_LAST_OFFSET	H713_AV1_FIELD(8624, 9)
++#define H713_AV1_CUR_LAST2_OFFSET	H713_AV1_FIELD(8633, 9)
++#define H713_AV1_CUR_LAST3_OFFSET	H713_AV1_FIELD(8642, 9)
++#define H713_AV1_CUR_GOLDEN_OFFSET	H713_AV1_FIELD(8651, 9)
++#define H713_AV1_CUR_BWDREF_OFFSET	H713_AV1_FIELD(8660, 9)
++#define H713_AV1_CUR_ALTREF2_OFFSET	H713_AV1_FIELD(8669, 9)
++#define H713_AV1_CUR_ALTREF_OFFSET	H713_AV1_FIELD(8678, 9)
++#define H713_AV1_CUR_LAST_ROFFSET	H713_AV1_FIELD(8687, 9)
++#define H713_AV1_CUR_LAST2_ROFFSET	H713_AV1_FIELD(8696, 9)
++#define H713_AV1_CUR_LAST3_ROFFSET	H713_AV1_FIELD(8705, 9)
++#define H713_AV1_CUR_GOLDEN_ROFFSET	H713_AV1_FIELD(8714, 9)
++#define H713_AV1_CUR_BWDREF_ROFFSET	H713_AV1_FIELD(8723, 9)
++#define H713_AV1_CUR_ALTREF2_ROFFSET	H713_AV1_FIELD(8732, 9)
++#define H713_AV1_CUR_ALTREF_ROFFSET	H713_AV1_FIELD(8741, 9)
++#define H713_AV1_MF1_TYPE	H713_AV1_FIELD(8750, 3)
++#define H713_AV1_MF2_TYPE	H713_AV1_FIELD(8753, 3)
++#define H713_AV1_MF3_TYPE	H713_AV1_FIELD(8756, 3)
++#define H713_AV1_MF1_LAST_OFFSET	H713_AV1_FIELD(8759, 9)
++#define H713_AV1_MF1_LAST2_OFFSET	H713_AV1_FIELD(8768, 9)
++#define H713_AV1_MF1_LAST3_OFFSET	H713_AV1_FIELD(8777, 9)
++#define H713_AV1_MF1_GOLDEN_OFFSET	H713_AV1_FIELD(8786, 9)
++#define H713_AV1_MF1_BWDREF_OFFSET	H713_AV1_FIELD(8795, 9)
++#define H713_AV1_MF1_ALTREF2_OFFSET	H713_AV1_FIELD(8804, 9)
++#define H713_AV1_MF1_ALTREF_OFFSET	H713_AV1_FIELD(8813, 9)
++#define H713_AV1_MF2_LAST_OFFSET	H713_AV1_FIELD(8822, 9)
++#define H713_AV1_MF2_LAST2_OFFSET	H713_AV1_FIELD(8831, 9)
++#define H713_AV1_MF2_LAST3_OFFSET	H713_AV1_FIELD(8840, 9)
++#define H713_AV1_MF2_GOLDEN_OFFSET	H713_AV1_FIELD(8849, 9)
++#define H713_AV1_MF2_BWDREF_OFFSET	H713_AV1_FIELD(8858, 9)
++#define H713_AV1_MF2_ALTREF2_OFFSET	H713_AV1_FIELD(8867, 9)
++#define H713_AV1_MF2_ALTREF_OFFSET	H713_AV1_FIELD(8876, 9)
++#define H713_AV1_MF3_LAST_OFFSET	H713_AV1_FIELD(8885, 9)
++#define H713_AV1_MF3_LAST2_OFFSET	H713_AV1_FIELD(8894, 9)
++#define H713_AV1_MF3_LAST3_OFFSET	H713_AV1_FIELD(8903, 9)
++#define H713_AV1_MF3_GOLDEN_OFFSET	H713_AV1_FIELD(8912, 9)
++#define H713_AV1_MF3_BWDREF_OFFSET	H713_AV1_FIELD(8921, 9)
++#define H713_AV1_MF3_ALTREF2_OFFSET	H713_AV1_FIELD(8930, 9)
++#define H713_AV1_MF3_ALTREF_OFFSET	H713_AV1_FIELD(8939, 9)
++#define H713_AV1_MF1_LAST_SIDE	H713_AV1_FIELD(8948, 1)
++#define H713_AV1_MF1_LAST2_SIDE	H713_AV1_FIELD(8949, 1)
++#define H713_AV1_MF1_LAST3_SIDE	H713_AV1_FIELD(8950, 1)
++#define H713_AV1_MF1_GOLDEN_SIDE	H713_AV1_FIELD(8951, 1)
++#define H713_AV1_MF1_BWDREF_SIDE	H713_AV1_FIELD(8952, 1)
++#define H713_AV1_MF1_ALTREF2_SIDE	H713_AV1_FIELD(8953, 1)
++#define H713_AV1_MF1_ALTREF_SIDE	H713_AV1_FIELD(8954, 1)
++#define H713_AV1_MF2_LAST_SIDE	H713_AV1_FIELD(8955, 1)
++#define H713_AV1_MF2_LAST2_SIDE	H713_AV1_FIELD(8956, 1)
++#define H713_AV1_MF2_LAST3_SIDE	H713_AV1_FIELD(8957, 1)
++#define H713_AV1_MF2_GOLDEN_SIDE	H713_AV1_FIELD(8958, 1)
++#define H713_AV1_MF2_BWDREF_SIDE	H713_AV1_FIELD(8959, 1)
++#define H713_AV1_MF2_ALTREF2_SIDE	H713_AV1_FIELD(8960, 1)
++#define H713_AV1_MF2_ALTREF_SIDE	H713_AV1_FIELD(8961, 1)
++#define H713_AV1_MF3_LAST_SIDE	H713_AV1_FIELD(8962, 1)
++#define H713_AV1_MF3_LAST2_SIDE	H713_AV1_FIELD(8963, 1)
++#define H713_AV1_MF3_LAST3_SIDE	H713_AV1_FIELD(8964, 1)
++#define H713_AV1_MF3_GOLDEN_SIDE	H713_AV1_FIELD(8965, 1)
++#define H713_AV1_MF3_BWDREF_SIDE	H713_AV1_FIELD(8966, 1)
++#define H713_AV1_MF3_ALTREF2_SIDE	H713_AV1_FIELD(8967, 1)
++#define H713_AV1_MF3_ALTREF_SIDE	H713_AV1_FIELD(8968, 1)
++#define H713_AV1_FILT_REF4_DELTA	H713_AV1_FIELD(8969, 7)
++#define H713_AV1_FILT_REF5_DELTA	H713_AV1_FIELD(8976, 7)
++#define H713_AV1_FILT_REF6_DELTA	H713_AV1_FIELD(8983, 7)
++#define H713_AV1_FILT_REF7_DELTA	H713_AV1_FIELD(8990, 7)
++#define H713_AV1_CDEF_DAMPING	H713_AV1_FIELD(8997, 2)
++#define H713_AV1_CDEF_BITS	H713_AV1_FIELD(8999, 2)
++#define H713_AV1_CDEF_LUMA_PRIMARY_STRENGTH	H713_AV1_FIELD(9001, 32)
++#define H713_AV1_CDEF_LUMA_SECONDARY_STRENGTH	H713_AV1_FIELD(9033, 16)
++#define H713_AV1_CDEF_CHROMA_PRIMARY_STRENGTH	H713_AV1_FIELD(9049, 32)
++#define H713_AV1_CDEF_CHROMA_SECONDARY_STRENGTH	H713_AV1_FIELD(9081, 16)
++#define H713_AV1_SUPERRES_IS_SCALED	H713_AV1_FIELD(9097, 1)
++#define H713_AV1_SCALE_DENOM_MINUS9	H713_AV1_FIELD(9098, 3)
++#define H713_AV1_SUPERRES_PIC_WIDTH	H713_AV1_FIELD(9101, 14)
++#define H713_AV1_SUPERRES_LUMA_STEP	H713_AV1_FIELD(9115, 14)
++#define H713_AV1_SUPERRES_CHROMA_STEP	H713_AV1_FIELD(9129, 14)
++#define H713_AV1_SUPERRES_INIT_LUMA_SUBPEL_X	H713_AV1_FIELD(9143, 14)
++#define H713_AV1_SUPERRES_INIT_CHROMA_SUBPEL_X	H713_AV1_FIELD(9157, 14)
++#define H713_AV1_LR_TYPE	H713_AV1_FIELD(9171, 6)
++#define H713_AV1_LR_UNIT_SIZE	H713_AV1_FIELD(9177, 6)
++#define H713_AV1_APPLY_GRAIN	H713_AV1_FIELD(9183, 1)
++#define H713_AV1_NUM_Y_POINTS_B	H713_AV1_FIELD(9184, 1)
++#define H713_AV1_NUM_CB_POINTS_B	H713_AV1_FIELD(9185, 1)
++#define H713_AV1_NUM_CR_POINTS_B	H713_AV1_FIELD(9186, 1)
++#define H713_AV1_SCALING_SHIFT	H713_AV1_FIELD(9187, 4)
++#define H713_AV1_CB_MULT	H713_AV1_FIELD(9191, 8)
++#define H713_AV1_CB_LUMA_MULT	H713_AV1_FIELD(9199, 8)
++#define H713_AV1_CB_OFFSET	H713_AV1_FIELD(9207, 9)
++#define H713_AV1_CR_MULT	H713_AV1_FIELD(9216, 8)
++#define H713_AV1_CR_LUMA_MULT	H713_AV1_FIELD(9224, 8)
++#define H713_AV1_CR_OFFSET	H713_AV1_FIELD(9232, 9)
++#define H713_AV1_OVERLAP_FLAG	H713_AV1_FIELD(9241, 1)
++#define H713_AV1_CLIP_TO_RESTRICTED_RANGE	H713_AV1_FIELD(9242, 1)
++#define H713_AV1_CHROMA_SCALING_FROM_LUMA	H713_AV1_FIELD(9243, 1)
++#define H713_AV1_RANDOM_SEED	H713_AV1_FIELD(9244, 16)
++#define H713_AV1_SKIP_MODE_FLAG	H713_AV1_FIELD(9260, 1)
++#define H713_AV1_SKIP_REF0	H713_AV1_FIELD(9261, 4)
++#define H713_AV1_SKIP_REF1	H713_AV1_FIELD(9265, 4)
++#define H713_AV1_DISABLE_CDF_UPDATE	H713_AV1_FIELD(9269, 1)
++#define H713_AV1_PRESKIP_SEGID	H713_AV1_FIELD(9270, 1)
++#define H713_AV1_LAST_ACTIVE_SEG	H713_AV1_FIELD(9271, 3)
++#define H713_AV1_SB_SIZE	H713_AV1_FIELD(9274, 1)
++
++/*
++ * Reference decompressor configuration (PdecSwRegs, serialised to 496
++ * bytes in DRAM at pdec_config_base), from pdecswregs-bits.txt.
++ */
++#define H713_PDEC_SIZE	496
++#define H713_PDEC_PDEC_E	H713_AV1_FIELD(10, 1)
++#define H713_PDEC_DEDICATED_PDEC_E	H713_AV1_FIELD(11, 1)
++#define H713_PDEC_CB_EDGE_OFFSET	H713_AV1_FIELD(12, 2)
++#define H713_PDEC_CB_4X4_RASTER_E	H713_AV1_FIELD(14, 1)
++#define H713_PDEC_CB_HEADER_DRAM_ID	H713_AV1_FIELD(15, 5)
++#define H713_PDEC_CB_STRM_DRAM_ID	H713_AV1_FIELD(20, 5)
++#define H713_PDEC_CB_PLANE_MODE	H713_AV1_FIELD(25, 1)
++#define H713_PDEC_CB_HEADER_DRAM_SEL	H713_AV1_FIELD(26, 2)
++#define H713_PDEC_IN0_PLANE0_STRM_BASE_MSB	H713_AV1_FIELD(28, 32)
++#define H713_PDEC_IN0_PLANE0_STRM_BASE	H713_AV1_FIELD(60, 32)
++#define H713_PDEC_IN1_PLANE0_STRM_BASE_MSB	H713_AV1_FIELD(92, 32)
++#define H713_PDEC_IN1_PLANE0_STRM_BASE	H713_AV1_FIELD(124, 32)
++#define H713_PDEC_IN2_PLANE0_STRM_BASE_MSB	H713_AV1_FIELD(156, 32)
++#define H713_PDEC_IN2_PLANE0_STRM_BASE	H713_AV1_FIELD(188, 32)
++#define H713_PDEC_IN3_PLANE0_STRM_BASE_MSB	H713_AV1_FIELD(220, 32)
++#define H713_PDEC_IN3_PLANE0_STRM_BASE	H713_AV1_FIELD(252, 32)
++#define H713_PDEC_IN4_PLANE0_STRM_BASE_MSB	H713_AV1_FIELD(284, 32)
++#define H713_PDEC_IN4_PLANE0_STRM_BASE	H713_AV1_FIELD(316, 32)
++#define H713_PDEC_IN5_PLANE0_STRM_BASE_MSB	H713_AV1_FIELD(348, 32)
++#define H713_PDEC_IN5_PLANE0_STRM_BASE	H713_AV1_FIELD(380, 32)
++#define H713_PDEC_IN6_PLANE0_STRM_BASE_MSB	H713_AV1_FIELD(412, 32)
++#define H713_PDEC_IN6_PLANE0_STRM_BASE	H713_AV1_FIELD(444, 32)
++#define H713_PDEC_IN0_PLANE1_STRM_BASE_MSB	H713_AV1_FIELD(476, 32)
++#define H713_PDEC_IN0_PLANE1_STRM_BASE	H713_AV1_FIELD(508, 32)
++#define H713_PDEC_IN1_PLANE1_STRM_BASE_MSB	H713_AV1_FIELD(540, 32)
++#define H713_PDEC_IN1_PLANE1_STRM_BASE	H713_AV1_FIELD(572, 32)
++#define H713_PDEC_IN2_PLANE1_STRM_BASE_MSB	H713_AV1_FIELD(604, 32)
++#define H713_PDEC_IN2_PLANE1_STRM_BASE	H713_AV1_FIELD(636, 32)
++#define H713_PDEC_IN3_PLANE1_STRM_BASE_MSB	H713_AV1_FIELD(668, 32)
++#define H713_PDEC_IN3_PLANE1_STRM_BASE	H713_AV1_FIELD(700, 32)
++#define H713_PDEC_IN4_PLANE1_STRM_BASE_MSB	H713_AV1_FIELD(732, 32)
++#define H713_PDEC_IN4_PLANE1_STRM_BASE	H713_AV1_FIELD(764, 32)
++#define H713_PDEC_IN5_PLANE1_STRM_BASE_MSB	H713_AV1_FIELD(796, 32)
++#define H713_PDEC_IN5_PLANE1_STRM_BASE	H713_AV1_FIELD(828, 32)
++#define H713_PDEC_IN6_PLANE1_STRM_BASE_MSB	H713_AV1_FIELD(860, 32)
++#define H713_PDEC_IN6_PLANE1_STRM_BASE	H713_AV1_FIELD(892, 32)
++#define H713_PDEC_IN0_PLANE2_STRM_BASE_MSB	H713_AV1_FIELD(924, 32)
++#define H713_PDEC_IN0_PLANE2_STRM_BASE	H713_AV1_FIELD(956, 32)
++#define H713_PDEC_IN1_PLANE2_STRM_BASE_MSB	H713_AV1_FIELD(988, 32)
++#define H713_PDEC_IN1_PLANE2_STRM_BASE	H713_AV1_FIELD(1020, 32)
++#define H713_PDEC_IN2_PLANE2_STRM_BASE_MSB	H713_AV1_FIELD(1052, 32)
++#define H713_PDEC_IN2_PLANE2_STRM_BASE	H713_AV1_FIELD(1084, 32)
++#define H713_PDEC_IN3_PLANE2_STRM_BASE_MSB	H713_AV1_FIELD(1116, 32)
++#define H713_PDEC_IN3_PLANE2_STRM_BASE	H713_AV1_FIELD(1148, 32)
++#define H713_PDEC_IN4_PLANE2_STRM_BASE_MSB	H713_AV1_FIELD(1180, 32)
++#define H713_PDEC_IN4_PLANE2_STRM_BASE	H713_AV1_FIELD(1212, 32)
++#define H713_PDEC_IN5_PLANE2_STRM_BASE_MSB	H713_AV1_FIELD(1244, 32)
++#define H713_PDEC_IN5_PLANE2_STRM_BASE	H713_AV1_FIELD(1276, 32)
++#define H713_PDEC_IN6_PLANE2_STRM_BASE_MSB	H713_AV1_FIELD(1308, 32)
++#define H713_PDEC_IN6_PLANE2_STRM_BASE	H713_AV1_FIELD(1340, 32)
++#define H713_PDEC_IN0_PLANE0_HDR_BASE_MSB	H713_AV1_FIELD(1372, 32)
++#define H713_PDEC_IN0_PLANE0_HDR_BASE	H713_AV1_FIELD(1404, 32)
++#define H713_PDEC_IN1_PLANE0_HDR_BASE_MSB	H713_AV1_FIELD(1436, 32)
++#define H713_PDEC_IN1_PLANE0_HDR_BASE	H713_AV1_FIELD(1468, 32)
++#define H713_PDEC_IN2_PLANE0_HDR_BASE_MSB	H713_AV1_FIELD(1500, 32)
++#define H713_PDEC_IN2_PLANE0_HDR_BASE	H713_AV1_FIELD(1532, 32)
++#define H713_PDEC_IN3_PLANE0_HDR_BASE_MSB	H713_AV1_FIELD(1564, 32)
++#define H713_PDEC_IN3_PLANE0_HDR_BASE	H713_AV1_FIELD(1596, 32)
++#define H713_PDEC_IN4_PLANE0_HDR_BASE_MSB	H713_AV1_FIELD(1628, 32)
++#define H713_PDEC_IN4_PLANE0_HDR_BASE	H713_AV1_FIELD(1660, 32)
++#define H713_PDEC_IN5_PLANE0_HDR_BASE_MSB	H713_AV1_FIELD(1692, 32)
++#define H713_PDEC_IN5_PLANE0_HDR_BASE	H713_AV1_FIELD(1724, 32)
++#define H713_PDEC_IN6_PLANE0_HDR_BASE_MSB	H713_AV1_FIELD(1756, 32)
++#define H713_PDEC_IN6_PLANE0_HDR_BASE	H713_AV1_FIELD(1788, 32)
++#define H713_PDEC_IN0_PLANE1_HDR_BASE_MSB	H713_AV1_FIELD(1820, 32)
++#define H713_PDEC_IN0_PLANE1_HDR_BASE	H713_AV1_FIELD(1852, 32)
++#define H713_PDEC_IN1_PLANE1_HDR_BASE_MSB	H713_AV1_FIELD(1884, 32)
++#define H713_PDEC_IN1_PLANE1_HDR_BASE	H713_AV1_FIELD(1916, 32)
++#define H713_PDEC_IN2_PLANE1_HDR_BASE_MSB	H713_AV1_FIELD(1948, 32)
++#define H713_PDEC_IN2_PLANE1_HDR_BASE	H713_AV1_FIELD(1980, 32)
++#define H713_PDEC_IN3_PLANE1_HDR_BASE_MSB	H713_AV1_FIELD(2012, 32)
++#define H713_PDEC_IN3_PLANE1_HDR_BASE	H713_AV1_FIELD(2044, 32)
++#define H713_PDEC_IN4_PLANE1_HDR_BASE_MSB	H713_AV1_FIELD(2076, 32)
++#define H713_PDEC_IN4_PLANE1_HDR_BASE	H713_AV1_FIELD(2108, 32)
++#define H713_PDEC_IN5_PLANE1_HDR_BASE_MSB	H713_AV1_FIELD(2140, 32)
++#define H713_PDEC_IN5_PLANE1_HDR_BASE	H713_AV1_FIELD(2172, 32)
++#define H713_PDEC_IN6_PLANE1_HDR_BASE_MSB	H713_AV1_FIELD(2204, 32)
++#define H713_PDEC_IN6_PLANE1_HDR_BASE	H713_AV1_FIELD(2236, 32)
++#define H713_PDEC_IN0_PLANE2_HDR_BASE_MSB	H713_AV1_FIELD(2268, 32)
++#define H713_PDEC_IN0_PLANE2_HDR_BASE	H713_AV1_FIELD(2300, 32)
++#define H713_PDEC_IN1_PLANE2_HDR_BASE_MSB	H713_AV1_FIELD(2332, 32)
++#define H713_PDEC_IN1_PLANE2_HDR_BASE	H713_AV1_FIELD(2364, 32)
++#define H713_PDEC_IN2_PLANE2_HDR_BASE_MSB	H713_AV1_FIELD(2396, 32)
++#define H713_PDEC_IN2_PLANE2_HDR_BASE	H713_AV1_FIELD(2428, 32)
++#define H713_PDEC_IN3_PLANE2_HDR_BASE_MSB	H713_AV1_FIELD(2460, 32)
++#define H713_PDEC_IN3_PLANE2_HDR_BASE	H713_AV1_FIELD(2492, 32)
++#define H713_PDEC_IN4_PLANE2_HDR_BASE_MSB	H713_AV1_FIELD(2524, 32)
++#define H713_PDEC_IN4_PLANE2_HDR_BASE	H713_AV1_FIELD(2556, 32)
++#define H713_PDEC_IN5_PLANE2_HDR_BASE_MSB	H713_AV1_FIELD(2588, 32)
++#define H713_PDEC_IN5_PLANE2_HDR_BASE	H713_AV1_FIELD(2620, 32)
++#define H713_PDEC_IN6_PLANE2_HDR_BASE_MSB	H713_AV1_FIELD(2652, 32)
++#define H713_PDEC_IN6_PLANE2_HDR_BASE	H713_AV1_FIELD(2684, 32)
++#define H713_PDEC_IN0_PLANE0_WIDTH	H713_AV1_FIELD(2716, 14)
++#define H713_PDEC_IN0_PLANE0_HEIGHT	H713_AV1_FIELD(2730, 14)
++#define H713_PDEC_IN1_PLANE0_WIDTH	H713_AV1_FIELD(2744, 14)
++#define H713_PDEC_IN1_PLANE0_HEIGHT	H713_AV1_FIELD(2758, 14)
++#define H713_PDEC_IN2_PLANE0_WIDTH	H713_AV1_FIELD(2772, 14)
++#define H713_PDEC_IN2_PLANE0_HEIGHT	H713_AV1_FIELD(2786, 14)
++#define H713_PDEC_IN3_PLANE0_WIDTH	H713_AV1_FIELD(2800, 14)
++#define H713_PDEC_IN3_PLANE0_HEIGHT	H713_AV1_FIELD(2814, 14)
++#define H713_PDEC_IN4_PLANE0_WIDTH	H713_AV1_FIELD(2828, 14)
++#define H713_PDEC_IN4_PLANE0_HEIGHT	H713_AV1_FIELD(2842, 14)
++#define H713_PDEC_IN5_PLANE0_WIDTH	H713_AV1_FIELD(2856, 14)
++#define H713_PDEC_IN5_PLANE0_HEIGHT	H713_AV1_FIELD(2870, 14)
++#define H713_PDEC_IN6_PLANE0_WIDTH	H713_AV1_FIELD(2884, 14)
++#define H713_PDEC_IN6_PLANE0_HEIGHT	H713_AV1_FIELD(2898, 14)
++#define H713_PDEC_IN0_PLANE1_WIDTH	H713_AV1_FIELD(2912, 13)
++#define H713_PDEC_IN0_PLANE1_HEIGHT	H713_AV1_FIELD(2925, 13)
++#define H713_PDEC_IN1_PLANE1_WIDTH	H713_AV1_FIELD(2938, 13)
++#define H713_PDEC_IN1_PLANE1_HEIGHT	H713_AV1_FIELD(2951, 13)
++#define H713_PDEC_IN2_PLANE1_WIDTH	H713_AV1_FIELD(2964, 13)
++#define H713_PDEC_IN2_PLANE1_HEIGHT	H713_AV1_FIELD(2977, 13)
++#define H713_PDEC_IN3_PLANE1_WIDTH	H713_AV1_FIELD(2990, 13)
++#define H713_PDEC_IN3_PLANE1_HEIGHT	H713_AV1_FIELD(3003, 13)
++#define H713_PDEC_IN4_PLANE1_WIDTH	H713_AV1_FIELD(3016, 13)
++#define H713_PDEC_IN4_PLANE1_HEIGHT	H713_AV1_FIELD(3029, 13)
++#define H713_PDEC_IN5_PLANE1_WIDTH	H713_AV1_FIELD(3042, 13)
++#define H713_PDEC_IN5_PLANE1_HEIGHT	H713_AV1_FIELD(3055, 13)
++#define H713_PDEC_IN6_PLANE1_WIDTH	H713_AV1_FIELD(3068, 13)
++#define H713_PDEC_IN6_PLANE1_HEIGHT	H713_AV1_FIELD(3081, 13)
++#define H713_PDEC_IN0_PLANE2_WIDTH	H713_AV1_FIELD(3094, 13)
++#define H713_PDEC_IN0_PLANE2_HEIGHT	H713_AV1_FIELD(3107, 13)
++#define H713_PDEC_IN1_PLANE2_WIDTH	H713_AV1_FIELD(3120, 13)
++#define H713_PDEC_IN1_PLANE2_HEIGHT	H713_AV1_FIELD(3133, 13)
++#define H713_PDEC_IN2_PLANE2_WIDTH	H713_AV1_FIELD(3146, 13)
++#define H713_PDEC_IN2_PLANE2_HEIGHT	H713_AV1_FIELD(3159, 13)
++#define H713_PDEC_IN3_PLANE2_WIDTH	H713_AV1_FIELD(3172, 13)
++#define H713_PDEC_IN3_PLANE2_HEIGHT	H713_AV1_FIELD(3185, 13)
++#define H713_PDEC_IN4_PLANE2_WIDTH	H713_AV1_FIELD(3198, 13)
++#define H713_PDEC_IN4_PLANE2_HEIGHT	H713_AV1_FIELD(3211, 13)
++#define H713_PDEC_IN5_PLANE2_WIDTH	H713_AV1_FIELD(3224, 13)
++#define H713_PDEC_IN5_PLANE2_HEIGHT	H713_AV1_FIELD(3237, 13)
++#define H713_PDEC_IN6_PLANE2_WIDTH	H713_AV1_FIELD(3250, 13)
++#define H713_PDEC_IN6_PLANE2_HEIGHT	H713_AV1_FIELD(3263, 13)
++#define H713_PDEC_IN0_PLANE0_ENTROPY0	H713_AV1_FIELD(3276, 3)
++#define H713_PDEC_IN0_PLANE0_ENTROPY1	H713_AV1_FIELD(3279, 3)
++#define H713_PDEC_IN0_PLANE0_ENTROPY2	H713_AV1_FIELD(3282, 3)
++#define H713_PDEC_IN0_PLANE0_ENTROPY3	H713_AV1_FIELD(3285, 3)
++#define H713_PDEC_IN0_PLANE0_ENTROPY4	H713_AV1_FIELD(3288, 3)
++#define H713_PDEC_IN0_PLANE0_ENTROPY5	H713_AV1_FIELD(3291, 3)
++#define H713_PDEC_IN0_PLANE0_ENTROPY6	H713_AV1_FIELD(3294, 3)
++#define H713_PDEC_IN0_PLANE0_ENTROPY7	H713_AV1_FIELD(3297, 3)
++#define H713_PDEC_IN0_PLANE1_ENTROPY0	H713_AV1_FIELD(3300, 3)
++#define H713_PDEC_IN0_PLANE1_ENTROPY1	H713_AV1_FIELD(3303, 3)
++#define H713_PDEC_IN0_PLANE1_ENTROPY2	H713_AV1_FIELD(3306, 3)
++#define H713_PDEC_IN0_PLANE1_ENTROPY3	H713_AV1_FIELD(3309, 3)
++#define H713_PDEC_IN0_PLANE1_ENTROPY4	H713_AV1_FIELD(3312, 3)
++#define H713_PDEC_IN0_PLANE1_ENTROPY5	H713_AV1_FIELD(3315, 3)
++#define H713_PDEC_IN0_PLANE1_ENTROPY6	H713_AV1_FIELD(3318, 3)
++#define H713_PDEC_IN0_PLANE1_ENTROPY7	H713_AV1_FIELD(3321, 3)
++#define H713_PDEC_IN0_PLANE2_ENTROPY0	H713_AV1_FIELD(3324, 3)
++#define H713_PDEC_IN0_PLANE2_ENTROPY1	H713_AV1_FIELD(3327, 3)
++#define H713_PDEC_IN0_PLANE2_ENTROPY2	H713_AV1_FIELD(3330, 3)
++#define H713_PDEC_IN0_PLANE2_ENTROPY3	H713_AV1_FIELD(3333, 3)
++#define H713_PDEC_IN0_PLANE2_ENTROPY4	H713_AV1_FIELD(3336, 3)
++#define H713_PDEC_IN0_PLANE2_ENTROPY5	H713_AV1_FIELD(3339, 3)
++#define H713_PDEC_IN0_PLANE2_ENTROPY6	H713_AV1_FIELD(3342, 3)
++#define H713_PDEC_IN0_PLANE2_ENTROPY7	H713_AV1_FIELD(3345, 3)
++#define H713_PDEC_IN1_PLANE0_ENTROPY0	H713_AV1_FIELD(3348, 3)
++#define H713_PDEC_IN1_PLANE0_ENTROPY1	H713_AV1_FIELD(3351, 3)
++#define H713_PDEC_IN1_PLANE0_ENTROPY2	H713_AV1_FIELD(3354, 3)
++#define H713_PDEC_IN1_PLANE0_ENTROPY3	H713_AV1_FIELD(3357, 3)
++#define H713_PDEC_IN1_PLANE0_ENTROPY4	H713_AV1_FIELD(3360, 3)
++#define H713_PDEC_IN1_PLANE0_ENTROPY5	H713_AV1_FIELD(3363, 3)
++#define H713_PDEC_IN1_PLANE0_ENTROPY6	H713_AV1_FIELD(3366, 3)
++#define H713_PDEC_IN1_PLANE0_ENTROPY7	H713_AV1_FIELD(3369, 3)
++#define H713_PDEC_IN1_PLANE1_ENTROPY0	H713_AV1_FIELD(3372, 3)
++#define H713_PDEC_IN1_PLANE1_ENTROPY1	H713_AV1_FIELD(3375, 3)
++#define H713_PDEC_IN1_PLANE1_ENTROPY2	H713_AV1_FIELD(3378, 3)
++#define H713_PDEC_IN1_PLANE1_ENTROPY3	H713_AV1_FIELD(3381, 3)
++#define H713_PDEC_IN1_PLANE1_ENTROPY4	H713_AV1_FIELD(3384, 3)
++#define H713_PDEC_IN1_PLANE1_ENTROPY5	H713_AV1_FIELD(3387, 3)
++#define H713_PDEC_IN1_PLANE1_ENTROPY6	H713_AV1_FIELD(3390, 3)
++#define H713_PDEC_IN1_PLANE1_ENTROPY7	H713_AV1_FIELD(3393, 3)
++#define H713_PDEC_IN1_PLANE2_ENTROPY0	H713_AV1_FIELD(3396, 3)
++#define H713_PDEC_IN1_PLANE2_ENTROPY1	H713_AV1_FIELD(3399, 3)
++#define H713_PDEC_IN1_PLANE2_ENTROPY2	H713_AV1_FIELD(3402, 3)
++#define H713_PDEC_IN1_PLANE2_ENTROPY3	H713_AV1_FIELD(3405, 3)
++#define H713_PDEC_IN1_PLANE2_ENTROPY4	H713_AV1_FIELD(3408, 3)
++#define H713_PDEC_IN1_PLANE2_ENTROPY5	H713_AV1_FIELD(3411, 3)
++#define H713_PDEC_IN1_PLANE2_ENTROPY6	H713_AV1_FIELD(3414, 3)
++#define H713_PDEC_IN1_PLANE2_ENTROPY7	H713_AV1_FIELD(3417, 3)
++#define H713_PDEC_IN2_PLANE0_ENTROPY0	H713_AV1_FIELD(3420, 3)
++#define H713_PDEC_IN2_PLANE0_ENTROPY1	H713_AV1_FIELD(3423, 3)
++#define H713_PDEC_IN2_PLANE0_ENTROPY2	H713_AV1_FIELD(3426, 3)
++#define H713_PDEC_IN2_PLANE0_ENTROPY3	H713_AV1_FIELD(3429, 3)
++#define H713_PDEC_IN2_PLANE0_ENTROPY4	H713_AV1_FIELD(3432, 3)
++#define H713_PDEC_IN2_PLANE0_ENTROPY5	H713_AV1_FIELD(3435, 3)
++#define H713_PDEC_IN2_PLANE0_ENTROPY6	H713_AV1_FIELD(3438, 3)
++#define H713_PDEC_IN2_PLANE0_ENTROPY7	H713_AV1_FIELD(3441, 3)
++#define H713_PDEC_IN2_PLANE1_ENTROPY0	H713_AV1_FIELD(3444, 3)
++#define H713_PDEC_IN2_PLANE1_ENTROPY1	H713_AV1_FIELD(3447, 3)
++#define H713_PDEC_IN2_PLANE1_ENTROPY2	H713_AV1_FIELD(3450, 3)
++#define H713_PDEC_IN2_PLANE1_ENTROPY3	H713_AV1_FIELD(3453, 3)
++#define H713_PDEC_IN2_PLANE1_ENTROPY4	H713_AV1_FIELD(3456, 3)
++#define H713_PDEC_IN2_PLANE1_ENTROPY5	H713_AV1_FIELD(3459, 3)
++#define H713_PDEC_IN2_PLANE1_ENTROPY6	H713_AV1_FIELD(3462, 3)
++#define H713_PDEC_IN2_PLANE1_ENTROPY7	H713_AV1_FIELD(3465, 3)
++#define H713_PDEC_IN2_PLANE2_ENTROPY0	H713_AV1_FIELD(3468, 3)
++#define H713_PDEC_IN2_PLANE2_ENTROPY1	H713_AV1_FIELD(3471, 3)
++#define H713_PDEC_IN2_PLANE2_ENTROPY2	H713_AV1_FIELD(3474, 3)
++#define H713_PDEC_IN2_PLANE2_ENTROPY3	H713_AV1_FIELD(3477, 3)
++#define H713_PDEC_IN2_PLANE2_ENTROPY4	H713_AV1_FIELD(3480, 3)
++#define H713_PDEC_IN2_PLANE2_ENTROPY5	H713_AV1_FIELD(3483, 3)
++#define H713_PDEC_IN2_PLANE2_ENTROPY6	H713_AV1_FIELD(3486, 3)
++#define H713_PDEC_IN2_PLANE2_ENTROPY7	H713_AV1_FIELD(3489, 3)
++#define H713_PDEC_IN3_PLANE0_ENTROPY0	H713_AV1_FIELD(3492, 3)
++#define H713_PDEC_IN3_PLANE0_ENTROPY1	H713_AV1_FIELD(3495, 3)
++#define H713_PDEC_IN3_PLANE0_ENTROPY2	H713_AV1_FIELD(3498, 3)
++#define H713_PDEC_IN3_PLANE0_ENTROPY3	H713_AV1_FIELD(3501, 3)
++#define H713_PDEC_IN3_PLANE0_ENTROPY4	H713_AV1_FIELD(3504, 3)
++#define H713_PDEC_IN3_PLANE0_ENTROPY5	H713_AV1_FIELD(3507, 3)
++#define H713_PDEC_IN3_PLANE0_ENTROPY6	H713_AV1_FIELD(3510, 3)
++#define H713_PDEC_IN3_PLANE0_ENTROPY7	H713_AV1_FIELD(3513, 3)
++#define H713_PDEC_IN3_PLANE1_ENTROPY0	H713_AV1_FIELD(3516, 3)
++#define H713_PDEC_IN3_PLANE1_ENTROPY1	H713_AV1_FIELD(3519, 3)
++#define H713_PDEC_IN3_PLANE1_ENTROPY2	H713_AV1_FIELD(3522, 3)
++#define H713_PDEC_IN3_PLANE1_ENTROPY3	H713_AV1_FIELD(3525, 3)
++#define H713_PDEC_IN3_PLANE1_ENTROPY4	H713_AV1_FIELD(3528, 3)
++#define H713_PDEC_IN3_PLANE1_ENTROPY5	H713_AV1_FIELD(3531, 3)
++#define H713_PDEC_IN3_PLANE1_ENTROPY6	H713_AV1_FIELD(3534, 3)
++#define H713_PDEC_IN3_PLANE1_ENTROPY7	H713_AV1_FIELD(3537, 3)
++#define H713_PDEC_IN3_PLANE2_ENTROPY0	H713_AV1_FIELD(3540, 3)
++#define H713_PDEC_IN3_PLANE2_ENTROPY1	H713_AV1_FIELD(3543, 3)
++#define H713_PDEC_IN3_PLANE2_ENTROPY2	H713_AV1_FIELD(3546, 3)
++#define H713_PDEC_IN3_PLANE2_ENTROPY3	H713_AV1_FIELD(3549, 3)
++#define H713_PDEC_IN3_PLANE2_ENTROPY4	H713_AV1_FIELD(3552, 3)
++#define H713_PDEC_IN3_PLANE2_ENTROPY5	H713_AV1_FIELD(3555, 3)
++#define H713_PDEC_IN3_PLANE2_ENTROPY6	H713_AV1_FIELD(3558, 3)
++#define H713_PDEC_IN3_PLANE2_ENTROPY7	H713_AV1_FIELD(3561, 3)
++#define H713_PDEC_IN4_PLANE0_ENTROPY0	H713_AV1_FIELD(3564, 3)
++#define H713_PDEC_IN4_PLANE0_ENTROPY1	H713_AV1_FIELD(3567, 3)
++#define H713_PDEC_IN4_PLANE0_ENTROPY2	H713_AV1_FIELD(3570, 3)
++#define H713_PDEC_IN4_PLANE0_ENTROPY3	H713_AV1_FIELD(3573, 3)
++#define H713_PDEC_IN4_PLANE0_ENTROPY4	H713_AV1_FIELD(3576, 3)
++#define H713_PDEC_IN4_PLANE0_ENTROPY5	H713_AV1_FIELD(3579, 3)
++#define H713_PDEC_IN4_PLANE0_ENTROPY6	H713_AV1_FIELD(3582, 3)
++#define H713_PDEC_IN4_PLANE0_ENTROPY7	H713_AV1_FIELD(3585, 3)
++#define H713_PDEC_IN4_PLANE1_ENTROPY0	H713_AV1_FIELD(3588, 3)
++#define H713_PDEC_IN4_PLANE1_ENTROPY1	H713_AV1_FIELD(3591, 3)
++#define H713_PDEC_IN4_PLANE1_ENTROPY2	H713_AV1_FIELD(3594, 3)
++#define H713_PDEC_IN4_PLANE1_ENTROPY3	H713_AV1_FIELD(3597, 3)
++#define H713_PDEC_IN4_PLANE1_ENTROPY4	H713_AV1_FIELD(3600, 3)
++#define H713_PDEC_IN4_PLANE1_ENTROPY5	H713_AV1_FIELD(3603, 3)
++#define H713_PDEC_IN4_PLANE1_ENTROPY6	H713_AV1_FIELD(3606, 3)
++#define H713_PDEC_IN4_PLANE1_ENTROPY7	H713_AV1_FIELD(3609, 3)
++#define H713_PDEC_IN4_PLANE2_ENTROPY0	H713_AV1_FIELD(3612, 3)
++#define H713_PDEC_IN4_PLANE2_ENTROPY1	H713_AV1_FIELD(3615, 3)
++#define H713_PDEC_IN4_PLANE2_ENTROPY2	H713_AV1_FIELD(3618, 3)
++#define H713_PDEC_IN4_PLANE2_ENTROPY3	H713_AV1_FIELD(3621, 3)
++#define H713_PDEC_IN4_PLANE2_ENTROPY4	H713_AV1_FIELD(3624, 3)
++#define H713_PDEC_IN4_PLANE2_ENTROPY5	H713_AV1_FIELD(3627, 3)
++#define H713_PDEC_IN4_PLANE2_ENTROPY6	H713_AV1_FIELD(3630, 3)
++#define H713_PDEC_IN4_PLANE2_ENTROPY7	H713_AV1_FIELD(3633, 3)
++#define H713_PDEC_IN5_PLANE0_ENTROPY0	H713_AV1_FIELD(3636, 3)
++#define H713_PDEC_IN5_PLANE0_ENTROPY1	H713_AV1_FIELD(3639, 3)
++#define H713_PDEC_IN5_PLANE0_ENTROPY2	H713_AV1_FIELD(3642, 3)
++#define H713_PDEC_IN5_PLANE0_ENTROPY3	H713_AV1_FIELD(3645, 3)
++#define H713_PDEC_IN5_PLANE0_ENTROPY4	H713_AV1_FIELD(3648, 3)
++#define H713_PDEC_IN5_PLANE0_ENTROPY5	H713_AV1_FIELD(3651, 3)
++#define H713_PDEC_IN5_PLANE0_ENTROPY6	H713_AV1_FIELD(3654, 3)
++#define H713_PDEC_IN5_PLANE0_ENTROPY7	H713_AV1_FIELD(3657, 3)
++#define H713_PDEC_IN5_PLANE1_ENTROPY0	H713_AV1_FIELD(3660, 3)
++#define H713_PDEC_IN5_PLANE1_ENTROPY1	H713_AV1_FIELD(3663, 3)
++#define H713_PDEC_IN5_PLANE1_ENTROPY2	H713_AV1_FIELD(3666, 3)
++#define H713_PDEC_IN5_PLANE1_ENTROPY3	H713_AV1_FIELD(3669, 3)
++#define H713_PDEC_IN5_PLANE1_ENTROPY4	H713_AV1_FIELD(3672, 3)
++#define H713_PDEC_IN5_PLANE1_ENTROPY5	H713_AV1_FIELD(3675, 3)
++#define H713_PDEC_IN5_PLANE1_ENTROPY6	H713_AV1_FIELD(3678, 3)
++#define H713_PDEC_IN5_PLANE1_ENTROPY7	H713_AV1_FIELD(3681, 3)
++#define H713_PDEC_IN5_PLANE2_ENTROPY0	H713_AV1_FIELD(3684, 3)
++#define H713_PDEC_IN5_PLANE2_ENTROPY1	H713_AV1_FIELD(3687, 3)
++#define H713_PDEC_IN5_PLANE2_ENTROPY2	H713_AV1_FIELD(3690, 3)
++#define H713_PDEC_IN5_PLANE2_ENTROPY3	H713_AV1_FIELD(3693, 3)
++#define H713_PDEC_IN5_PLANE2_ENTROPY4	H713_AV1_FIELD(3696, 3)
++#define H713_PDEC_IN5_PLANE2_ENTROPY5	H713_AV1_FIELD(3699, 3)
++#define H713_PDEC_IN5_PLANE2_ENTROPY6	H713_AV1_FIELD(3702, 3)
++#define H713_PDEC_IN5_PLANE2_ENTROPY7	H713_AV1_FIELD(3705, 3)
++#define H713_PDEC_IN6_PLANE0_ENTROPY0	H713_AV1_FIELD(3708, 3)
++#define H713_PDEC_IN6_PLANE0_ENTROPY1	H713_AV1_FIELD(3711, 3)
++#define H713_PDEC_IN6_PLANE0_ENTROPY2	H713_AV1_FIELD(3714, 3)
++#define H713_PDEC_IN6_PLANE0_ENTROPY3	H713_AV1_FIELD(3717, 3)
++#define H713_PDEC_IN6_PLANE0_ENTROPY4	H713_AV1_FIELD(3720, 3)
++#define H713_PDEC_IN6_PLANE0_ENTROPY5	H713_AV1_FIELD(3723, 3)
++#define H713_PDEC_IN6_PLANE0_ENTROPY6	H713_AV1_FIELD(3726, 3)
++#define H713_PDEC_IN6_PLANE0_ENTROPY7	H713_AV1_FIELD(3729, 3)
++#define H713_PDEC_IN6_PLANE1_ENTROPY0	H713_AV1_FIELD(3732, 3)
++#define H713_PDEC_IN6_PLANE1_ENTROPY1	H713_AV1_FIELD(3735, 3)
++#define H713_PDEC_IN6_PLANE1_ENTROPY2	H713_AV1_FIELD(3738, 3)
++#define H713_PDEC_IN6_PLANE1_ENTROPY3	H713_AV1_FIELD(3741, 3)
++#define H713_PDEC_IN6_PLANE1_ENTROPY4	H713_AV1_FIELD(3744, 3)
++#define H713_PDEC_IN6_PLANE1_ENTROPY5	H713_AV1_FIELD(3747, 3)
++#define H713_PDEC_IN6_PLANE1_ENTROPY6	H713_AV1_FIELD(3750, 3)
++#define H713_PDEC_IN6_PLANE1_ENTROPY7	H713_AV1_FIELD(3753, 3)
++#define H713_PDEC_IN6_PLANE2_ENTROPY0	H713_AV1_FIELD(3756, 3)
++#define H713_PDEC_IN6_PLANE2_ENTROPY1	H713_AV1_FIELD(3759, 3)
++#define H713_PDEC_IN6_PLANE2_ENTROPY2	H713_AV1_FIELD(3762, 3)
++#define H713_PDEC_IN6_PLANE2_ENTROPY3	H713_AV1_FIELD(3765, 3)
++#define H713_PDEC_IN6_PLANE2_ENTROPY4	H713_AV1_FIELD(3768, 3)
++#define H713_PDEC_IN6_PLANE2_ENTROPY5	H713_AV1_FIELD(3771, 3)
++#define H713_PDEC_IN6_PLANE2_ENTROPY6	H713_AV1_FIELD(3774, 3)
++#define H713_PDEC_IN6_PLANE2_ENTROPY7	H713_AV1_FIELD(3777, 3)
++#define H713_PDEC_PLANE1_WIDTH	H713_AV1_FIELD(3789, 1)
++#define H713_PDEC_PLANE1_HEIGHT	H713_AV1_FIELD(3790, 1)
++#define H713_PDEC_PLANE2_WIDTH	H713_AV1_FIELD(3791, 1)
++#define H713_PDEC_PLANE2_HEIGHT	H713_AV1_FIELD(3792, 1)
++#define H713_PDEC_PIC_WIDTH	H713_AV1_FIELD(3793, 14)
++#define H713_PDEC_PIC_HEIGHT	H713_AV1_FIELD(3807, 13)
++#define H713_PDEC_PIC_WIDTH_PAD	H713_AV1_FIELD(3820, 3)
++#define H713_PDEC_PIC_HEIGHT_PAD	H713_AV1_FIELD(3823, 3)
++#define H713_PDEC_AXI_RD_MAXBURST	H713_AV1_FIELD(3826, 16)
++#define H713_PDEC_AXI_WR_MAXBURST	H713_AV1_FIELD(3842, 16)
++#define H713_PDEC_BIT_DEPTH	H713_AV1_FIELD(3858, 1)
++#define H713_PDEC_MIN_DRAM_BURST_SIZE	H713_AV1_FIELD(3859, 2)
++#define H713_PDEC_FLUSH_ALL	H713_AV1_FIELD(3861, 1)
++#define H713_PDEC_CHROMA_SKIP	H713_AV1_FIELD(3862, 1)
++#define H713_PDEC_ROLLING_FETCH	H713_AV1_FIELD(3863, 1)
++#define H713_PDEC_SLICE_BEGIN_ROW	H713_AV1_FIELD(3864, 13)
++#define H713_PDEC_ME_EXTEND_WIDTH	H713_AV1_FIELD(3877, 1)
++#define H713_PDEC_REF_CACHE_MAP_MODE_DISABLE_H264	H713_AV1_FIELD(3878, 1)
++
++#endif

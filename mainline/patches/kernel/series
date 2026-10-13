@@ -633,3 +633,21 @@
 0296-media-cedrus-vp9-refuse-profiles-other-than-0-at-control-time.patch
 0297-arm64-dts-h713-the-iommu-comment-says-the-codecs-are-translated-and-the-display-is-not.patch
 0298-media-cedrus-a-job-of-another-codec-starts-from-a-reset-engine.patch
+# 13.10.: the AV1 decoder (package C "AV1" of the media side project, branch medien-c-av1, not main).
+#   0300-0304 are cstenger's AV1 series in his series order (his 0150 before 0145): 0300 his 0150 (V4L2 PL10 = P010 with
+#   the samples in bits 9:0, DRM P010 + ALLWINNER_LSB10), 0301 his 0145 (hantro hooks: variant_priv, no forced post-
+#   processing without a post-processor, VIDEO_HANTRO_AV1, dev_err_probe), 0303 his 0147 (the H713 variant: the Google
+#   core at 0x01c0d000, generated register image, the five hardware rules), 0304 his 0148 (binding), byte-identical
+#   (message and diff; From: and Origin: added). 0302 is his 0146 adapted: it adds the node his 0140 had added for the
+#   presence probe (not taken, nor 0141) with 0146's change, the node his series ends with. The defconfig turns
+#   CONFIG_VIDEO_HANTRO on as a module.
+0300-EXPERIMENT-media-drm-p010-lsb-modifier-and-pixfmt.patch
+0301-media-verisilicon-hooks-for-a-variant-without-a-post-processor.patch
+0302-arm64-dts-h713-bind-the-av1-decoder-to-hantro.patch
+0303-media-verisilicon-add-the-h713-av1-decoder.patch
+0304-dt-bindings-media-add-the-allwinner-h713-av1-decoder.patch
+#   0305-0307 (package C-reset, 13./14.10.2026): the VE bus reset is shared with the AV1 core; a guard arbitrates it, cedrus pulses
+#   only through it, the AV1 variant holds it from its first register access to the end of its interrupt (measured: AU-18 closed).
+0305-soc-sunxi-a-guard-for-the-video-engine-s-shared-bus-reset.patch
+0306-media-cedrus-pulse-the-ve-reset-through-the-guard.patch
+0307-media-verisilicon-h713-av1-hold-the-ve-s-reset-while-the-core-is-touched.patch

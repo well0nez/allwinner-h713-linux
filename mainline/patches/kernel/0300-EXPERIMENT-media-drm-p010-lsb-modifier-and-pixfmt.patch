@@ -1,0 +1,92 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] EXPERIMENT: media, drm: an LSB-aligned P010 (V4L2 PL10, DRM P010 + Allwinner modifier)
+
+Local, not upstreamed.
+
+The H713's AV1 core writes 10-bit pictures in P010's layout (Y plane, then
+interleaved CbCr, 16 bits per sample) but with each sample in bits 9:0 of
+its word rather than bits 15:6. Its register map has no shift or MSB field,
+so it cannot produce standard P010, and no existing format describes the
+layout: P010 is MSB-aligned, and S010/yuv420p10le have the right bits but
+three planes.
+
+Describe it the way other layout variants of a known fourcc are described:
+
+  - DRM: DRM_FORMAT_P010 with a new modifier, DRM_FORMAT_MOD_ALLWINNER_LSB10
+    (vendor 0x09, value 2; value 1 is ALLWINNER_TILED). The AFBD video plane
+    scans it out directly (its format byte 7).
+  - V4L2, which has no modifiers: a new pixel format, V4L2_PIX_FMT_P010_LSB
+    ('PL10'), with a format-info entry so v4l2_fill_pixfmt_mp() sizes its
+    buffers, an ENUM_FMT description, and a hantro bit depth of 10 so that
+    match_depth selects it for 10-bit sequences.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0150-EXPERIMENT-media-drm-p010-lsb-modifier-and-pixfmt.patch (0150-EXPERIMENT-media-drm-p010-lsb-modifier-and-pixfmt.patch, commit a7aa64d)
+---
+diff --color -Naur pa/drivers/media/platform/verisilicon/hantro_v4l2.c pb/drivers/media/platform/verisilicon/hantro_v4l2.c
+--- a/drivers/media/platform/verisilicon/hantro_v4l2.c
++++ b/drivers/media/platform/verisilicon/hantro_v4l2.c
+@@ -77,6 +77,7 @@
+ 	switch (fourcc) {
+ 	case V4L2_PIX_FMT_P010:
+ 	case V4L2_PIX_FMT_P010_4L4:
++	case V4L2_PIX_FMT_P010_LSB:
+ 	case V4L2_PIX_FMT_NV15:
+ 	case V4L2_PIX_FMT_NV15_4L4:
+ 		return 10;
+diff --color -Naur pa/drivers/media/v4l2-core/v4l2-common.c pb/drivers/media/v4l2-core/v4l2-common.c
+--- a/drivers/media/v4l2-core/v4l2-common.c
++++ b/drivers/media/v4l2-core/v4l2-common.c
+@@ -297,6 +297,7 @@
+ 		{ .format = V4L2_PIX_FMT_NV42,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 1, 2, 0, 0 }, .bpp_div = { 1, 1, 1, 1 }, .hdiv = 1, .vdiv = 1 },
+ 		{ .format = V4L2_PIX_FMT_P010,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 2, 2, 0, 0 }, .bpp_div = { 1, 1, 1, 1 }, .hdiv = 2, .vdiv = 1 },
+ 		{ .format = V4L2_PIX_FMT_P012,    .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 2, 4, 0, 0 }, .bpp_div = { 1, 1, 1, 1 }, .hdiv = 2, .vdiv = 2 },
++		{ .format = V4L2_PIX_FMT_P010_LSB, .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 2, .bpp = { 2, 4, 0, 0 }, .bpp_div = { 1, 1, 1, 1 }, .hdiv = 2, .vdiv = 2 },
+ 
+ 		{ .format = V4L2_PIX_FMT_YUV410,  .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .bpp_div = { 1, 1, 1, 1 }, .hdiv = 4, .vdiv = 4 },
+ 		{ .format = V4L2_PIX_FMT_YVU410,  .pixel_enc = V4L2_PIXEL_ENC_YUV, .mem_planes = 1, .comp_planes = 3, .bpp = { 1, 1, 1, 0 }, .bpp_div = { 1, 1, 1, 1 }, .hdiv = 4, .vdiv = 4 },
+diff --color -Naur pa/drivers/media/v4l2-core/v4l2-ioctl.c pb/drivers/media/v4l2-core/v4l2-ioctl.c
+--- a/drivers/media/v4l2-core/v4l2-ioctl.c
++++ b/drivers/media/v4l2-core/v4l2-ioctl.c
+@@ -1369,6 +1369,7 @@
+ 	case V4L2_PIX_FMT_NV42:		descr = "Y/VU 4:4:4"; break;
+ 	case V4L2_PIX_FMT_P010:		descr = "10-bit Y/UV 4:2:0"; break;
+ 	case V4L2_PIX_FMT_P012:		descr = "12-bit Y/UV 4:2:0"; break;
++	case V4L2_PIX_FMT_P010_LSB:	descr = "10-bit Y/UV 4:2:0 (LSB)"; break;
+ 	case V4L2_PIX_FMT_NV12_4L4:	descr = "Y/UV 4:2:0 (4x4 Linear)"; break;
+ 	case V4L2_PIX_FMT_NV12_16L16:	descr = "Y/UV 4:2:0 (16x16 Linear)"; break;
+ 	case V4L2_PIX_FMT_NV12_32L32:   descr = "Y/UV 4:2:0 (32x32 Linear)"; break;
+diff --color -Naur pa/include/uapi/drm/drm_fourcc.h pb/include/uapi/drm/drm_fourcc.h
+--- a/include/uapi/drm/drm_fourcc.h
++++ b/include/uapi/drm/drm_fourcc.h
+@@ -1437,6 +1437,20 @@
+ #define DRM_FORMAT_MOD_ALLWINNER_TILED fourcc_mod_code(ALLWINNER, 1)
+ 
+ /*
++ * Allwinner LSB-aligned 10-bit modifier
++ *
++ * The 10-bit output of the AV1 decoder in the Allwinner H713 (a Google
++ * Hantro-family core). The memory layout is that of the format it modifies
++ * (planes, strides, subsampling), but each 10-bit sample occupies bits 9:0
++ * of its little-endian 16-bit word instead of bits 15:6, and the six padding
++ * bits above it are zero. Multiply a sample by 2^6 to use it as the
++ * MSB-aligned value the unmodified format describes.
++ *
++ * Valid only with DRM_FORMAT_P010 and DRM_FORMAT_P210.
++ */
++#define DRM_FORMAT_MOD_ALLWINNER_LSB10 fourcc_mod_code(ALLWINNER, 2)
++
++/*
+  * Amlogic Video Framebuffer Compression modifiers
+  *
+  * Amlogic uses a proprietary lossless image compression protocol and format
+diff --color -Naur pa/include/uapi/linux/videodev2.h pb/include/uapi/linux/videodev2.h
+--- a/include/uapi/linux/videodev2.h
++++ b/include/uapi/linux/videodev2.h
+@@ -659,6 +659,7 @@
+ #define V4L2_PIX_FMT_NV42    v4l2_fourcc('N', 'V', '4', '2') /* 24  Y/CrCb 4:4:4  */
+ #define V4L2_PIX_FMT_P010    v4l2_fourcc('P', '0', '1', '0') /* 24  Y/CbCr 4:2:0 10-bit per component */
+ #define V4L2_PIX_FMT_P012    v4l2_fourcc('P', '0', '1', '2') /* 24  Y/CbCr 4:2:0 12-bit per component */
++#define V4L2_PIX_FMT_P010_LSB v4l2_fourcc('P', 'L', '1', '0') /* 24  Y/CbCr 4:2:0 10-bit per component, LSB-aligned */
+ 
+ /* two non contiguous planes - one Y, one Cr + Cb interleaved  */
+ #define V4L2_PIX_FMT_NV12M   v4l2_fourcc('N', 'M', '1', '2') /* 12  Y/CbCr 4:2:0  */
