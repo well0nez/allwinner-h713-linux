@@ -354,11 +354,15 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 7.20 **Lizenzen in `main` bereinigen** (Marco 13.10.2026 abends: jede Lizenz übernommener Treiber und Codestücke
       beachten, Unzulässiges umschreiben; cstenger antwortet nicht, eine Lizenz von ihm ist nicht zu erwarten). Nebenstrang,
       **nicht** Teil des Nebenprojekts `medien`. Prüfung `arbeit/lizenzen-20261013/BERICHT.md` (medien: nichts umzuschreiben),
-      Plan `arbeit/lizenz-entflechtung-20261013/PLAN.md`. Merge nach `main` und Push nur mit Marcos Ja. Stand 13.10. 23:15:
+      Plan `arbeit/lizenz-entflechtung-20261013/PLAN.md`. Merge nach `main` und Push nur mit Marcos Ja. **Ruht** (Marco 13.10.: Nebenstrang, erst auf sein Wort weiter). Stand 14.10.:
       - a) `mainline/build/build.sh`, `uboot-build.sh` im Reinraum neu (SPEC, Neuschrieb ohne Blick ins Original, Vergleich
-        byteidentisch gegen die alten): Zweig `versuch/bauskripte-neu`, **läuft** (`arbeit/lizenz-umbau-20261013/`)
+        byteidentisch gegen die alten): **fertig 14.10.** auf `versuch/bauskripte-neu` `3220575` - 44/44 Ausgaben byteidentisch
+        (bl31, U-Boot je Rolle, Kernel, DTBs, FITs, modroot, aic8800), 16 Fehlerfälle; offen: `build-all.sh` einmal ganz mit den
+        neuen Skripten (braucht `CRUST_SRC`), `docs/kernel-patches.md` nennt zwei alte Funktionsnamen (`arbeit/lizenz-umbau-20261013/`)
       - b) `mainline/config/versions.env`, `toolchain.md` neu - nach a (ändert den Kernel-Ordner-Hash und damit `aic8800_fdrv.ko`)
-      - c) Entflechtung: 70 Stenger-Dateien ohne Lizenz aus dem Baum, 4 in eigenen Worten neu: Zweig `versuch/entflechtung`, **läuft**
+      - c) Entflechtung: 70 Stenger-Dateien ohne Lizenz aus dem Baum, 4 in eigenen Worten neu: **fertig 13.10.** auf `versuch/entflechtung` `b1d36ac`
+        (4 Commits, neuer Journaleintrag `doku/210`, sperr-scan Regel 9; `tor.sh --tests` grün), Hinweise in
+        `arbeit/lizenz-entflechtung-20261013/BERICHT.md`
       - d) die 8 Lückendateien (`series` x2, Defconfig, 3 Fragmente, 2 READMEs): nach a/b, ein Kernelbau
       - e) Lizenzhinweise und Quelltextangebot im Abbild: mesa (MIT), TF-A/crust (BSD), Kernel/U-Boot/Debian-Quellen -
         betrifft auch die schon veröffentlichten Abbilder
