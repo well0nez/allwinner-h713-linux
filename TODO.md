@@ -198,7 +198,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.71 **`h713-bt-reset` am HY300PRO-G-EU** (aus 1.4, 12.10.): dort nie probiert; ein Warmstart mit und ohne den Reset vorab,
       `hci0` UP RUNNING beim 1. Versuch zählen (wie 2.49 am HY310)
 - [ ] 2.72 **GPU-Takt (0268-0270) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (13.10.2026, `arbeit/medien/A-takt/BERICHT.md`: A1 halbiert, A2 150/200/300/600 MHz
-      exakt, A3 2,49 ms bei 600, A4 45 min GPU-Zone max 55 C), am G-EU nicht gemessen und nicht eingebaut. Dasselbe Skript `arbeit/medien/A-takt/takt.sh` mit `H=root@192.168.8.245`
+      exakt, A3 2,49 ms bei 600, A4 45 min GPU-Zone max 55 C), am G-EU nicht gemessen und nicht eingebaut. Dasselbe Skript `arbeit/medien/A-takt/takt.sh` mit `H=root@<G-EU-Adresse aus referenz/geraete.md>`
       (Pfade prüfen: `hwmon` des Lüfters, `thermal_zone`-Reihenfolge, Warp-PID). Tests: A1 vorher (Soll 0,5 +-0,05, sonst anderes CCU-Verhalten), A2 nachher (599/299/199/150 +-2 %),
       A3 (`h713-warp ctl trace`; **720p-Panel**, Zeit je Bild anders als am HY310), A4 verkürzt auf 15 min (GPU-Zone < 85 C, dmesg leer; anderes Gehäuse und Lüfter),
       A5 über die Register. Vorher Sicherung `/root/sicherung-takt-geu/` und den Rückweg (`/boot/h713-kernel.fit.alt`, `/lib/modules/6.18.38.alt`) bereitstellen.
