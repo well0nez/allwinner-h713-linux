@@ -1,0 +1,37 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] clk: sunxi-ng: h713: mbus-av1 is bit 3 of the MBUS gate register, not bit 4
+
+Measured on the stock vendor stack, 2026-09-29, reading the CCU through
+/dev/hidtvreg while it hardware-decoded a clip on each engine:
+
+    idle              0x02001804 = 0x00000005   bits 0, 2
+    AV1 decoding      0x02001804 = 0x0000000d   bit 3 added
+    VP9 decoding      0x02001804 = 0x00000007   bit 1 added
+
+The two engines light two different bits, and the stock device tree agrees
+that they own two different MBUS gates: its AV1 node lists vendor clock 0x35
+("mbus_av1"), its VE node 0x33 ("mbus_ve3").  Bit 1 is already our mbus-ve3,
+which the VP9 run confirms, so the bit AV1 turns on -- 3 -- is mbus-av1.
+
+The driver had it at bit 4.  Nothing consumed it until the AV1 node was added,
+so the error was latent: enabling "mbus-av1" would have gated some other
+master's DRAM port while leaving the AV1 block without one -- register access
+would still work, since that needs only the bus clock, and DMA would fail with
+no obvious cause.  Bit 4's real owner is not identified here.
+
+Captures: local/h713-lab/stock-capture-20260929/out/{idle-1,av1b-play-1,
+vp9b-play-1}/ccu.txt.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0142-clk-sunxi-ng-h713-mbus-av1-is-bit-3.patch (0142-clk-sunxi-ng-h713-mbus-av1-is-bit-3.patch)
+---
+--- a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
++++ b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
+@@ -369,7 +369,7 @@
+ static SUNXI_CCU_GATE(mbus_ce_clk, "mbus-ce", "mbus",
+ 		      0x804, BIT(2), 0);
+ static SUNXI_CCU_GATE(mbus_av1_clk, "mbus-av1", "mbus",
+-		      0x804, BIT(4), 0);
++		      0x804, BIT(3), 0);
+ static SUNXI_CCU_GATE(mbus_nand_clk, "mbus-nand", "mbus",
+ 		      0x804, BIT(5), 0);
+ static SUNXI_CCU_GATE(bus_dram_clk, "bus-dram", "ahb",
