@@ -1,0 +1,133 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: verisilicon: h713 av1: hold the VE's reset while the core is touched
+
+The core runs behind the video engine's bus reset line, which cedrus
+pulses at a codec switch and on its watchdog. Two things a pulse does,
+both measured on the HY310 (package C, 13.10.2026, and C-reset, 14.10.):
+into a frame in flight it stalls the core for good and the SoC soon
+after; into the register writes before the start it leaves base
+addresses at zero, and the core faults on a read at 0x3000 (46 s into a
+codec-switch storm, with the hold starting at the start bit only).
+
+So a frame holds the line, through the guard, from its first register
+access to the end of its interrupt - the readback in .done included -,
+its timeout or its reset; and the core's own resets are held too, since
+the core must leave reset on a live bus. The holder bit next to the
+interrupt's makes the release idempotent: a timed-out frame can be ended
+by the watchdog and by a late interrupt both.
+
+With this the storms of package C-reset ran clean: six runs of 60 s
+H.264+VP9 and VP9+H.265 switching (2400 cedrus jobs each) next to AV1,
+all AV1 frames bit-exact, no driver line.
+---
+--- a/drivers/media/platform/verisilicon/sunxi_h713_av1_hw.c
++++ b/drivers/media/platform/verisilicon/sunxi_h713_av1_hw.c
+@@ -50,6 +50,7 @@
+ #include <linux/pm_runtime.h>
+ #include <linux/reset.h>
+ #include <linux/vmalloc.h>
++#include <linux/soc/sunxi/sunxi_ve_reset.h>
+ 
+ #include "hantro.h"
+ #include "hantro_hw.h"
+@@ -77,9 +78,12 @@
+ #define h713_trace(vpu, fmt, ...) \
+ 	do { if (h713_av1_trace) dev_info((vpu)->dev, fmt, ##__VA_ARGS__); } while (0)
+ 
++#define H713_AV1_IRQ_ARMED		0
++#define H713_AV1_FRAME_IN_FLIGHT	1
++
+ struct sunxi_h713_av1_hw {
+ 	int irq;
+-	unsigned long armed;	/* bit 0: the line is enabled */
++	unsigned long armed;	/* H713_AV1_IRQ_ARMED, H713_AV1_FRAME_IN_FLIGHT */
+ 	struct mutex lock;	/* streams */
+ 	unsigned int streams;	/* contexts holding the core powered */
+ };
+@@ -88,7 +92,7 @@
+ {
+ 	struct sunxi_h713_av1_hw *hw = vpu->variant_priv;
+ 
+-	if (!test_and_set_bit(0, &hw->armed))
++	if (!test_and_set_bit(H713_AV1_IRQ_ARMED, &hw->armed))
+ 		enable_irq(hw->irq);
+ }
+ 
+@@ -96,10 +100,36 @@
+ {
+ 	struct sunxi_h713_av1_hw *hw = vpu->variant_priv;
+ 
+-	if (test_and_clear_bit(0, &hw->armed))
++	if (test_and_clear_bit(H713_AV1_IRQ_ARMED, &hw->armed))
+ 		disable_irq_nosync(hw->irq);
+ }
+ 
++/*
++ * The core runs behind the video engine's bus reset, which cedrus pulses at
++ * a codec switch and on its watchdog. A pulse into a frame in flight stalls
++ * the core for good (and the SoC soon after), and a pulse into the register
++ * writes before the start leaves base addresses at zero (measured: an IOMMU
++ * read fault at 0x3000 from the core, 46 s into a codec-switch storm). So a
++ * frame holds the line from its first register access to the end of its
++ * interrupt (the readback included), its timeout, or its reset; the core's
++ * own resets are held too, since the core must leave reset on a live bus.
++ */
++static void h713_av1_frame_begin(struct hantro_dev *vpu)
++{
++	struct sunxi_h713_av1_hw *hw = vpu->variant_priv;
++
++	if (!test_and_set_bit(H713_AV1_FRAME_IN_FLIGHT, &hw->armed))
++		sunxi_ve_reset_hold();
++}
++
++static void h713_av1_frame_end(struct hantro_dev *vpu)
++{
++	struct sunxi_h713_av1_hw *hw = vpu->variant_priv;
++
++	if (test_and_clear_bit(H713_AV1_FRAME_IN_FLIGHT, &hw->armed))
++		sunxi_ve_reset_release();
++}
++
+ struct sunxi_h713_av1_dec_ctx {
+ 	bool powered;		/* holding the domain and clocks while streaming */
+ 	struct h713_av1 gen;
+@@ -230,8 +260,11 @@
+ 		goto err_unlock;
+ 	}
+ 	a->powered = true;
+-	if (!hw->streams++)
++	if (!hw->streams++) {
++		sunxi_ve_reset_hold();
+ 		h713_av1_block_reset(vpu);
++		sunxi_ve_reset_release();
++	}
+ 	mutex_unlock(&hw->lock);
+ 	return 0;
+ 
+@@ -360,6 +393,9 @@
+ 		mdelay(50);
+ 	}
+ 
++	/* From here on the core is touched: hold the VE's reset until the frame ends. */
++	h713_av1_frame_begin(vpu);
++
+ 	/* After an error interrupt the core can still be busy: reset it first. */
+ 	if (readl_relaxed(vpu->dec_base + H713_AV1_CTRL) & H713_AV1_CTRL_START) {
+ 		dev_warn_ratelimited(vpu->dev, "core still busy; resetting it\n");
+@@ -396,6 +432,7 @@
+ {
+ 	h713_av1_irq_disarm(ctx->dev);
+ 	h713_av1_block_reset(ctx->dev);
++	h713_av1_frame_end(ctx->dev);
+ }
+ 
+ static irqreturn_t sunxi_h713_av1_irq(int irq, void *dev_id)
+@@ -426,6 +463,8 @@
+ 	}
+ 
+ 	hantro_irq_done(vpu, state);
++	/* after the readback in .done; the next job runs from a work item */
++	h713_av1_frame_end(vpu);
+ 	return IRQ_HANDLED;
+ }
+ 
