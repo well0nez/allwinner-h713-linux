@@ -64,12 +64,25 @@ Fakten nach seiner Aufnahme, Gliederung und Wortlaut eigen, die IDs neu gerechne
   Tabelle unverändert). Neu: drei Namen mit dem Herstellertippfehler `Thal_` statt `THal_`, nicht zwei - `Thal_Vp_AtvIsFastSyncLock` kommt zu den zwei
   Backlight-Einträgen. 58 der 82 Namen standen in seiner Seite ohne das Präfix `THal_Vp_`; die ID entscheidet es. Handleradressen: 6 stimmen mit unserer statischen
   Lesung von `display.bin` überein (`doku/85` §A.2), 19 stehen nur in seiner Aufnahme (nicht nachgemessen), für 57 Einträge ist keine Adresse festgehalten.
-* **Tore:** `release/tor.sh` grün nach jedem Schritt; `tools/check-links.py` ohne tote Links und Waisen.
+* **Nach dem Entfernen:** `git ls-files mainline | wc -l` 586 -> 516 (586 - 70); 26 490 Zeilen gelöscht; `mainline/build/build.sh` vorhanden (Wurzelmarker
+  für `rootfs/`, `installer/`); `git diff main --stat` über die gehashten Pfade des Kernelbaus (`patches/kernel/series`, `board/`, alle
+  `patches/kernel/0*.patch`, `patches/aic8800/series` und `*.patch`) leer, der Eingabe-Hash ändert sich damit nicht (am Diff gemessen, nicht durch einen Bau).
+  Die 16 Pfade unter `mainline/`, die im Arbeitsbaum von `main` heute ignoriert sind, liegen alle unter `mainline/build/` und sind auch nach dem Entfernen von
+  `mainline/.gitignore` ignoriert (`git check-ignore --no-index`); deren Typmuster (`*.bin`, `*.fit`, `*.dtb`, `*.tar`, `Image*`, `*.swp`, `.DS_Store`) sind
+  nicht in die Wurzeldatei übernommen.
+* **Tore:** `release/tor.sh --tests` grün (Installer-Tests 449, davon 54 übersprungen wie vorher; `h713-power` 83, `h713-keys` 22), `bash boards/check.sh` grün,
+  `tools/check-links.py` ohne tote Links und Waisen. Danach verweist außerhalb von Journal, Patchtexten, `TODO.md` und den vier Dateien im Neuschrieb nur noch
+  das auf die entfernten Pfade, was dieser Eintrag in §6 nennt.
 
 ## 6 Nicht gemacht
 
 * kein Push, kein Merge nach `main`, die Historie nicht angefasst (§2);
 * `build.sh`, `uboot-build.sh`, `versions.env`, `toolchain.md` nicht angefasst - sie verweisen noch auf Entferntes (`patches/README.md`, `docs/flash.md`, `docs/kernel-bump.md`,
   `tools/rootfs/`, `docs/build.md`, `docs/bringup-notes.md`, libva-Pins); der Neuschrieb tilgt das;
-* die acht Lückendateien nicht angefasst; `patches/kernel/README.md` (Z. 17, 135, 195) und `patches/aic8800/README.md` (Z. 60, 65) zeigen deshalb noch auf Entferntes;
+* die acht Lückendateien nicht angefasst; `patches/kernel/README.md` (Z. 17, 135, 195), `patches/aic8800/README.md` (Z. 60, 65), `patches/kernel/series` (Z. 11),
+  `patches/kernel/board/{hy200_qz713df_a1_defconfig,kasan.config,builtin-drivers.config}` (Kommentare) zeigen deshalb noch auf Entferntes; die ersten beiden sind Markdown-Verweise,
+  die kein Tor prüft;
+* Kommentare in seinen neun C-Dateien (`drm-flip.c`, `gles-tear.c`, `h713-present.c`) nennen `docs/kms-display.md` und `tools/display/tear-measure.py`; die Dateien tragen seine
+  SPDX-Zeile und sind unverändert; `mainline/tools/README.md` sagt es;
+* `patches/vorschlaege/_erledigt/I/ENTWURF.md` (Z. 81) nennt `mainline/docs/reference/cpu-comm-call-table.md`; ein Entwurf von 2026-09, wie ein Journaleintrag nicht umgeschrieben;
 * kein Bau, kein Kernelbau, kein Gerät; "der Eingabe-Hash des Kernels bleibt unverändert" ist am Diff der gehashten Pfade geprüft (Bericht), nicht durch einen Bau.

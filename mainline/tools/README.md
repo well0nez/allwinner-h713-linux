@@ -25,5 +25,6 @@ GPU on the board itself. They run on the target; the header of each file gives i
 | `video/gles-tear.c` | Draws a stepping bar on the GPU path and publishes it as the video path does, to score tearing in a capture |
 | `video/h713-present.c` | Puts frames on the panel from Linux through the AFBD scanout path, committing in the order recovered from the vendor driver |
 
-`gles-tear.c` names a scoring script that is no longer in this tree (see [PROVENANCE.md](../../PROVENANCE.md));
+Comments in `drm-flip.c`, `gles-tear.c` and `h713-present.c` name a document and a scoring script of cstenger's tree
+(`docs/kms-display.md`, `tools/display/tear-measure.py`) that are no longer here ([PROVENANCE.md](../../PROVENANCE.md));
 `h713-warp ctl check` is the tearing check the project uses now ([docs/tools/h713-warp.md](../../docs/tools/h713-warp.md)).
