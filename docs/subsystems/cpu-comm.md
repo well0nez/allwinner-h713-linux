@@ -62,14 +62,15 @@ def routine_id(name, cpu=1, pid=0):
 routine_id("THal_Vp_GetImageBufferAddr")   # 0x2f02f7dd
 ```
 
-Thirteen ids of `mainline/docs/reference/cpu-comm-call-table.md` reproduce this way byte for byte -
+Thirteen worked examples; [the routine table](#the-routine-table) below lists all 82 known ids, and every one of
+them reproduces this way byte for byte:
 `THal_Vp_EnableBlackScreen` `a30d4c6b`, `THal_Vp_DisableBlackScreen` `b66041d8`,
 `THal_Vp_EnableVideoFreeze` `2fdcdc6f`, `THal_Vp_DisableVideoFreeze` `3ab1d1dc`,
 `THal_Vp_EnableScreenCover` `0152f134`, `THal_Vp_DisableScreenCover` `143ffc87`, `THal_Vp_Init`
 `1c6ff747`, `THal_Vp_SetBacklightWorkMode` `4d80db0e`, `Thal_Vp_SetBacklightPwmInfo` `b46ce545`,
 `Thal_Vp_SetBacklightLevel` `51ad877e`, `THal_Vp_SetSource` `eaf13de5`, `THal_Vp_GetSource`
 `24efc7c9` and `THal_Vp_GetImageBufferAddr` `2f02f7dd`. The two `Thal_` entries are the vendor's
-own lower-case typo and only resolve with it spelled that way. Arguments carry no type
+own lower-case typo and only resolve with it spelled that way (the table has a third one). Arguments carry no type
 information: a routine that expects a buffer takes its physical address as a plain 32-bit word, and
 that address has to be one the MIPS can already see.
 
@@ -96,6 +97,139 @@ and the process that registers first after a warm start - h713-tv - gets pid 255
 That lock then read "free" to its own unlock, stayed held by the ARM for ever, and the wall was dark until the
 net reloaded the MIPS (one warm start in twenty, traced step by step in `doku/206`). The word is now
 `tgid << 8 | 1`; 50 warm starts without the net since.
+
+## The routine table
+
+The display firmware serves a call only for a routine that is in its table, and the table is filled late:
+only once the firmware has proved itself ready for applications, so a dump taken earlier finds it empty.
+What follows restates one live dump, taken on 4 August 2026 on Stenger's bench board (project `0x33`) with
+`h713_disp calltable 0`, run after `h713_disp mips-test 0x33`. The dump and its first write-up are his (in his
+repository, [`docs/reference/cpu-comm-call-table.md` at `8860991`](https://github.com/cstenger/allwinner-h713-mainline/blob/8860991a91ee973a45bb6f198bda896dd1e02c36/docs/reference/cpu-comm-call-table.md));
+the grouping, the wording and the check of the ids are ours. 82 of the table's 1224 slots held a routine. A run
+of `h713_disp test` is the wrong lead-in to a dump: it does not prove readiness and sets the source id to 2, on
+which the firmware gives up its init.
+
+A slot is `0x60` bytes:
+
+| offset | holds |
+| --- | --- |
+| `+0x00` | the word `0x00010000`, a version or flags word |
+| `+0x04` | the pid word: `0x8b8f32b0` in every slot of that dump, `0x8b8f3160` in the dump our U-Boot HDMI sequence was written against (`tools/uboot-hdmi-sequence.txt`), so read it from the firmware you call into |
+| `+0x08` | the routine id, the number a call carries |
+| `+0x0c` | the name, NUL-terminated, with the `_1_000` suffix that goes into the hash (`THal_Vp_Deinit_1_000`) |
+| `+0x50` | the handler's address in the firmware's address space |
+| `+0x5c` | the word `0xffffffff`, a marker |
+
+From U-Boot a routine is called by its id, for instance `h713_disp commcall 2f02f7dd chan=0 pid=8b8f32b0` for
+`GetImageBufferAddr` on that dump. The image also holds a static copy of the table, in `display.bin`: 81
+entries of `0x68` bytes, the handler address in the last word (`doku/85` §A.2). The static count is one below the
+live one; why was not looked into (not measured).
+
+**Names and ids.** Every name starts with `THal_Vp_`, except three that the vendor spelled `Thal_Vp_`
+(marked with a dagger below), and a lookup by string has to use the spelling as it is. The ids were not copied
+but recomputed: all 82 reproduce from their names with `routine_id()` above (checked 13.10.2026). The source gave
+24 names in full and the other 58 without the prefix; for those the id decides, and with `THal_Vp_` in front
+every one reproduces except `AtvIsFastSyncLock`, which only the lower-case spelling reproduces. The routine
+column below omits the prefix.
+
+**Handlers.** An address is as dumped, 19 of them only so. The six marked `*` are also what our own static
+reading of `display.bin` gives (`doku/85` §A.2); `SetBrightness` is one of them and has no address in the dump.
+Where the column says `-`, no address is recorded in the source: 57 of the 82.
+
+| group | id | routine | handler |
+| --- | --- | --- | --- |
+| Start and stop | `1c6ff747` | `Init` | `8b109f04` |
+|  | `eaaa24c9` | `Deinit` | `8b10a0e0` |
+| Blanking the picture | `a30d4c6b` | `EnableBlackScreen` | `8b10a0e8` |
+|  | `b66041d8` | `DisableBlackScreen` | `8b10a110` |
+|  | `2fdcdc6f` | `EnableVideoFreeze` | `8b10a138` |
+|  | `3ab1d1dc` | `DisableVideoFreeze` | `8b10a160` |
+|  | `0152f134` | `EnableScreenCover` | `8b10a188` |
+|  | `143ffc87` | `DisableScreenCover` | `8b10a1ec` |
+| Input source and the capture buffer | `eaf13de5` | `SetSource` | `8b10a218`* |
+|  | `24efc7c9` | `GetSource` | `8b10a244`* |
+|  | `24b17fb7` | `GetSignalInfo` | `8b109b40`* |
+|  | `396f16bf` | `SetImageBufferAddr` | `8b10ada8` |
+|  | `2f02f7dd` | `GetImageBufferAddr` | `8b10adb0` |
+| Window and seamless switching | `3356c54b` | `Wce_SetWindow` | `8b109d54`* |
+|  | `fd483f67` | `Wce_GetWindow` | `8b109dc0` |
+|  | `7bbd5772` | `Wce_GetActiveWindow` | `8b109e2c` |
+|  | `09ffc6eb` | `Wce_SetMirrorMode` | `8b109d20` |
+|  | `8f8a9581` | `Wce_EnablePixel2PixelMode` | `8b109e88` |
+|  | `ea7ffef5` | `Wce_DisablePixel2PixelMode` | `8b109edc` |
+|  | `cb6d765f` | `SeamlessEnable` | `8b109cd0` |
+|  | `c5429d4a` | `SeamlessDisable` | `8b109cf8` |
+| Backlight | `4d80db0e` | `SetBacklightWorkMode` | `8b10a410` |
+|  | `b46ce545` | `SetBacklightPwmInfo`† | `8b10a444` |
+|  | `51ad877e` | `SetBacklightLevel`† | `8b10a4c8`* |
+| Picture settings | `7221d017` | `SetBrightness` | `8b10a4fc`* |
+|  | `880be6ff` | `GetBrightness` | - |
+|  | `023c4033` | `SetContrast` | - |
+|  | `6665fe81` | `GetContrast` | - |
+|  | `a84983c3` | `SetSaturation` | - |
+|  | `5263b52b` | `GetSaturation` | - |
+|  | `5b2c62d5` | `SetHue` | - |
+|  | `5432b456` | `GetHue` | - |
+|  | `7335ebb5` | `SetSharpness` | - |
+|  | `563e60ab` | `GetSharpness` | - |
+|  | `1a116843` | `SetGamma` | - |
+|  | `f6a798d3` | `SetDCI` | - |
+|  | `f9b94e50` | `GetDCI` | - |
+|  | `c0da6a8e` | `SetSNR` | - |
+|  | `cfc4bc0d` | `GetSNR` | - |
+|  | `a4bb0747` | `SetTNR` | - |
+|  | `aba5d1c4` | `GetTNR` | - |
+|  | `5c135587` | `SetBlackExtension` | - |
+|  | `5d3d7258` | `GetBlackExtension` | - |
+|  | `fc42fe0c` | `SetWhiteBalance` | - |
+|  | `f00ca77d` | `SetColorManagement` | - |
+|  | `e661461f` | `GetColorManagement` | - |
+|  | `83a878bf` | `SetPictureMode` | - |
+|  | `2d8338c3` | `GetPictureMode` | - |
+|  | `9817a1c1` | `SetVideoRange` | - |
+|  | `623d9729` | `GetVideoRange` | - |
+|  | `c201c220` | `SetLowLatencyMode` | - |
+|  | `c32fe5ff` | `GetLowLatencyMode` | - |
+|  | `434567b0` | `GetDisplayLatency` | - |
+| HDMI input, HDCP and ARC | `9ce74c48` | `HDMI_SetPortMap` | - |
+|  | `cbf83247` | `HDMI_GetPortStatus` | - |
+|  | `6eb4c96a` | `HDMI_SetHPDTimeInterval` | - |
+|  | `ba3e5a70` | `SetHDMIHotPlugByPortCallback` | - |
+|  | `449effe8` | `HDMI_ReloadHdcp14Key` | - |
+|  | `50817813` | `SetHDCP22Key` | - |
+|  | `fa085aaa` | `SetHDCP22Pkf` | - |
+|  | `93965d14` | `TurnOnARCAudioPath` | - |
+|  | `e9b4464d` | `SwitchARCTXPath` | - |
+| Analogue input (ATV, CVBS) | `a16b7c24` | `AtvSetRegion` | - |
+|  | `80e56656` | `AtvSetSignalStd` | - |
+|  | `a138c8fe` | `AtvChannelChange` | - |
+|  | `39d6eec4` | `AtvChannelScanStart` | - |
+|  | `9558d223` | `AtvChannelScanEnd` | - |
+|  | `6e857547` | `AtvEnableSnowScreen` | - |
+|  | `71a4c888` | `AtvIsFastSyncLock`† | - |
+|  | `24f44438` | `CvbsSetPedestalMode` | - |
+| Teletext and other VBI data | `0fe1790c` | `StartVBI` | - |
+|  | `8a0d26cb` | `StopVBI` | - |
+|  | `9c91450e` | `ResetVBI` | - |
+|  | `f3772724` | `EnableVBILine` | - |
+|  | `096b60b1` | `GetVBIData` | - |
+|  | `ec2ca0b4` | `GetVBIOffset` | - |
+|  | `8f5859c2` | `GetVBIAddr` | - |
+|  | `96046e19` | `GetVBISize` | - |
+| Registering for events | `671ceca6` | `RegisterSignalChangeCallback` | - |
+|  | `2692bdbe` | `UnregisterSignalChangeCallback` | - |
+|  | `87a96488` | `RegisterCallbackOfDisplayLatencyChange` | - |
+|  | `72341984` | `UnregisterCallbackOfDisplayLatencyChange` | - |
+
+All of these are calls from the ARM to the MIPS, addressed to cpu 1. The calls the other way, the MIPS into the
+ARM (`MipsHalCallback_*`, cpu 0), are not in this table (`doku/83`). The four routines under "Registering for
+events" are how the ARM asks to be called back later. The picture settings are used through the controls
+described in [pq.md](pq.md), the HDMI group through the receiver driver ([hdmi-in.md](hdmi-in.md)).
+
+**What the table lacks.** No routine for panel power: nothing for the panel supply, its reset or the GPIO lines
+(PF6 is one of them). They stay on the ARM side, in U-Boot's `h713_disp_stock_panel_power` (`doku/182`), so
+switching the panel off is done in two places, `Deinit` in the firmware and then the ARM's own power-down of those
+lines, for which the vendor's `PanelOffTiming0..2` are 20, 250 and 75.
 
 ## Callbacks
 
