@@ -164,6 +164,11 @@ CONFIG_VIDEO_SUN4I_CSI=y
 CONFIG_VIDEO_SUN6I_CSI=y
 CONFIG_VIDEO_SUN8I_DEINTERLACE=y
 CONFIG_VIDEO_SUN8I_ROTATE=y
+# The AV1 decoder (media side project, package C): hantro's H713 variant
+# (0303) at 0x01c0d000, IOMMU master 5, built by VIDEO_HANTRO_SUNXI (default y
+# on ARCH_SUNXI). It runs from the VE's module clock, which 0293 holds at
+# 432 MHz; the variant refuses to probe above that.
+CONFIG_VIDEO_HANTRO=m
 CONFIG_DRM=y
 # fbdev emulation gives the AFBD KMS driver a /dev/fb0 and a console on the
 # projector, which is the cheapest possible check that scanout is live.
