@@ -1,0 +1,327 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: expose the H.264 hardware rotator
+
+The H.264 secondary output combines power-of-two scale-down with clockwise
+rotation.  Disassembly and hardware tests establish the mode bits for
+0/90/180/270 degrees.  H.264 control bit 9 enables rotation when both scale
+fields are zero, and 90/270 swap the output raster and stride.
+
+Expose that unit through V4L2_CID_ROTATE.  Treat rotation like scaling for
+private full-size reconstruction frames, capture allocation, format selection
+and COMPOSE negotiation, so reference pictures never point at transformed
+output.  Scale and rotation may be requested together.
+
+A generated four-quadrant H.264 frame verified the output order for all three
+angles and for half-scale plus 90 degrees on H713 hardware.
+
+The rotator lives in the H.264 engine, so the control is meaningless for the
+other codecs.  Do NOT express that by failing: state-dependent rejection from
+s_ctrl defeats the control framework's own range probing, which walks the
+control against the CURRENT configuration.  The default output format is
+MPEG-2, so refusing every non-zero value there made the advertised maximum
+unreachable and v4l2-compliance reported
+
+    fail: v4l2-test-controls.cpp(517): invalid maximum range check
+    test VIDIOC_G/S_CTRL: FAIL
+
+Store whatever the range allows and make the value INERT instead: everything
+that acts on rotation reads cedrus_rotation(), which reports zero unless the
+output format is H.264, so a stale request can never arm the H.264 transform
+path under MPEG-2, HEVC or VP8.  Selecting another codec with a rotation set
+is likewise no longer an error -- it simply stops applying, and comes back
+if H.264 is selected again.
+
+The reallocation a rotation change forces is advertised by
+V4L2_CTRL_FLAG_MODIFY_LAYOUT, and cedrus_buf_prepare() rejects a now-undersized
+buffer with -EINVAL, so nothing is corrupted if a client ignores it.  Do NOT
+reach for v4l2_ctrl_grab() to police this: a grabbed control cannot be set into
+a REQUEST either, which is legitimate and which v4l2-compliance exercises --
+doing so moved the "test Requests" failure to VIDIOC_S_EXT_CTRLS instead of
+fixing it.  recon_fmt derives from the CODED size, so rotation never resizes
+the reconstruction buffers.
+
+Measured on H713, v4l2-compliance -d /dev/video0:
+
+    baseline (this series' cedrus patches reverted)   48/49
+    with this patch as first written                  45/49
+    with this patch as it now stands                  46/49
+
+The four-quadrant rotation matrix still passes at 0/90/180/270 after the
+rework.  Two failures remain, "test Requests" and "test blocking wait", and they are
+NOT caused by this patch.  testRequests only runs if it can find an INTEGER or
+BOOLEAN control to drive (v4l2-test-buffers.cpp:2360); every control cedrus had
+before this patch is a compound, U32 or menu type, so the suite has always
+returned OK after testing nothing.  V4L2_CID_ROTATE is the first INTEGER
+control cedrus has ever exposed, so the suite now runs -- and finds that
+cedrus_request_validate() never checks that the current codec's controls are
+present, queueing a request compliance expects a stateless decoder to refuse
+with ENOENT.  The blocking-wait failure follows from that one: fail_on_test_val
+returns before testRequests can clean up, leaving buffers allocated.  Fixing it
+belongs in cedrus_request_validate(), not here.  The remaining
+VIDIOC_G/S/TRY_EXT_CTRLS failure is likewise pre-existing and present with the
+whole series reverted.  See docs/reference/v4l2-compliance-2026-09-15.md.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0110-media-cedrus-expose-h264-hardware-rotation.patch (0110-media-cedrus-expose-h264-hardware-rotation.patch, commit fe65505)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.c
+@@ -82,13 +82,56 @@
+ 	return 0;
+ }
+ 
++static int cedrus_s_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct cedrus_ctx *ctx = container_of(ctrl->handler, struct cedrus_ctx, hdl);
++
++	if (ctrl->id != V4L2_CID_ROTATE)
++		return 0;
++
++	/*
++	 * Accept anything the control range allows and never fail here.
++	 * State-dependent rejection from s_ctrl defeats the control
++	 * framework's own range probing: it walks the control against the
++	 * CURRENT configuration, and the default output format is MPEG-2, so
++	 * refusing every non-zero value there made the advertised maximum
++	 * unreachable and v4l2-compliance reported "invalid maximum range
++	 * check". Rotation is instead made inert for non-H.264 by
++	 * cedrus_rotation(), and the reallocation this forces on userspace is
++	 * already advertised by V4L2_CTRL_FLAG_MODIFY_LAYOUT: a client that
++	 * changes rotation must reallocate, and cedrus_buf_prepare() rejects a
++	 * now-undersized buffer with -EINVAL. Do NOT reach for
++	 * v4l2_ctrl_grab() here -- a grabbed control cannot be set into a
++	 * REQUEST either, which is a legitimate thing for userspace to do and
++	 * which v4l2-compliance exercises.
++	 */
++	ctx->rotation = ctrl->val;
++	cedrus_reset_cap_format(ctx);
++	cedrus_update_recon_format(ctx);
++
++	return 0;
++}
++
+ static const struct v4l2_ctrl_ops cedrus_ctrl_ops = {
+ 	.try_ctrl = cedrus_try_ctrl,
++	.s_ctrl = cedrus_s_ctrl,
+ };
+ 
+ static const struct cedrus_control cedrus_controls[] = {
+ 	{
+ 		.cfg = {
++			.id	= V4L2_CID_ROTATE,
++			.min	= 0,
++			.max	= 270,
++			.step	= 90,
++			.def	= 0,
++			.flags	= V4L2_CTRL_FLAG_MODIFY_LAYOUT,
++			.ops	= &cedrus_ctrl_ops,
++		},
++		.capabilities	= CEDRUS_CAPABILITY_H264_DEC,
++	},
++	{
++		.cfg = {
+ 			.id	= V4L2_CID_STATELESS_MPEG2_SEQUENCE,
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_MPEG2_DEC,
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+@@ -98,7 +98,7 @@
+ 	 * the smaller picture userspace sees and would size the primary's
+ 	 * stride and chroma offset wrongly.
+ 	 */
+-	cedrus_dst_format_set(dev, cedrus_scaling(ctx) ? &ctx->recon_fmt
++	cedrus_dst_format_set(dev, cedrus_transforming(ctx) ? &ctx->recon_fmt
+ 						       : &ctx->dst_fmt);
+ 
+ 	error = ctx->current_codec->setup(ctx, &run);
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -136,6 +136,7 @@
+ 	struct v4l2_pix_format		recon_fmt;
+ 	u8				sd_h_shift;
+ 	u8				sd_v_shift;
++	u16				rotation;
+ 	struct cedrus_dec_ops		*current_codec;
+ 	unsigned int			bit_depth;
+ 
+@@ -273,6 +274,35 @@
+ }
+ 
+ /*
++ * The rotator lives in the H.264 engine, so a rotation requested while another
++ * codec is selected is remembered but inert. Everything that ACTS on rotation
++ * reads it through here rather than touching ctx->rotation directly, so a
++ * stale request can never arm the H.264 transform path under MPEG-2, HEVC or
++ * VP8. Storing it unconditionally is deliberate: rejecting the value in
++ * s_ctrl instead broke the control framework's own range probing.
++ */
++static inline unsigned int cedrus_rotation(struct cedrus_ctx *ctx)
++{
++	if (ctx->src_fmt.pixelformat != V4L2_PIX_FMT_H264_SLICE)
++		return 0;
++
++	return ctx->rotation;
++}
++
++/* 90 and 270 degrees exchange the output raster's width and height. */
++static inline bool cedrus_rotation_swaps_axes(struct cedrus_ctx *ctx)
++{
++	unsigned int rotation = cedrus_rotation(ctx);
++
++	return rotation == 90 || rotation == 270;
++}
++
++static inline bool cedrus_transforming(struct cedrus_ctx *ctx)
++{
++	return cedrus_scaling(ctx) || cedrus_rotation(ctx);
++}
++
++/*
+  * Where the decoder writes and predicts from.  EVERY frame address goes
+  * through here -- the current picture and every DPB reference alike -- because
+  * they must agree.  While the VE is scaling, the capture buffer holds the
+@@ -289,7 +319,7 @@
+ 	if (!buf)
+ 		return 0;
+ 
+-	if (cedrus_scaling(ctx)) {
++	if (cedrus_transforming(ctx)) {
+ 		cbuf = vb2_to_cedrus_buffer(buf);
+ 		if (WARN_ON_ONCE(!cbuf->recon))
+ 			return 0;
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -153,7 +153,7 @@
+ 	unsigned int stride = ctx->dst_fmt.bytesperline;
+ 	u32 reg;
+ 
+-	if (!cedrus_scaling(ctx))
++	if (!cedrus_transforming(ctx))
+ 		return;
+ 
+ 	cedrus_write(dev, VE_H264_SDROT_LUMA_ADDR, (u32)luma);
+@@ -173,7 +173,12 @@
+ 	reg |= VE_SECONDARY_OUT_FMT_EXT_NV12;
+ 	cedrus_write(dev, VE_PRIMARY_OUT_FMT, reg);
+ 
++	reg = cedrus_read(dev, VE_H264_CTRL);
++	reg |= VE_H264_CTRL_SDROT_ENABLE;
++	cedrus_write(dev, VE_H264_CTRL, reg);
++
+ 	cedrus_write(dev, VE_H264_SDROT_CTRL,
++		     VE_H264_SDROT_CTRL_ROTATE(cedrus_rotation(ctx)) |
+ 		     VE_H264_SDROT_CTRL_H_SHIFT(ctx->sd_h_shift) |
+ 		     VE_H264_SDROT_CTRL_V_SHIFT(ctx->sd_v_shift));
+ 
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
+@@ -576,6 +576,7 @@
+ 
+ #define VE_H264_CTRL			0x220
+ #define VE_H264_CTRL_VP8			BIT(29)
++#define VE_H264_CTRL_SDROT_ENABLE		BIT(9)
+ #define VE_H264_CTRL_VLD_DATA_REQ_INT		BIT(2)
+ #define VE_H264_CTRL_DECODE_ERR_INT		BIT(1)
+ #define VE_H264_CTRL_SLICE_DECODE_INT		BIT(0)
+@@ -616,6 +617,7 @@
+ #define VE_H264_VLD_LEN			0x238
+ #define VE_H264_VLD_END			0x23c
+ #define VE_H264_SDROT_CTRL		0x240
++#define VE_H264_SDROT_CTRL_ROTATE(r)		SHIFT_AND_MASK_BITS((r) / 90, 2, 0)
+ /*
+  * Two independent 2-bit fields, one per axis: 0 = 1:1, 1 = 1/2, 2 = 1/4.
+  * A field of 3 is not a valid eighth -- it produces a partial write.  There
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -284,6 +284,7 @@
+ static int cedrus_try_fmt_vid_cap_p(struct cedrus_ctx *ctx,
+ 				    struct v4l2_pix_format *pix_fmt)
+ {
++	unsigned int output_width, output_height;
+ 	struct cedrus_format *fmt =
+ 		cedrus_find_format(ctx, pix_fmt->pixelformat,
+ 				   CEDRUS_DECODE_DST);
+@@ -291,7 +292,7 @@
+ 	if (!fmt)
+ 		return -EINVAL;
+ 
+-	pix_fmt->pixelformat = cedrus_scaling(ctx) ? V4L2_PIX_FMT_NV12 :
++	pix_fmt->pixelformat = cedrus_transforming(ctx) ? V4L2_PIX_FMT_NV12 :
+ 						 fmt->pixelformat;
+ 	/*
+ 	 * COMPOSE is a window inside the capture allocation.  Keep userspace's
+@@ -300,13 +301,17 @@
+ 	 * immediately after the 544 visible rows and forced the display fetcher to
+ 	 * use a small raster, which this H713 hardware wraps and shears.
+ 	 */
+-	if (cedrus_scaling(ctx)) {
+-		pix_fmt->width = max(pix_fmt->width,
+-				     ALIGN(ctx->src_fmt.width, 16) >>
+-				     ctx->sd_h_shift);
+-		pix_fmt->height = max(pix_fmt->height,
+-				      ALIGN(ctx->src_fmt.height, 16) >>
+-				      ctx->sd_v_shift);
++	if (cedrus_transforming(ctx)) {
++		output_width = ctx->sd_h_shift ?
++			ALIGN(ctx->src_fmt.width, 16) >> ctx->sd_h_shift :
++			ctx->src_fmt.width;
++		output_height = ctx->sd_v_shift ?
++			ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
++			ctx->src_fmt.height;
++		if (cedrus_rotation_swaps_axes(ctx))
++			swap(output_width, output_height);
++		pix_fmt->width = max(pix_fmt->width, output_width);
++		pix_fmt->height = max(pix_fmt->height, output_height);
+ 	} else {
+ 		pix_fmt->width = ctx->src_fmt.width;
+ 		pix_fmt->height = ctx->src_fmt.height;
+@@ -425,6 +430,8 @@
+ 		sel->r.height = ctx->sd_v_shift ?
+ 			ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
+ 			ctx->src_fmt.height;
++		if (cedrus_rotation_swaps_axes(ctx))
++			swap(sel->r.width, sel->r.height);
+ 		return 0;
+ 	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+ 	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+@@ -462,6 +469,9 @@
+ 	if (sel->r.left || sel->r.top || !sel->r.width || !sel->r.height)
+ 		return -EINVAL;
+ 
++	if (cedrus_rotation_swaps_axes(ctx))
++		swap(sel->r.width, sel->r.height);
++
+ 	h_shift = cedrus_compose_shift(ctx->src_fmt.width, sel->r.width,
+ 				       false, sel->flags);
+ 	v_shift = cedrus_compose_shift(ctx->src_fmt.height, sel->r.height,
+@@ -480,6 +490,8 @@
+ 	sel->r.height = ctx->sd_v_shift ?
+ 		ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
+ 		ctx->src_fmt.height;
++	if (cedrus_rotation_swaps_axes(ctx))
++		swap(sel->r.width, sel->r.height);
+ 
+ 	return 0;
+ }
+@@ -522,6 +534,13 @@
+ 	if (ret)
+ 		return ret;
+ 
++	/*
++	 * Selecting a codec without a rotator is not an error even with a
++	 * rotation still set: cedrus_rotation() reports zero for it, the
++	 * capture format is re-derived below, and the request comes back into
++	 * effect if H.264 is selected again. Refusing here made the output
++	 * format depend on control state in a way userspace cannot discover.
++	 */
+ 	ctx->src_fmt = *pix_fmt;
+ 
+ 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, V4L2_BUF_TYPE_VIDEO_OUTPUT);
+@@ -769,7 +788,7 @@
+ 	struct cedrus_buffer *cbuf = vb2_to_cedrus_buffer(vb);
+ 	struct cedrus_dev *dev = ctx->dev;
+ 
+-	if (V4L2_TYPE_IS_OUTPUT(vq->type) || !cedrus_scaling(ctx))
++	if (V4L2_TYPE_IS_OUTPUT(vq->type) || !cedrus_transforming(ctx))
+ 		return 0;
+ 
+ 	cbuf->recon_size = ctx->recon_fmt.sizeimage;

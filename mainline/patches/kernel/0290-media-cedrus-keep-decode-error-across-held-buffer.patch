@@ -1,0 +1,129 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: do not lose a decode error on a held capture buffer
+
+When a picture is coded as more than one job -- the two fields of a field-coded
+frame, or a multi-slice picture -- every job but the last keeps the capture
+buffer, and v4l2_m2m_buf_done_and_job_finish() applies its state only when the
+buffer is finally released:
+
+	dst_buf->is_held = src_buf->flags & V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF;
+	if (!dst_buf->is_held) {
+		v4l2_m2m_dst_buf_remove(m2m_ctx);
+		v4l2_m2m_buf_done(dst_buf, state);
+	}
+
+An error on any earlier job is therefore dropped, and the frame reaches
+userspace marked good while carrying a half-decoded field.  That is the worst
+shape of failure available: silently wrong output that the client is told to
+trust.
+
+Demonstrated rather than argued.  Starving one field of a field-coded MPEG-2
+stream -- deleting 60% of a BOTTOM field's payload, the first of its pair, so
+the engine runs out of bitstream -- makes the hardware report two failures, at
+picture 21 (375 of 810 macroblocks) and at picture 62.  Before this patch
+userspace saw ONE flagged capture buffer out of 31; after it, two, at exactly
+the dequeues matching those pictures.  The undamaged stream still reports
+exactly one, so clean frames gain no false positives and the flag does not
+stick.
+
+Remember the error on the context and apply it when the buffer is released.
+Clear it there, and on the paths that release the buffer without reaching the
+interrupt -- setup failure and the watchdog -- and when a stream starts, so a
+fresh sequence cannot inherit a previous one's failure.
+
+Pixel output is byte-identical for progressive MPEG-2, interlaced frame-picture
+MPEG-2, field-coded MPEG-2 and VP8: this changes buffer state, never data.  The
+three decode gates pass and v4l2-compliance stays 49/49.
+
+Not H713-specific.  Any cedrus user of a multi-job picture has this, and the
+capability has been granted to H.264 and HEVC all along.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0124-media-cedrus-keep-decode-error-across-held-buffer.patch (0124-media-cedrus-keep-decode-error-across-held-buffer.patch, commit e550bc5)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -162,6 +162,17 @@
+ 	dma_addr_t			scaler_buf_addr;
+ 	struct cedrus_dec_ops		*current_codec;
+ 	unsigned int			bit_depth;
++	/*
++	 * A decode error seen while the capture buffer was HELD.
++	 *
++	 * When a picture is coded as more than one job -- the two fields of a
++	 * field-coded frame, or a multi-slice picture -- every job but the last
++	 * keeps the capture buffer, and v4l2_m2m_buf_done_and_job_finish() only
++	 * applies its state when the buffer is finally released. An error on any
++	 * earlier job would therefore be dropped and the frame handed to
++	 * userspace marked good. Remember it instead and apply it at release.
++	 */
++	bool				decode_error;
+ 
+ 	struct v4l2_ctrl_handler	hdl;
+ 	struct v4l2_ctrl		**ctrls;
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -344,6 +344,8 @@
+ 	struct cedrus_ctx *ctx;
+ 	enum vb2_buffer_state state;
+ 	enum cedrus_irq_status status;
++	struct vb2_v4l2_buffer *src_buf;
++	bool held;
+ 
+ 	ctx = v4l2_m2m_get_curr_priv(dev->m2m_dev);
+ 	if (!ctx) {
+@@ -391,10 +393,20 @@
+ 	ctx->current_codec->irq_disable(ctx);
+ 	ctx->current_codec->irq_clear(ctx);
+ 
++	/*
++	 * Carry an error across the jobs that share one capture buffer. The
++	 * buffer is released by the job whose source buffer does NOT ask to
++	 * hold it, and only that job's state reaches userspace.
++	 */
++	src_buf = v4l2_m2m_next_src_buf(ctx->fh.m2m_ctx);
++	held = src_buf && (src_buf->flags & V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF);
++
+ 	if (status == CEDRUS_IRQ_ERROR)
+-		state = VB2_BUF_STATE_ERROR;
+-	else
+-		state = VB2_BUF_STATE_DONE;
++		ctx->decode_error = true;
++
++	state = ctx->decode_error ? VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE;
++	if (!held)
++		ctx->decode_error = false;
+ 
+ 	v4l2_m2m_buf_done_and_job_finish(ctx->dev->m2m_dev, ctx->fh.m2m_ctx,
+ 					 state);
+@@ -416,6 +428,7 @@
+ 
+ 	v4l2_err(&dev->v4l2_dev, "frame processing timed out!\n");
+ 	reset_control_reset(dev->rstc);
++	ctx->decode_error = false;
+ 	v4l2_m2m_buf_done_and_job_finish(ctx->dev->m2m_dev, ctx->fh.m2m_ctx,
+ 					 VB2_BUF_STATE_ERROR);
+ }
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+@@ -127,6 +127,7 @@
+ 
+ 		ctx->current_codec->trigger(ctx);
+ 	} else {
++		ctx->decode_error = false;
+ 		v4l2_m2m_buf_done_and_job_finish(ctx->dev->m2m_dev,
+ 						 ctx->fh.m2m_ctx,
+ 						 VB2_BUF_STATE_ERROR);
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -990,6 +990,9 @@
+ 	struct cedrus_dev *dev = ctx->dev;
+ 	int ret = 0;
+ 
++	/* A new stream does not inherit the previous one's failure. */
++	ctx->decode_error = false;
++
+ 	if (V4L2_TYPE_IS_OUTPUT(vq->type)) {
+ 		ret = pm_runtime_resume_and_get(dev->dev);
+ 		if (ret < 0)

@@ -1,0 +1,150 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: implement VIDIOC_ENUM_FRAMESIZES
+
+The stateless decoder interface asks the client to enumerate CAPTURE
+resolutions before choosing one:
+
+  "3. The client may use VIDIOC_ENUM_FRAMESIZES to detect supported
+      resolutions for a given format"
+
+and then permits a CAPTURE width and height that differ from what G_FMT
+returned "if the hardware supports composition and/or scaling".  Cedrus
+implements neither half, so the scaler it does have is undiscoverable: a client
+has to set a compose rectangle and inspect what came back, and there is no way
+to learn in advance which sizes are achievable.
+
+That is not hypothetical.  Asking for a 640x360 compose on a 1280x720 stream
+yields 640x192, because 360 is not reachable and the nearest smaller
+power-of-two step is 192 -- correct per the selection API, baffling without a
+way to enumerate.  v4l2-compliance reports "Composing: Not Supported" and
+"Scaling: Not Supported" for the same reason: it probes the default context,
+where the OUTPUT format is MPEG-2 and compose is refused.
+
+Enumerate properly.  Coded formats report the stepwise range the hardware
+accepts.  Raw formats report the discrete set the scaler can produce from the
+CURRENT coded size, computed by the same rule cedrus_compose_shift() uses so
+that what is advertised is what a client actually gets:
+
+  HEVC  1280x720  ->  1280x720, 640x368, 320x192
+  H.264 1920x1080 ->  1920x1088, 960x544, 480x272
+  MPEG-2 720x576  ->  720x576          (no scaler for this codec)
+
+The raw enumeration depends on ctx->src_fmt, so it changes when the client
+changes the OUTPUT format.  VIDIOC_ENUM_FRAMESIZES permits that: it requires
+only that the data be stable in the absence of client interaction, and setting
+the OUTPUT format is client interaction.  This is also the behaviour the
+stateless decoder interface describes, and what hantro does.
+
+This does not by itself make S_FMT on CAPTURE select a scaled output -- that
+remains on the selection API for now -- but it is a prerequisite for the move
+and useful on its own.
+
+v4l2-compliance is unchanged at 48/49, with
+"VIDIOC_ENUM_FMT/FRAMESIZES/FRAMEINTERVALS: OK"; the remaining failure is the
+pre-existing TRY_EXT_CTRLS one.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0119-media-cedrus-implement-enum_framesizes.patch (0119-media-cedrus-implement-enum_framesizes.patch, commit 179a6b5)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -208,6 +208,90 @@
+ 	pix_fmt->sizeimage = sizeimage;
+ }
+ 
++/*
++ * The size the scaler would actually produce for a given power-of-two shift,
++ * computed exactly as cedrus_compose_shift() does so that what this enumerates
++ * is what a client will really get.
++ */
++static bool cedrus_scaled_size(struct cedrus_ctx *ctx, unsigned int shift,
++			       u32 *width, u32 *height)
++{
++	unsigned int w = ctx->src_fmt.width, h = ctx->src_fmt.height;
++
++	if (!w || !h)
++		return false;
++
++	w = shift ? ALIGN(w, 16) >> shift : w;
++	h = shift ? ALIGN(h, 16) >> shift : h;
++
++	/* Do not offer a 4- or 8-pixel output that would be clamped to 16. */
++	if (w < CEDRUS_MIN_WIDTH || h < CEDRUS_MIN_HEIGHT)
++		return false;
++
++	*width = w;
++	*height = ALIGN(h, 16);
++
++	return true;
++}
++
++/*
++ * Coded formats get the stepwise range the hardware accepts.  Raw formats get
++ * the discrete set the scaler can produce from the CURRENT coded size, which is
++ * what the stateless decoder interface asks for: the client sets the OUTPUT
++ * format first, then enumerates CAPTURE resolutions and picks one with S_FMT.
++ *
++ * This depends on ctx->src_fmt, so the enumeration changes when the client
++ * changes the OUTPUT format.  That is permitted -- the spec only requires the
++ * data to be stable in the absence of client interaction.
++ */
++static int cedrus_enum_framesizes(struct file *file, void *priv,
++				  struct v4l2_frmsizeenum *fsize)
++{
++	struct cedrus_ctx *ctx = cedrus_file2ctx(file);
++	struct cedrus_format *fmt;
++	unsigned int shift, n = 0;
++	u32 width, height;
++
++	fmt = cedrus_find_format(ctx, fsize->pixel_format, CEDRUS_DECODE_SRC);
++	if (fmt && fmt->pixelformat == fsize->pixel_format) {
++		if (fsize->index)
++			return -EINVAL;
++
++		fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
++		fsize->stepwise.min_width = CEDRUS_MIN_WIDTH;
++		fsize->stepwise.max_width = CEDRUS_MAX_WIDTH;
++		fsize->stepwise.step_width = 1;
++		fsize->stepwise.min_height = CEDRUS_MIN_HEIGHT;
++		fsize->stepwise.max_height = CEDRUS_MAX_HEIGHT;
++		fsize->stepwise.step_height = 1;
++
++		return 0;
++	}
++
++	fmt = cedrus_find_format(ctx, fsize->pixel_format, CEDRUS_DECODE_DST);
++	if (!fmt || fmt->pixelformat != fsize->pixel_format)
++		return -EINVAL;
++
++	for (shift = 0; shift <= VE_H264_SDROT_MAX_SHIFT; shift++) {
++		if (shift && !cedrus_can_scale(ctx))
++			break;
++
++		if (!cedrus_scaled_size(ctx, shift, &width, &height))
++			continue;
++
++		if (n++ != fsize->index)
++			continue;
++
++		fsize->type = V4L2_FRMSIZE_TYPE_DISCRETE;
++		fsize->discrete.width = width;
++		fsize->discrete.height = height;
++
++		return 0;
++	}
++
++	return -EINVAL;
++}
++
+ static int cedrus_querycap(struct file *file, void *priv,
+ 			   struct v4l2_capability *cap)
+ {
+@@ -637,6 +721,7 @@
+ const struct v4l2_ioctl_ops cedrus_ioctl_ops = {
+ 	.vidioc_querycap		= cedrus_querycap,
+ 
++	.vidioc_enum_framesizes		= cedrus_enum_framesizes,
+ 	.vidioc_enum_fmt_vid_cap	= cedrus_enum_fmt_vid_cap,
+ 	.vidioc_g_fmt_vid_cap		= cedrus_g_fmt_vid_cap,
+ 	.vidioc_try_fmt_vid_cap		= cedrus_try_fmt_vid_cap,

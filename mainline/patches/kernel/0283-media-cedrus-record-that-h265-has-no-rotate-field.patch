@@ -1,0 +1,61 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: record that H.265 has no rotate field in hardware
+
+cedrus_rotation() has kept rotation to H.264 on the strength of a comment in
+the vendor decoder -- "Rotation doesn't support", with the degree hardcoded to
+zero.  That is an argument from caution: the field is right there in
+VE_DEC_H265_SDRT_CTRL[2:0], mainline has a macro for it, and nothing said
+whether the silicon implements it.
+
+It does not.  Writing ~0 to VE_DEC_H265_SDRT_CTRL reads back 0x00003f00, so
+the only implemented bits are the scale shifts at [11:8] and the interlaced
+controls at [13:12].  Write 7 to the rotate field and it reads back 0.
+
+Behaviour agrees.  Requesting 90, 180 or 270 on an H.265 stream decodes
+cleanly -- no timeout, no fault -- and emits an unrotated picture: a
+four-quadrant card came back in its original orientation at every angle, while
+the same card rotates correctly under H.264 at the same geometry.
+
+No functional change.  This only replaces an inference with the measurement,
+so the next person to notice the unused macro does not have to repeat the
+experiment, and so the gate is understood as a hardware fact rather than a
+policy that might be relaxed.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0117-media-cedrus-record-that-h265-has-no-rotate-field.patch (0117-media-cedrus-record-that-h265-has-no-rotate-field.patch, commit c59d89a)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -289,9 +289,16 @@
+  * s_ctrl instead broke the control framework's own range probing.
+  */
+ /*
+- * Both engines scale by powers of two.  ROTATION stays H.264 only: the H.265
+- * field exists but the vendor decoder comments it out with "Rotation doesn't
+- * support" and ships zero, so it has no reference behaviour.
++ * Both engines scale by powers of two.  ROTATION stays H.264 only, and that is
++ * a property of the silicon rather than a cautious choice: the rotate field
++ * the H.265 engine appears to have at VE_DEC_H265_SDRT_CTRL[2:0] IS NOT
++ * IMPLEMENTED.  Writing ~0 to that register reads back 0x00003f00, so only the
++ * scale shifts at [11:8] and the interlaced controls at [13:12] exist; write 7
++ * to the rotate field and it reads back 0.  Requesting 90, 180 or 270 on an
++ * H.265 stream decodes cleanly and emits an UNROTATED picture -- measured with
++ * a four-quadrant card, which came back in its original orientation at every
++ * angle while the same test rotates correctly under H.264.  The vendor's
++ * "Rotation doesn't support" comment is literally true of the hardware.
+  */
+ static inline bool cedrus_can_scale(struct cedrus_ctx *ctx)
+ {
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
+@@ -492,6 +492,11 @@
+ #define VE_DEC_H265_SDRT_CTRL			(VE_ENGINE_DEC_H265 + 0x50)
+ /* Layout from the vendor's regHEVC_EXTRA_CTRL struct; [12]/[13] are
+  * interlaced field controls and stay clear for progressive.
++ *
++ * The implemented bits are [13:8] ONLY -- a write of ~0 reads back 0x00003f00.
++ * ROTATE below therefore describes a field that does not exist on this part:
++ * it reads back 0 however it is written, and the picture comes out unrotated.
++ * It is kept to document the vendor layout, not because it can be used.
+  */
+ #define VE_DEC_H265_SDRT_CTRL_ROTATE(r)		SHIFT_AND_MASK_BITS((r) / 90, 2, 0)
+ #define VE_DEC_H265_SDRT_CTRL_H_SHIFT(s)	SHIFT_AND_MASK_BITS(s, 9, 8)
