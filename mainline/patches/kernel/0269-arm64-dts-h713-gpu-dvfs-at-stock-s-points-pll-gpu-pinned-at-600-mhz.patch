@@ -1,0 +1,100 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] arm64: dts: h713: GPU DVFS at stock's points, PLL_GPU pinned at 600 MHz
+
+0024e gave the GPU operating points of 288, 432, 600 and 696 MHz, the
+points PLL_GPU makes with M = 1. With PLL_GPU's output divider unmodelled
+(the preceding clk patch, 0268), every one of them ran at half its name:
+Panfrost's cycle counters measured 144, 216, 300 and 348 MHz at those four
+points (HY310, 12.10.2026, mean over 10 s windows, Mali counters and CCU
+registers agree).
+
+PLL_GPU is now pinned at 600 MHz by assigned-clock-rates. The table is
+600 MHz divided by the GPU clock's M divider (150/200/300/600), so a DVFS
+step never relocks the PLL; see 0268. Stock holds PLL_GPU at exactly
+600 MHz in every capture and lists these four points for this die. Every
+point is 960 mV, the fixed vdd_sys, which is the voltage stock gives every
+GPU point.
+
+This raises the GPU's real ceiling from 348 MHz (696 MHz as claimed) to
+600 MHz.
+
+The original patch also gave gpu-thermal a passive trip at 85 C, a
+critical trip at 105 C and a cooling map onto the GPU's devfreq cooling
+device. 0024e already carries all three with the same temperatures, so
+that part is not repeated.
+
+Adapted for this series from the original: its message is kept and
+shortened where 0024e already did the work; the OPP table replaces
+0024e's instead of being added beside it (the original does not apply on
+top of 0024e: it declares gpu_opp_table a second time); the
+assigned-clocks hunk is rewritten against this tree.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0153-arm64-dts-h713-gpu-dvfs-and-thermal-throttling.patch (0153-arm64-dts-h713-gpu-dvfs-and-thermal-throttling.patch, adapted)
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -360,34 +360,37 @@
+ 
+ 	/* Thermal zones for CPU thermal management */
+ 	/*
+-	 * GPU operating points. The stock DTB's gpu-opp-table tops out at
+-	 * 700 MHz; without a table of our own Panfrost ran the core at the
+-	 * PLL's boot rate of 864 MHz, fixed - panfrost_devfreq_init returns
+-	 * early with -ENODEV, so there was no devfreq and no cooling device.
+-	 * These four points are what PLL-GPU makes with M = 1 (24 MHz x N):
+-	 * 288, 432, 600, 696 MHz. The rail is the fixed 0.96 V vdd_sys, so
+-	 * every point names that voltage and the regulator call is a no-op.
+-	 * The exact stock points (150 .. 348, 600, 700 MHz) would need the
+-	 * gpu clock's M divider modelled in the CCU - later, if the
+-	 * measurements ask for it.
++	 * GPU DVFS, frequency only. vdd_sys is fixed at 960 mV, the voltage
++	 * stock gives every GPU point. PLL_GPU is held at 600 MHz -- what the
++	 * vendor stack programs (0xb8001800 in every CCU capture) -- and the
++	 * points are 600 MHz / M, the GPU clock's own 2-bit divider, so DVFS
++	 * never relocks the PLL. They are the stock table's points for this
++	 * die; stock runs the top one with DVFS off.
++	 *
++	 * Before 0268 the GPU ran at half of what clk_summary claimed: PLL_GPU's
++	 * output divider was not modelled, so the 288..696 MHz points of 0024e
++	 * were really 144..348 MHz (measured, HY310, 12.10.2026).
+ 	 */
+ 	gpu_opp_table: opp-table-gpu {
+ 		compatible = "operating-points-v2";
+ 
+-		opp-288000000 {
+-			opp-hz = /bits/ 64 <288000000>;
++		opp-150000000 {
++			opp-hz = /bits/ 64 <150000000>;
+ 			opp-microvolt = <960000>;
+ 		};
+-		opp-432000000 {
+-			opp-hz = /bits/ 64 <432000000>;
++
++		opp-200000000 {
++			opp-hz = /bits/ 64 <200000000>;
+ 			opp-microvolt = <960000>;
+ 		};
+-		opp-600000000 {
+-			opp-hz = /bits/ 64 <600000000>;
++
++		opp-300000000 {
++			opp-hz = /bits/ 64 <300000000>;
+ 			opp-microvolt = <960000>;
+ 		};
+-		opp-696000000 {
+-			opp-hz = /bits/ 64 <696000000>;
++
++		opp-600000000 {
++			opp-hz = /bits/ 64 <600000000>;
+ 			opp-microvolt = <960000>;
+ 		};
+ 	};
+@@ -1467,6 +1470,8 @@
+ 			clocks = <&ccu CLK_GPU>, <&ccu CLK_BUS_GPU>;
+ 			clock-names = "core", "bus";
+ 			resets = <&ccu RST_BUS_GPU>;
++			assigned-clocks = <&ccu CLK_PLL_GPU>;
++			assigned-clock-rates = <600000000>;
+ 			operating-points-v2 = <&gpu_opp_table>;
+ 			mali-supply = <&reg_vdd_sys>;
+ 			/*

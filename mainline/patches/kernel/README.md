@@ -169,6 +169,16 @@ roadmap and `docs/status.md`.
   order) and other delays; the node takes them. The lamp's PWM words were
   there since 0166a and stay. *(ours)*
 
+- **0268 - the GPU runs at 432 MHz, not 864.** PLL_GPU's bit 0 is an output divide-by-two that the driver did not model, so
+  `clk_summary` claimed twice the rate the GPU ran at (measured with Panfrost's cycle counters: 432 MHz, not 864), and the
+  GPU clock's 2-bit M divider at `0x670` was modelled as a bare mux. Now both are modelled; the GPU clock has no
+  `CLK_SET_RATE_PARENT`, so DVFS changes only M and the devicetree fixes the PLL. *(cstenger's `0152`, byte-identical; hardware verified on the HY310)*
+- **0269 - GPU DVFS at stock's points, PLL_GPU pinned at 600 MHz.** The operating points are 600 MHz / M: 150, 200, 300 and 600
+  MHz, at the fixed vdd_sys 960 mV, as the stock devicetree lists them; replaces `0024e`'s 288..696 MHz table, which really
+  ran at 144..348 MHz. The GPU's real ceiling goes from 348 to 600 MHz. *(cstenger's `0153`, adapted to sit on `0024e`; hardware verified on the HY310)*
+- **0270 - `mbus-av1` is bit 3.** The AV1 block's MBUS gate is bit 3 of `0x804`, not bit 4 (measured on the stock stack: AV1
+  decoding turns bit 3 on, VP9 bit 1). Latent until the AV1 node exists; no effect without it. *(cstenger's `0142`, byte-identical)*
+
 With these patches in place `build/build.sh kernel` emits the board's DTB plus
 cstenger's two HY200 DTBs, and a bootable FIT (`build/out/h713-kernel.fit`:
 gzip Image + the DTB named by `boards/<id>/board.env` → `KERNEL_DTB`, load/entry

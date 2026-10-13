@@ -591,3 +591,9 @@
 0265-soc-sunxi-cpu_comm-no-read-of-the-mips-status-behind-a-closed-bus-gate.patch
 0266-asoc-sunxi-h713-msp-a-standby-aborted-before-the-island-lost-its-power-is-rebuilt-not-called-a-loss.patch
 0267-soc-sunxi-h713-arisc-the-module-option-firmware-vendor-or-crust-over-the-device-tree.patch
+# 13.10.: the GPU clock model and its DVFS (Paket A "Takt" of the media side project). 0268 is cstenger's 0152 (PLL_GPU's output
+#   divide-by-two and the GPU clock's 2-bit M divider), 0269 his 0153 adapted to replace 0024e's OPP table (150/200/300/600 MHz with
+#   PLL_GPU pinned at 600 MHz), 0270 his 0142 (mbus-av1 is bit 3). Measured on the HY310; the G-EU is still to be measured (TODO 2.72)
+0268-clk-sunxi-ng-h713-the-gpu-runs-at-432-mhz-not-864.patch
+0269-arm64-dts-h713-gpu-dvfs-at-stock-s-points-pll-gpu-pinned-at-600-mhz.patch
+0270-clk-sunxi-ng-h713-mbus-av1-is-bit-3.patch

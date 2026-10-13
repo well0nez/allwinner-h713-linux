@@ -1,0 +1,64 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] clk: sunxi-ng: h713: the GPU runs at 432 MHz, not 864; model its divider
+
+Two gaps in the GPU's clock model, both measured on hardware 2026-10-02.
+
+PLL_GPU's bit 0 is an output divide-by-two. The H616 driver models it as
+.p; this one left it out. Reset and U-Boot leave PLL_GPU at 0xb8002301 --
+N = 36 with that bit set -- so clk_summary reported 864 MHz and the GPU
+ran at 432. Panfrost's own counters show the real rate. With profiling on,
+drm-cycles-fragment / drm-engine-fragment over a stock `mpv --vo=gpu` run
+gave 913849523 cycles in 2115373538 ns, which is 432.0 MHz.
+
+The GPU module clock at 0x670 has a 2-bit M divider in bits [1:0], as on
+the H616, but it was modelled as a bare mux and gate. It is real. Writing
+M = 0, 1 and 3 under the same load measured 431.4, 216.0 and 108.0 MHz.
+
+The stock firmware uses exactly this pair. Every CCU capture of the vendor
+stack, idle or decoding, shows PLL_GPU = 0xb8001800 (24 MHz x 25, both
+dividers off, 600 MHz) and 0x670 = 0x80000000. Its devicetree's GPU
+operating points for this bin are 150, 200, 300 and 600 MHz, which are
+600 MHz / M for M = 4, 3, 2, 1.
+
+So the GPU clock gets its M divider, without CLK_SET_RATE_PARENT. DVFS
+changes only M, and the devicetree fixes the PLL. The H616 instead
+relocks the PLL behind a bypass clock at 0x674. That register reads zero
+here, and nothing on stock uses it.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0152-clk-sunxi-ng-h713-the-gpu-runs-at-432-mhz-not-864.patch (0152-clk-sunxi-ng-h713-the-gpu-runs-at-432-mhz-not-864.patch)
+---
+--- a/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
++++ b/drivers/clk/sunxi-ng/ccu-sun50i-h713.c
+@@ -92,7 +92,8 @@
+ 	.enable		= BIT(31),
+ 	.lock		= BIT(28),
+ 	.n		= _SUNXI_CCU_MULT_MIN(8, 8, 12),
+-	.m		= _SUNXI_CCU_DIV(1, 1),
++	.m		= _SUNXI_CCU_DIV(1, 1), /* input divider */
++	.p		= _SUNXI_CCU_DIV(0, 1), /* output divider */
+ 	.common		= {
+ 		.reg		= 0x030,
+ 		.hw.init	= CLK_HW_INIT("pll-gpu", "osc24M",
+@@ -279,11 +280,18 @@
+ static SUNXI_CCU_GATE(bus_mips_clk, "bus-mips", "ahb",
+ 		      0x60c, BIT(0), 0);
+ 
++/*
++ * The GPU scales by this divider alone. PLL_GPU is fixed by the devicetree
++ * (assigned-clock-rates), as on stock, which holds it at 600 MHz and divides
++ * down from there; the H616's bypass clock at 0x674, which would carry the
++ * GPU through a PLL relock, reads as zero here. So no CLK_SET_RATE_PARENT.
++ */
+ static const char * const gpu_parents[] = { "pll-gpu" };
+-static SUNXI_CCU_MUX_WITH_GATE(gpu_clk, "gpu", gpu_parents, 0x670,
+-			       24, 1,		/* mux */
+-			       BIT(31),		/* gate */
+-			       CLK_SET_RATE_PARENT);
++static SUNXI_CCU_M_WITH_MUX_GATE(gpu_clk, "gpu", gpu_parents, 0x670,
++				 0, 2,		/* M */
++				 24, 1,		/* mux */
++				 BIT(31),	/* gate */
++				 0);
+ 
+ static SUNXI_CCU_GATE(bus_gpu_clk, "bus-gpu", "ahb",
+ 		      0x67c, BIT(0), 0);
