@@ -119,7 +119,7 @@ debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg - witho
 #     build-rootfs.sh puts it under /usr/local (--mesa). Reason: the keystone path
 #     (working journal `keystone`).
 # gstreamer1.0-*, mpv, ffmpeg
-#     cstenger's video runtime (mainline/tools/rootfs/build.sh, VIDEO_RUNTIME_PACKAGES).
+#     cstenger's video runtime (tools/rootfs/build.sh in his repository at 8860991, VIDEO_RUNTIME_PACKAGES).
 #     Pulls in GTK3, x265, aom, libllvm - doku/107 section 1: the biggest single item of
 #     today's netboot root. The projector moves HDMI input onto a DRM plane,
 #     it decodes nothing. v4l-utils stood here with them until 12.10.2026; it is only

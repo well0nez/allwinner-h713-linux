@@ -90,7 +90,21 @@ suffixed `h713-kernel-debug.fit` so it can never be mistaken for the release ima
 `patches/zurueckgenommen/` keeps patches that were dropped from the series, each with the reason - they
 are history, not a fallback. `patches/vorschlaege/` holds work in progress by topic: a finding, a test
 plan, sometimes a patch that was never applied. Neither directory is read by `build.sh`; both are there
-so a decision can be re-read instead of re-argued. `patches/aic8800/` is the Wi-Fi driver's own series
-and `patches/libva-v4l2-request/` the VA-API backend's, applied by their own build steps.
+so a decision can be re-read instead of re-argued. `patches/aic8800/` is the Wi-Fi driver's own series,
+applied by its own build step.
+
+The VA-API backend's patch files (`patches/libva-v4l2-request/`, three patches on bootlin's libva-v4l2-request) are
+not in the tree any more since 13.10.2026; they were cstenger's, without a licence statement ([PROVENANCE.md](../PROVENANCE.md)).
+No build step of `main` applied them.
+
+*Superseded 13.10.2026:* this page used to say that `patches/libva-v4l2-request/` was "the VA-API backend's, applied by
+their own build steps". It was not: `git grep -i libva` over `release/`, `rootfs/`, `boards/` and `installer/` finds no
+step that applies them.
+
+Several kernel patches and U-Boot mirror patches carry comments that name documents of cstenger's tree
+(`docs/kernel-bump.md`, `docs/status.md`, `docs/vaapi-scope.md` and others) that are no longer in this tree. The patches
+stay byte for byte as they are (the kernel patches are hashed into the kernel build, the U-Boot mirrors are checked
+against the fork's tree), so those names are notes on where a passage came from, not links; `doku/210` says where
+the documents are.
 
 Details: `doku/116-plan-release-repo.md` §4a P1, `doku/80-vergleich-baeume.md`.

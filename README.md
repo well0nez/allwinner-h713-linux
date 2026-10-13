@@ -16,7 +16,7 @@ the sound and the motor could be driven from Linux.
 https://github.com/user-attachments/assets/75bb0b88-038e-4703-a6f9-def8eb071986
 
 The kernel series builds on [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline)
-(vendored here as `mainline/`, full history) - whose own driver base, patches `0001` - `0022`, came from
+(imported here once as `mainline/`; [PROVENANCE.md](PROVENANCE.md) says what of it is kept) - whose own driver base, patches `0001` - `0022`, came from
 this repository's `legacy` branch in the first place (tag `legacy-arm32-2026-08`). Everything above
 `0049` is new work for the projector.
 
@@ -205,7 +205,7 @@ why the installer wants a dump, and why nothing here needs a licence you don't a
 ## Layout
 
 ```
-mainline/        cstenger's tree as a git subtree + our kernel patch series (patches/kernel/series)
+mainline/        the kernel and boot chain: patch series (patches/kernel/series), build scripts, pins, forks as submodules
 uboot-h713/      our U-Boot commits as patches, generated from the fork (read-only mirror)
 tfa-h713/        our TF-A (BL31) commits the same way - the platform, and the HDCP 1.4 key path
 installer/       h713-install, h713-mkimage, h713-extract and helpers

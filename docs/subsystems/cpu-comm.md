@@ -127,7 +127,7 @@ live one; why was not looked into (not measured).
 
 **Names and ids.** Every name starts with `THal_Vp_`, except three that the vendor spelled `Thal_Vp_`
 (marked with a dagger below), and a lookup by string has to use the spelling as it is. The ids were not copied
-but recomputed: all 82 reproduce from their names with `routine_id()` above (checked 13.10.2026). The source gave
+but recomputed: all 82 reproduce from their names with `routine_id()` above (checked 13.10.2026, `doku/210` §5). The source gave
 24 names in full and the other 58 without the prefix; for those the id decides, and with `THal_Vp_` in front
 every one reproduces except `AtvIsFastSyncLock`, which only the lower-case spelling reproduces. The routine
 column below omits the prefix.

@@ -52,10 +52,9 @@ the patches are mirrored in [`tfa-h713/`](../../tfa-h713/README.md)).
 ## Relation to the fork
 
 U-Boot is a git submodule, `mainline/external/u-boot`, pinned to our own fork of
-[cstenger/u-boot](https://github.com/cstenger/u-boot) (`mainline/.gitmodules`).
-The branch is **`h713-hy310`**, and that is what this repository's own `.gitmodules` pins. The file
-inside `mainline/` is cstenger's and names his branch `h713`; git only reads the one at the root, so
-his copy is inert here. A board still in test can have a branch of its own next to it until its work is
+[cstenger/u-boot](https://github.com/cstenger/u-boot) (his branch is `h713`).
+The branch is **`h713-hy310`**, and that is what this repository's `.gitmodules` pins. A board still in test
+can have a branch of its own next to it until its work is
 taken in: `hy300-pro-ab` carried the panel A/B for the HY300 Pro of issue #1, and its commits are in
 `h713-hy310` now.
 The submodule is a pinned commit in a fork, and `uboot-h713/` mirrors the same commits as

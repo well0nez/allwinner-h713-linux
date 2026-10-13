@@ -8,8 +8,8 @@ board variants below you are holding - the wrong DRAM parameters train "OK" and 
 
 | Board | Silkscreen | DRAM | Source |
 |---|---|---|---|
-| Bench, HY300PRO-G-EU, "HY300 Pro+" 2025 | `HY200_QZ713DF_A1` | DDR3; 792 or 624 MHz by firmware, 1 GiB on the bench | cstenger's bring-up board (`mainline/README.md`), and the board of two projector firmwares (`boards/hy200-qz713df-a1`) |
-| "Projector", fork naming | `HY200_QZ713_V2` | LPDDR3, 1 GiB - **assumed, never booted** | `mainline/README.md` |
+| Bench, HY300PRO-G-EU, "HY300 Pro+" 2025 | `HY200_QZ713DF_A1` | DDR3; 792 or 624 MHz by firmware, 1 GiB on the bench | cstenger's bring-up board ([his README at `8860991`](https://github.com/cstenger/allwinner-h713-mainline/blob/8860991a91ee973a45bb6f198bda896dd1e02c36/README.md)), and the board of two projector firmwares (`boards/hy200-qz713df-a1`) |
+| "Projector", fork naming | `HY200_QZ713_V2` | LPDDR3, 1 GiB - **assumed, never booted** | [cstenger's README at `8860991`](https://github.com/cstenger/allwinner-h713-mainline/blob/8860991a91ee973a45bb6f198bda896dd1e02c36/README.md) |
 | This project's unit | `HY260_QZ713_V3.1` | DDR3, 792 MHz, 1 GiB - measured | boot0 UART log, SK hynix `H5TQ` part marking, `sys_config.fex`, boot0 header - four independent sources, `doku/10-hardware.md` |
 
 Two names for "the projector board" circulate in the base tree, and neither matches the silkscreen on the unit
@@ -177,6 +177,6 @@ in standby [...] has not been measured either."
 | Status LED | follows `PB5` | red while PB5 is low (the gate, standby), blue while it is high - measured, so the LED cannot tell those two apart. `PL0`/`PL1`, which the vendor device tree calls the LEDs, have no visible effect on the HY310; the vendor firmware and crust still drive them in standby |
 | UART pads | UART0, **115200 8N1**, 3.3 V | the boot and kernel console, and the way in when there is no SSH key in the image. The pads are on the mainboard and unlabelled; the thread that found them on several units is linked from the README's issue reference - no photograph in this repository yet |
 
-Details: `doku/10-hardware.md`, `doku/00-STATUS.md`, `mainline/README.md`, `doku/103-plan-einschaltgate.md`
+Details: `doku/10-hardware.md`, `doku/00-STATUS.md`, [cstenger's README at `8860991`](https://github.com/cstenger/allwinner-h713-mainline/blob/8860991a91ee973a45bb6f198bda896dd1e02c36/README.md), `doku/103-plan-einschaltgate.md`
 (power key), `doku/94-fokusmotor-endschalter.md` (focus-motor sensor), `doku/164`, `doku/170` - `doku/174`
 (watchdogs, power domains, standby).

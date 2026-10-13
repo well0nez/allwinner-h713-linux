@@ -27,7 +27,7 @@
 #
 # ============================================================================
 # WHAT THIS SCRIPT DELIBERATELY DOES *NOT* DO -- how it differs from
-# mainline/tools/rootfs/build.sh (cstenger)
+# cstenger's rootfs build (tools/rootfs/build.sh in his repository at 8860991)
 # ============================================================================
 #  * No VIDEO_RUNTIME_PACKAGES. There the GStreamer/Mesa/GTK chain is part of
 #    the base system ("this is a projector"). For us it is the single biggest
@@ -675,7 +675,7 @@ rm -rf "$TREE/var/log/journal"
 # Debian signature and would reject the database. So point at -upstream. For the
 # aic8800 (self-managed wiphy, default_ccode) that has no consequences; for
 # cfg80211's global realm it is the difference between "loaded" and "discarded".
-# (cstenger's finding, mainline/tools/rootfs/customize.sh.)
+# (cstenger's finding, tools/rootfs/customize.sh in his repository at 8860991.)
 # Without a chroot: the alternative is only a symlink under /etc/alternatives.
 for alt in regulatory.db regulatory.db.p7s; do
 	if [[ -e "$TREE/lib/firmware/$alt-upstream" && -L "$TREE/etc/alternatives/$alt" ]]; then

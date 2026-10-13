@@ -42,7 +42,7 @@ that matches his DRAM block exactly. What we still do not have is a device, a bo
 
 Three places in this repository say nobody has run it:
 
-- `mainline/README.md`: "Inside a projector; do not risk it" - all bring-up runs are on the bench
+- cstenger's README at `8860991` (no longer in this tree): "Inside a projector; do not risk it" - all bring-up runs are on the bench
   board.
 - `mainline/config/versions.env`: the projector DTB is "untested on hardware".
 - `docs/hardware.md`: the LPDDR3 attribution is *assumed, never booted*, and it is unresolved whether

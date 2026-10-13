@@ -48,7 +48,8 @@ All three declare `MODULE_LICENSE("GPL")`.
 ## Firmware
 
 Proprietary Aicsemi blobs with no open equivalent (see
-`docs/wifi-failure-2026-08-17.md` for why an open one does not exist). **Not
+cstenger's `docs/wifi-failure-2026-08-17.md` in his repository at `8860991`
+for why an open one does not exist). **Not
 committed** - pinned by SHA-256 in `firmware.sha256sums` and copied into the
 rootfs at build time from `AIC8800_FW_SRC`.
 
@@ -61,12 +62,12 @@ Two things about firmware are easy to get wrong and both stop `wlan0` appearing:
    register `0x40500000`, so the 2026 driver loads `fmacfw_8800d80_h_u02.bin`.
    The 2024 driver had no `_h_` list for D80 and silently used the non-`_h_`
    file, i.e. the board ran a mismatched firmware variant for its whole life
-   before this. Both are pinned; `tools/rootfs/build.sh` asserts the `_h_` one.
+   before this. Both are pinned; cstenger's `tools/rootfs/build.sh` (his repository at `8860991`) asserts the `_h_` one.
 
 ## Build
 
 `build/build.sh aic8800` builds all three against the pinned kernel and stages
 the `.ko` to `build/out/modules/`. `build/build.sh all` includes it after the
-kernel stage. `tools/rootfs/build.sh` installs the modules (into
+kernel stage. cstenger's `tools/rootfs/build.sh` (his repository at `8860991`) installs the modules (into
 `/lib/modules/$KREL/updates/aic8800/`, with a vermagic check) and the pinned
 firmware, and adds `/etc/modules-load.d/aic8800.conf` for boot autoload.
