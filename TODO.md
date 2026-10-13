@@ -351,6 +351,23 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       `docs/known-issues.md` durchsehen, `boards/README.md`, `RELEASES.md`-Entwurf für 1.8; die Subsystem-Seiten sind schon
       nachgezogen (`e78eacd`, `4767f6f`). Vor 1.1a
 
+- [ ] 7.20 **Lizenzen in `main` bereinigen** (Marco 13.10.2026 abends: jede Lizenz übernommener Treiber und Codestücke
+      beachten, Unzulässiges umschreiben; cstenger antwortet nicht, eine Lizenz von ihm ist nicht zu erwarten). Nebenstrang,
+      **nicht** Teil des Nebenprojekts `medien`. Prüfung `arbeit/lizenzen-20261013/BERICHT.md` (medien: nichts umzuschreiben),
+      Plan `arbeit/lizenz-entflechtung-20261013/PLAN.md`. Merge nach `main` und Push nur mit Marcos Ja. Stand 13.10. 23:15:
+      - a) `mainline/build/build.sh`, `uboot-build.sh` im Reinraum neu (SPEC, Neuschrieb ohne Blick ins Original, Vergleich
+        byteidentisch gegen die alten): Zweig `versuch/bauskripte-neu`, **läuft** (`arbeit/lizenz-umbau-20261013/`)
+      - b) `mainline/config/versions.env`, `toolchain.md` neu - nach a (ändert den Kernel-Ordner-Hash und damit `aic8800_fdrv.ko`)
+      - c) Entflechtung: 70 Stenger-Dateien ohne Lizenz aus dem Baum, 4 in eigenen Worten neu: Zweig `versuch/entflechtung`, **läuft**
+      - d) die 8 Lückendateien (`series` x2, Defconfig, 3 Fragmente, 2 READMEs): nach a/b, ein Kernelbau
+      - e) Lizenzhinweise und Quelltextangebot im Abbild: mesa (MIT), TF-A/crust (BSD), Kernel/U-Boot/Debian-Quellen -
+        betrifft auch die schon veröffentlichten Abbilder
+      - f) Historie: seine 266 Commits (Import `657ce79`) bleiben in `main` und auf GitHub; Möglichkeiten in PLAN §6 -
+        **Entscheidung Marco**
+      - g) Nebenfunde der SPEC: `build-all.sh` gibt `build.sh bl31` keine `VARIANT` (G-EU mit `--variant` ohne `--test-image`
+        scheitert vermutlich, nur gelesen); `uboot-build.sh` mit relativem Ausgabeordner und Rolle; `BUILDING.md` nennt
+        `build.sh uboot` "U-Boot for one board"
+
 ## 8 Lokale Werkzeuge
 
 - [ ] 8.6 `settings.json.vor-mempalace-*` und `settings.json.vor-graphify-*` nach Probewoche löschen
