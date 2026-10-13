@@ -646,3 +646,8 @@
 0302-arm64-dts-h713-bind-the-av1-decoder-to-hantro.patch
 0303-media-verisilicon-add-the-h713-av1-decoder.patch
 0304-dt-bindings-media-add-the-allwinner-h713-av1-decoder.patch
+#   0305-0307 (package C-reset, 13.10.2026): the VE bus reset is shared with the AV1 core; a guard arbitrates it, cedrus pulses
+#   only through it, the AV1 variant holds it per frame. 0306 carries experiment knobs (switch_reset) until the switch reset is measured.
+0305-soc-sunxi-a-guard-for-the-video-engine-s-shared-bus-reset.patch
+0306-media-cedrus-pulse-the-ve-reset-through-the-guard-and-measure-the-reset-a-codec-switch-needs.patch
+0307-media-verisilicon-h713-av1-hold-the-ve-s-reset-while-a-frame-is-in-flight.patch
