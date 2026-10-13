@@ -1,0 +1,89 @@
+From a003a5bcc9af4ab7748ee6fdf01c438601d4eaa3 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Sat, 3 Oct 2026 18:30:34 -0700
+Subject: [PATCH] Optionally export the H713's LSB-aligned P010 as linear for
+ GL
+
+The AV1 core's 10-bit output (PL10) is P010 with each sample in bits
+9:0, exported with DRM_FORMAT_MOD_ALLWINNER_LSB10 for the display plane.
+GL cannot import that modifier, so 10-bit AV1 never reached a GL client:
+mpv's interop probe refused P010 and tried a VA conversion (scale_vaapi)
+the driver does not offer, and nothing was shown.
+
+V4L2_REQUEST_LSB10_LINEAR=1 exports PL10 as plain linear P010 (R16 +
+GR1616 layers with separate layers). The samples then read 64 times too
+small; the client multiplies by 64 (tools/video/shaders/lsb10.glsl in
+the H713 tree). Unset, the export is unchanged and the plane keeps its
+zero-copy LSB10 path.
+
+A bare P010 surface, which mpv's probe creates before any decode, could
+not get backing at all: no decoder produces plain P010. It now falls
+back to PL10, the same layout, and is exported as what it is.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/libva-v4l2_request/0008-Optionally-export-the-H713-s-LSB-aligned-P010-as-lin.patch (0008-Optionally-export-the-H713-s-LSB-aligned-P010-as-lin.patch, commit 2bc27f4)
+---
+ src/surface.c | 33 ++++++++++++++++++++++++++++++++-
+ 1 file changed, 32 insertions(+), 1 deletion(-)
+
+diff --git a/src/surface.c b/src/surface.c
+index 5f7242e..1133fad 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -544,7 +544,16 @@ static VAStatus backing_alloc_default(struct v4l2r_driver *drv,
+ 	if (pixelformat == V4L2_PIX_FMT_NV12)
+ 		v4l2r_parse_size_env("V4L2_REQUEST_SCALE", &width, &height);
+ 
+-	return backing_alloc(drv, surface, width, height, pixelformat);
++	VAStatus status = backing_alloc(drv, surface, width, height, pixelformat);
++
++	/* H713: no decoder here produces plain P010; the AV1 core produces
++	 * PL10, the same layout with the samples in bits 9:0. A bare P010
++	 * surface (mpv's interop probe creates one before any decode) gets
++	 * that, and is exported as what it is. */
++	if (status != VA_STATUS_SUCCESS && pixelformat == V4L2_PIX_FMT_P010)
++		status = backing_alloc(drv, surface, width, height,
++				       V4L2_PIX_FMT_P010_LSB);
++	return status;
+ }
+ 
+ static bool backing_matches(const struct v4l2r_surface_backing *backing,
+@@ -875,6 +884,13 @@ VAStatus v4l2r_surface_view(struct v4l2r_driver *drv,
+ 	return VA_STATUS_SUCCESS;
+ }
+ 
++static bool lsb10_linear(void)
++{
++	const char *value = getenv("V4L2_REQUEST_LSB10_LINEAR");
++
++	return value && value[0] == '1';
++}
++
+ /*
+  * Describe the surface memory layout for DRM consumers, following the
+  * layout rules of the FFmpeg v4l2-request hwcontext.
+@@ -894,6 +910,21 @@ static VAStatus fill_prime_descriptor(const struct v4l2r_frame_view *view,
+ 
+ 	modifier = info->drm_modifier;
+ 
++	/*
++	 * H713: the AV1 core's 10-bit output is P010 with each sample in bits
++	 * 9:0 (PL10), exported with DRM_FORMAT_MOD_ALLWINNER_LSB10 so the
++	 * display plane fetches it right. A GL consumer cannot import that
++	 * modifier, so it never got 10-bit AV1 at all: mpv's interop probe
++	 * refused P010 and fell back to a VA conversion the driver does not
++	 * have. V4L2_REQUEST_LSB10_LINEAR=1 exports it as plain linear P010
++	 * (R16 + GR1616 layers) instead. The samples are then read 64 times
++	 * too small, which the client corrects (tools/video/shaders/
++	 * lsb10.glsl, set together with this by tools/video/h713-play).
++	 */
++	if (info->lsb_shift && modifier == DRM_FORMAT_MOD_ALLWINNER_LSB10 &&
++	    lsb10_linear())
++		modifier = DRM_FORMAT_MOD_LINEAR;
++
+ 	memset(desc, 0, sizeof(*desc));
+ 	desc->fourcc = info->drm_format;
+ 	desc->width = width;
+-- 
+2.55.0
+

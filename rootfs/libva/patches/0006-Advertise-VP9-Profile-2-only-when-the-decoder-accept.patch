@@ -1,0 +1,155 @@
+From 0d5aa52ec6caccee12cab42499b5d096921757d6 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Sat, 3 Oct 2026 00:37:04 -0700
+Subject: [PATCH 6/6] Advertise VP9 Profile 2 only when the decoder accepts a
+ 10-bit frame
+
+VAProfileVP9Profile2 was advertised whenever any decoder took VP9. cedrus
+decodes Profile 0 only, so ffmpeg chose VA-API for a 10-bit VP9 stream and
+every frame failed in the kernel ("Failed to setup decoding job: -22"),
+where it should have fallen back to software.
+
+Probe it the way HEVC Main10 is probed: select the VP9 coded format and try
+a 10-bit Profile 2 frame control. The 8-bit Profile 0 frame must be
+accepted first, so a control the device rejects for an unrelated reason
+reads as "no 10-bit", not as a false yes. On the H713 this needs kernel
+0155, which makes cedrus refuse the 10-bit control; without it the probe
+still says yes, as before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/libva-v4l2_request/0006-Advertise-VP9-Profile-2-only-when-the-decoder-accept.patch (0006-Advertise-VP9-Profile-2-only-when-the-decoder-accept.patch, commit ae94ce3)
+---
+ src/driver.c       | 86 ++++++++++++++++++++++++++++++++++++++++++++++
+ src/v4l2_request.h |  1 +
+ 2 files changed, 87 insertions(+)
+
+diff --git a/src/driver.c b/src/driver.c
+index fae4870..88515e2 100644
+--- a/src/driver.c
++++ b/src/driver.c
+@@ -309,6 +309,67 @@ static bool video_device_probe_hevc_10bit(int fd, uint32_t output_type)
+ #endif
+ }
+ 
++/*
++ * The same question for VP9 Profile 2. cedrus (H713 local kernel patch) only
++ * decodes Profile 0 and refuses anything else in try_ctrl. The 8-bit frame
++ * must be accepted first, so a control the core rejects for any other reason
++ * reads as "no 10-bit" rather than as a false yes.
++ */
++static bool video_device_probe_vp9_10bit(int fd, uint32_t output_type)
++{
++#if HAVE_V4L2_CTRL_VP9
++	struct v4l2_format format = { .type = output_type };
++	struct v4l2_ctrl_vp9_frame frame = {
++		.flags = V4L2_VP9_FRAME_FLAG_KEY_FRAME |
++			 V4L2_VP9_FRAME_FLAG_SHOW_FRAME |
++			 V4L2_VP9_FRAME_FLAG_X_SUBSAMPLING |
++			 V4L2_VP9_FRAME_FLAG_Y_SUBSAMPLING,
++		.frame_width_minus_1 = 1919,
++		.frame_height_minus_1 = 1079,
++		.render_width_minus_1 = 1919,
++		.render_height_minus_1 = 1079,
++		.profile = 0,
++		.bit_depth = 8,
++	};
++	struct v4l2_ext_control control = {
++		.id = V4L2_CID_STATELESS_VP9_FRAME,
++		.ptr = &frame,
++		.size = sizeof(frame),
++	};
++	struct v4l2_ext_controls controls = {
++		.which = V4L2_CTRL_WHICH_CUR_VAL,
++		.count = 1,
++		.controls = &control,
++	};
++
++	if (V4L2_TYPE_IS_MULTIPLANAR(output_type)) {
++		format.fmt.pix_mp.width = 1920;
++		format.fmt.pix_mp.height = 1088;
++		format.fmt.pix_mp.pixelformat = V4L2_PIX_FMT_VP9_FRAME;
++		format.fmt.pix_mp.num_planes = 1;
++	} else {
++		format.fmt.pix.width = 1920;
++		format.fmt.pix.height = 1088;
++		format.fmt.pix.pixelformat = V4L2_PIX_FMT_VP9_FRAME;
++	}
++
++	if (ioctl(fd, VIDIOC_S_FMT, &format) < 0)
++		return false;
++
++	if (ioctl(fd, VIDIOC_TRY_EXT_CTRLS, &controls) < 0)
++		return false;
++
++	frame.profile = 2;
++	frame.bit_depth = 10;
++
++	return ioctl(fd, VIDIOC_TRY_EXT_CTRLS, &controls) == 0;
++#else
++	(void)fd;
++	(void)output_type;
++	return false;
++#endif
++}
++
+ static bool video_device_is_request_decoder(const char *path,
+ 					    struct v4l2r_decoder *decoder)
+ {
+@@ -368,6 +429,17 @@ static bool video_device_is_request_decoder(const char *path,
+ 		}
+ 	}
+ 
++	decoder->vp9_10bit = false;
++#if HAVE_V4L2_CTRL_VP9
++	for (unsigned int i = 0; i < decoder->nb_pixelformats; i++) {
++		if (decoder->pixelformats[i] == V4L2_PIX_FMT_VP9_FRAME) {
++			decoder->vp9_10bit =
++				video_device_probe_vp9_10bit(fd, output_type);
++			break;
++		}
++	}
++#endif
++
+ 	close(fd);
+ 	return decoder->nb_pixelformats > 0;
+ 
+@@ -608,6 +680,17 @@ static bool driver_supports_hevc_10bit(struct v4l2r_driver *drv)
+ 	return false;
+ }
+ 
++/* Whether some decoder can decode VP9 Profile 2. */
++static bool driver_supports_vp9_10bit(struct v4l2r_driver *drv)
++{
++	for (unsigned int i = 0; i < drv->nb_decoders; i++) {
++		if (drv->decoders[i].vp9_10bit)
++			return true;
++	}
++
++	return false;
++}
++
+ /*
+  * Whether a decode profile is usable: some decoder must accept the codec's
+  * coded format, and for 10-bit profiles the hardware must actually support the
+@@ -624,6 +707,9 @@ static bool driver_supports_profile(struct v4l2r_driver *drv, VAProfile profile)
+ 	if (profile == VAProfileHEVCMain10 && !driver_supports_hevc_10bit(drv))
+ 		return false;
+ 
++	if (profile == VAProfileVP9Profile2 && !driver_supports_vp9_10bit(drv))
++		return false;
++
+ 	return true;
+ }
+ 
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index c459d7f..6f9160f 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -98,6 +98,7 @@ struct v4l2r_decoder {
+ 	 * device can do 10-bit (e.g. Allwinner A64 lacks it), and the kernel only
+ 	 * rejects it at decode time, so probe it up front and gate Main10. */
+ 	bool hevc_10bit;
++	bool vp9_10bit;
+ };
+ 
+ /*
