@@ -7,3 +7,5 @@
 0007-Decode-into-the-dma-bufs-a-client-exported-before-th.patch
 0008-Optionally-export-the-H713-s-LSB-aligned-P010-as-lin.patch
 0009-Report-the-surface-s-own-size-in-exports-not-the-pad.patch
+0010-Export-surfaces-in-the-layout-of-the-context-that-wi.patch
+0011-Offer-NV12-only-for-HEVC-Main10-when-the-decoder-wri.patch

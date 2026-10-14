@@ -1,6 +1,6 @@
 #!/bin/bash
 # rootfs/libva/build-libva.sh - the VA-API driver for the stateless V4L2 decoders (cedrus, the AV1 core): megi's
-# libva-v4l2_request v1.2 plus the nine patches of rootfs/libva/patches/, cross-built with clang against the arm64
+# libva-v4l2_request v1.2 plus the patches of rootfs/libva/patches/, cross-built with clang against the arm64
 # sysroot.
 #
 #   rootfs/libva/build-libva.sh          fetch + patch + build + stage + tarball (run inside the build container)
@@ -8,9 +8,9 @@
 #
 # Why this driver: it is the one stock ffmpeg, mpv, GStreamer `va*dec` and Kodi can use to decode on the H713's
 # hardware, with no change to those players (media side project, package D). Upstream is Ondrej Jirman's (megi)
-# GPL-3.0 rewrite; the nine patches are Christopher Stenger's (rootfs/libva/patches/, From: and Origin: in each),
-# made on the same base. 1.2 as released is not enough here: AV1 crashes, a resolution change crashes, and
-# GStreamer's dma-buf allocator shows green (patches/ headers say why).
+# GPL-3.0 rewrite; patches 0001-0009 are Christopher Stenger's (rootfs/libva/patches/, From: and Origin: in each),
+# made on the same base, 0010 on are this project's. 1.2 as released is not enough here: AV1 crashes, a resolution
+# change crashes, and GStreamer's dma-buf allocator shows green (patches/ headers say why).
 #
 # Not part of release/build-all.sh and not in the base image: the profiles media and desktop carry it
 # (rootfs/build-rootfs.sh --libva). libva2 itself, which loads it, is Debian's (a dependency of ffmpeg, mpv, Kodi).
@@ -112,7 +112,7 @@ install -m 0644 "$SRC/COPYING" "$STAGE/usr/local/share/doc/libva-v4l2-request/CO
 	echo "libva-v4l2_request $LIBVA_VER (GPL-3.0-or-later), built for the H713 by rootfs/libva/build-libva.sh"
 	echo "upstream: $LIBVA_URL"
 	echo "commit:   $LIBVA_COMMIT"
-	echo "patches:  rootfs/libva/patches/ of https://github.com/well0nez/allwinner-h713-linux (Christopher Stenger's, in this order):"
+	echo "patches:  rootfs/libva/patches/ of https://github.com/well0nez/allwinner-h713-linux (0001-0009 Christopher Stenger's, 0010 on this project's; in this order):"
 	sed 's/^/          /' "$PATCHES/series"
 } > "$STAGE/usr/local/share/doc/libva-v4l2-request/SOURCE"
 
