@@ -1,0 +1,18 @@
+# Dummy for Debian trixie's libegl-mesa0: the real library is the mesa that rootfs/mesa/build-mesa.sh puts under /usr/local
+# (panfrost only, Wayland platform, glvnd, no LLVM). Debian's own libegl-mesa0 would pull mesa-libgallium and libllvm19
+# (187 MiB). rootfs/build-rootfs.sh builds this file into a .deb (dpkg-deb, the same fields equivs-build reads) and
+# installs it with the base image, so apt knows the dependency is met.
+# The epoch keeps every Debian mesa update (25.0.7-2+deb13uN) below this version: apt never swaps a dummy for the real
+# package. Debian's dependencies on these packages are ">=" (kodi, wlroots, libegl1), except libglx-mesa0's exact
+# one on mesa-libgallium - see libglx-mesa0.control.
+Package: libegl-mesa0
+Version: 1:25.0.7-2+deb13u1
+Architecture: arm64
+Section: libs
+Priority: optional
+Maintainer: well0nez <8986239+well0nez@users.noreply.github.com>
+Depends: libgbm1 (= 1:25.0.7-2+deb13u1), libdrm2, libwayland-client0, libwayland-server0
+Provides: libegl-vendor
+Description: dummy for libegl-mesa0, the EGL vendor of libglvnd (h713 mesa)
+ No files. The library comes from the mesa build in /usr/local/lib, which
+ only this image's own build provides; see rootfs/mesa/build-mesa.sh.

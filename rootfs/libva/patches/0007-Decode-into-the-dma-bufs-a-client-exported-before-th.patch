@@ -1,0 +1,547 @@
+From a62f64c551ba97fa539094356a12f3a93724f5bf Mon Sep 17 00:00:00 2001
+From: build <build@localhost>
+Date: Sat, 3 Oct 2026 01:03:51 -0700
+Subject: [PATCH] Decode into the dma-bufs a client exported before the first
+ decode
+
+GStreamer's va dma-buf allocator creates each surface and exports it in
+one step, then keeps those fds (and the plane layout from the
+descriptor) for the life of the buffer. This driver treated any export
+before a surface's first decode as probing: it backed the surface with
+a throwaway buffer and freed it once the decode bound the surface to its
+own MMAP CAPTURE buffer. Every frame went to memory the client never
+saw. Through kmssink and glimagesink the picture was solid green (a
+zeroed NV12 buffer) at a steady 30 fps; only readback (vaGetImage) was
+right, which is all the regression checks looked at.
+
+The CAPTURE queue's memory type is now chosen by its first buffer. When
+the first surface bound to a context was already exported, and that
+export fits the negotiated CAPTURE format, the queue imports dma-bufs:
+each surface's backing becomes the memory of its CAPTURE buffer (the
+inverse of the adopt path that keeps frames alive past their context).
+A surface with no backing, or with backing that does not fit, gets new
+backing from a throwaway open of the same decoder in the context's own
+formats, with a message when a client is left holding a stale export.
+
+The fit test matters: FFmpeg probes one surface by exporting it before
+any decode, at the surface size, and on the AV1 core (which pads the
+height and appends its own data to each buffer) that probe never fits.
+FFmpeg therefore keeps the decoder's MMAP buffers, as before.
+
+So the layout exported up front matches what the decoder writes:
+standalone backing asks for the same 64-byte NV12 pitch as the decode
+format, and honours V4L2_REQUEST_SCALE, the H713 decode-time scaler.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/libva-v4l2_request/0007-Decode-into-the-dma-bufs-a-client-exported-before-th.patch (0007-Decode-into-the-dma-bufs-a-client-exported-before-th.patch, commit 7552704)
+---
+ src/context.c      |  56 +++++++++-
+ src/decode.c       |  16 ++-
+ src/surface.c      | 273 ++++++++++++++++++++++++++++++++++++---------
+ src/v4l2_request.h |  10 ++
+ 4 files changed, 299 insertions(+), 56 deletions(-)
+
+diff --git a/src/context.c b/src/context.c
+index 24ae15a..a658a83 100644
+--- a/src/context.c
++++ b/src/context.c
+@@ -75,7 +75,7 @@ static int set_format(struct v4l2r_context *ctx, enum v4l2_buf_type type,
+  * smaller than the coded size the client believes in). Malformed values are
+  * ignored with a message, never fatal.
+  */
+-static bool parse_size_env(const char *name, uint32_t *width, uint32_t *height)
++bool v4l2r_parse_size_env(const char *name, uint32_t *width, uint32_t *height)
+ {
+ 	const char *value = getenv(name);
+ 	unsigned int w, h;
+@@ -104,7 +104,7 @@ static int set_capture_format(struct v4l2r_context *ctx,
+ 	uint32_t crop_w, crop_h;
+ 	bool scaled;
+ 
+-	if (parse_size_env("V4L2_REQUEST_CROP", &crop_w, &crop_h)) {
++	if (v4l2r_parse_size_env("V4L2_REQUEST_CROP", &crop_w, &crop_h)) {
+ 		struct v4l2_selection selection = {
+ 			.type = type,
+ 			.target = V4L2_SEL_TGT_CROP,
+@@ -121,7 +121,7 @@ static int set_capture_format(struct v4l2r_context *ctx,
+ 				  selection.r.width, selection.r.height);
+ 	}
+ 
+-	scaled = parse_size_env("V4L2_REQUEST_SCALE", &width, &height);
++	scaled = v4l2r_parse_size_env("V4L2_REQUEST_SCALE", &width, &height);
+ 
+ 	if (V4L2_TYPE_IS_MULTIPLANAR(type)) {
+ 		format.fmt.pix_mp.width = width;
+@@ -491,7 +491,7 @@ static int capture_buffer_new(struct v4l2r_context *ctx)
+ {
+ 	struct v4l2_create_buffers buffers = {
+ 		.count = 1,
+-		.memory = V4L2_MEMORY_MMAP,
++		.memory = ctx->capture_memory,
+ 		.format = ctx->capture_format,
+ 	};
+ 	struct v4l2_plane planes[VIDEO_MAX_PLANES] = {0};
+@@ -612,6 +612,32 @@ static int capture_buffer_bind(struct v4l2r_context *ctx,
+ 	/* Refresh the completion counter with anything already finished. */
+ 	v4l2r_reap_capture(ctx);
+ 
++	/*
++	 * The queue's memory type is fixed by its first buffer. A client that
++	 * exported its surfaces before decoding into them (GStreamer va, whose
++	 * dma-buf allocator creates and exports each surface in one step and
++	 * keeps the fds) holds dma-bufs of standalone backing; decode into
++	 * those by importing them. Everyone else (FFmpeg exports after
++	 * decoding) keeps the decoder's own MMAP buffers. Not with a
++	 * conversion chain, whose backing is the converter's destination.
++	 */
++	if (!ctx->capture_memory) {
++		/* Only a buffer the decoder can write as is: FFmpeg probes
++		 * one surface by exporting it before any decode, at the
++		 * surface size, and must not flip the queue for that. */
++		bool fits = !ctx->conv &&
++			    v4l2r_surface_backing_fits(surface,
++						       &ctx->capture_format);
++
++		ctx->capture_memory = fits ? V4L2_MEMORY_DMABUF :
++				      V4L2_MEMORY_MMAP;
++		v4l2r_log("CAPTURE memory: %s\n",
++			  fits ? "client-exported dma-bufs" :
++			  surface->backing ? "decoder buffers (the pre-decode "
++			  "export does not fit the decode format)" :
++			  "decoder buffers");
++	}
++
+ 	if (index < 0) {
+ 		/* First decode into this surface: recycle a buffer orphaned by
+ 		 * a destroyed surface, or grow the pool. */
+@@ -625,6 +651,28 @@ static int capture_buffer_bind(struct v4l2r_context *ctx,
+ 				return index;
+ 		}
+ 
++		if (ctx->capture_memory == V4L2_MEMORY_DMABUF) {
++			struct v4l2r_capture_buffer *capture =
++				&ctx->captures[index];
++
++			/* A recycled buffer still holds the memory of the
++			 * surface that was destroyed; it goes with it. */
++			for (unsigned int i = 0; i < VIDEO_MAX_PLANES; i++) {
++				if (capture->map[i])
++					munmap(capture->map[i],
++					       capture->plane_size[i]);
++				if (capture->dmabuf_fd[i] >= 0)
++					close(capture->dmabuf_fd[i]);
++				capture->map[i] = NULL;
++				capture->dmabuf_fd[i] = -1;
++			}
++
++			if (!v4l2r_surface_give_backing(surface, ctx, capture)) {
++				free_list_push(ctx, index);
++				return -ENOMEM;
++			}
++		}
++
+ 		ctx->captures[index].surface = surface;
+ 		surface->ctx = ctx;
+ 		surface->capture_index = index;
+diff --git a/src/decode.c b/src/decode.c
+index 3f9fc16..c1d8591 100644
+--- a/src/decode.c
++++ b/src/decode.c
+@@ -104,6 +104,10 @@ static int queue_buffer(struct v4l2r_context *ctx, struct v4l2_buffer *buffer)
+ 
+ 	if (V4L2_TYPE_IS_MULTIPLANAR(buffer->type)) {
+ 		planes[0].bytesused = buffer->bytesused;
++		if (buffer->memory == V4L2_MEMORY_DMABUF) {
++			planes[0].m.fd = buffer->m.fd;
++			planes[0].length = buffer->length;
++		}
+ 		buffer->bytesused = 0;
+ 		buffer->length = 1;
+ 		buffer->m.planes = planes;
+@@ -139,9 +143,16 @@ static int queue_capture_buffer(struct v4l2r_context *ctx, uint32_t index)
+ 	struct v4l2_buffer buffer = {
+ 		.index = index,
+ 		.type = ctx->capture_format.type,
+-		.memory = V4L2_MEMORY_MMAP,
++		.memory = ctx->capture_memory,
+ 	};
+ 
++	/* Single-plane formats only (NV12, P010, PL10 in one buffer); the
++	 * multi-planar case is translated in queue_buffer(). */
++	if (ctx->capture_memory == V4L2_MEMORY_DMABUF) {
++		buffer.m.fd = ctx->captures[index].dmabuf_fd[0];
++		buffer.length = ctx->captures[index].plane_size[0];
++	}
++
+ 	return queue_buffer(ctx, &buffer);
+ }
+ 
+@@ -167,7 +178,8 @@ static int dequeue_buffer(struct v4l2r_context *ctx, enum v4l2_buf_type type)
+ 	struct v4l2_plane planes[VIDEO_MAX_PLANES] = {0};
+ 	struct v4l2_buffer buffer = {
+ 		.type = type,
+-		.memory = V4L2_MEMORY_MMAP,
++		.memory = V4L2_TYPE_IS_OUTPUT(type) ? V4L2_MEMORY_MMAP :
++			  ctx->capture_memory,
+ 	};
+ 
+ 	if (V4L2_TYPE_IS_MULTIPLANAR(type)) {
+diff --git a/src/surface.c b/src/surface.c
+index afa38a5..5f7242e 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -12,6 +12,7 @@
+ 
+ #include <errno.h>
+ #include <fcntl.h>
++#include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/ioctl.h>
+@@ -325,6 +326,68 @@ bool v4l2r_surface_adopt_capture(struct v4l2r_surface *surface,
+ 	return true;
+ }
+ 
++/*
++ * Allocate one CAPTURE buffer in @format on @fd (a throwaway open of a
++ * decoder) and export its planes into @backing: plane count, sizes and
++ * dma-buf fds. The fds keep the memory alive after @fd is closed.
++ */
++static int backing_export_one(int fd, struct v4l2_format *format,
++			      struct v4l2r_surface_backing *backing)
++{
++	struct v4l2_create_buffers buffers = {
++		.count = 1,
++		.memory = V4L2_MEMORY_MMAP,
++		.format = *format,
++	};
++	struct v4l2_plane planes[VIDEO_MAX_PLANES] = {0};
++	struct v4l2_buffer buffer = {0};
++	bool mplane = V4L2_TYPE_IS_MULTIPLANAR(format->type);
++
++	if (ioctl(fd, VIDIOC_CREATE_BUFS, &buffers) < 0)
++		return -errno;
++
++	buffer.type = format->type;
++	buffer.index = buffers.index;
++	if (mplane) {
++		buffer.length = VIDEO_MAX_PLANES;
++		buffer.m.planes = planes;
++	}
++	if (ioctl(fd, VIDIOC_QUERYBUF, &buffer) < 0)
++		return -errno;
++
++	if (mplane) {
++		backing->nb_planes = buffer.length;
++		for (unsigned int i = 0; i < buffer.length; i++)
++			backing->plane_size[i] = buffer.m.planes[i].length;
++	} else {
++		backing->nb_planes = 1;
++		backing->plane_size[0] = buffer.length;
++	}
++
++	for (unsigned int i = 0; i < backing->nb_planes; i++) {
++		struct v4l2_exportbuffer exportbuffer = {
++			.type = format->type,
++			.index = buffer.index,
++			.plane = i,
++			.flags = O_RDWR | O_CLOEXEC,
++		};
++
++		if (ioctl(fd, VIDIOC_EXPBUF, &exportbuffer) < 0) {
++			int ret = -errno;
++
++			for (unsigned int j = 0; j < i; j++) {
++				close(backing->dmabuf_fd[j]);
++				backing->dmabuf_fd[j] = -1;
++			}
++			return ret;
++		}
++
++		backing->dmabuf_fd[i] = exportbuffer.fd;
++	}
++
++	return 0;
++}
++
+ /*
+  * Allocate dma-buf backing for a surface that is not bound to a decode
+  * context, using the CAPTURE queue of one of the enumerated decoders on
+@@ -347,9 +410,6 @@ static VAStatus backing_alloc(struct v4l2r_driver *drv,
+ 	/* Try each enumerated decoder until one produces the layout. */
+ 	for (unsigned int n = 0; n < drv->nb_decoders; n++) {
+ 		struct v4l2_capability capability = {0};
+-		struct v4l2_create_buffers buffers;
+-		struct v4l2_plane planes[VIDEO_MAX_PLANES] = {0};
+-		struct v4l2_buffer buffer = {0};
+ 		struct v4l2_format format = {0};
+ 		unsigned int capabilities;
+ 		bool mplane;
+@@ -409,6 +469,18 @@ static VAStatus backing_alloc(struct v4l2r_driver *drv,
+ 			format.fmt.pix.pixelformat = pixelformat;
+ 		}
+ 
++		/* The same 64-byte NV12 pitch the decode CAPTURE format asks
++		 * for (context.c), so a buffer exported before the first
++		 * decode has the layout the decoder will write. */
++		if (pixelformat == V4L2_PIX_FMT_NV12) {
++			uint32_t pitch = (width + 63) & ~63u;
++
++			if (mplane)
++				format.fmt.pix_mp.plane_fmt[0].bytesperline = pitch;
++			else
++				format.fmt.pix.bytesperline = pitch;
++		}
++
+ 		if (ioctl(fd, VIDIOC_S_FMT, &format) < 0)
+ 			goto next;
+ 
+@@ -433,51 +505,9 @@ static VAStatus backing_alloc(struct v4l2r_driver *drv,
+ 			backing->nb_planes = 1;
+ 		}
+ 
+-		buffers = (struct v4l2_create_buffers) {
+-			.count = 1,
+-			.memory = V4L2_MEMORY_MMAP,
+-			.format = format,
+-		};
+-		if (ioctl(fd, VIDIOC_CREATE_BUFS, &buffers) < 0)
+-			goto next;
+-
+-		buffer.type = format.type;
+-		buffer.index = buffers.index;
+-		if (mplane) {
+-			buffer.length = VIDEO_MAX_PLANES;
+-			buffer.m.planes = planes;
+-		}
+-		if (ioctl(fd, VIDIOC_QUERYBUF, &buffer) < 0)
++		if (backing_export_one(fd, &format, backing) < 0)
+ 			goto next;
+ 
+-		if (mplane) {
+-			backing->nb_planes = buffer.length;
+-			for (unsigned int i = 0; i < buffer.length; i++)
+-				backing->plane_size[i] = buffer.m.planes[i].length;
+-		} else {
+-			backing->nb_planes = 1;
+-			backing->plane_size[0] = buffer.length;
+-		}
+-
+-		for (unsigned int i = 0; i < backing->nb_planes; i++) {
+-			struct v4l2_exportbuffer exportbuffer = {
+-				.type = format.type,
+-				.index = buffer.index,
+-				.plane = i,
+-				.flags = O_RDWR | O_CLOEXEC,
+-			};
+-
+-			if (ioctl(fd, VIDIOC_EXPBUF, &exportbuffer) < 0) {
+-				for (unsigned int j = 0; j < i; j++) {
+-					close(backing->dmabuf_fd[j]);
+-					backing->dmabuf_fd[j] = -1;
+-				}
+-				goto next;
+-			}
+-
+-			backing->dmabuf_fd[i] = exportbuffer.fd;
+-		}
+-
+ 		backing->pixelformat = pixelformat;
+ 		close(fd);
+ 
+@@ -506,8 +536,149 @@ static VAStatus backing_alloc_default(struct v4l2r_driver *drv,
+ 	     !v4l2r_converter_available(drv)))
+ 		pixelformat = V4L2_PIX_FMT_P010;
+ 
+-	return backing_alloc(drv, surface, surface->width, surface->height,
+-			     pixelformat);
++	uint32_t width = surface->width, height = surface->height;
++
++	/* H713 decode-time scaler: the surface will hold the scaled picture,
++	 * and a client that exports before decoding (GStreamer va) keeps the
++	 * layout it is given now for the buffer's whole life. */
++	if (pixelformat == V4L2_PIX_FMT_NV12)
++		v4l2r_parse_size_env("V4L2_REQUEST_SCALE", &width, &height);
++
++	return backing_alloc(drv, surface, width, height, pixelformat);
++}
++
++static bool backing_matches(const struct v4l2r_surface_backing *backing,
++			    const struct v4l2_format *format)
++{
++	if (backing->pixelformat != v4l2r_format_pixelformat(format) ||
++	    backing->pitch != v4l2r_format_bytesperline(format))
++		return false;
++
++	if (V4L2_TYPE_IS_MULTIPLANAR(format->type)) {
++		if (backing->nb_planes != format->fmt.pix_mp.num_planes)
++			return false;
++		for (unsigned int i = 0; i < backing->nb_planes; i++)
++			if (backing->plane_size[i] <
++			    format->fmt.pix_mp.plane_fmt[i].sizeimage)
++				return false;
++		return true;
++	}
++
++	return backing->nb_planes == 1 &&
++	       backing->plane_size[0] >= format->fmt.pix.sizeimage;
++}
++
++bool v4l2r_surface_backing_fits(const struct v4l2r_surface *surface,
++				const struct v4l2_format *format)
++{
++	return surface->backing && backing_matches(surface->backing, format);
++}
++
++/*
++ * Backing in exactly the layout @ctx decodes into: a throwaway open of the
++ * same device (through /proc, which opens a new mem2mem instance) set to
++ * the context's own OUTPUT and CAPTURE formats. A generic allocation from
++ * whichever decoder enumerates first does not do: the AV1 core pads the
++ * height and appends its own data to every CAPTURE buffer.
++ */
++static VAStatus backing_alloc_for_context(struct v4l2r_context *ctx,
++					  struct v4l2r_surface *surface)
++{
++	struct v4l2_format output = ctx->output_format;
++	struct v4l2_format capture = ctx->capture_format;
++	struct v4l2r_surface_backing *backing;
++	char path[64];
++	int fd;
++
++	snprintf(path, sizeof(path), "/proc/self/fd/%d", ctx->video_fd);
++	fd = open(path, O_RDWR | O_CLOEXEC);
++	if (fd < 0)
++		return VA_STATUS_ERROR_OPERATION_FAILED;
++
++	backing = calloc(1, sizeof(*backing));
++	if (!backing) {
++		close(fd);
++		return VA_STATUS_ERROR_ALLOCATION_FAILED;
++	}
++	for (unsigned int i = 0; i < VIDEO_MAX_PLANES; i++)
++		backing->dmabuf_fd[i] = -1;
++
++	if (ioctl(fd, VIDIOC_S_FMT, &output) < 0 ||
++	    ioctl(fd, VIDIOC_S_FMT, &capture) < 0 ||
++	    backing_export_one(fd, &capture, backing) < 0) {
++		close(fd);
++		free(backing);
++		return VA_STATUS_ERROR_OPERATION_FAILED;
++	}
++	close(fd);
++
++	backing->pixelformat = v4l2r_format_pixelformat(&capture);
++	backing->width = v4l2r_format_width(&capture);
++	backing->height = v4l2r_format_height(&capture);
++	backing->pitch = v4l2r_format_bytesperline(&capture);
++	surface->backing = backing;
++	return VA_STATUS_SUCCESS;
++}
++
++/*
++ * The other direction of v4l2r_surface_adopt_capture(), for a context whose
++ * CAPTURE queue imports dma-bufs: the surface's backing becomes the memory
++ * of its CAPTURE buffer. GStreamer va creates and exports every surface
++ * before the first decode and keeps those fds for the buffer's life, so the
++ * decoder has to write into exactly that memory. A surface with no backing,
++ * or with one that does not fit the negotiated format, gets a new one; a
++ * client that exported the old one will not see these frames, so say so.
++ * The fds and mapping move over; the backing itself is freed.
++ */
++bool v4l2r_surface_give_backing(struct v4l2r_surface *surface,
++				struct v4l2r_context *ctx,
++				struct v4l2r_capture_buffer *capture)
++{
++	const struct v4l2_format *format = &ctx->capture_format;
++	struct v4l2r_surface_backing *backing = surface->backing;
++
++	if (backing && !backing_matches(backing, format)) {
++		v4l2r_log("surface 0x%08x was exported as %.4s %ux%u pitch %u, "
++			  "but decodes as %.4s %ux%u pitch %u: its exported "
++			  "dma-buf will not show the picture\n", surface->id,
++			  (const char *)&backing->pixelformat, backing->width,
++			  backing->height, backing->pitch,
++			  (const char *)&(uint32_t){v4l2r_format_pixelformat(format)},
++			  v4l2r_format_width(format), v4l2r_format_height(format),
++			  v4l2r_format_bytesperline(format));
++		v4l2r_surface_free_backing(surface);
++		backing = NULL;
++	}
++
++	if (!backing) {
++		if (backing_alloc_for_context(ctx, surface) != VA_STATUS_SUCCESS) {
++			v4l2r_log("cannot allocate a buffer to decode into\n");
++			return false;
++		}
++		backing = surface->backing;
++		if (!backing_matches(backing, format)) {
++			v4l2r_log("cannot allocate a %ux%u pitch %u buffer to "
++				  "decode into (got pitch %u)\n",
++				  v4l2r_format_width(format),
++				  v4l2r_format_height(format),
++				  v4l2r_format_bytesperline(format),
++				  backing->pitch);
++			v4l2r_surface_free_backing(surface);
++			return false;
++		}
++	}
++
++	capture->nb_planes = backing->nb_planes;
++	for (unsigned int i = 0; i < VIDEO_MAX_PLANES; i++) {
++		capture->plane_size[i] = backing->plane_size[i];
++		capture->dmabuf_fd[i] = backing->dmabuf_fd[i];
++		capture->map[i] = backing->map[i];
++		backing->dmabuf_fd[i] = -1;
++		backing->map[i] = NULL;
++	}
++
++	v4l2r_surface_free_backing(surface);
++	return true;
+ }
+ 
+ /*
+@@ -628,8 +799,10 @@ VAStatus v4l2r_surface_capture_view(struct v4l2r_surface *surface,
+ 					capture->plane_size[i],
+ 					PROT_READ | PROT_WRITE,
+ 					MAP_SHARED,
+-					ctx->video_fd,
+-					capture->plane_mem_offset[i]);
++					ctx->capture_memory == V4L2_MEMORY_DMABUF ?
++					capture->dmabuf_fd[i] : ctx->video_fd,
++					ctx->capture_memory == V4L2_MEMORY_DMABUF ?
++					0 : capture->plane_mem_offset[i]);
+ 				if (addr == MAP_FAILED)
+ 					return VA_STATUS_ERROR_OPERATION_FAILED;
+ 				capture->map[i] = addr;
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index 6f9160f..7728e03 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -210,6 +210,13 @@ struct v4l2r_capture_buffer;
+ bool v4l2r_surface_adopt_capture(struct v4l2r_surface *surface,
+ 				 struct v4l2r_context *ctx,
+ 				 struct v4l2r_capture_buffer *capture);
++bool v4l2r_surface_backing_fits(const struct v4l2r_surface *surface,
++				const struct v4l2_format *format);
++bool v4l2r_surface_give_backing(struct v4l2r_surface *surface,
++				struct v4l2r_context *ctx,
++				struct v4l2r_capture_buffer *capture);
++bool v4l2r_parse_size_env(const char *name, uint32_t *width,
++			  uint32_t *height);
+ 
+ /* Per CAPTURE buffer state, lives in the context that allocated it. The
+  * buffer holds the current decoded content of ->surface, or is free when
+@@ -287,6 +294,9 @@ struct v4l2r_context {
+ 	uint32_t output_capabilities;
+ 	uint32_t capture_capabilities;
+ 	bool streaming;			/* CAPTURE side fully configured */
++	/* MMAP, or DMABUF when the first surface decoded into had already
++	 * been exported (see capture_buffer_bind); 0 until then. */
++	enum v4l2_memory capture_memory;
+ 
+ 	struct v4l2r_output_buffer output[V4L2R_OUTPUT_BUFFERS];
+ 	uint8_t next_output;
+-- 
+2.55.0
+

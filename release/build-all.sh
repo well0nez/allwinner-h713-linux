@@ -92,7 +92,11 @@ UBOOT_PROBE_DEFCONFIG=h713_probe_defconfig            # FEL -> h713_probe, for u
 KEYRING_DEB_URL="https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb"
 KEYRING_DEB_SHA256=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
 KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byte-identical to the .gpg used so far (12.09.)
-SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev,zlib1g-dev
+# libwayland-dev, libwayland-egl-backend-dev, wayland-protocols, libglvnd-dev: mesa's Wayland platform and glvnd (rootfs/mesa/build-mesa.sh);
+# libglvnd-dev is also where h713-warp finds libEGL.so and libGLESv2.so now (the dispatchers, no longer in the mesa stage)
+# libva-dev: the VA-API headers megi's libva-v4l2_request driver is built against (rootfs/libva/build-libva.sh, media side project, package D);
+# the driver is built by that script on demand, not by this one: the base image does not carry it (profile media does)
+SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev,zlib1g-dev,libwayland-dev,libwayland-egl-backend-dev,wayland-protocols,libglvnd-dev,libva-dev
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
@@ -476,18 +480,21 @@ AF="$USERSPACE/h713-autofocus/h713-afmetric.aarch64-linux-gnu"; [[ -f "$AF" ]] |
 info "h713-afmetric $(stat -c %s "$AF") bytes, $(file -b "$AF" 2>/dev/null | cut -d, -f1-2)"
 
 # --- 6b. mesa (panfrost only, no LLVM) for the GPU path -----------------------
-say "6b/11 mesa cross-built (panfrost, EGL, GLES2, GBM; rootfs/mesa/build-mesa.sh)"
+say "6b/11 mesa cross-built (panfrost, EGL vendor for glvnd, GBM, Wayland platform; rootfs/mesa/build-mesa.sh)"
 in_container "cd $WORK && rootfs/mesa/build-mesa.sh" > "$OUT/mesa-cross.log" 2>&1 || { tail -20 "$OUT/mesa-cross.log"; die "mesa build failed (log: $OUT/mesa-cross.log, $OUT/mesa-build.log)"; }
 MESA="$OUT/mesa-panfrost-25.0.7.tar"; [[ -f "$MESA" ]] || die "no $MESA"
 grep -E "NEEDED|installed" "$OUT/mesa-cross.log" | sed 's/^ *//; s/^/    /'
 
 # --- 6c. h713-warp cross-built against the mesa stage -------------------------
-# The keystone warp links libEGL and libGLESv2 out of the stage build-mesa.sh
-# leaves under mainline/build/mesa-stage; install-projekt.sh (5c) wants the
-# binary and refuses without it.
-say "6c/11 h713-warp cross-built (EGL, GLES2 from the mesa stage)"
+# The keystone warp links libEGL and libGLESv2, the glvnd dispatchers: the linker finds libEGL.so and
+# libGLESv2.so in the sysroot (libglvnd-dev), the headers and the vendor library behind them
+# (libEGL_mesa.so.0) come from the stage build-mesa.sh leaves under mainline/build/mesa-stage;
+# install-projekt.sh (5c) wants the binary and refuses without it.
+say "6c/11 h713-warp cross-built (EGL, GLES2: glvnd dispatchers of the sysroot, vendor from the mesa stage)"
 MESA_PREFIX="$MAINLINE/build/mesa-stage/usr/local"
-[[ -f "$MESA_PREFIX/lib/libEGL.so.1" ]] || die "no $MESA_PREFIX/lib/libEGL.so.1 after the mesa step"
+[[ -f "$MESA_PREFIX/lib/libEGL_mesa.so.0" ]] || die "no $MESA_PREFIX/lib/libEGL_mesa.so.0 after the mesa step"
+[[ -e "$SYSROOT/usr/lib/aarch64-linux-gnu/libEGL.so" && -e "$SYSROOT/usr/lib/aarch64-linux-gnu/libGLESv2.so" ]] || \
+	die "no libEGL.so / libGLESv2.so in the sysroot -- libglvnd-dev missing from SYSROOT_PACKAGES?"
 in_container "cd $WORK/userspace/h713-warp && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang MESA_PREFIX=$(c "$MESA_PREFIX")" > "$OUT/h713-warp-cross.log" 2>&1 || { tail -20 "$OUT/h713-warp-cross.log"; die "cross-building h713-warp failed (log: $OUT/h713-warp-cross.log)"; }
 WARP="$USERSPACE/h713-warp/h713-warp.aarch64-linux-gnu"; [[ -f "$WARP" ]] || die "no $WARP"
 info "h713-warp $(stat -c %s "$WARP") bytes, $(file -b "$WARP" 2>/dev/null | cut -d, -f1-2)"

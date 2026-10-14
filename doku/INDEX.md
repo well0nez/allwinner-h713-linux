@@ -124,6 +124,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `release/sperr-scan.py` | `doku/116`, `doku/121` |
 | `rootfs/build-rootfs.sh` | `doku/107`, `doku/109`, `doku/116`, `doku/50` |
 | `rootfs/install-projekt.sh` | `doku/116`, `doku/60` |
+| `rootfs/packages-media.txt` | `doku/107` |
 | `rootfs/packages.txt` | `doku/107`, `doku/108` |
 | `rootfs/tests/h713-wifi-check.sh` | `doku/60` |
 | `userspace/README.md` | `doku/50`, `doku/77` |
@@ -155,7 +156,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`104-plan-standby-stufe2.md`](104-plan-standby-stufe2.md) | Plan |  | Plan 104 - Einschalt-Gate Stufe 2: Stock-Standby über die ARISC | 2 |
 | [`105-plan-release.md`](105-plan-release.md) | Plan |  | Plan 105 - Release: den HY310-Stand für andere nutzbar machen | 2 |
 | [`106-handoff-20260910.md`](106-handoff-20260910.md) | Handoff | 2026-09-10 | Handoff 10.09.2026 - Stand, Todos, teuer bezahltes Wissen | - |
-| [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 5 |
+| [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 6 |
 | [`108-plan-vendordaten.md`](108-plan-vendordaten.md) | Plan |  | Plan 108 - die Vendor-Artefakte vom Stock-Layout lösen | 5 |
 | [`109-plan-layout-v3.md`](109-plan-layout-v3.md) | Plan |  | Plan 109 - Layout v3: die Boot-Kette an den Anfang | 16 |
 | [`110-plan-installationsweg.md`](110-plan-installationsweg.md) | Plan |  | Plan 110 - der Installationsweg für Nutzer | 6 |

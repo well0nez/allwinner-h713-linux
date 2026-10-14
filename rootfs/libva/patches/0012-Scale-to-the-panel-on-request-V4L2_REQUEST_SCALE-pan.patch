@@ -1,0 +1,248 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 14 Oct 2026 19:10:18 +0200
+Subject: [PATCH 12/13] Scale to the panel on request: V4L2_REQUEST_SCALE=panel
+
+The H713's decode-time scaler (cedrus with the local kernel patches,
+negotiated by V4L2_REQUEST_SCALE=WxH since the patch "Negotiate the H713
+decode-time scaler") needs a size per board and per clip. The value
+"panel" lets the driver choose it: the panel is the first DRM connector
+in /sys/class/drm that is connected and enabled, its first mode the
+native size (HY310 card1-LVDS-1 1920x1080). A frame larger than the
+panel by more than 64 lines or columns decodes to the largest even size
+of its own shape that fits (3840x2160 on 1920x1080 -> 1920x1080,
+3840x1600 -> 1920x800); anything else decodes as before, unscaled. The
+slack keeps padded streams of panel size as they are: 1080p H.264 is
+coded 1920x1088 and must not be squeezed by eight rows. The shape is
+V4L2_REQUEST_CROP's when the client gives the visible size, otherwise
+the coded frame's. The same choice is made for surfaces exported before
+their first decode, so a client that keeps those fds gets the layout the
+decoder writes. V4L2_REQUEST_SCALE=WxH behaves exactly as before.
+
+It is not the default, and cannot be, on purpose: VA-API has no way to
+tell a client that a surface holds a smaller picture than the client
+created it for, and the clients import at the size they believe in.
+mpv 0.40 sizes its EGL images from the frame (dmabuf_interop_gl.c,
+EGL_WIDTH/EGL_HEIGHT from the image params, not from the descriptor),
+Kodi 21 from the picture (VaapiEGL.cpp, CVaapi2Texture::Map,
+DVDPic.iWidth/iHeight), GStreamer va from its caps. Panfrost rejects a
+3840-wide import of a 1920-pitch buffer: measured on the HY310 with
+mpv --hwdec=vaapi --vo=gpu under cage and a 4K H.264 and HEVC clip,
+every frame failed with "Failed to import surface in EGL: 12291"
+(EGL_BAD_ALLOC) and the wall stayed black, where the same clips without
+scaling play. Turned on for every client it would make every 4K video
+black. A client that imports at the size the export descriptor reports
+(width/height of VADRMPRIMESurfaceDescriptor, the real geometry since
+"Report the surface's own size in exports") can set it.
+
+License: GPL-3.0-or-later, like the code it changes (libva-v4l2_request).
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/context.c      | 139 ++++++++++++++++++++++++++++++++++++++++++++-
+ src/surface.c      |   3 +-
+ src/v4l2_request.h |   4 ++
+ 3 files changed, 143 insertions(+), 3 deletions(-)
+
+diff --git a/src/context.c b/src/context.c
+index 3ae5ef9..29b7ab0 100644
+--- a/src/context.c
++++ b/src/context.c
+@@ -11,6 +11,7 @@
+  * SPDX-License-Identifier: GPL-3.0-or-later
+  */
+ 
++#include <dirent.h>
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <poll.h>
+@@ -57,7 +58,8 @@ static int set_format(struct v4l2r_context *ctx, enum v4l2_buf_type type,
+  * from an input crop of the coded frame, to any even CAPTURE size. Two
+  * environment variables ask for it:
+  *
+- *   V4L2_REQUEST_SCALE=WxH  the CAPTURE size to produce. A size, not a ratio:
++ *   V4L2_REQUEST_SCALE=WxH  the CAPTURE size to produce (or "panel", see
++ *                           v4l2r_scale_target). A size, not a ratio:
+  *                           the display takes one framebuffer geometry, and
+  *                           1088 coded rows and 1080 visible ones do not reach
+  *                           720 by the same factor; the kernel scales each
+@@ -94,6 +96,138 @@ bool v4l2r_parse_size_env(const char *name, uint32_t *width, uint32_t *height)
+ 	return true;
+ }
+ 
++/*
++ * The panel's size: the first DRM connector that is connected and enabled,
++ * and its first mode, which for a projector's panel is the native one
++ * (HY310 card1-LVDS-1 "1920x1080", HY300 Pro 1280x720). Read from sysfs at
++ * every negotiation, so it follows the board without a setting.
++ */
++static bool read_sysfs_line(const char *dir, const char *file, char *buf,
++			    size_t size)
++{
++	char path[512];
++	FILE *f;
++	bool ok;
++
++	snprintf(path, sizeof(path), "/sys/class/drm/%s/%s", dir, file);
++	f = fopen(path, "re");
++	if (!f)
++		return false;
++	ok = fgets(buf, size, f) != NULL;
++	fclose(f);
++	if (ok)
++		buf[strcspn(buf, "\n")] = '\0';
++	return ok;
++}
++
++static bool panel_size(uint32_t *width, uint32_t *height, char *name,
++		       size_t name_size)
++{
++	struct dirent *entry;
++	bool found = false;
++	DIR *dir;
++
++	dir = opendir("/sys/class/drm");
++	if (!dir)
++		return false;
++
++	while (!found && (entry = readdir(dir))) {
++		char line[64];
++		unsigned int w, h;
++
++		if (strncmp(entry->d_name, "card", 4) ||
++		    !strchr(entry->d_name, '-'))
++			continue;
++		if (!read_sysfs_line(entry->d_name, "status", line, sizeof(line)) ||
++		    strcmp(line, "connected"))
++			continue;
++		if (!read_sysfs_line(entry->d_name, "enabled", line, sizeof(line)) ||
++		    strcmp(line, "enabled"))
++			continue;
++		if (!read_sysfs_line(entry->d_name, "modes", line, sizeof(line)) ||
++		    sscanf(line, "%ux%u", &w, &h) != 2 || !w || !h)
++			continue;
++
++		*width = w;
++		*height = h;
++		snprintf(name, name_size, "%s", entry->d_name);
++		found = true;
++	}
++
++	closedir(dir);
++	return found;
++}
++
++/*
++ * The CAPTURE size the decode-time scaler is to produce for a frame of
++ * @coded_width x @coded_height, or false for none (decode at the coded size).
++ *
++ *   V4L2_REQUEST_SCALE=WxH    that size, always (as before)
++ *   V4L2_REQUEST_SCALE=panel  only when the frame is larger than the panel:
++ *                             the largest even size of the frame's shape
++ *                             that fits the panel
++ *
++ * "Larger" leaves 64 lines and columns of slack: decoders pad the coded
++ * size to their block size (1080p H.264 is coded 1920x1088), and a 1080p
++ * stream on a 1080p panel must decode as it is, unscaled. The shape is the
++ * coded frame's, or V4L2_REQUEST_CROP's when the client gives the visible
++ * size. Not the default: VA-API has no way to tell a client that a surface
++ * holds a smaller picture than it created the surface for, and the
++ * clients import at their own size (see the patch text).
++ */
++#define V4L2R_SCALE_SLACK	64
++
++bool v4l2r_scale_target(uint32_t coded_width, uint32_t coded_height,
++			uint32_t *width, uint32_t *height, bool quiet)
++{
++	const char *value = getenv("V4L2_REQUEST_SCALE");
++	uint32_t panel_w, panel_h, w = coded_width, h = coded_height;
++	uint32_t crop_w, crop_h, out_w, out_h;
++	char name[256];
++
++	if (!value || strcmp(value, "panel"))
++		return v4l2r_parse_size_env("V4L2_REQUEST_SCALE", width, height);
++
++	if (!panel_size(&panel_w, &panel_h, name, sizeof(name))) {
++		if (!quiet)
++			v4l2r_log("V4L2_REQUEST_SCALE=panel: no connected and "
++				  "enabled display in /sys/class/drm, not "
++				  "scaling\n");
++		return false;
++	}
++
++	if (v4l2r_parse_size_env("V4L2_REQUEST_CROP", &crop_w, &crop_h) &&
++	    crop_w <= w && crop_h <= h) {
++		w = crop_w;
++		h = crop_h;
++	}
++
++	if (!w || !h || (w <= panel_w + V4L2R_SCALE_SLACK &&
++			 h <= panel_h + V4L2R_SCALE_SLACK))
++		return false;
++
++	if ((uint64_t)w * panel_h > (uint64_t)h * panel_w) {
++		out_w = panel_w;
++		out_h = (uint32_t)((uint64_t)h * panel_w / w);
++	} else {
++		out_h = panel_h;
++		out_w = (uint32_t)((uint64_t)w * panel_h / h);
++	}
++	out_w &= ~1u;
++	out_h &= ~1u;
++	if (out_w < 2 || out_h < 2)
++		return false;
++
++	if (!quiet)
++		v4l2r_log("V4L2_REQUEST_SCALE=panel: %s is %ux%u, %ux%u "
++			  "scales to %ux%u\n", name, panel_w, panel_h, w, h,
++			  out_w, out_h);
++
++	*width = out_w;
++	*height = out_h;
++	return true;
++}
++
+ /*
+  * Set the CAPTURE format on @fd: the context's own video fd, or a throwaway
+  * open of the same device (see v4l2r_context_probe_capture_format). The
+@@ -131,7 +265,8 @@ static int set_capture_format(struct v4l2r_context *ctx, int fd,
+ 		}
+ 	}
+ 
+-	scaled = v4l2r_parse_size_env("V4L2_REQUEST_SCALE", &width, &height);
++	scaled = v4l2r_scale_target(ctx->picture_width, ctx->picture_height,
++				    &width, &height, quiet);
+ 
+ 	if (V4L2_TYPE_IS_MULTIPLANAR(type)) {
+ 		format->fmt.pix_mp.width = width;
+diff --git a/src/surface.c b/src/surface.c
+index 2da8721..de3b71d 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -621,7 +621,8 @@ static VAStatus backing_alloc_default(struct v4l2r_driver *drv,
+ 	 * and a client that exports before decoding (GStreamer va) keeps the
+ 	 * layout it is given now for the buffer's whole life. */
+ 	if (pixelformat == V4L2_PIX_FMT_NV12)
+-		v4l2r_parse_size_env("V4L2_REQUEST_SCALE", &width, &height);
++		v4l2r_scale_target(surface->width, surface->height, &width,
++				   &height, true);
+ 
+ 	VAStatus status = backing_alloc(drv, surface, width, height, pixelformat);
+ 
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index adbba4e..e51ce56 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -222,6 +222,10 @@ bool v4l2r_surface_give_backing(struct v4l2r_surface *surface,
+ 				struct v4l2r_capture_buffer *capture);
+ bool v4l2r_parse_size_env(const char *name, uint32_t *width,
+ 			  uint32_t *height);
++/* The decode-time scaler's output size for a frame of this coded size
++ * (V4L2_REQUEST_SCALE=WxH or =panel), false for none (context.c). */
++bool v4l2r_scale_target(uint32_t coded_width, uint32_t coded_height,
++			uint32_t *width, uint32_t *height, bool quiet);
+ 
+ /* Per CAPTURE buffer state, lives in the context that allocated it. The
+  * buffer holds the current decoded content of ->surface, or is free when
+-- 
+2.43.0
+

@@ -1,0 +1,16 @@
+# Dummy for Debian trixie's libglx-mesa0, the GLX vendor of libglvnd. This mesa is built without GLX; the dummy exists
+# because libgl1 (pulled in by Xwayland, so by cage) would otherwise install Debian's libglx-mesa0, and that depends on
+# mesa-libgallium (= 25.0.7-2+deb13u1) - exactly Debian's version, which the epoch of our dummy does not match.
+# It Provides libglx-vendor, the alternative libglx0 accepts instead. rootfs/build-rootfs.sh builds this file into a
+# .deb (dpkg-deb, the same fields equivs-build reads) and installs it with the base image.
+Package: libglx-mesa0
+Version: 1:25.0.7-2+deb13u1
+Architecture: arm64
+Section: libs
+Priority: optional
+Maintainer: well0nez <8986239+well0nez@users.noreply.github.com>
+Provides: libglx-vendor
+Description: dummy for libglx-mesa0, the GLX vendor of libglvnd (none: this mesa has no GLX)
+ No files. This mesa is built without GLX; the package only keeps Debian's
+ libglx-mesa0 (which needs mesa-libgallium of exactly Debian's version) from
+ being installed when libgl1 is pulled in, e.g. by Xwayland.

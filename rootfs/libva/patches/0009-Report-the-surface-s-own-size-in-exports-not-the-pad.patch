@@ -1,0 +1,95 @@
+From e76b5c1e58f22eb66c57ab46e771fcc4202f304c Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Sat, 3 Oct 2026 18:56:15 -0700
+Subject: [PATCH] Report the surface's own size in exports, not the padded
+ buffer's
+
+vaExportSurfaceHandle described every surface at its CAPTURE buffer's
+size. The decoders pad that (1080 -> 1088 rows for cedrus HEVC/VP9 and
+for the AV1 core), so a 1080p surface the client created as 1920x1080
+was reported as 1920x1088, and a consumer that sizes a framebuffer from
+the descriptor showed the padding rows.
+
+The descriptor now reports the size the surface was created at, capped
+by the buffer (a VE-scaled surface is smaller than its client created
+it). The planes are still laid out by the buffer, so the chroma offset
+keeps the padded height. An export trace line shows all three sizes.
+
+Measured on the H713 (FFmpeg/mpv): H.264 stays 1920x1088 (FFmpeg creates
+it so), HEVC/VP9/AV1 1080p now report 1920x1080, VE-scaled 1280x720.
+GPU-path frames match software decode bit for bit for HEVC, VP9 and AV1
+1080p; GStreamer DMABuf output stays bit-exact (H.264/HEVC 1080p, 720p,
+640x482).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/libva-v4l2_request/0009-Report-the-surface-s-own-size-in-exports-not-the-pad.patch (0009-Report-the-surface-s-own-size-in-exports-not-the-pad.patch, commit 43b2cdd)
+---
+ src/surface.c | 33 +++++++++++++++++++++++++++------
+ 1 file changed, 27 insertions(+), 6 deletions(-)
+
+diff --git a/src/surface.c b/src/surface.c
+index 1133fad..b05a104 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -893,14 +893,17 @@ static bool lsb10_linear(void)
+ 
+ /*
+  * Describe the surface memory layout for DRM consumers, following the
+- * layout rules of the FFmpeg v4l2-request hwcontext.
++ * layout rules of the FFmpeg v4l2-request hwcontext. The planes are laid
++ * out by the decoder's buffer (view); @width x @height is the picture the
++ * descriptor reports, which can be smaller than the buffer's padded size.
+  */
+ static VAStatus fill_prime_descriptor(const struct v4l2r_frame_view *view,
+-				      uint32_t flags,
++				      uint32_t flags, uint32_t picture_width,
++				      uint32_t picture_height,
+ 				      VADRMPRIMESurfaceDescriptor *desc)
+ {
+ 	const struct v4l2r_format_info *info = view->info;
+-	uint32_t width = view->width;
++	uint32_t width __attribute__((unused)) = view->width;
+ 	uint32_t height = view->height;
+ 	uint32_t pitch = view->pitch;
+ 	uint32_t pixelformat __attribute__((unused)) = view->pixelformat;
+@@ -927,8 +930,8 @@ static VAStatus fill_prime_descriptor(const struct v4l2r_frame_view *view,
+ 
+ 	memset(desc, 0, sizeof(*desc));
+ 	desc->fourcc = info->drm_format;
+-	desc->width = width;
+-	desc->height = height;
++	desc->width = picture_width;
++	desc->height = picture_height;
+ 	desc->num_objects = view->nb_planes;
+ 
+ 	for (unsigned int i = 0; i < view->nb_planes; i++) {
+@@ -1039,7 +1042,25 @@ static VAStatus export_surface_handle(VADriverContextP va_ctx,
+ 	if (status != VA_STATUS_SUCCESS)
+ 		return status;
+ 
+-	return fill_prime_descriptor(&view, flags, descriptor);
++	/*
++	 * Report the size the client created the surface at, capped by the
++	 * buffer: decoders pad the buffer (1080 -> 1088 rows for cedrus and
++	 * the AV1 core), and a consumer that sizes a framebuffer from the
++	 * descriptor showed those rows. A VE-scaled surface is smaller than
++	 * the client created it, hence the cap. The planes still follow the
++	 * buffer, so the chroma offset keeps the padded height.
++	 */
++	uint32_t width = surface->width < view.width ? surface->width : view.width;
++	uint32_t height = surface->height < view.height ?
++			  surface->height : view.height;
++
++	v4l2r_trace("export surface 0x%08x: created %ux%u, memory %ux%u pitch %u, "
++		    "reported %ux%u\n", surface->id, surface->width,
++		    surface->height, view.width, view.height, view.pitch,
++		    width, height);
++
++	return fill_prime_descriptor(&view, flags, width ? width : view.width,
++				     height ? height : view.height, descriptor);
+ }
+ 
+ VAStatus v4l2r_ExportSurfaceHandle(VADriverContextP va_ctx, VASurfaceID surface_id,
+-- 
+2.55.0
+

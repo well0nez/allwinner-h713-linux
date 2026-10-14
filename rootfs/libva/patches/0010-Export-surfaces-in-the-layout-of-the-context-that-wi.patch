@@ -1,0 +1,407 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 14 Oct 2026 11:54:57 +0200
+Subject: [PATCH 10/11] Export surfaces in the layout of the context that will
+ decode into them
+
+GStreamer's va dma-buf allocator opens its decode context first, then
+creates and exports every surface of its pool before the first decode,
+and keeps those fds for the life of each buffer. A surface exported that
+early had no CAPTURE buffer yet, so it got standalone backing from
+whichever decoder enumerates first, in NV12 at the surface size with the
+64-byte pitch. On the AV1 core that never fits: the core appends its
+motion vector buffer to every CAPTURE buffer (hantro_av1_mv_size(), 392 192
+bytes at 1920x1088: 3 525 632 bytes against 3 133 440 for the bare NV12
+planes). capture_buffer_bind() then found the pre-decode export too small,
+left the queue on MMAP ("the pre-decode export does not fit the decode
+format") and decoded every frame into buffers the client never saw.
+vaav1dec into glimagesink showed a solid green picture at full frame
+rate; the exported buffers were 100 % zero.
+
+Allocate pre-decode backing in the context's own layout instead. When an
+unbound NV12 surface needs backing and a codec context of the surface's
+size exists whose CAPTURE memory is still undecided (or already imports
+client dma-bufs), a throwaway open of that context's device is set to the
+context's OUTPUT format and to the CAPTURE format the first decode will
+select - the same selection, now shared through
+v4l2r_context_probe_capture_format() - and the buffer is allocated and
+exported there. The first decode then finds a fitting export, imports the
+client's dma-bufs, and the decoder writes the picture (and its motion
+vectors) into exactly the memory the client holds.
+
+Contexts get a creation serial and an output_ready flag (set once the
+decoder is open, cleared first thing in DestroyContext) so the newest
+matching context is chosen and a half-built or dying one never is. A
+render target's own context is the only candidate for it. Contexts that
+decode into their own buffers (FFmpeg: it exports after decoding, MMAP)
+and contexts behind a format converter are left alone, as is anything
+that would not decode to NV12 (10-bit streams keep the generic P010/PL10
+backing). With no matching context the generic allocation runs as
+before.
+
+License: GPL-3.0-or-later, like the code it changes (libva-v4l2_request).
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/context.c      | 96 ++++++++++++++++++++++++++++++++--------------
+ src/surface.c      | 86 +++++++++++++++++++++++++++++++++++++++--
+ src/v4l2_request.h | 15 ++++++++
+ 3 files changed, 165 insertions(+), 32 deletions(-)
+
+diff --git a/src/context.c b/src/context.c
+index a658a83..3ae5ef9 100644
+--- a/src/context.c
++++ b/src/context.c
+@@ -94,16 +94,24 @@ bool v4l2r_parse_size_env(const char *name, uint32_t *width, uint32_t *height)
+ 	return true;
+ }
+ 
+-static int set_capture_format(struct v4l2r_context *ctx,
+-			      enum v4l2_buf_type type, uint32_t pixelformat)
++/*
++ * Set the CAPTURE format on @fd: the context's own video fd, or a throwaway
++ * open of the same device (see v4l2r_context_probe_capture_format). The
++ * result of S_FMT is left in @format. @quiet keeps the messages to the real
++ * negotiation.
++ */
++static int set_capture_format(struct v4l2r_context *ctx, int fd,
++			      struct v4l2_format *format, uint32_t pixelformat,
++			      bool quiet)
+ {
+-	struct v4l2_format format = {
+-		.type = type,
+-	};
++	enum v4l2_buf_type type = format->type;
+ 	uint32_t width = ctx->picture_width, height = ctx->picture_height;
+ 	uint32_t crop_w, crop_h;
+ 	bool scaled;
+ 
++	memset(format, 0, sizeof(*format));
++	format->type = type;
++
+ 	if (v4l2r_parse_size_env("V4L2_REQUEST_CROP", &crop_w, &crop_h)) {
+ 		struct v4l2_selection selection = {
+ 			.type = type,
+@@ -113,25 +121,27 @@ static int set_capture_format(struct v4l2r_context *ctx,
+ 
+ 		/* Best effort: without a crop the scaler still works, it just
+ 		 * reads the coded padding too. */
+-		if (ioctl(ctx->video_fd, VIDIOC_S_SELECTION, &selection) < 0)
+-			v4l2r_log("no CAPTURE crop support: scaling the full "
+-				  "coded frame\n");
+-		else
++		if (ioctl(fd, VIDIOC_S_SELECTION, &selection) < 0) {
++			if (!quiet)
++				v4l2r_log("no CAPTURE crop support: scaling "
++					  "the full coded frame\n");
++		} else if (!quiet) {
+ 			v4l2r_log("cropped the coded frame to %ux%u\n",
+ 				  selection.r.width, selection.r.height);
++		}
+ 	}
+ 
+ 	scaled = v4l2r_parse_size_env("V4L2_REQUEST_SCALE", &width, &height);
+ 
+ 	if (V4L2_TYPE_IS_MULTIPLANAR(type)) {
+-		format.fmt.pix_mp.width = width;
+-		format.fmt.pix_mp.height = height;
+-		format.fmt.pix_mp.pixelformat = pixelformat;
+-		format.fmt.pix_mp.num_planes = 1;
++		format->fmt.pix_mp.width = width;
++		format->fmt.pix_mp.height = height;
++		format->fmt.pix_mp.pixelformat = pixelformat;
++		format->fmt.pix_mp.num_planes = 1;
+ 	} else {
+-		format.fmt.pix.width = width;
+-		format.fmt.pix.height = height;
+-		format.fmt.pix.pixelformat = pixelformat;
++		format->fmt.pix.width = width;
++		format->fmt.pix.height = height;
++		format->fmt.pix.pixelformat = pixelformat;
+ 	}
+ 
+ 	/*
+@@ -145,19 +155,19 @@ static int set_capture_format(struct v4l2r_context *ctx,
+ 		uint32_t pitch = (width + 63) & ~63u;
+ 
+ 		if (V4L2_TYPE_IS_MULTIPLANAR(type))
+-			format.fmt.pix_mp.plane_fmt[0].bytesperline = pitch;
++			format->fmt.pix_mp.plane_fmt[0].bytesperline = pitch;
+ 		else
+-			format.fmt.pix.bytesperline = pitch;
++			format->fmt.pix.bytesperline = pitch;
+ 	}
+ 
+-	if (ioctl(ctx->video_fd, VIDIOC_S_FMT, &format) < 0)
++	if (ioctl(fd, VIDIOC_S_FMT, format) < 0)
+ 		return -errno;
+ 
+-	if (scaled)
++	if (scaled && !quiet)
+ 		v4l2r_log("coded %ux%u, asked for %ux%u, got %ux%u\n",
+ 			  ctx->picture_width, ctx->picture_height, width, height,
+-			  v4l2r_format_width(&format),
+-			  v4l2r_format_height(&format));
++			  v4l2r_format_width(format),
++			  v4l2r_format_height(format));
+ 
+ 	return 0;
+ }
+@@ -231,7 +241,8 @@ static bool try_framesize(struct v4l2r_context *ctx, uint32_t pixelformat)
+  *  3. any known format with matching bit depth,
+  *  4. any known format.
+  */
+-static int select_capture_format(struct v4l2r_context *ctx)
++static int select_capture_format(struct v4l2r_context *ctx, int fd,
++				 struct v4l2_format *result, bool quiet)
+ {
+ 	enum v4l2_buf_type type = ctx->capture_format.type;
+ 	const struct v4l2r_format_info *info;
+@@ -244,7 +255,7 @@ static int select_capture_format(struct v4l2r_context *ctx)
+ 	uint32_t best = 0;
+ 	int best_score = -1;
+ 
+-	while (ioctl(ctx->video_fd, VIDIOC_ENUM_FMT, &fmtdesc) >= 0) {
++	while (ioctl(fd, VIDIOC_ENUM_FMT, &fmtdesc) >= 0) {
+ 		info = v4l2r_format_by_pixelformat(fmtdesc.pixelformat);
+ 		fmtdesc.index++;
+ 
+@@ -268,7 +279,7 @@ static int select_capture_format(struct v4l2r_context *ctx)
+ 
+ 	/* Prefer the driver default over other non-linear candidates. */
+ 	if (best_score < 6 &&
+-	    ioctl(ctx->video_fd, VIDIOC_G_FMT, &format) >= 0) {
++	    ioctl(fd, VIDIOC_G_FMT, &format) >= 0) {
+ 		info = v4l2r_format_by_pixelformat(v4l2r_format_pixelformat(&format));
+ 		if (info && (!ctx->bit_depth || info->bit_depth == ctx->bit_depth))
+ 			best = info->pixelformat;
+@@ -277,7 +288,21 @@ static int select_capture_format(struct v4l2r_context *ctx)
+ 	if (!best)
+ 		return -EINVAL;
+ 
+-	return set_capture_format(ctx, type, best);
++	result->type = type;
++	return set_capture_format(ctx, fd, result, best, quiet);
++}
++
++/*
++ * The CAPTURE format @ctx will decode into, worked out on @fd: a throwaway
++ * open of the same device whose OUTPUT format the caller has set to the
++ * context's. The same selection the first decode makes, so a buffer
++ * allocated in it has exactly the layout the decoder will write. Used for
++ * surfaces a client exports before that first decode (surface.c).
++ */
++int v4l2r_context_probe_capture_format(struct v4l2r_context *ctx, int fd,
++				       struct v4l2_format *format)
++{
++	return select_capture_format(ctx, fd, format, true);
+ }
+ 
+ /* --- OUTPUT bitstream buffers with their media requests --- */
+@@ -754,7 +779,10 @@ VAStatus v4l2r_context_bind_surface(struct v4l2r_context *ctx,
+ 		return VA_STATUS_ERROR_SURFACE_BUSY;
+ 
+ 	if (starting) {
+-		ret = select_capture_format(ctx);
++		struct v4l2_format selected;
++
++		ret = select_capture_format(ctx, ctx->video_fd, &selected,
++					    false);
+ 		if (ret < 0) {
+ 			v4l2r_log("failed to select a CAPTURE format: %s\n",
+ 				  strerror(-ret));
+@@ -860,6 +888,8 @@ VAStatus v4l2r_CreateContext(VADriverContextP va_ctx, VAConfigID config_id,
+ 	pthread_mutex_lock(&drv->mutex);
+ 	id = v4l2r_handles_alloc(&drv->contexts, sizeof(*ctx));
+ 	ctx = V4L2R_CONTEXT(drv, id);
++	if (ctx)
++		ctx->serial = ++drv->context_serial;
+ 	pthread_mutex_unlock(&drv->mutex);
+ 	if (!ctx)
+ 		return VA_STATUS_ERROR_ALLOCATION_FAILED;
+@@ -1028,6 +1058,12 @@ next:
+ 		surface->ctx = ctx;
+ 	}
+ 
++	/* Decoder open, OUTPUT queue set up: from now on a surface exported
++	 * before its first decode can be given this context's layout. */
++	pthread_mutex_lock(&drv->mutex);
++	ctx->output_ready = true;
++	pthread_mutex_unlock(&drv->mutex);
++
+ 	*context_id = id;
+ 	return VA_STATUS_SUCCESS;
+ 
+@@ -1044,7 +1080,11 @@ VAStatus v4l2r_DestroyContext(VADriverContextP va_ctx, VAContextID context_id)
+ 	unsigned int iter = 0;
+ 	struct v4l2r_surface *surface;
+ 
+-	ctx = V4L2R_CONTEXT_GET(drv, context_id);
++	pthread_mutex_lock(&drv->mutex);
++	ctx = V4L2R_CONTEXT(drv, context_id);
++	if (ctx)
++		ctx->output_ready = false;	/* no new exports in its layout */
++	pthread_mutex_unlock(&drv->mutex);
+ 	if (!ctx)
+ 		return VA_STATUS_ERROR_INVALID_CONTEXT;
+ 
+diff --git a/src/surface.c b/src/surface.c
+index b05a104..88c2a00 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -522,6 +522,44 @@ next:
+ 	return VA_STATUS_ERROR_OPERATION_FAILED;
+ }
+ 
++static VAStatus backing_alloc_for_context(struct v4l2r_context *ctx,
++					  struct v4l2r_surface *surface);
++
++/*
++ * The decode context a surface exported before its first decode is going to
++ * be decoded with, when one can be told: GStreamer va opens its context
++ * first, then creates and exports every surface of its pool (and more as the
++ * pool grows) and keeps those dma-bufs for the buffers' lives. Candidates: a
++ * codec context of the surface's size (the render target's own, if it was
++ * given one) whose CAPTURE memory is still undecided or already imports
++ * client dma-bufs; the newest wins. Not a context that decodes into its own
++ * buffers (MMAP, FFmpeg) and not one behind a format converter, whose
++ * backing is the converter's destination.
++ */
++static struct v4l2r_context *export_context(struct v4l2r_driver *drv,
++					    const struct v4l2r_surface *surface)
++{
++	struct v4l2r_context *ctx, *best = NULL;
++	unsigned int iter = 0;
++
++	pthread_mutex_lock(&drv->mutex);
++	while ((ctx = v4l2r_handles_next(&drv->contexts, &iter, NULL))) {
++		if (!ctx->output_ready || !ctx->codec || ctx->conv ||
++		    ctx->capture_memory == V4L2_MEMORY_MMAP)
++			continue;
++		if (surface->ctx && surface->ctx != ctx)
++			continue;
++		if (ctx->picture_width != surface->width ||
++		    ctx->picture_height != surface->height)
++			continue;
++		if (!best || ctx->serial > best->serial)
++			best = ctx;
++	}
++	pthread_mutex_unlock(&drv->mutex);
++
++	return best;
++}
++
+ /* Backing for a bare (unbound) surface, sized like the surface itself. */
+ static VAStatus backing_alloc_default(struct v4l2r_driver *drv,
+ 				      struct v4l2r_surface *surface)
+@@ -536,6 +574,38 @@ static VAStatus backing_alloc_default(struct v4l2r_driver *drv,
+ 	     !v4l2r_converter_available(drv)))
+ 		pixelformat = V4L2_PIX_FMT_P010;
+ 
++	/*
++	 * A client that exports before decoding keeps what it is given now,
++	 * so give it the buffer the decoder will write: allocated by the very
++	 * decoder, in the format the context's first decode selects. A
++	 * generic buffer from whichever decoder enumerates first is NV12 of
++	 * the right pitch, but the AV1 core appends its motion vectors to
++	 * every CAPTURE buffer (3 525 632 instead of 3 133 440 bytes at
++	 * 1920x1088), so that export never fitted: the context decoded into
++	 * buffers of its own and GStreamer showed the empty export (green).
++	 */
++	if (pixelformat == V4L2_PIX_FMT_NV12) {
++		struct v4l2r_context *ctx = export_context(drv, surface);
++
++		if (ctx && backing_alloc_for_context(ctx, surface) ==
++			   VA_STATUS_SUCCESS) {
++			if (surface->backing->pixelformat == pixelformat) {
++				v4l2r_trace("surface 0x%08x: pre-decode backing "
++					    "in the layout of its context "
++					    "(%ux%u pitch %u, %u bytes)\n",
++					    surface->id,
++					    surface->backing->width,
++					    surface->backing->height,
++					    surface->backing->pitch,
++					    surface->backing->plane_size[0]);
++				return VA_STATUS_SUCCESS;
++			}
++			/* That context will not decode to NV12 (a 10-bit
++			 * stream, a converter): the generic buffer below. */
++			v4l2r_surface_free_backing(surface);
++		}
++	}
++
+ 	uint32_t width = surface->width, height = surface->height;
+ 
+ 	/* H713 decode-time scaler: the surface will hold the scaled picture,
+@@ -597,7 +667,7 @@ static VAStatus backing_alloc_for_context(struct v4l2r_context *ctx,
+ 	struct v4l2_format capture = ctx->capture_format;
+ 	struct v4l2r_surface_backing *backing;
+ 	char path[64];
+-	int fd;
++	int fd, ret;
+ 
+ 	snprintf(path, sizeof(path), "/proc/self/fd/%d", ctx->video_fd);
+ 	fd = open(path, O_RDWR | O_CLOEXEC);
+@@ -612,9 +682,17 @@ static VAStatus backing_alloc_for_context(struct v4l2r_context *ctx,
+ 	for (unsigned int i = 0; i < VIDEO_MAX_PLANES; i++)
+ 		backing->dmabuf_fd[i] = -1;
+ 
+-	if (ioctl(fd, VIDIOC_S_FMT, &output) < 0 ||
+-	    ioctl(fd, VIDIOC_S_FMT, &capture) < 0 ||
+-	    backing_export_one(fd, &capture, backing) < 0) {
++	/* Before the first decode (a surface exported up front) the context
++	 * has no CAPTURE format yet: work out the one it will select. */
++	if (ioctl(fd, VIDIOC_S_FMT, &output) < 0)
++		ret = -errno;
++	else if (ctx->capture_memory)
++		ret = ioctl(fd, VIDIOC_S_FMT, &capture) < 0 ? -errno : 0;
++	else
++		ret = v4l2r_context_probe_capture_format(ctx, fd, &capture);
++	if (ret >= 0)
++		ret = backing_export_one(fd, &capture, backing);
++	if (ret < 0) {
+ 		close(fd);
+ 		free(backing);
+ 		return VA_STATUS_ERROR_OPERATION_FAILED;
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index 7728e03..a34218f 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -297,6 +297,12 @@ struct v4l2r_context {
+ 	/* MMAP, or DMABUF when the first surface decoded into had already
+ 	 * been exported (see capture_buffer_bind); 0 until then. */
+ 	enum v4l2_memory capture_memory;
++	/* Creation order (drv->context_serial), and whether the decoder is
++	 * open with its OUTPUT queue set up: surfaces exported before their
++	 * first decode take the layout of the newest such context of their
++	 * size (surface.c, export_context). Both under drv->mutex. */
++	unsigned int serial;
++	bool output_ready;
+ 
+ 	struct v4l2r_output_buffer output[V4L2R_OUTPUT_BUFFERS];
+ 	uint8_t next_output;
+@@ -406,6 +412,9 @@ struct v4l2r_driver {
+ 	struct v4l2r_decoder decoders[V4L2R_MAX_DECODERS];
+ 	unsigned int nb_decoders;
+ 
++	/* Last v4l2r_context.serial handed out. */
++	unsigned int context_serial;
++
+ 	/* Converter detection is deferred until something can actually use
+ 	 * one (see v4l2r_converter_available). */
+ 	struct v4l2r_converter converter;
+@@ -584,6 +593,12 @@ void v4l2r_reap_capture(struct v4l2r_context *ctx);
+ VAStatus v4l2r_context_bind_surface(struct v4l2r_context *ctx,
+ 				    struct v4l2r_surface *surface);
+ 
++/* The CAPTURE format the context's first decode will select, worked out on
++ * @fd, a throwaway open of the same device set to the context's OUTPUT
++ * format. Leaves the context itself untouched. */
++int v4l2r_context_probe_capture_format(struct v4l2r_context *ctx, int fd,
++				       struct v4l2_format *format);
++
+ /* Return a destroyed surface's CAPTURE buffer to the orphan free list. */
+ void v4l2r_context_release_capture(struct v4l2r_context *ctx, int index);
+ 
+-- 
+2.43.0
+

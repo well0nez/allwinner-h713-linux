@@ -1,0 +1,141 @@
+From 9b64061df2e43488f0468403368361b036503203 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Sat, 3 Oct 2026 00:24:17 -0700
+Subject: [PATCH 4/6] AV1: refuse frames after a decode error until the next
+ key frame
+
+On the H713 one damaged AV1 key frame through FFmpeg VA-API hung the whole
+SoC. FFmpeg abandons the rest of a temporal unit once a frame in it fails,
+but has already parsed all of it, so the headers it sends next are read
+against reference state that does not match what was decoded. The AV1 core
+does not survive some of them. Every damaged stream is survivable as long
+as those frames never reach the core.
+
+The kernel's V4L2_BUF_FLAG_ERROR was dropped at dequeue. It is now
+counted per context, and the AV1 codec refuses every non-key frame
+(VA_STATUS_ERROR_DECODING_ERROR) once an error has been seen, or once a
+frame failed here. Errors surface when a decode completes, possibly a frame
+or two after submission, so the gate is conservative: an error that lands
+after a key frame re-arms it until the next one.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/libva-v4l2_request/0004-AV1-refuse-frames-after-a-decode-error-until-the-nex.patch (0004-AV1-refuse-frames-after-a-decode-error-until-the-nex.patch, commit ae94ce3)
+---
+ src/codec_av1.c    | 57 +++++++++++++++++++++++++++++++++++++++++++++-
+ src/decode.c       |  6 +++++
+ src/v4l2_request.h |  2 ++
+ 3 files changed, 64 insertions(+), 1 deletion(-)
+
+diff --git a/src/codec_av1.c b/src/codec_av1.c
+index 02d33aa..9610e42 100644
+--- a/src/codec_av1.c
++++ b/src/codec_av1.c
+@@ -73,6 +73,22 @@ struct av1_context {
+ 	struct v4l2r_picture pend_pic;
+ 	uint32_t pend_current;		/* held frame's current_frame surface */
+ 	uint8_t pend_fallback;		/* mask to use if flushed before next frame */
++
++	/*
++	 * After a failed frame, nothing until the next key frame. Everything
++	 * in between predicts from the failure, so it could only be garbage -
++	 * and worse: FFmpeg abandons the rest of a temporal unit once one
++	 * frame in it fails, but has already parsed all of it, so its idea of
++	 * the reference state no longer matches the frames that were decoded.
++	 * Headers read that way are nonsense to the decoder, and on the H713
++	 * AV1 core one of them hung the SoC outright. A frame fails either
++	 * here (assembly or submission) or in the kernel (an error flag on its
++	 * CAPTURE buffer, seen when decode completes - possibly a frame or two
++	 * later, which is conservative: an error landing after a key frame
++	 * re-arms the gate until the next one).
++	 */
++	bool broken;
++	uint64_t errors_seen;		/* ctx->decode_errors at the last check */
+ };
+ 
+ static void av1_fill_sequence(struct av1_context *codec)
+@@ -816,7 +832,46 @@ static VAStatus av1_render_buffer(struct v4l2r_context *ctx,
+ 	}
+ }
+ 
++static VAStatus av1_end_picture_gated(struct v4l2r_context *ctx);
++
++static VAStatus av1_render_buffer_gated(struct v4l2r_context *ctx,
++					struct v4l2r_buffer *buf)
++{
++	struct av1_context *codec = ctx->codec_priv;
++	VAStatus status = av1_render_buffer(ctx, buf);
++
++	if (status != VA_STATUS_SUCCESS)
++		codec->broken = true;
++
++	return status;
++}
++
+ static VAStatus av1_end_picture(struct v4l2r_context *ctx)
++{
++	struct av1_context *codec = ctx->codec_priv;
++	VAStatus status;
++
++	v4l2r_reap_capture(ctx);
++	if (ctx->decode_errors != codec->errors_seen) {
++		codec->errors_seen = ctx->decode_errors;
++		codec->broken = true;
++	}
++
++	if (codec->have_pic && codec->va_pic.pic_info_fields.bits.frame_type == 0)
++		codec->broken = false;
++	else if (codec->broken) {
++		v4l2r_log("av1: skipping a frame until the next key frame\n");
++		return VA_STATUS_ERROR_DECODING_ERROR;
++	}
++
++	status = av1_end_picture_gated(ctx);
++	if (status != VA_STATUS_SUCCESS)
++		codec->broken = true;
++
++	return status;
++}
++
++static VAStatus av1_end_picture_gated(struct v4l2r_context *ctx)
+ {
+ 	struct av1_context *codec = ctx->codec_priv;
+ 
+@@ -877,7 +932,7 @@ const struct v4l2r_codec v4l2r_codec_av1 = {
+ 	.init = av1_init,
+ 	.uninit = av1_uninit,
+ 	.begin_picture = av1_begin_picture,
+-	.render_buffer = av1_render_buffer,
++	.render_buffer = av1_render_buffer_gated,
+ 	.end_picture = av1_end_picture,
+ 	.flush = av1_flush,
+ };
+diff --git a/src/decode.c b/src/decode.c
+index 777750b..3f9fc16 100644
+--- a/src/decode.c
++++ b/src/decode.c
+@@ -185,6 +185,12 @@ static int dequeue_buffer(struct v4l2r_context *ctx, enum v4l2_buf_type type)
+ 	} else {
+ 		ctx->queued_capture &= ~(UINT64_C(1) << buffer.index);
+ 		ctx->completed++;
++		if (buffer.flags & V4L2_BUF_FLAG_ERROR) {
++			ctx->decode_errors++;
++			v4l2r_log("decode error on CAPTURE #%u (surface 0x%08x)\n",
++				  buffer.index,
++				  capture_surface_id(ctx, buffer.index));
++		}
+ 		v4l2r_trace("DQBUF CAPTURE #%u (surface 0x%08x) decode done, "
+ 			  "completed #%llu, %u still in flight\n", buffer.index,
+ 			  capture_surface_id(ctx, buffer.index),
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index 7d5f020..c459d7f 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -299,6 +299,8 @@ struct v4l2r_context {
+ 	 * first S submitted frames (and their reference reads) to finish. */
+ 	uint64_t submitted;
+ 	uint64_t completed;
++	/* CAPTURE buffers the kernel returned with V4L2_BUF_FLAG_ERROR. */
++	uint64_t decode_errors;
+ 	pthread_mutex_t mutex;
+ 	/* Serialises the codec callbacks against v4l2r_flush_surface(): a
+ 	 * client may read a surface on one thread (flushing a held-back frame)
