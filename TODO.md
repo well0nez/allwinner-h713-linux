@@ -203,6 +203,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       A3 (`h713-warp ctl trace`; **720p-Panel**, Zeit je Bild anders als am HY310), A4 verkürzt auf 15 min (GPU-Zone < 85 C, dmesg leer; anderes Gehäuse und Lüfter),
       A5 über die Register. Vorher Sicherung `/root/sicherung-takt-geu/` und den Rückweg (`/boot/h713-kernel.fit.alt`, `/lib/modules/6.18.38.alt`) bereitstellen.
       Bestanden: Eintrag nach 10. Nicht bestanden oder Hitze: nur den OPP-Satz ändern (`0269`), `0268`/`0270` bleiben.
+- [ ] 2.73 **`pcm.codec` in `rootfs/overlay/etc/asound.conf` zeigt auf eine Karte, die es nicht gibt** (14.10.2026, HY310,
+      `arbeit/medien/D-ton/BERICHT.md` D5): `card "H713AudioCodec"`, die Karte heißt `Codec` (ALSA nimmt das letzte Wort von
+      "H713 Audio Codec"); `aplay -D codec` → `Cannot get card index for H713AudioCodec`. Im Repo benutzt den Namen niemand. Korrektur
+      `card "Codec"`, dann am HY310 `aplay -D codec` mit `DAC Source` = APB hören (danach zurück auf I2S); am G-EU die Kartenkennung lesen.
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
