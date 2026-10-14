@@ -1,0 +1,18 @@
+<settings version="2">
+    <!-- Kodi's settings the profile desktop starts with (media side project, package F). Kodi fills in the rest from its
+         defaults and rewrites this file when it quits; anything not named here is Kodi's own default. -->
+    <!-- sound: ALSA `default` = the DSP bridge (M2 Auflage 5), no PulseAudio/PipeWire. Kodi lists that device as "@" (its name for
+         ALSA default); the string "ALSA:default" is not in its list and was replaced at the first start by the codec's own PCM,
+         which is silent while `DAC Source` = I2S (F, 14.10.2026) -->
+    <setting id="audiooutput.audiodevice">ALSA:@|Default (hy310hdmi Device sounds, mixed into HDMI)</setting>
+    <!-- JSON-RPC on TCP 127.0.0.1:9090 for scripts (the event server's switch, localhost only), no web server, no zeroconf -->
+    <setting id="services.esenabled">true</setting>
+    <setting id="services.esallinterfaces">false</setting>
+    <setting id="services.webserver">false</setting>
+    <setting id="services.zeroconf">false</setting>
+    <!-- a projector shows the picture for hours: no dimming screensaver, no display-off timer -->
+    <setting id="screensaver.mode"></setting>
+    <setting id="powermanagement.displaysoff">0</setting>
+    <!-- without this element Kodi throws the whole file away ("settings file doesn't contain <resolutions>") and starts from its defaults -->
+    <resolutions />
+</settings>
