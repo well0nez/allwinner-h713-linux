@@ -5,7 +5,7 @@
 # a DRM plane and decodes nothing (doku/107 section 1) - this is for the box that plays files.
 # Same format as packages.txt. Everything here must install against the dummies in rootfs/equivs/, without
 # libllvm* and without mesa-libgallium (UMSETZUNG E1). The VA-API driver itself is not a package: this
-# profile lays rootfs/libva/'s tarball (build-rootfs.sh --libva) and rootfs/overlay-media/ (environment, mpv.conf).
+# profile lays rootfs/libva/'s tarball (build-rootfs.sh --libva) and rootfs/overlay-va/ (environment, unit drop-in) and rootfs/overlay-media/ (mpv.conf).
 
 ffmpeg                       # ffmpeg/ffprobe, libav*: software reference decode (framemd5) and the VA-API client (-hwaccel vaapi)
 mpv                          # the player; vo=gpu on EGL, hwdec=vaapi (/etc/mpv/mpv.conf)

@@ -115,8 +115,9 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
                         (default: ${MESA_TAR#"$PROJECT_ROOT"/}); "none" builds without a GPU
                         userspace
   --libva FILE         the VA-API driver tarball out of rootfs/libva/build-libva.sh (default:
-                        ${LIBVA_TAR#"$PROJECT_ROOT"/}); laid in by --profile media, which also lays
-                        rootfs/overlay-media/ (environment, mpv.conf); "none" leaves the driver out
+                        ${LIBVA_TAR#"$PROJECT_ROOT"/}); laid in by --profile media and by --profile desktop (with
+                        rootfs/overlay-va/: environment, the unit drop-in); media also lays rootfs/overlay-media/
+                        (mpv.conf); "none" leaves the driver out
   --authorized-key FILE optionally build in an SSH key. NOT the default and
                         not the release way (107 §3).
   --wifi-env FILE       your own /etc/h713/wifi.env (mode=ap|sta|off, ssid,
@@ -208,8 +209,16 @@ fi
 # What the profiles bring besides packages (media side project, package D): an overlay directory per profile, and for
 # `media` the VA-API driver of rootfs/libva (the decoders are reached through it; libva2, which loads it, is Debian's).
 has_profile() { local p; for p in "${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}"; do [[ "$p" == "$1" ]] && return 0; done; return 1; }
+# The VA-API wiring (driver, environment) belongs to every profile whose players decode through it: `media` (mpv, ffmpeg, GStreamer)
+# and `desktop` (Kodi). AU-31: before, only `media` had it, so a Kodi image would have had no driver. mpv.conf and its shader stay with `media`.
+WANT_VA=0
+if has_profile media || has_profile desktop; then WANT_VA=1; fi
 WANT_LIBVA=0
-if has_profile media && [[ "$LIBVA_TAR" != none ]]; then WANT_LIBVA=1; fi
+if ((WANT_VA)) && [[ "$LIBVA_TAR" != none ]]; then WANT_LIBVA=1; fi
+# the overlay directories to lay, in order: overlay-va/ (the VA wiring, shared) before the profiles' own
+OVERLAY_NAMES=()
+if ((WANT_VA)); then OVERLAY_NAMES+=(va); fi
+OVERLAY_NAMES+=("${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}")
 
 # Resolve wifi.env. The check is done by the same script that runs on the
 # device -- what passes here passes there, and the other way round.
@@ -521,9 +530,9 @@ dry_run() {
 		warn "overlay/ is missing: $OVERLAY"
 	fi
 	local _p
-	for _p in "${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}"; do
+	for _p in "${OVERLAY_NAMES[@]+"${OVERLAY_NAMES[@]}"}"; do
 		[[ -d "$HERE/overlay-$_p" ]] || continue
-		info "plus overlay-$_p/ (profile $_p):"
+		info "plus overlay-$_p/ ($([[ $_p == va ]] && echo "VA-API wiring of media and desktop" || echo "profile $_p")):"
 		(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) -printf '    /%P\n' | sort)
 	done
 	if ((WANT_LIBVA)); then info "plus the VA-API driver: ${LIBVA_TAR#"$PROJECT_ROOT"/}"; fi
@@ -642,7 +651,7 @@ tar -C "$OVERLAY" --exclude=__pycache__ --exclude="*.pyc" -cf - . |
 	done
 info "$(cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) files from overlay/"
 # A profile's own files (media side project, package D): overlay-<profile>/ over overlay/, laid the same way.
-for _p in "${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}"; do
+for _p in "${OVERLAY_NAMES[@]+"${OVERLAY_NAMES[@]}"}"; do
 	[[ -d "$HERE/overlay-$_p" ]] || continue
 	tar -C "$HERE/overlay-$_p" --exclude=__pycache__ --exclude="*.pyc" -cf - . |
 		tar -C "$TREE" --no-same-owner -xf -
@@ -664,8 +673,8 @@ if [[ "$MESA_TAR" != none ]]; then
 else
 	info "mesa: none (--mesa none)"
 fi
-# The VA-API driver for the hardware decoders (rootfs/libva/build-libva.sh), with profile media: one module under
-# /usr/local/lib/dri, which libva finds through LIBVA_DRIVERS_PATH (overlay-media/etc/environment.d). No ldconfig needed.
+# The VA-API driver for the hardware decoders (rootfs/libva/build-libva.sh), with profile media or desktop: one module under
+# /usr/local/lib/dri, which libva finds through LIBVA_DRIVERS_PATH (overlay-va/etc/environment.d). No ldconfig needed.
 if ((WANT_LIBVA)); then
 	[[ -f "$LIBVA_TAR" ]] || die "no VA-API driver tarball at $LIBVA_TAR (rootfs/libva/build-libva.sh makes it; --libva none builds without)"
 	tar -C "$TREE" --no-same-owner -xf "$LIBVA_TAR"
@@ -877,22 +886,28 @@ if [[ "$MESA_TAR" != none ]]; then
 	t "libEGL_mesa.so.0 there"    test -e "$TREE/usr/local/lib/libEGL_mesa.so.0"
 	((! LDCACHE_DONE)) || t "ld.so.cache lists libgbm from /usr/local" grep -qa '/usr/local/lib/libgbm.so.1' "$TREE/etc/ld.so.cache"
 fi
-# Profile media (package D): the players reach the hardware decoders through the VA-API driver of rootfs/libva,
-# which libva2 (Debian's, a dependency of ffmpeg and mpv) loads from LIBVA_DRIVERS_PATH under the name in
-# LIBVA_DRIVER_NAME. Every link of that chain is checked, and the GStreamer elements the decoder tests use are there.
-if has_profile media; then
+# The VA-API wiring (package D; profiles media and desktop, AU-31): the players reach the hardware decoders through the VA-API driver of
+# rootfs/libva, which libva2 (Debian's, a dependency of ffmpeg, mpv and Kodi) loads from LIBVA_DRIVERS_PATH under the name in
+# LIBVA_DRIVER_NAME. Every link of that chain is checked; a system unit (cage, Kodi: AU-32) gets the same variables from the same file
+# through the drop-in /usr/local/share/h713/systemd/h713-media-env.conf, so the file must be plain KEY=VALUE lines (EnvironmentFile=).
+if ((WANT_VA)); then
 	_ENVF="$TREE/etc/environment.d/h713-media.conf"
-	t "media: environment names the VA driver"   grep -qx 'LIBVA_DRIVER_NAME=v4l2_request' "$_ENVF"
-	t "media: environment lifts GStreamer's va filter" grep -qx 'GST_VA_ALL_DRIVERS=1' "$_ENVF"
-	t "media: login shells read the environment" grep -q 'environment.d/h713-media.conf' "$TREE/etc/profile.d/h713-media.sh"
+	t "va: environment names the VA driver"   grep -qx 'LIBVA_DRIVER_NAME=v4l2_request' "$_ENVF"
+	t "va: environment lifts GStreamer's va filter" grep -qx 'GST_VA_ALL_DRIVERS=1' "$_ENVF"
+	t "va: environment is plain KEY=VALUE (EnvironmentFile= reads it)" bash -c '! grep -vE "^(#|[[:space:]]*$|[A-Z][A-Z0-9_]*=[^\"'"'"'\$ ]*$)" "$1"' _ "$_ENVF"
+	t "va: login shells read the environment" grep -q 'environment.d/h713-media.conf' "$TREE/etc/profile.d/h713-media.sh"
+	t "va: unit drop-in names the environment file" grep -qx 'EnvironmentFile=-/etc/environment.d/h713-media.conf' "$TREE/usr/local/share/h713/systemd/h713-media-env.conf"
+	t "va: libva2 (loads the driver)"         grep -q '^Package: libva2$' "$TREE/var/lib/dpkg/status"
+	if ((WANT_LIBVA)); then
+		t "va: LIBVA_DRIVERS_PATH holds the driver" bash -c 'd=$(sed -n "s/^LIBVA_DRIVERS_PATH=//p" "$2"); test -n "$d" && test -f "$1$d/v4l2_request_drv_video.so"' _ "$TREE" "$_ENVF"
+		t "va: driver licence and source note"    test -f "$TREE/usr/local/share/doc/libva-v4l2-request/COPYING" -a -f "$TREE/usr/local/share/doc/libva-v4l2-request/SOURCE"
+	fi
+fi
+# Profile media only: mpv's own configuration, the 10 bit shader, and the GStreamer decoder elements the decoder tests use.
+if has_profile media; then
 	t "media: mpv.conf: hwdec=vaapi"             grep -qx 'hwdec=vaapi' "$TREE/etc/mpv/mpv.conf"
 	t "media: 10 bit shader for mpv.conf"        test -f "$TREE/usr/local/share/h713/mpv/lsb10-x64.glsl"
-	t "media: libva2 (loads the driver)"         grep -q '^Package: libva2$' "$TREE/var/lib/dpkg/status"
 	t "media: GStreamer va and v4l2codecs"       test -e "$TREE/usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstva.so" -a -e "$TREE/usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstv4l2codecs.so"
-	if ((WANT_LIBVA)); then
-		t "media: LIBVA_DRIVERS_PATH holds the driver" bash -c 'd=$(sed -n "s/^LIBVA_DRIVERS_PATH=//p" "$2"); test -n "$d" && test -f "$1$d/v4l2_request_drv_video.so"' _ "$TREE" "$_ENVF"
-		t "media: driver licence and source note"    test -f "$TREE/usr/local/share/doc/libva-v4l2-request/COPYING" -a -f "$TREE/usr/local/share/doc/libva-v4l2-request/SOURCE"
-	fi
 fi
 t "h713-arisc (TODO 5.20)"    test -x "$TREE/usr/local/sbin/h713-arisc"
 # Standby only where the image offers it (docs/subsystems/standby.md): else no suspend at all, which

@@ -23,7 +23,7 @@ ROOT=$(cd "$(dirname "$0")/../.." && pwd)
 LIBVA_VER=1.2
 LIBVA_COMMIT=cac6ece0e23ac1f944dd3af266680aff0c3184df   # v1.2 + one README commit; the SHA-1 of a git commit covers the whole tree
 LIBVA_URL=https://xff.cz/git/libva-v4l2_request/
-DRIVERDIR=/usr/local/lib/dri                            # LIBVA_DRIVERS_PATH in rootfs/overlay-media/etc/environment.d/h713-media.conf
+DRIVERDIR=/usr/local/lib/dri                            # LIBVA_DRIVERS_PATH in rootfs/overlay-va/etc/environment.d/h713-media.conf
 
 CACHE="$ROOT/mainline/build/cache/libva"
 SYSROOT="${SYSROOT:-$ROOT/mainline/build/sysroot-arm64}"
