@@ -34,6 +34,13 @@ Measured on the HY310, 14.10.2026 (arbeit/medien/B6-mythos):
   before this patch the AV1 stream next to the damaged sets is untouched
   only because the engine is dead from the first fault on (0 to 1 faults,
   840 to 888 bit-reader timeouts per run).
+- With this patch, no AV1 stream open: six damaged sets (H.265 8/10 bit,
+  VP9, VP8, MPEG-2, H.264) with a probe after every clip, 60 of 60 probes
+  bit-exact, no timeout; valid streams unchanged - B1 H.265 8/10 bit 11
+  of 12 bit-exact in the run and the twelfth bit-exact in a repeat (its
+  buffer-size probe fell into a watchdog recovery after one read fault at
+  the end of the valid 10-bit 1080p60 clip before it, cause open), B5
+  pairs 10 of 10 rounds bit-exact.
 
 So the IOMMU driver exports sun50i_iommu_reset_client(), which pulses
 the master bits of the client's fwspec, nothing more, under the IOMMU
