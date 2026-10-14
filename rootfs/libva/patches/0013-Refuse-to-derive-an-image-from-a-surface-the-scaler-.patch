@@ -1,0 +1,65 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 14 Oct 2026 19:10:52 +0200
+Subject: [PATCH 13/13] Refuse to derive an image from a surface the scaler
+ shrank
+
+vaDeriveImage() maps a surface's memory for the CPU. A surface the
+decode-time scaler wrote (V4L2_REQUEST_SCALE) holds fewer pixels than
+the client created it for, 1920x1080 in a 3840x2160 surface. The derived
+image described that (the smaller of surface and memory), and vaGetImage
+already refused such a surface, but the clients that map do not read the
+image's size: they size the copy from the surface. Measured on the H713
+(package D, T2): GStreamer va's system-memory path copied 3840 bytes per
+line out of a 1920-pitch mapping, read about 1 MB past its end, crashed
+with SIGSEGV after five frames into fakesink and wrote a broken last
+frame before EOS into a file; FFmpeg's hwmap gives the frame the pool's
+size and only stayed in bounds with an explicit crop. Wrong pixels or a
+crash instead of an error.
+
+Refuse it, as vaGetImage does: whenever the memory behind a surface is
+smaller than the surface, vaDeriveImage fails with
+VA_STATUS_ERROR_OPERATION_FAILED (a trace line under LIBVA_V4L2_TRACE
+says why). Without scaling this cannot happen: decoders pad their
+buffers up, never down, and backing for bare surfaces is allocated at
+least at the surface's size. The export (vaExportSurfaceHandle) is
+unchanged and keeps describing the real size; a GPU importer that asks
+for more checks the buffer itself (Panfrost: EGL_BAD_ALLOC).
+
+License: GPL-3.0-or-later, like the code it changes (libva-v4l2_request).
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/image.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/image.c b/src/image.c
+index 0601f27..c408b22 100644
+--- a/src/image.c
++++ b/src/image.c
+@@ -164,6 +164,23 @@ static VAStatus derive_image(VADriverContextP va_ctx, VASurfaceID surface_id,
+ 	if (view.nb_planes != 1 || view.info->lsb_shift)
+ 		return VA_STATUS_ERROR_OPERATION_FAILED;
+ 
++	/*
++	 * Nor when the memory holds fewer pixels than the surface was created
++	 * for: a surface the decode-time scaler wrote (V4L2_REQUEST_SCALE).
++	 * The image would describe that honestly, but the clients that map
++	 * surfaces size the copy from the surface: GStreamer va copied a
++	 * 3840x2160 picture out of a 1920x1080 mapping, read past its end
++	 * and crashed, FFmpeg's hwmap keeps the frame at the pool's size.
++	 * Refuse, like vaGetImage does; the export describes the real size.
++	 */
++	if (view.width < surface->width || view.height < surface->height) {
++		v4l2r_trace("derive surface 0x%08x refused: created %ux%u, "
++			    "memory %ux%u (scaled)\n", surface->id,
++			    surface->width, surface->height, view.width,
++			    view.height);
++		return VA_STATUS_ERROR_OPERATION_FAILED;
++	}
++
+ 	pthread_mutex_lock(&drv->mutex);
+ 	image_id = v4l2r_handles_alloc(&drv->images, sizeof(*image_object));
+ 	image_object = V4L2R_IMAGE(drv, image_id);
+-- 
+2.43.0
+
