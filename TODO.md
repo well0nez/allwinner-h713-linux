@@ -383,6 +383,9 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 9.2 Cedrus/GPU Testmatrix Decoder × Auflösung × Ausgabe; der KASAN-Fall steht
 - [ ] 9.3 Hardware-Video-Decode und IOMMU in **diesem** Image nachmessen (aus cstengers Baum übernommen)
 - [ ] 9.4 Verwaltungsoberfläche (WLAN, Presets, Startmodus, Updates ohne SSH) — Zuschnitt offen
+- [ ] 9.3a **B6-Fix `0308`/`0309` (medien, 14.10.2026) am HY300PRO-G-EU nachmessen** (am HY310 bestanden, `arbeit/medien/B6-mythos/BERICHT.md` §5g):
+      hevc8-/hevc10-Fehlersätze mit Probe nach jedem Clip ohne Hänger, B1-Kurzsatz HEVC, B5-Paare; dazu AV1 neben beschädigtem HEVC einmal
+      (`av1nb.sh t`): AV1 N/N, kein Stillstand. Werkzeuge `B6-mythos/b6m.sh`, Box-Skripte aus `/root/b6m/` des HY310.
 - [ ] 9.5 Windows: Installer nie dort gelaufen; `sunxi-fel.exe` nach Rückmeldungen
 - [ ] 9.6 Zweites Augenpaar auf die Sicherheitspfade (Gate, Recovery, Installer-Verweigerungen)
 - [ ] 9.7 Recovery-Weg **von einer zweiten Person** gegangen; 20 Gate-Zyklen; HDMI-Modustabelle vollständig (aus `61` A.2)
