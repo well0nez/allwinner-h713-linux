@@ -17,8 +17,12 @@ gstreamer1.0-plugins-bad     # `va`: vah264dec, vah265dec, vaav1dec, ... (D2) an
                              # installed, measured 13.10.2026) and there is no smaller package that has them (D, 13.10.2026)
 gstreamer1.0-gl              # glimagesink, glupload on EGL
 gstreamer1.0-alsa            # alsasink
-gstreamer1.0-pipewire        # pipewiresink/pipewiresrc, for the PipeWire test D6 next to alsasink device=pipewire
-pipewire                     # the mixer between players and the DSP PCM hw:hy310hdmi,0 (docs/subsystems/audio.md)
-pipewire-alsa                # makes `default` of ALSA clients a PipeWire sink: mpv-ALSA's start_threshold race is avoided
-wireplumber                  # the session manager pipewire needs
+gstreamer1.0-pipewire        # pipewiresink/pipewiresrc: GStreamer's native PipeWire path (D6, D7)
+pipewire                     # the mixer between players and the DSP PCM hw:hy310hdmi,0 (docs/subsystems/audio.md); players take it natively
+                             # (pipewiresink, mpv ao=pipewire). Not for Kodi: Kodi plays to ALSA `default` = the DSP bridge (M2, 14.10.2026)
+wireplumber                  # the session manager pipewire needs; overlay-media/etc/wireplumber/ makes the DSP bridge the default sink
+                             # (it picks the codec otherwise, silent with `DAC Source` = I2S) and keeps it off the video devices (D6)
+# Not pipewire-alsa: its 99-pipewire-default.conf turns ALSA's `default` into PipeWire, and with no PipeWire running (there is no
+# user manager on the box) `default` is dead - `aplay` gets "Host is down" (D N1, 14.10.2026), and with it every device sound and
+# Kodi. Add it only if a client ever needs `alsasink device=pipewire`.
 vainfo                       # lists the profiles/entrypoints the VA-API driver advertises: first look when a player stays in software
