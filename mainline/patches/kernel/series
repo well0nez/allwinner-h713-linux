@@ -651,3 +651,9 @@
 0305-soc-sunxi-a-guard-for-the-video-engine-s-shared-bus-reset.patch
 0306-media-cedrus-pulse-the-ve-reset-through-the-guard.patch
 0307-media-verisilicon-h713-av1-hold-the-ve-s-reset-while-the-core-is-touched.patch
+#   0308/0309 (package B6-mythos, 14.10.2026): a damaged H.265 stream leaves the VE's IOMMU ports blocked and the engine
+#   dead until reboot (B6); the ports are released before the engine's next job, while its bus reset is held and only while
+#   no AV1 stream is open (next to a decoding AV1 core the release cost frames or stopped the SoC); an H.265 reference must
+#   be a picture decoded here (index in range, MV column buffer present).
+0308-iommu-sun50i-media-cedrus-release-the-ve-s-iommu-ports-once-its-engine-has-stopped.patch
+0309-media-cedrus-an-h265-reference-must-be-in-the-dpb-the-job-hands-in.patch

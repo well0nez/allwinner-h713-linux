@@ -1,0 +1,99 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: cedrus: an H.265 reference must be a picture decoded here
+
+A reference list entry is an index into the job's DPB, and the engine
+takes it as a frame-info slot. In damaged streams the job can hand in
+0xff (GStreamer's value for a reference it does not have, by all
+appearances): the driver wrote it unchecked into the list word - the
+long-term bit and 0x7f, far outside the 17 slots it fills - and read
+dpb[0xff] itself for the long-term flag and the low-delay test. And an
+entry can name a picture that exists as a buffer but was never decoded
+here, or whose decode was refused before its MV column buffer existed:
+its slot then carries address 0 for the MV columns, the engine reads
+IOVA 0 and does not come back from it (the watchdog ends the job).
+
+Measured on the HY310, 14.10.2026 (arbeit/medien/B6-diagnose, a logging
+copy of this driver, damaged hevc8/hevc10 sets): of about 24 500 P and B
+jobs two had an entry outside the DPB, both 0xff in L0, and both read
+from an unmapped address and never finished. The reads at IOVA 0 and the
+watchdog timeouts behind them (five in one run next to an AV1 stream)
+were gone once the reference's MV column buffer was required
+(arbeit/medien/B6-mythos). No other job had either; valid streams never
+do.
+
+Like H.264 (0277), such a job is refused with -EINVAL before the engine
+is touched, after the capture buffer's MV column buffer exists, so a
+refused job leaves no picture without one.
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
+@@ -413,6 +413,44 @@
+ 	}
+ }
+ 
++/*
++ * A reference list entry is an index into the DPB the job hands in. The
++ * engine takes it as a frame-info slot; past num_active_dpb_entries there
++ * is no picture, and 0xff - what userspace sends for a reference it does
++ * not have - becomes slot 0x7f with the long-term bit, far outside the 17
++ * slots the driver writes. The driver itself reads dpb[] with it as well.
++ */
++static int cedrus_h265_check_ref_list(struct cedrus_ctx *ctx,
++				      const u8 list[], unsigned int num,
++				      const struct v4l2_hevc_dpb_entry *dpb,
++				      u8 num_active_dpb_entries)
++{
++	struct vb2_queue *vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx,
++					       V4L2_BUF_TYPE_VIDEO_CAPTURE);
++	unsigned int i;
++
++	if (num > V4L2_HEVC_DPB_ENTRIES_NUM_MAX)
++		return -EINVAL;
++
++	for (i = 0; i < num; i++) {
++		struct vb2_buffer *buf;
++
++		if (list[i] >= num_active_dpb_entries)
++			return -EINVAL;
++		/*
++		 * The picture must exist and have been decoded here: its MV
++		 * column buffer comes with its first decode, and without it
++		 * the slot would carry address 0 - the engine then reads IOVA
++		 * 0 and does not come back from it (watchdog).
++		 */
++		buf = vb2_find_buffer(vq, dpb[list[i]].timestamp);
++		if (!buf || !vb2_to_cedrus_buffer(buf)->codec.h265.mv_col_buf_size)
++			return -EINVAL;
++	}
++
++	return 0;
++}
++
+ static int cedrus_h265_setup(struct cedrus_ctx *ctx, struct cedrus_run *run)
+ {
+ 	struct cedrus_dev *dev = ctx->dev;
+@@ -483,6 +521,24 @@
+ 		}
+ 	}
+ 
++	/*
++	 * After the MV column buffer of this capture buffer exists, so that a
++	 * rejected job does not leave a picture without one behind.
++	 */
++	if (slice_params->slice_type != V4L2_HEVC_SLICE_TYPE_I &&
++	    cedrus_h265_check_ref_list(ctx, slice_params->ref_idx_l0,
++				       slice_params->num_ref_idx_l0_active_minus1 + 1,
++				       decode_params->dpb,
++				       decode_params->num_active_dpb_entries))
++		return -EINVAL;
++
++	if (slice_params->slice_type == V4L2_HEVC_SLICE_TYPE_B &&
++	    cedrus_h265_check_ref_list(ctx, slice_params->ref_idx_l1,
++				       slice_params->num_ref_idx_l1_active_minus1 + 1,
++				       decode_params->dpb,
++				       decode_params->num_active_dpb_entries))
++		return -EINVAL;
++
+ 	/* Activate H265 engine. */
+ 	cedrus_engine_enable(ctx);
+ 
