@@ -660,3 +660,11 @@
 #   0310 (14.10.2026, Marco): the AV1 decoder stays off for now - node disabled, CONFIG_VIDEO_HANTRO off in the board defconfig;
 #   the code of 0300-0307 stays. Reason in the patch; to bring it back, drop 0310 and turn the option on.
 0310-arm64-dts-h713-the-av1-decoder-stays-off-for-now.patch
+#   0311 is not in this series: it is the diagnostic patch of package VE-stabil (the eMMC data-error path prints the error
+#   class and the controller state before finalize_request() clears them). It stays on the branches medien-ve-diag/-fix/-thld;
+#   0312 and 0313 keep their numbers because the reports name them.
+#   0312 (package VE-stabil, 15.10.2026, measured): a CMD18 that fails mid-transfer leaves the controller receiving into a full
+#   FIFO with the card clock held, so neither CMD12 nor the recovery's CMD13 can go out; the controller is re-initialised like a
+#   runtime resume before the stop. On the HY310: three forced errors and about 2000 natural ones under Kodi 4K, no hang -
+#   a net, not a cure (0313 removes the errors).
+0312-mmc-sunxi-a-failed-multi-block-read-re-initialises-the-controller-before-the-stop.patch

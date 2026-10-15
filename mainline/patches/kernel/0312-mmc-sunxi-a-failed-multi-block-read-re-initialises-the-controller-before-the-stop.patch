@@ -1,0 +1,106 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: mmc: sunxi: a failed multi-block read re-initialises the controller before the stop
+
+A data error in the middle of a CMD18 left the HY310's eMMC dead until a
+power cut (four times by 15.10.2026). Measured with a diagnostic patch (0311;
+it prints what finalize_request() clears and is not part of this series;
+arbeit/medien/VE-stabil, 15.10.2026), every step of it:
+
+ - the error was a data CRC error after 165 of 256 blocks (int_sum 0x80); the
+   FIFO held 6 words and BBCR trailed CBCR by 26 bytes, so the DMA side
+   kept up;
+ - finalize_request() turned the DMA off and reset the FIFO while the
+   card was still sending; the FIFO filled up again (STAS 0x02009109:
+   full, 256 words), CBCR stopped, and the controller held the card clock
+   (RINT bit 10, host data starvation, by the time the stop gave up);
+ - CMD12 was taken (CMDR 0x0000414c, start bit cleared) and never
+   completed: RINT 0x00000420 after 1000 ms;
+ - the block layer's recovery then sent CMD13 (CMDR 0x0000014d, CARG
+   0x00010000), which was still pending 120 s later with RINT 0x20 and the
+   FIFO full; VideoPlayer waited in __mmc_send_status, jbd2 behind it.
+
+A command needs the card clock, and the clock stays held as long as the
+controller is receiving into a full FIFO. Before the stop goes out, bring
+the controller back exactly as runtime resume does each time the eMMC
+wakes from its 50 ms autosuspend: pulse the reset line, init_host, then
+bus width and clock from ios (which restores NTSR, the delay lines, DDR
+and the HS400 strobe settings). The idle controller ignores what the card
+still drives, CMD12 takes the card out of its data state, and the core's
+recovery (CMD13, retries) runs as designed.
+
+Only CMD18: a single block fits the 1 KiB FIFO, writes do not fill it,
+and the CMD53 path has its own recovery. This does not explain or remove
+the CRC error itself; it makes one survivable.
+
+Measured with this patch (arbeit/medien/VE-stabil, parts 3 and 4, 15.10.2026):
+
+ - three data errors forced into a running dd read (the HS400 strobe delay
+   moved for 0.25 s each: a start-bit error, a start-bit plus data CRC
+   error, and a data CRC error that left the FIFO full - the state that
+   stopped the box) were each caught and the controller re-initialised
+   within about 50 ms; no CMD12 failed, dd read on without an error
+   (2.6 GB), nothing stayed in flight, the ext4 error counts stayed 0;
+ - about 2000 natural data CRC errors under Kodi 4K playback (up to 742 a
+   minute) did not stop the box once; in the worst storm one dd read still
+   failed with an I/O error after all its retries, so this is a net and
+   not a cure - the errors themselves are what 0313 removes.
+---
+ drivers/mmc/host/sunxi-mmc.c | 40 ++++++++++++++++++++++++++++++++++++++++
+ 1 file changed, 40 insertions(+)
+
+--- a/drivers/mmc/host/sunxi-mmc.c
++++ b/drivers/mmc/host/sunxi-mmc.c
+@@ -909,6 +909,44 @@
+ 	mmc_request_done(host->mmc, mrq);
+ }
+ 
++static void sunxi_mmc_set_bus_width(struct sunxi_mmc_host *host,
++				   unsigned char width);
++static void sunxi_mmc_set_clk(struct sunxi_mmc_host *host, struct mmc_ios *ios);
++
++/*
++ * A read that failed in the middle leaves the controller unable to send any
++ * further command (measured on the HY310, 15.10.2026): finalize_request()
++ * stops the DMA and resets the FIFO while the card is still sending the rest
++ * of the multi-block read, the FIFO fills up again with nobody to empty it,
++ * the controller holds the card clock (flow control; RINT shows the host
++ * data-starvation bit 10), and a command needs that clock. CMD12 is taken
++ * (CMDR start bit cleared) but never completes, and the CMD13 the block
++ * layer's recovery sends next waits forever - every reader of the eMMC ends
++ * up in D state, and only a power cut helps.
++ *
++ * Out of that state the controller has to stop receiving. Bring it back the
++ * way runtime resume does every time the eMMC wakes up (reset line pulsed,
++ * init_host, bus width and clock with all timing registers from ios) before
++ * the stop goes out: the idle controller ignores the data the card still
++ * drives, the card clock runs, CMD12 takes the card out of its data state,
++ * and the core's recovery (CMD13, retry) can do its work.
++ */
++static void sunxi_mmc_reinit_after_read_error(struct sunxi_mmc_host *host)
++{
++	struct mmc_host *mmc = host->mmc;
++
++	dev_warn_ratelimited(mmc_dev(mmc),
++			     "read error: re-initialising the controller (STAS=0x%08x CBCR=0x%08x BBCR=0x%08x)\n",
++			     mmc_readl(host, REG_STAS), mmc_readl(host, REG_CBCR),
++			     mmc_readl(host, REG_BBCR));
++
++	if (!IS_ERR(host->reset))
++		reset_control_reset(host->reset);
++	sunxi_mmc_init_host(host);
++	sunxi_mmc_set_bus_width(host, mmc->ios.bus_width);
++	sunxi_mmc_set_clk(host, &mmc->ios);
++}
++
+ static irqreturn_t sunxi_mmc_handle_manual_stop(int irq, void *dev_id)
+ {
+ 	struct sunxi_mmc_host *host = dev_id;
+@@ -1218,6 +1256,8 @@
+ 	 * Additionally we have wait states within this function
+ 	 * so having it in a lock is a very bad idea.
+ 	 */
++	if (mrq->cmd->opcode == MMC_READ_MULTIPLE_BLOCK)
++		sunxi_mmc_reinit_after_read_error(host);
+ 	sunxi_mmc_send_manual_stop(host, mrq);
+ 
+ 	spin_lock_irqsave(&host->lock, iflags);
