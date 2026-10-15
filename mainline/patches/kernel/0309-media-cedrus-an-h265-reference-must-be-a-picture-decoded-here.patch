@@ -12,14 +12,13 @@ here, or whose decode was refused before its MV column buffer existed:
 its slot then carries address 0 for the MV columns, the engine reads
 IOVA 0 and does not come back from it (the watchdog ends the job).
 
-Measured on the HY310, 14.10.2026 (arbeit/medien/B6-diagnose, a logging
-copy of this driver, damaged hevc8/hevc10 sets): of about 24 500 P and B
+Measured on the HY310, 14.10.2026 (a logging copy of this driver,
+damaged hevc8/hevc10 sets): of about 24 500 P and B
 jobs two had an entry outside the DPB, both 0xff in L0, and both read
 from an unmapped address and never finished. The reads at IOVA 0 and the
 watchdog timeouts behind them (five in one run next to an AV1 stream)
-were gone once the reference's MV column buffer was required
-(arbeit/medien/B6-mythos). No other job had either; valid streams never
-do.
+were gone once the reference's MV column buffer was required. No other
+job had either; valid streams never do.
 
 Like H.264 (0277), such a job is refused with -EINVAL before the engine
 is touched, after the capture buffer's MV column buffer exists, so a

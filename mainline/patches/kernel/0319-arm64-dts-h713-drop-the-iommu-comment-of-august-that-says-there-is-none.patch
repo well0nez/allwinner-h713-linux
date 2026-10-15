@@ -1,0 +1,76 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: drop the IOMMU comment of August that says there is none
+
+Right below the IOMMU comment 0297 corrected stood a block of 09.08.2026
+about the node at the H6's address 0x030f0000, ending in "the honest
+state is 'no IOMMU' ... cedrus falls back to dma-direct on CMA". Since
+the decoders the VE is translated (0297); a reader of the dtsi got the
+opposite of the kernel's state. The block goes. The stock DTB's master
+numbers it quoted (the VE master 0, the AV1 core master 5) move into the
+comment of the node, next to the other values read from the stock DTB.
+
+Comment only; the device tree is unchanged.
+---
+ .../arm64/boot/dts/allwinner/sun50i-h713.dtsi | 46 ++-----------------
+ 1 file changed, 5 insertions(+), 41 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+index 60ee4c271..00dab433c 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1271,50 +1271,14 @@ ohci2: usb@4300400 {
+ 		 * ARM_DMA_USE_IOMMU was an ARM32 one and does not apply on
+ 		 * arm64.) The address is verified, see the node below.
+ 		 */
+-		/*
+-		 * DISABLED 2026-08-09 -- this node is inert on H713 and was
+-		 * actively harmful while the VE referenced it.
+-		 *
+-		 * Read back on hardware with the driver bound and iommu group 0
+-		 * created: every register at 0x030f0000 is 0, including ENABLE
+-		 * (+0x20) and TTB (+0x30). An attached domain writes both, so
+-		 * nothing is responding at this address.
+-		 *
+-		 * 0x030f0000 is the H6 base and is simply wrong here. The
+-		 * stock DTB is unambiguous:
+-		 *
+-		 *   mmu_aw: iommu@2010000 {
+-		 *       compatible = "allwinner,sunxi-iommu";
+-		 *       reg = <0x2010000 0x1000>;
+-		 *       interrupts = <0 0x47 4>;      // SPI 71
+-		 *       clocks = <&ccu 0x30>;
+-		 *       #iommu-cells = <2>;
+-		 *   };
+-		 *
+-		 * and its ve@1c0e000 references it as iommus = <&mmu_aw 0 1>
+-		 * (master 0), av1@1c0d000 as <&mmu_aw 5 1>.
+-		 *
+-		 * Two reasons this is not just a reg fix. The vendor binding is
+-		 * `allwinner,sunxi-iommu` with #iommu-cells = <2>, while
+-		 * mainline's sun50i-iommu is #iommu-cells = <1> -- so the cell
+-		 * count and the driver both differ, and whether the H713 block
+-		 * is register-compatible with the H6 one is untested. And
+-		 * probing it wants the CCU gate checked first (read
+-		 * 0x0200169c-style gates; the CCU is always clocked so that
+-		 * read is free) because an ungated block hangs this
+-		 * interconnect.
+-		 *
+-		 * Until someone does that deliberately, the honest state is
+-		 * "no IOMMU", which is also the safer one: cedrus falls back to
+-		 * dma-direct on CMA instead of being handed IOVAs that nothing
+-		 * translates.
+-		 */
+ 		/*
+ 		 * Every value here is read out of the stock DTB on board B's
+ 		 * own eMMC (`local/h713-lab/captures/board-b/`), not inferred
+-		 * from the H6. The previous node lived at the H6's 0x030f0000,
+-		 * where this SoC has nothing: every register read 0, including
+-		 * ENABLE and TTB, which an attached domain would have written.
++		 * from the H6; there the VE is master 0 (iommus = <&mmu_aw 0 1>)
++		 * and the AV1 core master 5. The previous node lived at the H6's
++		 * 0x030f0000, where this SoC has nothing: every register read 0,
++		 * including ENABLE and TTB, which an attached domain would have
++		 * written.
+ 		 *
+ 		 * Confirmed on hardware 2026-08-17 after gating the clock on
+ 		 * (the block is clocked off at reset, and probing it ungated

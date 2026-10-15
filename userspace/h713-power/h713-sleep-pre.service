@@ -1,0 +1,16 @@
+# Before every sleep (sleep.target, whoever asked: the power key, the launcher, Kodi's menu, systemctl suspend): remember the
+# mode - HDMI or a mode unit such as Kodi - in /run/h713-mode.resume and end the mode unit, so that nothing holds the panel
+# while the display MIPS is parked. h713-sleep-post.service brings both back. Media side project, package H; before it Kodi
+# ended itself through Conflicts=sleep.target, which left no way to know that it had been running.
+[Unit]
+Description=H713: remember the mode and end it before a sleep (h713-mode sleep-pre)
+Before=sleep.target
+
+[Service]
+Type=oneshot
+ExecStart=/usr/local/sbin/h713-mode sleep-pre
+# Kodi quits cleanly in a few seconds (h713-kodi-switch waits up to 15 s, the unit 20 s)
+TimeoutStartSec=45
+
+[Install]
+WantedBy=sleep.target

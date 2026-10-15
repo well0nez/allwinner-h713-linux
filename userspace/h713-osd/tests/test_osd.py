@@ -92,7 +92,9 @@ class FakeTv(threading.Thread):
         return box
 
 
-class OsdTest(unittest.TestCase):
+class OsdBase(unittest.TestCase):
+    """the daemon, the fake h713-tv, the helpers (test_launcher.py builds on it)"""
+
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
         d = self.tmp.name
@@ -134,6 +136,8 @@ class OsdTest(unittest.TestCase):
         time.sleep(0.15)
         return r.stdout
 
+
+class OsdTest(OsdBase):
     def test_volume_bottom_centre(self):
         self.start()
         self.ctl("volume", "40")

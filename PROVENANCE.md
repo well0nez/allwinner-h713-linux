@@ -6,7 +6,7 @@ Who made what, where it comes from, and what is deliberately absent.
 
 `mainline/` is a **git subtree** of [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline)
 at commit `8860991`, with full history - you can `git log` any of his commits here. On top of it,
-`mainline/patches/kernel/series` carries 336 patches:
+`mainline/patches/kernel/series` carries 341 patches:
 
 | Origin | Patches | Note |
 |---|---|---|
@@ -19,7 +19,7 @@ at commit `8860991`, with full history - you can `git log` any of his commits he
 | cstenger, branch `h713-av1-probe` (`43b2cdd` 03.10.2026): the cedrus decoder series | 26 (`0271` - `0296`) | his `0099` (scale down into the capture buffer), `0101` - `0125` in his order (cedrus hardening, 10-bit buffer sizing, the polyphase scaler for H.265 and H.264, `enum_framesizes`, field-coded MPEG-2, capture pitch 32), `0143`/`0154`/`0155` (VP9 on the video engine), `0144` (engine clock), `0151` (bidirectional capture mappings, needed behind the IOMMU). Message and diff byte-identical to his files; the head gains `From:`, `Subject:` and `Origin:`. Two of them are other people's work that he back-ported, and the head says `From: Christopher Stenger` while the real author is named in the text: `0277` is Pengpeng Hou's linux-media patch "reject invalid active H.264 ref indices", `0278` is Samuel Holland's "Fix missing cleanup in error path" (v2 posted by Andrey Skvortsov). `0292` (VP9) was derived by him from the vendor library's behaviour; its quantiser tables are the VP9 specification's (section 8.6.1) and one tile-offset formula follows libvpx, both named in the comments. Not taken from his tree: `0126`/`0127` (IOVA reservation, only for a display inside the IOMMU group), `0052`/`0080` (display behind the IOMMU), `0092` (render node, only for mpv on bare DRM), `0149` (10-bit video plane), `0140`/`0141` (AV1 presence probe) |
 | well0nez | `0297` - `0298` | `0297` corrects the IOMMU comment of `0024e` (the codecs are translated, the display is not); `0298` resets the video engine when a job of another codec starts - the fix for a fault that only shows next to his VP9 (H.265 next to VP9 failed every job). The defconfig turns the IOMMU on (an idea read from his defconfig, one configuration line) |
 | cstenger, branch `h713-av1-probe`: the AV1 decoder | 5 (`0300` - `0304`) | his `0150` (the `PL10` pixel format and the DRM modifier, as `0300`), `0145` (hantro hooks for a variant without a post-processor), `0146` with the node from his `0140` (`0302`: his two patches do not apply to our tree, the node is created with his change in it, text and 50 lines of node his), `0147` (the H713 AV1 driver, `0303`), `0148` (binding). Byte-identical where stated, same head additions. `0303` is generated code on his side; its `sunxi_h713_av1_gen.c` is ported from Collabora's `rockchip_vpu981_hw_av1_dec.c` (Benjamin Gaignard, GPL-2.0-only), whose copyright line the file keeps. His generator and test rig were neither taken nor read here; we keep the generated code. The AV1 decoder is switched off by `0310` at present |
-| well0nez | `0305` - `0310`, `0312` - `0314` | `0305` - `0307` a guard for the video engine's shared bus reset (cedrus and the AV1 core); `0308`/`0309` release the engine's IOMMU ports once it has stopped after a damaged H.265 stream, and refuse an H.265 reference that is not in the DPB; `0310` turns the AV1 decoder off; `0312`/`0313` the eMMC host (re-initialise the controller before the stop after a failed multi-block read; start a read block only when the FIFO has room, the card read threshold); `0314` afbd reads the capture index as the field [2:0] of its word. Own work, no foreign material; `0311` is a diagnostic patch that is not in the series |
+| well0nez | `0305` - `0310`, `0312` - `0319` | `0305` - `0307` a guard for the video engine's shared bus reset (cedrus and the AV1 core); `0308`/`0309` release the engine's IOMMU ports once it has stopped after a damaged H.265 stream, and refuse an H.265 reference that is not a picture decoded here; `0310` turns the AV1 decoder off; `0312`/`0313` the eMMC host (re-initialise the controller before the stop after a failed multi-block read; start a read block only when the FIFO has room, the card read threshold); `0314` afbd reads the capture index as the field [2:0] of its word; `0315` - `0319` (15.10.2026) the video engine at 600 MHz unless the AV1 decoder is on, the H.265 collocated index checked, the VP9 code without a 2 KiB stack frame, the dead AV1 node of `0024` and an outdated IOMMU comment removed. Own work, no foreign material. What `0308` says about the vendor's IOMMU fault handler was read in the stock 5.4.99 kernel of the HY310 (disassembly of `sunxi_iommu_irq` and the TLB functions, for interoperability; nothing taken, register names from the public BSP header `sunxi-iommu.h`); `0311` is a diagnostic patch that is not in the series |
 
 cstenger says the same in his own `PROVENANCE.md`: "the bulk of the H713 driver support … originates
 from well0nez". The direction of the debt runs both ways - his arm64 work is what made the 6.18 line
@@ -67,6 +67,16 @@ its SHA-256 in `rootfs/mesa/build-mesa.sh`, built with the panfrost gallium driv
 no patches of ours). The kernel side of the Mali-G31 is mainline panfrost, with cstenger's `0053` (imported
 buffers not mapped cacheable) from his branch and our `0024e` (operating points, cooling map) on top;
 nothing further was taken from his tree for the keystone work.
+
+The launcher's text (media side project, package H) is **FreeType** and **Quicksand**, both Debian trixie, neither modified and
+neither stored here. `userspace/libh713osd/text.c` draws glyphs with FreeType 2.13.3 (`libfreetype-dev`, in the build sysroot
+through `release/build-all.sh`'s `SYSROOT_PACKAGES`); `h713-osd` links `libfreetype.a` and the archives it needs (libpng 1.6.48,
+bzip2, brotli, zlib, all from the same sysroot) **statically**, so the base image carries no FreeType package. FreeType is dual
+licensed (FreeType License or GPL-2.0-only); this program is GPL-2.0, which takes the second. The face is `fonts-quicksand`
+0.2016-2.1 (Quicksand Medium, **SIL Open Font License 1.1**, copyright file `/usr/share/doc/fonts-quicksand/copyright`), a package
+line of the `desktop` profile (`rootfs/packages-desktop.txt`); h713-osd opens it at run time from
+`/usr/share/fonts/truetype/quicksand/`. The OFL allows use and redistribution with the licence kept - the package carries it -
+and forbids selling the font by itself. The arrows of the launcher's hint line are drawn as shapes because the face has no U+25B2.
 
 ## The decoders, the VA-API driver and Mesa (`rootfs/`)
 

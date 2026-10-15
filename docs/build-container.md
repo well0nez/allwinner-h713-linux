@@ -29,13 +29,15 @@ podman exec -u root h713-build apt-get install -y --no-install-recommends \
   python3-setuptools python3-pyelftools \
   mmdebstrap e2fsprogs zstd \
   meson ninja-build python3-mako python3-yaml python3-packaging \
-  libwayland-bin libwayland-dev
+  libwayland-bin libwayland-dev libfreetype-dev
 ```
 
 The last two lines are for mesa (`rootfs/mesa/build-mesa.sh`, cross-built with the same clang against the arm64
 sysroot; the sysroot carries `libstdc++-14-dev` for mesa's C++ parts, and `libwayland-dev`,
 `libwayland-egl-backend-dev`, `wayland-protocols` and `libglvnd-dev` for its Wayland platform and glvnd).
 `libwayland-bin` brings `wayland-scanner`, which runs on the build machine; `libwayland-dev` its pkg-config file.
+`libfreetype-dev` is for the host tests of the overlay text (`userspace/libh713osd`, `userspace/h713-osd`; the board gets FreeType
+linked statically from the sysroot's own `libfreetype-dev`).
 
 `python3-setuptools` is needed by U-Boot's in-tree `pylibfdt`; `mmdebstrap` and `e2fsprogs` build the
 root filesystem and its ext4 images; `libusb-1.0-0-dev` builds `sunxi-fel`.
