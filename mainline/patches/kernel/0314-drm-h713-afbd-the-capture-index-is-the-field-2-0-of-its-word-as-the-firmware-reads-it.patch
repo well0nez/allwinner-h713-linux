@@ -25,7 +25,26 @@ three ring slots stays. The first time the bits above it come or go, one
 journal line says so (not one per frame). Nothing is written to INCAP: what
 the upper bits mean is not known.
 
-Not yet measured with this patch (see arbeit/medien/standby-fix).
+Measured with this patch, 15.10.2026 on the HY310 (arbeit/medien/standby-fix,
+Kodi started before the sleep in 13 of the 25, ThinkPad 1080p60 as the
+source): 25 standbys to RAM by RTC alarm, 20 in a row without a warm start,
+and in every one the warp had pictures again, 297 to 299 in 5 s, 9.6 to
+15.7 s after the verdict (the spread is the source renegotiating after the
+HPD replug, 1.4 s or 4.2 to 5.0 s, r = 0.89). The bits above [2:0] were set
+after 9 of the 25 standbys (7 times new, 2 times left from the one before):
++0xa0c 0x4b0..0x4b2 and 0x4c0..0x4c2, +0xa08 0x4b, in 3144 to 3159 of the
+same number of samples, so every one of them would have been dropped by the
+whole-word check. Pictures came in all 9, and the rate is the clean state's:
+59.40 warp frames/s over 60 s against 59.43 (the panel's vsync is 59.4 Hz),
+the plane takes a new slot at each vsync with the warp off (59.40 of 59.40),
+`h713-warp ctl check 900`: 0 frames with differing rows in both. The line
+in the journal came once per change (also: a word such as 0x80200d00 is read
+for 11 to 16 ms at 7 of the 25 resumes before the index is valid, and the
+bits then read clear).
+
+Not measured: the picture's content on the wall in the set state, its
+latency, the same standby with the old check in the same boot, the G-EU.
+Where the bits come from stays open.
 ---
  drivers/gpu/drm/tiny/sun50i-h713-afbd.c | 55 ++++++++++++++++++++++++++++++++++++++++++----
  1 file changed, 51 insertions(+), 4 deletions(-)
