@@ -1,15 +1,15 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0
 #
-# h713-kodi-switch quit PID - leaving Kodi cleanly (h713-kodi.service ExecStop=; profile desktop, media side project,
-# packages F-opt, G): ask Kodi to quit over its JSON-RPC (TCP 127.0.0.1:9090, guisettings.xml) and wait up to 15 s for
+# h713-kodi-switch quit PID - leaving Kodi cleanly (h713-kodi.service ExecStop=; profile desktop): ask Kodi to quit over
+# its JSON-RPC (TCP 127.0.0.1:9090, guisettings.xml) and wait up to 15 s for
 # cage (PID) to end with it. Kodi then quits like from its own menu and keeps its state; whatever is left gets systemd's
-# SIGTERM afterwards, as before. Since package G h713-tv and h713-warp keep running under Kodi, there is nothing to start
-# again: under `h713-tv ctl source auto` (the unit's start) the ring comes back by itself once cage is gone (M4 A1).
+# SIGTERM afterwards, as before. h713-tv and h713-warp keep running under Kodi, so there is nothing to start
+# again: under `h713-tv ctl source auto` (the unit's start) the ring comes back by itself once cage is gone.
 case ${1:-} in
 quit)
 	# Kodi gone already (its own Exit): systemd runs ExecStop anyway, with MAINPID unset - "kill -0 0" would hold the
-	# way back to the HDMI input 15 s (G1, 15.10.2026)
+	# way back to the HDMI input 15 s (measured 15.10.2026)
 	[ -n "${2:-}" ] || exit 0
 	printf '{"jsonrpc":"2.0","id":1,"method":"Application.Quit"}' | nc -N -w 2 127.0.0.1 9090 >/dev/null 2>&1
 	i=0

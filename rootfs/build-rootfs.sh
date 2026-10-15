@@ -206,11 +206,11 @@ if [[ -n "$PROFILES" ]]; then
 	done
 fi
 
-# What the profiles bring besides packages (media side project, package D): an overlay directory per profile, and for
-# `media` the VA-API driver of rootfs/libva (the decoders are reached through it; libva2, which loads it, is Debian's).
+# What the profiles bring besides packages: an overlay directory per profile, and for `media` and `desktop` the VA-API
+# driver of rootfs/libva (the decoders are reached through it; libva2, which loads it, is Debian's).
 has_profile() { local p; for p in "${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}"; do [[ "$p" == "$1" ]] && return 0; done; return 1; }
 # The VA-API wiring (driver, environment) belongs to every profile whose players decode through it: `media` (mpv, ffmpeg, GStreamer)
-# and `desktop` (Kodi). AU-31: before, only `media` had it, so a Kodi image would have had no driver. mpv.conf and its shader stay with `media`.
+# and `desktop` (Kodi); a Kodi image without it would have no driver. mpv.conf and its shader stay with `media`.
 WANT_VA=0
 if has_profile media || has_profile desktop; then WANT_VA=1; fi
 WANT_LIBVA=0
@@ -639,22 +639,29 @@ rm -f "$BOOTSTRAP_TAR"
 
 # --- 3. overlay ------------------------------------------------------------
 say "3/6 lay the overlay"
-# -a keeps permissions and symlinks; the overlay is deliberately root:root, so
-# a chown to 0:0 follows (in case it was built as a user, see --mode=unshare).
+# The overlay is deliberately root:root, so a chown to 0:0 follows (in case it was built
+# as a user, see --mode=unshare).
 # --exclude: a __pycache__ appears as soon as somebody starts a script out of
 # the overlay by hand, and would otherwise end up in the image (11.09.2026).
-tar -C "$OVERLAY" --exclude=__pycache__ --exclude="*.pyc" -cf - . |
-	tar -C "$TREE" --no-same-owner -xf -
+# The modes are fixed, not taken from the checkout: git keeps only the executable bit, so the
+# files came out as 0664/0775 under umask 002 and 0644/0755 under 022 - two builds of one commit,
+# two trees. LAY_MODE gives files 0644 (0755 if executable) and directories 0755 whatever the
+# umask was; tar -p keeps them on the way in.
+LAY_MODE='u+rwX,go+rX,go-w'
+lay_overlay() { # $1 = a directory of the repository, laid over $TREE
+	tar -C "$1" --exclude=__pycache__ --exclude="*.pyc" --mode="$LAY_MODE" -cf - . |
+		tar -C "$TREE" --no-same-owner -p -xf -
+}
+lay_overlay "$OVERLAY"
 (cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) -printf '%P\n') | \
 	while read -r rel; do
 		chown 0:0 "$TREE/$rel" 2>/dev/null || true
 	done
 info "$(cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) files from overlay/"
-# A profile's own files (media side project, package D): overlay-<profile>/ over overlay/, laid the same way.
+# A profile's own files: overlay-<profile>/ over overlay/, laid the same way.
 for _p in "${OVERLAY_NAMES[@]+"${OVERLAY_NAMES[@]}"}"; do
 	[[ -d "$HERE/overlay-$_p" ]] || continue
-	tar -C "$HERE/overlay-$_p" --exclude=__pycache__ --exclude="*.pyc" -cf - . |
-		tar -C "$TREE" --no-same-owner -xf -
+	lay_overlay "$HERE/overlay-$_p"
 	(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) -printf '%P\n') | \
 		while read -r rel; do chown 0:0 "$TREE/$rel" 2>/dev/null || true; done
 	info "$(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) files from overlay-$_p/ (profile $_p)"
@@ -882,13 +889,14 @@ t "no Debian libgallium"     test -z "$(find "$TREE/usr/lib/aarch64-linux-gnu" -
 t "glvnd libEGL.so.1"        test -e "$TREE/usr/lib/aarch64-linux-gnu/libEGL.so.1"
 t "glvnd libGLESv2.so.2"     test -e "$TREE/usr/lib/aarch64-linux-gnu/libGLESv2.so.2"
 if [[ "$MESA_TAR" != none ]]; then
+	t "mesa licence texts (MIT notice)" test -f "$TREE/usr/local/share/doc/mesa/licenses/MIT" -a -f "$TREE/usr/local/share/doc/mesa/license.rst"
 	t "ICD file for libEGL_mesa"  grep -q '"libEGL_mesa.so.0"' "$TREE/etc/glvnd/egl_vendor.d/50_mesa.json"
 	t "libEGL_mesa.so.0 there"    test -e "$TREE/usr/local/lib/libEGL_mesa.so.0"
 	((! LDCACHE_DONE)) || t "ld.so.cache lists libgbm from /usr/local" grep -qa '/usr/local/lib/libgbm.so.1' "$TREE/etc/ld.so.cache"
 fi
-# The VA-API wiring (package D; profiles media and desktop, AU-31): the players reach the hardware decoders through the VA-API driver of
+# The VA-API wiring (profiles media and desktop): the players reach the hardware decoders through the VA-API driver of
 # rootfs/libva, which libva2 (Debian's, a dependency of ffmpeg, mpv and Kodi) loads from LIBVA_DRIVERS_PATH under the name in
-# LIBVA_DRIVER_NAME. Every link of that chain is checked; a system unit (cage, Kodi: AU-32) gets the same variables from the same file
+# LIBVA_DRIVER_NAME. Every link of that chain is checked; a system unit (cage, Kodi) gets the same variables from the same file
 # through the drop-in /usr/local/share/h713/systemd/h713-media-env.conf, so the file must be plain KEY=VALUE lines (EnvironmentFile=).
 if ((WANT_VA)); then
 	_ENVF="$TREE/etc/environment.d/h713-media.conf"
@@ -901,6 +909,7 @@ if ((WANT_VA)); then
 	if ((WANT_LIBVA)); then
 		t "va: LIBVA_DRIVERS_PATH holds the driver" bash -c 'd=$(sed -n "s/^LIBVA_DRIVERS_PATH=//p" "$2"); test -n "$d" && test -f "$1$d/v4l2_request_drv_video.so"' _ "$TREE" "$_ENVF"
 		t "va: driver licence and source note"    test -f "$TREE/usr/local/share/doc/libva-v4l2-request/COPYING" -a -f "$TREE/usr/local/share/doc/libva-v4l2-request/SOURCE"
+		t "va: the Corresponding Source rides along" test -f "$TREE/usr/local/share/doc/libva-v4l2-request/source/patches/series" -a -f "$TREE/usr/local/share/doc/libva-v4l2-request/source/build-libva.sh"
 	fi
 fi
 # Profile media only: mpv's own configuration, the 10 bit shader, and the GStreamer decoder elements the decoder tests use.
@@ -908,6 +917,10 @@ if has_profile media; then
 	t "media: mpv.conf: hwdec=vaapi"             grep -qx 'hwdec=vaapi' "$TREE/etc/mpv/mpv.conf"
 	t "media: 10 bit shader for mpv.conf"        test -f "$TREE/usr/local/share/h713/mpv/lsb10-x64.glsl"
 	t "media: GStreamer va and v4l2codecs"       test -e "$TREE/usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstva.so" -a -e "$TREE/usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstv4l2codecs.so"
+	# Nothing starts PipeWire by itself (packages-media.txt): the four user units are masked for every user
+	for _u in pipewire.service pipewire.socket wireplumber.service filter-chain.service; do
+		t "media: user unit $_u masked"          test "$(readlink "$TREE/etc/systemd/user/$_u")" = /dev/null
+	done
 fi
 t "h713-arisc (TODO 5.20)"    test -x "$TREE/usr/local/sbin/h713-arisc"
 # Standby only where the image offers it (docs/subsystems/standby.md): else no suspend at all, which
