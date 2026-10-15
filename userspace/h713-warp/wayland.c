@@ -1196,7 +1196,51 @@ static struct import *import_get(struct server *s, struct wl_client *c, const st
 
 static const struct wl_buffer_interface buffer_impl = { .destroy = destroy_res };
 
-/* checked before anything is imported (v3 section 3): table, size, pitch, the dma-buf's length */
+#define ALIGN_UP(v, a)	(((v) + (a) - 1) / (a) * (a))
+
+/*
+ * The bytes the GPU reads for a buffer so described (M4 A3), as mesa 25.0.7's panfrost lays out an import
+ * (src/panfrost/lib/pan_layout.c, pan_image_layout_init with an explicit layout); nothing there compares the result
+ * with the dma-buf - M4: 20 KB described as 1920x1080 AFBC were imported, drawn, and faulted the GPU (a reset a frame).
+ * - LINEAR, and no modifier (mesa takes it as LINEAR): offset + pitch * h;
+ * - 16x16 u-interleaved: offset + pitch * h rounded up to 16 lines (a line of tiles is 16 pitches);
+ * - AFBC: a 16-byte header per superblock, the headers aligned to the body (128 bytes, tiled 4096), and the body as
+ *   large as the picture in whole render blocks (superblock width x 16 lines, tiled 8 x 8 of them); every AFBC
+ *   modifier EGL offers here is SPARSE, and mesa reserves the whole body for any;
+ * - anything else: offset + w * h * bpp at least.
+ * 0: no RGB layout at all (a superblock size for YUV planes).
+ */
+static uint64_t bytes_needed(uint32_t fourcc, uint64_t mod, int w, int h, uint32_t offset, uint32_t pitch)
+{
+	uint64_t bpp = fourcc == DRM_FORMAT_RGB565 ? 2 : 4, bw, bh, tile, ew, eh, head;
+
+	if (mod == DRM_FORMAT_MOD_LINEAR || mod == DRM_FORMAT_MOD_INVALID)
+		return offset + (uint64_t)pitch * (uint64_t)h;
+	if (mod == DRM_FORMAT_MOD_ARM_16X16_BLOCK_U_INTERLEAVED)
+		return offset + (uint64_t)pitch * ALIGN_UP((uint64_t)h, 16);
+	if (mod >> 52 != ((uint64_t)DRM_FORMAT_MOD_VENDOR_ARM << 4 | DRM_FORMAT_MOD_ARM_TYPE_AFBC))
+		return offset + (uint64_t)w * (uint64_t)h * bpp;
+	switch (mod & AFBC_FORMAT_MOD_BLOCK_SIZE_MASK) {
+	case AFBC_FORMAT_MOD_BLOCK_SIZE_16x16:
+		bw = 16, bh = 16;
+		break;
+	case AFBC_FORMAT_MOD_BLOCK_SIZE_32x8:
+		bw = 32, bh = 8;
+		break;
+	case AFBC_FORMAT_MOD_BLOCK_SIZE_64x4:
+		bw = 64, bh = 4;
+		break;
+	default:
+		return 0;
+	}
+	tile = mod & AFBC_FORMAT_MOD_TILED ? 8 : 1;
+	ew = ALIGN_UP((uint64_t)w, bw * tile);
+	eh = ALIGN_UP((uint64_t)h, 16 * tile);
+	head = ALIGN_UP(ew / bw * (eh / bh) * 16, tile > 1 ? 4096u : 128u);
+	return ALIGN_UP((uint64_t)offset, 64) + head + ew * eh * bpp;
+}
+
+/* checked before anything is imported (v3 section 3): table, size, pitch, the dma-buf's length for every modifier (M4 A3) */
 static void params_create(struct wl_client *c, struct wl_resource *res, uint32_t id, int32_t w, int32_t h,
 			  uint32_t fourcc, uint32_t flags)
 {
@@ -1206,6 +1250,7 @@ static void params_create(struct wl_client *c, struct wl_resource *res, uint32_t
 	struct wl_resource *br;
 	struct import *imp = NULL;
 	char why[WARP_WHY] = "";
+	uint64_t need = 0;
 	off_t size;
 	int i;
 
@@ -1230,11 +1275,14 @@ static void params_create(struct wl_client *c, struct wl_resource *res, uint32_t
 	else if (w < 1 || h < 1 || (unsigned int)w > s->pw || (unsigned int)h > s->ph)
 		snprintf(why, sizeof(why), "%dx%d does not fit the panel %ux%u", w, h, s->pw, s->ph);
 	else if (p->modifier == DRM_FORMAT_MOD_LINEAR &&
-		 (p->pitch % 64 || p->pitch < (uint32_t)w * (fourcc == DRM_FORMAT_RGB565 ? 2 : 4) ||
-		  (size > 0 && p->offset + (uint64_t)p->pitch * (uint64_t)h > (uint64_t)size)))
-		snprintf(why, sizeof(why), "pitch %u for %d pixels (a multiple of 64, inside the dma-buf)", p->pitch, w);
-	else if (size > 0 && p->offset >= (uint64_t)size)
-		snprintf(why, sizeof(why), "offset %u past the dma-buf", p->offset);
+		 (p->pitch % 64 || p->pitch < (uint32_t)w * (fourcc == DRM_FORMAT_RGB565 ? 2 : 4)))
+		snprintf(why, sizeof(why), "pitch %u for %d pixels (a multiple of 64)", p->pitch, w);
+	else if (size <= 0)
+		snprintf(why, sizeof(why), "the dma-buf's size cannot be read");
+	else if (!(need = bytes_needed(fourcc, p->modifier, w, h, p->offset, p->pitch)) || need > (uint64_t)size)
+		snprintf(why, sizeof(why), "%dx%d %.4s modifier 0x%llx at offset %u needs %llu bytes, the dma-buf has %lld",
+			 w, h, (const char *)&fourcc, (unsigned long long)p->modifier, p->offset,
+			 (unsigned long long)need, (long long)size);
 	else if (wc && wc->buffers >= MAX_BUFFERS)
 		snprintf(why, sizeof(why), "more than %d wl_buffers", MAX_BUFFERS);
 	else

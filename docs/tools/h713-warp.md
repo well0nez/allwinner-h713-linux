@@ -83,7 +83,11 @@ master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/P
   keystone. The client is drawn through the GPU even at the identity: the video plane takes NV12 only.
 - **Limits:** four connections see the globals, eight surfaces and eight imported dma-bufs per client, a buffer
   larger than the panel is refused, a buffer before the first configure is a protocol error; a client that goes
-  away keeps the panel for two seconds (a cage restart), then the warp gives it back.
+  away keeps the panel for two seconds (a cage restart), then the warp gives it back. A dma-buf shorter than the
+  layout the GPU reads for its modifier fails before the import - LINEAR offset + pitch x height, u-interleaved in
+  lines of 16, AFBC a 16-byte header per superblock plus the whole body, as mesa's panfrost lays it out; M4 had a
+  20-KB buffer described as 1920x1080 AFBC fault the GPU. A `wl_shm` line shorter than 4 x width is a protocol
+  error (libwayland checks only stride >= width), and a `wl_shm` picture goes up in one call (M4, 15.10.2026).
 - **Status:** `ctl status` has two more lines, `wayland` (clients, toplevel, formats) and `client` (taken,
   presented, discarded, busy, released, imports).
 

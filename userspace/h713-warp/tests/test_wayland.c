@@ -7,7 +7,7 @@
  * feedback with Kodi's AR30/AFBC and renderD128 as the device, the panel as the output's mode and the toplevel's
  * size, the life of a buffer (taken, frame done, released, presented), wl_shm, the refusals (too large, a buffer
  * before the configure, a second toplevel, a fifth connection) and the two seconds after the client is gone; since
- * the review M4: a wl_shm line shorter than 4 x width (A2).
+ * the review M4: a wl_shm line shorter than 4 x width (A2), a dma-buf shorter than its layout for every modifier (A3).
  *
  *   test_wayland ./server_stub     exit 0: all passed
  */
@@ -48,7 +48,7 @@ struct conn {
 static struct {
 	uint32_t clock, serial, tranche;
 	int w, h, refresh, cfg_w, cfg_h, table_hits;
-	bool fullscreen, configured, closed, table, device, fb_done, out_done, done, released, presented, failed;
+	bool fullscreen, configured, closed, table, device, fb_done, out_done, done, released, presented, failed, created;
 	dev_t dev;
 } ev;
 static FILE *srv;
@@ -167,7 +167,13 @@ static void pf_presented(void *d, struct wp_presentation_feedback *f, uint32_t h
 }
 static void pf_discarded(void *d, struct wp_presentation_feedback *f) { (void)d; wp_presentation_feedback_destroy(f); }
 static const struct wp_presentation_feedback_listener pf_l = { pf_sync, pf_presented, pf_discarded };
-static void p_created(void *d, struct zwp_linux_buffer_params_v1 *p, struct wl_buffer *b) { (void)d; (void)p; (void)b; }
+static void p_created(void *d, struct zwp_linux_buffer_params_v1 *p, struct wl_buffer *b)
+{
+	(void)p;
+	ev.created = true;
+	if (d)				/* dmabuf_sized: the buffer itself is not wanted */
+		wl_buffer_destroy(b);
+}
 static void p_failed(void *d, struct zwp_linux_buffer_params_v1 *p) { (void)d; (void)p; ev.failed = true; }
 static const struct zwp_linux_buffer_params_v1_listener params_l = { p_created, p_failed };
 
@@ -246,6 +252,26 @@ static struct wl_buffer *shmbuf_stride(struct conn *c, int w, int h, int stride)
 	return b;
 }
 
+/*
+ * A3: `size` bytes (a memfd - the server reads only the length; the import is the stub's) described as w x h with this
+ * format, modifier and pitch: 1 created, 0 failed, -1 no answer
+ */
+static int dmabuf_sized(struct conn *c, int w, int h, uint32_t fourcc, uint64_t mod, uint32_t pitch, size_t size)
+{
+	struct zwp_linux_buffer_params_v1 *p = zwp_linux_dmabuf_v1_create_params(c->dmabuf);
+	int fd = memfd(size), ms = 1000;
+
+	ev.created = ev.failed = false;
+	zwp_linux_buffer_params_v1_add(p, fd, 0, 0, pitch, (uint32_t)(mod >> 32), (uint32_t)mod);
+	close(fd);
+	zwp_linux_buffer_params_v1_add_listener(p, &params_l, c);
+	zwp_linux_buffer_params_v1_create(p, w, h, fourcc, 0);
+	while (!ev.created && !ev.failed && ms > 0 && wl_display_roundtrip(c->d) >= 0)
+		ms -= 10;
+	zwp_linux_buffer_params_v1_destroy(p);
+	return ev.created ? 1 : ev.failed ? 0 : -1;
+}
+
 static struct wl_buffer *shmbuf(struct conn *c, int w, int h)
 {
 	return shmbuf_stride(c, w, h, w * 4);
@@ -316,7 +342,7 @@ int main(int argc, char **argv)
 	xdg_wm_base_add_listener(c.wm, &wm_l, NULL);
 	wl_display_roundtrip(c.d);
 	CHECK(ev.clock == CLOCK_MONOTONIC, "presentation clock %u = CLOCK_MONOTONIC (v3 D1)", ev.clock);
-	CHECK(ev.fb_done && ev.table && ev.table_hits == 1 && ev.tranche == 3, "feedback: table with AR30 + AFBC, one tranche of %u", ev.tranche);
+	CHECK(ev.fb_done && ev.table && ev.table_hits == 1 && ev.tranche == 6, "feedback: table with AR30 + AFBC, one tranche of %u", ev.tranche);
 	CHECK(ev.device, "feedback: main and target device = the render node's dev_t");
 	CHECK(ev.out_done && ev.w > 0 && ev.h > 0 && ev.refresh > 59000 && ev.refresh < 60000, "output %dx%d @ %d mHz", ev.w, ev.h, ev.refresh);
 
@@ -372,6 +398,41 @@ int main(int argc, char **argv)
 
 	dmabuf(&c, ev.cfg_w + 1, ev.cfg_h, false);
 	CHECK(wait_for(&c, &ev.failed, 1000), "a dma-buf larger than the panel fails");
+
+	/*
+	 * M4 A3: the dma-buf at least as long as the GPU reads, for every modifier. The byte counts are mesa 25.0.7's
+	 * panfrost layout, worked out by hand (pan_layout.c): AFBC 32x8 1920x1080 = 60 x 136 superblocks (1088 lines,
+	 * render blocks of 16) x 16 B header = 130 560 (a multiple of 128) + body 1920 x 1088 x 4 = 8 355 840.
+	 */
+	{
+		static const struct {
+			const char *what;
+			int w, h;
+			uint32_t fourcc;
+			uint64_t mod;
+			uint32_t pitch;
+			size_t need;
+		} k[] = {
+			{ "AFBC 32x8 sparse (Kodi's) 1920x1080", 1920, 1080, DRM_FORMAT_ARGB2101010, 0x0800000000000062ull, 7680, 8486400 },
+			{ "AFBC 32x8 sparse 1000x300 (1216 x 16 B header + 1024x304x4)", 1000, 300, DRM_FORMAT_ARGB2101010, 0x0800000000000062ull, 4000, 19456 + 1245184 },
+			{ "AFBC 16x16 tiled 1920x1080 (header 8640 x 16 to 4096, 1920x1152x4)", 1920, 1080, DRM_FORMAT_ARGB2101010, 0x0800000000000341ull, 7680, 139264 + 8847360 },
+			{ "AFBC 16x16 tiled 1000x300 (1024x384)", 1000, 300, DRM_FORMAT_ARGB2101010, 0x0800000000000341ull, 4000, 24576 + 1572864 },
+			{ "u-interleaved 1920x1080 (pitch x 1088 lines)", 1920, 1080, DRM_FORMAT_ARGB2101010, 0x0810000000000001ull, 7680, 7680u * 1088 },
+			{ "LINEAR 1920x1080 pitch 7680", 1920, 1080, DRM_FORMAT_XRGB8888, DRM_FORMAT_MOD_LINEAR, 7680, 7680u * 1080 },
+			{ "a modifier without a layout here (X-tiled): w x h x 4", 1920, 1080, DRM_FORMAT_XRGB8888, 0x0100000000000001ull, 7680, 1920u * 1080 * 4 },
+		};
+		unsigned int j;
+
+		for (j = 0; j < sizeof(k) / sizeof(k[0]); j++) {
+			int at = dmabuf_sized(&c, k[j].w, k[j].h, k[j].fourcc, k[j].mod, k[j].pitch, k[j].need);
+			int under = dmabuf_sized(&c, k[j].w, k[j].h, k[j].fourcc, k[j].mod, k[j].pitch, k[j].need - 1);
+
+			CHECK(at == 1 && under == 0, "%s: %zu bytes created, one less failed (A3)", k[j].what, k[j].need);
+		}
+		CHECK(dmabuf_sized(&c, 1920, 1080, DRM_FORMAT_ARGB2101010, 0x0800000000000062ull, 7680, 20480) == 0,
+		      "20 KB described as 1920x1080 AFBC (M4's GPU fault) failed (A3)");
+		CHECK(wl_display_get_error(c.d) == 0, "the client lives on after the refusals");
+	}
 
 	struct wl_surface *s2 = wl_compositor_create_surface(c.comp);
 	struct xdg_toplevel *tl2 = xdg_surface_get_toplevel(xdg_wm_base_get_xdg_surface(c.wm, s2));
