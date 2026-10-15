@@ -27,9 +27,10 @@ class Root:
         self.state = "sys/bus/platform/drivers/sun50i-h713-mips/3061000.mips/state"
         if mips:
             self.put(self.state, "%s\n0x02001600=0x0\n" % mips)
+        self.put("tv", '#!/bin/sh\necho "tv $@" >> %s\nexit 0\n' % self.log)
         self.put("restart", '#!/bin/sh\necho mips-restart >> %s\nsed -i 1s/.*/running/ %s\nexit %d\n'
                  % (self.log, self.p(self.state), restart_rc))
-        for f in ("systemctl", "restart"):
+        for f in ("systemctl", "restart", "tv"):
             os.chmod(self.p(f), 0o755)
 
     def __del__(self):
@@ -51,7 +52,7 @@ class Root:
             return []
 
     def mode(self, *args):
-        env = dict(os.environ, H713_ROOT=self.d, H713_SYSTEMCTL=self.p("systemctl"), H713_MIPS_RESTART=self.p("restart"))
+        env = dict(os.environ, H713_ROOT=self.d, H713_SYSTEMCTL=self.p("systemctl"), H713_MIPS_RESTART=self.p("restart"), H713_TV=self.p("tv"))
         env.pop("JOURNAL_STREAM", None)
         return subprocess.run(["sh", TOOL] + list(args), env=env, capture_output=True, text=True, timeout=20)
 
@@ -75,7 +76,8 @@ class ModeTest(unittest.TestCase):
     def test_hdmi_ends_every_mode_unit(self):
         r = Root(active=["h713-kodi.service"])
         self.assertEqual(r.mode("hdmi").returncode, 0)
-        self.assertEqual(r.calls(), ["systemctl stop h713-kodi.service", "systemctl stop h713-desktop.service"])
+        self.assertEqual(r.calls(), ["tv ctl source hdmi", "systemctl stop h713-kodi.service", "systemctl stop h713-desktop.service"])
+        # the picture first: the source goes to hdmi before any unit is ended (the ring is back while Kodi still quits)
 
     def test_before_a_sleep_kodi_is_remembered_and_ended(self):
         r = Root(active=["h713-kodi.service"])
