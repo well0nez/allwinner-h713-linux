@@ -10,7 +10,7 @@ borrows the engine through a runtime-PM device link, which keeps runtime
 PM from asserting the line while the core is powered - and says nothing
 about pulses.
 
-Measured on the HY310, 13.10.2026 (package C, test C3-AU18): a cedrus
+Measured on the HY310, 13.10.2026: a cedrus
 codec switch next to an AV1 stream pulses the line into an AV1 frame in
 flight; the core stalls with a transaction in the interconnect (hantro's
 watchdog: "frame processing timed out"), every later AV1 job times out,
@@ -18,7 +18,7 @@ and about 15 s later the whole SoC stops without a kernel line, until
 the SoC watchdog resets it. Twice, out of three runs with switches.
 Without switches (same codec beside AV1, or AV1 alone), 110 runs and an
 hour with HDMI capture and the warp were bit-exact. Pulses between AV1
-frames did no harm either (b2: 20 switches, 11 AV1 runs exact): what
+frames did no harm either (20 switches, 11 AV1 runs exact): what
 kills is a pulse into a frame in flight.
 
 Both drivers keep the line in use for good reasons; what was missing is
@@ -31,7 +31,7 @@ its frame within its own 2 s watchdog, and an engine that never comes
 back would be worse than a stalled borrower. One video engine per SoC,
 so the state is global and no handle is passed around.
 
-Not cstenger's: found and measured in the media side project; his tree
+Not cstenger's: found and measured on the HY310; his tree
 has no reset at a codec switch and never measured a pulse into an AV1
 frame.
 ---

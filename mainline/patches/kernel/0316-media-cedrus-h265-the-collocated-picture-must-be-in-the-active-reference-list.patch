@@ -1,0 +1,68 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: cedrus: h265: the collocated picture must be in the active reference list
+
+With temporal MV prediction the engine takes the collocated picture from
+its reference list in SRAM: entry collocated_ref_idx of list 0 (always
+for a P slice) or of list 1. The driver wrote collocated_ref_idx into
+SLICE_HDR_INFO0 unchecked, the V4L2 core does not check it either, and
+the job writes the lists only up to their active end; past it stand the
+entries of an earlier job. A damaged stream passed on unchecked - a P
+slice with num_ref_idx_l0_active_minus1 = 0 and collocated_ref_idx = 3 -
+would make the engine read the MV columns of a picture this job does not
+hold, or of a buffer already freed: wrong motion, or an IOMMU read fault
+and the watchdog.
+
+A valid stream keeps collocated_ref_idx within the list's active entries
+(H.265 7.4.7.1). Like an out-of-range reference index (0309), a job
+outside that is refused with -EINVAL before the engine is touched. In
+range, the entry is one 0309's check has passed.
+---
+ .../staging/media/sunxi/cedrus/cedrus_h265.c  | 28 +++++++++++++++++++
+ 1 file changed, 28 insertions(+)
+
+diff --git a/drivers/staging/media/sunxi/cedrus/cedrus_h265.c b/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
+index 3f7c51c52..b872aed94 100644
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
+@@ -451,6 +451,31 @@ static int cedrus_h265_check_ref_list(struct cedrus_ctx *ctx,
+ 	return 0;
+ }
+ 
++/*
++ * With temporal MV prediction the engine takes the collocated picture from
++ * the reference list in its SRAM, entry collocated_ref_idx of list 0 (always
++ * for a P slice) or list 1. The job writes those lists only up to their
++ * active end, and past it stand the entries of an earlier job: an index out
++ * of range would read the MV columns of a picture this job does not hold.
++ * In range, the entry is one cedrus_h265_check_ref_list() has checked.
++ */
++static int cedrus_h265_check_collocated(const struct v4l2_ctrl_hevc_slice_params *slice_params)
++{
++	unsigned int max;
++
++	if (slice_params->slice_type == V4L2_HEVC_SLICE_TYPE_I ||
++	    !(slice_params->flags & V4L2_HEVC_SLICE_PARAMS_FLAG_SLICE_TEMPORAL_MVP_ENABLED))
++		return 0;
++
++	if (slice_params->slice_type == V4L2_HEVC_SLICE_TYPE_P ||
++	    slice_params->flags & V4L2_HEVC_SLICE_PARAMS_FLAG_COLLOCATED_FROM_L0)
++		max = slice_params->num_ref_idx_l0_active_minus1;
++	else
++		max = slice_params->num_ref_idx_l1_active_minus1;
++
++	return slice_params->collocated_ref_idx > max ? -EINVAL : 0;
++}
++
+ static int cedrus_h265_setup(struct cedrus_ctx *ctx, struct cedrus_run *run)
+ {
+ 	struct cedrus_dev *dev = ctx->dev;
+@@ -539,6 +564,9 @@ static int cedrus_h265_setup(struct cedrus_ctx *ctx, struct cedrus_run *run)
+ 				       decode_params->num_active_dpb_entries))
+ 		return -EINVAL;
+ 
++	if (cedrus_h265_check_collocated(slice_params))
++		return -EINVAL;
++
+ 	/* Activate H265 engine. */
+ 	cedrus_engine_enable(ctx);
+ 

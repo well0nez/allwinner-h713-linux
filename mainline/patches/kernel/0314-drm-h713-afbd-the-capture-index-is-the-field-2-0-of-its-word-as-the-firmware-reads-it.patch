@@ -8,12 +8,12 @@ also +0x004 bit 8 and +0xa24 bytes 1 and 3 differ from the good state),
 while the index in [2:0] steps 0, 1, 2 at the source's rate in the same
 place against the firmware's flip pointers as in a good boot. Compared as
 a whole word every sample is 3 or more, no frame is taken, no flip
-notifier runs, hdmirx returns no buffer and the warp waits for ever
-(AU-81). Only a warm start clears the bits.
+notifier runs, hdmirx returns no buffer and the warp waits for ever.
+Only a warm start clears the bits.
 
-Measured 15.10.2026 on the HY310 (arbeit/medien/standby-erfassung): 3 hits
-in 15 fresh standbys (with and without Kodi, with the userspace of package
-G and before it, so the kernel alone); in a hit 4932 of 4932 samples of
+Measured 15.10.2026 on the HY310: 3 hits in 15 fresh standbys (with and
+without Kodi, with the userspace of the Wayland warp and before it, so the
+kernel alone); in a hit 4932 of 4932 samples of
 +0xa0c were 3 or more, h713_afbd_pick_slots() would take 0 slots/s against
 60.5 in a good cycle, and `ring_select 0` brought 59.4 frames/s at once.
 The vendor firmware (AppTopProjectorCallback, display.bin 0x8b1076b8, the
@@ -25,8 +25,7 @@ three ring slots stays. The first time the bits above it come or go, one
 journal line says so (not one per frame). Nothing is written to INCAP: what
 the upper bits mean is not known.
 
-Measured with this patch, 15.10.2026 on the HY310 (arbeit/medien/standby-fix,
-Kodi started before the sleep in 13 of the 25, ThinkPad 1080p60 as the
+Measured with this patch, 15.10.2026 on the HY310 (Kodi started before the sleep in 13 of the 25, ThinkPad 1080p60 as the
 source): 25 standbys to RAM by RTC alarm, 20 in a row without a warm start,
 and in every one the warp had pictures again, 297 to 299 in 5 s, 9.6 to
 15.7 s after the verdict (the spread is the source renegotiating after the
@@ -74,7 +73,7 @@ Where the bits come from stays open.
 + * as before. The vendor firmware reads the word the same way: the only reader of
 + * the register, AppTopProjectorCallback (display.bin 0x8b1076b8), loads
 + * +0xa0c and masks it with `andi s0, s0, 0x7`. Compared as a whole word with
-+ * "< 3" the set bits made this driver drop every frame (AU-81).
++ * "< 3" the set bits made this driver drop every frame.
 + */
 +#define H713_INCAP_WRITING_IDX	GENMASK(2, 0)
  #define H713_INCAP_RING_SLOTS	3
@@ -120,7 +119,7 @@ Where the bits come from stays open.
  
  /*
 + * One line when the bits above the capture's index come or go, not one per
-+ * frame: the state is what is worth seeing (AU-81), and it is outside the
++ * frame: the state is what is worth seeing, and it is outside the
 + * ring_lock so that the console is never written under it.
 + */
 +static void h713_afbd_incap_note(struct h713_afbd *h, bool hi_edge, u32 word)

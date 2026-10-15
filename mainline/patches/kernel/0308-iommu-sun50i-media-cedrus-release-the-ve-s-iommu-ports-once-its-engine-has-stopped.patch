@@ -7,12 +7,12 @@ once, in its interrupt handler - while the engine is still running. The
 engine keeps reading, the port is blocked again, and the engine stays
 dead: the job times out, the next jobs' bit reader times out in setup
 ("timed out waiting to skip bits", -EINVAL), and every later
-inter-predicted picture of every codec fails until a reboot (B6 of the
-media side project), while intra pictures still decode. The engine
+inter-predicted picture of every codec fails until a reboot, while
+intra pictures still decode. The engine
 reset, runtime suspend with the VE power domain off, reloading the
 module - none of it helps, because none of it touches the port.
 
-Measured on the HY310, 14.10.2026 (arbeit/medien/B6-mythos):
+Measured on the HY310, 14.10.2026:
 
 - With the engine idle, one more pulse of the engine's two master bits
   in IOMMU_RESET_REG (a single 32-bit write pair from user space, nothing
@@ -36,11 +36,11 @@ Measured on the HY310, 14.10.2026 (arbeit/medien/B6-mythos):
   840 to 888 bit-reader timeouts per run).
 - With this patch, no AV1 stream open: six damaged sets (H.265 8/10 bit,
   VP9, VP8, MPEG-2, H.264) with a probe after every clip, 60 of 60 probes
-  bit-exact, no timeout; valid streams unchanged - B1 H.265 8/10 bit 11
-  of 12 bit-exact in the run and the twelfth bit-exact in a repeat (its
+  bit-exact, no timeout; valid streams unchanged - of 12 H.265 8/10 bit
+  clips 11 bit-exact in the run and the twelfth bit-exact in a repeat (its
   buffer-size probe fell into a watchdog recovery after one read fault at
-  the end of the valid 10-bit 1080p60 clip before it, cause open), B5
-  pairs 10 of 10 rounds bit-exact.
+  the end of the valid 10-bit 1080p60 clip before it, cause open), five
+  pairs of codecs at once 10 of 10 rounds bit-exact.
 
 So the IOMMU driver exports sun50i_iommu_reset_client(), which pulses
 the master bits of the client's fwspec, nothing more, under the IOMMU
@@ -56,7 +56,6 @@ gives up at once when it times out, so a job with a blocked port ends
 without further register access. Without a sun50i IOMMU the release is
 a stub. Valid streams never take these paths, so nothing changes for
 them.
----
 ---
 --- a/drivers/iommu/sun50i-iommu.c
 +++ b/drivers/iommu/sun50i-iommu.c
@@ -82,7 +81,7 @@ them.
 + * bit reader times out in setup, and every later job of every codec fails
 + * until a reboot. Only the client knows when its engine has stopped (its
 + * own reset); it calls this afterwards, and the ports of all its masters
-+ * are reset once more. Measured on the H713 (arbeit/medien/B6-mythos):
++ * are reset once more. Measured on the H713 (14.10.2026):
 + * with the engine idle this pulse brings a dead video engine back every
 + * time, from user space and from here.
 + *
@@ -90,7 +89,7 @@ them.
 + * IOMMU_L1PG_INT_REG/IOMMU_L2PG_INT_REG and the error address register:
 + * only the undocumented bits 16 and 17 of IOMMU_RESET_REG clear those, and
 + * they reset units shared by all masters - the AV1 core on master 5 then
-+ * loses frames (arbeit/medien/B6-diagnose §14). The display has no effect
++ * loses frames (measured 14.10.2026). The display has no effect
 + * on the port; the vendor's driver never clears it either.
 + *
 + * Return: 0, or -ENODEV if @dev is not a client of this driver.
@@ -154,7 +153,7 @@ them.
 + * closed it. While a stream is open, sunxi_ve_reset_pulse_and() pulses the
 + * line but leaves @fn out: on the H713 the owner's IOMMU port release next
 + * to a decoding AV1 core cost AV1 frames or stopped the SoC - before, after
-+ * or during the bus reset, guarded or not (arbeit/medien/B6-mythos). The
++ * or during the bus reset, guarded or not (measured 14.10.2026). The
 + * release waits until the borrower is gone; the engine lives with its
 + * blocked port until then.
 + */
@@ -366,7 +365,7 @@ them.
 + * nothing of the engine is on the bus then, and no AV1 frame is in flight.
 + * Released next to a live engine, or next to a running AV1 frame, the
 + * release cost AV1 frames or stopped the SoC (measured on the H713,
-+ * arbeit/medien/B6-mythos). Without a sun50i IOMMU the release is a stub.
++ * 14.10.2026). Without a sun50i IOMMU the release is a stub.
 + * Process context only, like cedrus_ve_reset().
 + */
 +void cedrus_recover(struct cedrus_dev *dev)
@@ -426,7 +425,7 @@ them.
  }
  
 -static void cedrus_h265_skip_bits(struct cedrus_dev *dev, int num)
-+/* The bit reader hangs when the engine's IOMMU port is blocked: give up at once, the job is recovered before the next. */
++/* A blocked IOMMU port hangs the bit reader: give up at once, recovery follows. */
 +static int cedrus_h265_skip_bits(struct cedrus_dev *dev, int num)
  {
  	int count = 0;

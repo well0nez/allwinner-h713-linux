@@ -5,8 +5,8 @@ Every pulse of the engine's bus reset - the watchdog's and 0298's at a
 codec switch - goes through the guard from the patch before, so on the
 H713 it waits for an AV1 frame in flight instead of stalling it.
 
-Measured on the HY310, 14.10.2026 (package C-reset): the five B5 codec
-pairs stay bit-exact with the guarded pulse (23 pair runs); an AV1 stream
+Measured on the HY310, 14.10.2026: the five codec pairs of 0298 stay
+bit-exact with the guarded pulse (23 pair runs); an AV1 stream
 next to 20 single codec switches (11 runs of 600 frames) and next to
 60 s storms of H.264+VP9 and VP9+H.265 switches (2400 cedrus jobs each,
 six runs of 4 x 300 AV1 frames) is bit-exact with no driver line, where

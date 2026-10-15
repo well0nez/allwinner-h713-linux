@@ -597,12 +597,14 @@
 0268-clk-sunxi-ng-h713-the-gpu-runs-at-432-mhz-not-864.patch
 0269-arm64-dts-h713-gpu-dvfs-at-stock-s-points-pll-gpu-pinned-at-600-mhz.patch
 0270-clk-sunxi-ng-h713-mbus-av1-is-bit-3.patch
-# 13.10.: the decoders (package B "cedrus, VP9, IOMMU" of the media side project, branch medien-b-dekoder, not main).
+# 13.-15.10.2026: the decoders and what they needed (the media work: cedrus with VP9 and the AV1 core behind the IOMMU,
+#   the eMMC under 4K playback, the capture index after a standby).
 #   0271-0296 are cstenger's cedrus series in his series order, byte-identical (message and diff; From: and Origin: added):
 #   his 0099 (VE scaler into the capture buffer), 0101-0125 (cedrus hardening, 10-bit sizing, polyphase scaler for
-#   H.265/H.264, enum_framesizes, field MPEG-2, capture pitch 32), 0143/0154/0155 (VP9 on the VE), 0144 (VE at 432 MHz),
-#   0151 (bidirectional capture mappings, needed behind the IOMMU). Not taken: his 0126/0127 (IOVA reservation, only for
-#   a display in the IOMMU group), 0052/0080 (display behind the IOMMU), 0092. 0297 is ours: the IOMMU comment of 0024e.
+#   H.265/H.264, enum_framesizes, field MPEG-2, capture pitch 32), 0143/0154/0155 (VP9 on the VE), 0144 (VE at 432 MHz for
+#   the AV1 core; since 0315 only while the AV1 decoder is on), 0151 (bidirectional capture mappings, needed behind the
+#   IOMMU). Not taken: his 0126/0127 (IOVA reservation, only for a display in the IOMMU group), 0052/0080 (display behind
+#   the IOMMU), 0092. 0297 is ours: the IOMMU comment of 0024e.
 #   0298 is ours: a job of another codec starts from a reset engine (H.265 next to his VP9 failed every job).
 #   The defconfig turns CONFIG_SUN50I_IOMMU on (VE masters 0/1 translated, display physical).
 0271-media-cedrus-scale-down-into-the-capture-buffer.patch
@@ -633,50 +635,68 @@
 0296-media-cedrus-vp9-refuse-profiles-other-than-0-at-control-time.patch
 0297-arm64-dts-h713-the-iommu-comment-says-the-codecs-are-translated-and-the-display-is-not.patch
 0298-media-cedrus-a-job-of-another-codec-starts-from-a-reset-engine.patch
-# 13.10.: the AV1 decoder (package C "AV1" of the media side project, branch medien-c-av1, not main).
+# 13.10.: the AV1 decoder. Off since 0310 (node disabled, CONFIG_VIDEO_HANTRO off); the code stays in the series.
 #   0300-0304 are cstenger's AV1 series in his series order (his 0150 before 0145): 0300 his 0150 (V4L2 PL10 = P010 with
 #   the samples in bits 9:0, DRM P010 + ALLWINNER_LSB10), 0301 his 0145 (hantro hooks: variant_priv, no forced post-
 #   processing without a post-processor, VIDEO_HANTRO_AV1, dev_err_probe), 0303 his 0147 (the H713 variant: the Google
 #   core at 0x01c0d000, generated register image, the five hardware rules), 0304 his 0148 (binding), byte-identical
 #   (message and diff; From: and Origin: added). 0302 is his 0146 adapted: it adds the node his 0140 had added for the
-#   presence probe (not taken, nor 0141) with 0146's change, the node his series ends with. The defconfig turns
-#   CONFIG_VIDEO_HANTRO on as a module.
+#   presence probe (not taken, nor 0141) with 0146's change, the node his series ends with.
+#   0300 stays although nothing uses it while the AV1 decoder is off: 0303 needs PL10, and dropping it would leave the AV1
+#   code in the series unbuildable. Its numbers are local and not agreed upstream (PL10, and fourcc_mod_code(ALLWINNER, 2)
+#   for LSB10); with the decoder off no driver of this kernel produces or accepts either, and no image ships this kernel's
+#   headers. The VA driver carries its own copies of both values (#ifndef). Before the AV1 decoder comes back into an
+#   image, the modifier wants an upstream number.
 0300-EXPERIMENT-media-drm-p010-lsb-modifier-and-pixfmt.patch
 0301-media-verisilicon-hooks-for-a-variant-without-a-post-processor.patch
 0302-arm64-dts-h713-bind-the-av1-decoder-to-hantro.patch
 0303-media-verisilicon-add-the-h713-av1-decoder.patch
 0304-dt-bindings-media-add-the-allwinner-h713-av1-decoder.patch
-#   0305-0307 (package C-reset, 13./14.10.2026): the VE bus reset is shared with the AV1 core; a guard arbitrates it, cedrus pulses
-#   only through it, the AV1 variant holds it from its first register access to the end of its interrupt (measured: AU-18 closed).
+#   0305-0307 (13./14.10.2026): the VE bus reset is shared with the AV1 core; a guard arbitrates it, cedrus pulses only
+#   through it, the AV1 variant holds it from its first register access to the end of its interrupt (measured).
 0305-soc-sunxi-a-guard-for-the-video-engine-s-shared-bus-reset.patch
 0306-media-cedrus-pulse-the-ve-reset-through-the-guard.patch
 0307-media-verisilicon-h713-av1-hold-the-ve-s-reset-while-the-core-is-touched.patch
-#   0308/0309 (package B6-mythos, 14.10.2026): a damaged H.265 stream leaves the VE's IOMMU ports blocked and the engine
-#   dead until reboot (B6); the ports are released before the engine's next job, while its bus reset is held and only while
-#   no AV1 stream is open (next to a decoding AV1 core the release cost frames or stopped the SoC); an H.265 reference must
-#   be a picture decoded here (index in range, MV column buffer present).
+#   0308/0309 (14.10.2026): a damaged H.265 stream leaves the VE's IOMMU ports blocked and the engine dead until reboot;
+#   the ports are released before the engine's next job, while its bus reset is held and only while no AV1 stream is open
+#   (next to a decoding AV1 core the release cost frames or stopped the SoC); an H.265 reference must be a picture decoded
+#   here (index in range, MV column buffer present).
 0308-iommu-sun50i-media-cedrus-release-the-ve-s-iommu-ports-once-its-engine-has-stopped.patch
-0309-media-cedrus-an-h265-reference-must-be-in-the-dpb-the-job-hands-in.patch
+0309-media-cedrus-an-h265-reference-must-be-a-picture-decoded-here.patch
 #   0310 (14.10.2026, Marco): the AV1 decoder stays off for now - node disabled, CONFIG_VIDEO_HANTRO off in the board defconfig;
-#   the code of 0300-0307 stays. Reason in the patch; to bring it back, drop 0310 and turn the option on.
+#   the code of 0300-0307 stays. Reason in the patch; to bring it back, drop 0310 and turn the option on (the VE then goes back
+#   to 432 MHz by itself, 0315).
 0310-arm64-dts-h713-the-av1-decoder-stays-off-for-now.patch
-#   0311 is not in this series: it is the diagnostic patch of package VE-stabil (the eMMC data-error path prints the error
-#   class and the controller state before finalize_request() clears them). It stays on the branches medien-ve-diag/-fix/-thld;
-#   0312 and 0313 keep their numbers because the reports name them.
-#   0312 (package VE-stabil, 15.10.2026, measured): a CMD18 that fails mid-transfer leaves the controller receiving into a full
-#   FIFO with the card clock held, so neither CMD12 nor the recovery's CMD13 can go out; the controller is re-initialised like a
-#   runtime resume before the stop. On the HY310: three forced errors and about 2000 natural ones under Kodi 4K, no hang -
-#   a net, not a cure (0313 removes the errors).
+#   0311 is not in this series: a diagnostic patch (the eMMC data-error path prints the error class and the controller state
+#   before finalize_request() clears them). 0312 and 0313 keep their numbers because their measurements name 0311.
+#   0312 (15.10.2026, measured): a CMD18 that fails mid-transfer leaves the controller receiving into a full FIFO with the
+#   card clock held, so neither CMD12 nor the recovery's CMD13 can go out; the controller is re-initialised like a runtime
+#   resume before the stop. On the HY310: three forced errors and about 2000 natural ones under Kodi 4K, no hang - a net,
+#   not a cure (0313 removes the errors).
 0312-mmc-sunxi-a-failed-multi-block-read-re-initialises-the-controller-before-the-stop.patch
-#   0313 (package VE-stabil, 15.10.2026, measured): the eMMC host uses the card read threshold at HS200/HS400, so a read block
-#   starts only when the FIFO has room for it; without it the controller holds the card clock mid-block when the DMA falls behind
-#   under 4K playback, and the reads saw data CRC errors only then. On the HY310: 0 errors on 30946 MiB of Kodi 4K reads against
-#   1899 on 19049 MiB, FIFO full in 0.002 % of the samples instead of 2.9 %.
+#   0313 (15.10.2026, measured): the eMMC host uses the card read threshold at HS200/HS400, so a read block starts only when
+#   the FIFO has room for it; without it the controller holds the card clock mid-block when the DMA falls behind under 4K
+#   playback, and the reads saw data CRC errors only then. On the HY310: 0 errors on 30946 MiB of Kodi 4K reads against 1899
+#   on 19049 MiB, FIFO full in 0.002 % of the samples instead of 2.9 %.
 0313-mmc-sunxi-the-emmc-host-starts-a-read-block-only-when-the-fifo-has-room-for-it.patch
-#   0314 (package standby-fix, 15.10.2026): afbd reads the capture's write index (INCAP +0xa0c) as the field [2:0], as the vendor
-#   firmware does (`andi 0x7`). After some standbys to RAM the bits above are set (0x4b0..0x4b2) while [2:0] runs as in a good
-#   state, and 0255 dropped every frame because it compared the whole word with "< 3": the warp got no picture until a warm
-#   start (AU-81). One journal line when the upper bits come or go; nothing is written to INCAP.
+#   0314 (15.10.2026): afbd reads the capture's write index (INCAP +0xa0c) as the field [2:0], as the vendor firmware does
+#   (`andi 0x7`). After some standbys to RAM the bits above are set (0x4b0..0x4b2) while [2:0] runs as in a good state, and
+#   0255 dropped every frame because it compared the whole word with "< 3": the warp got no picture until a warm start.
+#   One journal line when the upper bits come or go; nothing is written to INCAP.
 #   Measured on the HY310 (15.10.2026): 25 standbys, pictures in all 25; the bits above the index were set after 9 of them and
 #   the warp ran at the clean state's rate there (59.40 frames/s, ctl check 900 without a differing row).
 0314-drm-h713-afbd-the-capture-index-is-the-field-2-0-of-its-word-as-the-firmware-reads-it.patch
+#   0315-0319 (15.10.2026, review of 0271-0314 before main):
+#   0315: cedrus runs the H713 VE at 432 MHz only while an enabled AV1 node is in the device tree, else at the H6's 600 MHz
+#   (0293 held 432 MHz for the AV1 core alone; with the AV1 decoder off the codecs on the VE ran 28 % slow, and 2160p30
+#   did not keep up). Measured on the HY310: H.264 2160p in mpv 30.0 instead of 26.6 frames/s, the decoder suite bit-exact.
+#   0316: an H.265 job whose collocated_ref_idx lies outside the active reference list is refused, like 0309's indices.
+#   0317: cedrus_vp9_finish() keeps the 15 bytes it needs across load_probs() instead of a 2 KiB frame context on the stack
+#   (the one warning of the kernel build).
+#   0318: the AV1 node of 0024 at 0x01c0d000 goes (no driver, the VE's resets, a duplicate unit address next to 0302's node).
+#   0319: the IOMMU comment of August in the dtsi that said there is no IOMMU goes.
+0315-media-cedrus-the-h713-video-engine-runs-at-432-mhz-only-while-the-av1-decoder-is-on.patch
+0316-media-cedrus-h265-the-collocated-picture-must-be-in-the-active-reference-list.patch
+0317-media-cedrus-vp9-keep-only-the-tx-and-skip-probabilities-across-load-probs.patch
+0318-arm64-dts-h713-drop-the-av1-node-of-0024-that-no-driver-binds.patch
+0319-arm64-dts-h713-drop-the-iommu-comment-of-august-that-says-there-is-none.patch

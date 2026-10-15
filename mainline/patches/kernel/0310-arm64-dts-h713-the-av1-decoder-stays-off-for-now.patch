@@ -4,15 +4,17 @@ Subject: arm64: dts: h713: the AV1 decoder stays off for now
 The AV1 core shares the video engine's bus. Next to it, the engine's
 recovery after a damaged H.265 stream (0308) cannot release the
 engine's IOMMU ports without costing the AV1 stream frames or stopping
-the SoC (arbeit/medien/B6-mythos, 14.10.2026: every variant tried), so
+the SoC (measured 14.10.2026, in every variant tried), so
 0308 leaves the ports blocked while an AV1 stream is open. Two decodes
 at once are not a use of this device, and the AV1 decoder is not
 needed for the media work ahead of it, so it stays off: the node is
 disabled here and CONFIG_VIDEO_HANTRO is off in the board defconfig.
 The driver, the guard's stream accounting and the measurements stay
 in the series; to bring the core back, drop this patch and turn the
-option on again, then repeat the gates of packages C and B6 next to
-each other (decision: Marco, 14.10.2026).
+option on again. The video engine then runs at 432 MHz again by itself
+(0315: the core stalls above it), and the AV1 tests and the damaged-
+stream tests are to be repeated next to each other (decision: Marco,
+14.10.2026).
 ---
  arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi | 9 ++++++++-
  1 file changed, 8 insertions(+), 1 deletion(-)
