@@ -391,17 +391,30 @@ static void draw_row(const struct view *v, struct row *r, int k)
 	draw_value(r, y, a);
 }
 
-static void draw_note(const struct view *v, const struct row *sel)
+/* the sentence under the rows: the row's own, or for a choice the one of the value it stands on */
+static const char *note_of(const struct view *v, const struct row *sel)
 {
 	const char *n = sel && v->f != F_AREAS ? sel->note : NULL;
+
+	if (sel && v->f != F_AREAS && sel->kind == R_CHOICE && sel->opt_note[sel->val])
+		n = sel->opt_note[sel->val];
+	return n;
+}
+
+static const char *note_shown;		/* what the note area shows now: the sentence and the line of keys under it */
+static int foot_shown = -1;
+
+static void draw_note(const struct view *v, const struct row *sel)
+{
+	const char *n = note_of(v, sel);
 	static const char *const foot[] = {
 		"Up/Down select    OK open    Back close",
 		"Up/Down select    Left/Right change    Back to the areas",
 		"Up/Down select    OK choose    Back cancel",
 	};
 
-	if (sel && v->f != F_AREAS && sel->kind == R_CHOICE && sel->opt_note[sel->val])
-		n = sel->opt_note[sel->val];			/* the sentence for the value it stands on */
+	note_shown = n;
+	foot_shown = v->f < F_CORNERS ? v->f : 0;
 	clear_box(690, 890, 1840, 1020, GROUND);	/* the note's room ... */
 	clear_box(80, 914, 690, 1020, GROUND);		/* ... and the hint's: below the last area's pill (Wi-Fi, to y 909), not into it */
 	if (n) {
@@ -519,8 +532,17 @@ int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[
 					}
 		}
 		if (all || (dirty & D_NOTE)) {
-			draw_note(v, visible_row(a, v->row));
-			seal();
+			const struct row *sel = visible_row(a, v->row);
+			bool low = false;
+
+			/* a move that leaves the sentence and the keys as they are does not draw them again: a piece of 1760 x 130 pixels is
+			 * about half of what a row move costs through the keystone - unless a piece of this drawing reached into their room */
+			for (int i = 0; i < nbox; i++)
+				low |= rbox[i][1] + rbox[i][3] > (int)(890 * U);
+			if (all || low || note_of(v, sel) != note_shown || (int)(v->f < F_CORNERS ? v->f : 0) != foot_shown) {
+				draw_note(v, sel);
+				seal();
+			}
 		}
 	}
 	memcpy(box, rbox, sizeof(int) * 4 * (size_t)nbox);
