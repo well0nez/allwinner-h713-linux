@@ -77,6 +77,7 @@ licensed (FreeType License or GPL-2.0-only); this program is GPL-2.0, which take
 line of the `desktop` profile (`rootfs/packages-desktop.txt`); h713-osd opens it at run time from
 `/usr/share/fonts/truetype/quicksand/`. The OFL allows use and redistribution with the licence kept - the package carries it -
 and forbids selling the font by itself. The arrows of the launcher's hint line are drawn as shapes because the face has no U+25B2.
+The settings page (package S, `userspace/h713-settings`) draws with the same `osd_text` and the same face; nothing else is added.
 
 ## The decoders, the VA-API driver and Mesa (`rootfs/`)
 
@@ -104,17 +105,6 @@ Hardware video decoding on the H713 has three user-space parts, none of them a D
 What we took from cstenger's tree besides patches is **knowledge**, put into our own words and our own files: how the 10-bit
 HEVC output is laid out, the AV1 core's hardware rules, mpv's settings for a Mali-G31, the reference method for the bit-exact
 tests (framemd5 against a software decoder). No file of his `tools/` or `docs/` was copied.
-
-The launcher's text (media side project, package H) is **FreeType** and **Quicksand**, both Debian trixie, neither modified and
-neither stored here. `userspace/libh713osd/text.c` draws glyphs with FreeType 2.13.3 (`libfreetype-dev`, in the build sysroot
-through `release/build-all.sh`'s `SYSROOT_PACKAGES`); `h713-osd` links `libfreetype.a` and the archives it needs (libpng 1.6.48,
-bzip2, brotli, zlib, all from the same sysroot) **statically**, so the base image carries no FreeType package. FreeType is dual
-licensed (FreeType License or GPL-2.0-only); this program is GPL-2.0, which takes the second. The face is `fonts-quicksand`
-0.2016-2.1 (Quicksand Medium, **SIL Open Font License 1.1**, copyright file `/usr/share/doc/fonts-quicksand/copyright`), a package
-line of the `desktop` profile (`rootfs/packages-desktop.txt`); h713-osd opens it at run time from
-`/usr/share/fonts/truetype/quicksand/`. The OFL allows use and redistribution with the licence kept - the package carries it -
-and forbids selling the font by itself. The arrows of the launcher's hint line are drawn as shapes because the face has no U+25B2.
-The settings page (package S, `userspace/h713-settings`) draws with the same `osd_text` and the same face; nothing else is added.
 
 ## What is *not* in this repository, on purpose
 
