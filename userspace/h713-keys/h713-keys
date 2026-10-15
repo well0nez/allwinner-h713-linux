@@ -15,7 +15,7 @@ switches between the HDMI picture ("auto") and the console ("off") - the way bac
 the console. Each action is one journal line (the
 journal is how a key test is read) and one line to the overlay daemon h713-osd (/run/h713-osd/ctl) when
 it runs; the overlay never holds up the action.
-The launcher: Home opens the list on the left edge (h713-osd draws it; the entries are /etc/h713/launcher.d/NN-name.conf,
+The launcher: Home opens a page with the list on the left (h713-osd draws it, opaque over the whole panel; the entries are /etc/h713/launcher.d/NN-name.conf,
 docs/tools/h713-keys.md), Up/Down/OK/Back/Home work it, volume, mute and focus work as always. It opens only where h713-osd
 can show it. Menu, Back, the arrows and OK are recognised and left to Kodi with the launcher closed; so are the mouse and the
 microphone key over IR, which only ask for the Bluetooth pairing (KEY_F6) - nothing acts on that: a remote
@@ -342,7 +342,7 @@ def signal_text():
 
 
 class Launcher:
-    """Home: the list on the left edge. Open = h713-osd shows it and the remote's devices are grabbed."""
+    """Home: the launcher page. Open = h713-osd shows it and the remote's devices are grabbed."""
 
     def __init__(self):
         self.entries, self.sel, self.last = None, 0, 0.0

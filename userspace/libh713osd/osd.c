@@ -36,6 +36,7 @@ struct scene {
 	double lw;		/* half the line width of icons and digits, px */
 	double dim;		/* the weight of a dim line */
 	double pill_a;		/* the alpha of the pill's fill */
+	unsigned pill_rgb;	/* its colour (0xRRGGBB) */
 	double px, py, pw, ph;	/* the item's box: left, top, width, height */
 	int panel;		/* behind the lines: 0 a soft shadow (the bare look), 1 the pill, 2 the badge's disc, 3 nothing */
 };
@@ -386,6 +387,7 @@ static void layout(struct scene *s, const struct osd_canvas *c, const struct osd
 	s->lw = 1.6 * u;
 	s->dim = DIM;
 	s->pill_a = 0.46;
+	s->pill_rgb = 0x0a0c10;
 	s->panel = st->look == OSD_PILL;
 
 	if (it->kind == OSD_MUTE_BADGE) {
@@ -549,7 +551,8 @@ static void render(struct osd_canvas *c, const struct scene *sc, double u, doubl
 	 * board: the volume strip's mixing from 12 ms).
 	 */
 	const double half = AA / 2, pill_a = s.pill_a * fade;
-	const uint32_t pill_px = (uint32_t)(pill_a * 255 + 0.5) << 24 | 10u << 16 | 12u << 8 | 16u;
+	const uint32_t pill_px = (uint32_t)(pill_a * 255 + 0.5) << 24 | s.pill_rgb;
+	const double pr = s.pill_rgb >> 16 & 255, pg = s.pill_rgb >> 8 & 255, pb = s.pill_rgb & 255;
 
 	for (int y = y0; y < y1; y++) {
 		double fy = y + 0.5, cx = s.px + s.pw / 2, inner = -1, outer = 1e9;
@@ -605,9 +608,9 @@ static void render(struct osd_canvas *c, const struct scene *sc, double u, doubl
 			A = (v >> 24) / 255.0;
 			R = (v >> 16 & 255) * A, G = (v >> 8 & 255) * A, B = (v & 255) * A;
 			if (la[0] > 0) {	/* the panel's colour (10, 12, 16), or the shadow's black */
-				R = 10 * lc0 * la[0] + R * (1 - la[0]);
-				G = 12 * lc0 * la[0] + G * (1 - la[0]);
-				B = 16 * lc0 * la[0] + B * (1 - la[0]);
+				R = pr * lc0 * la[0] + R * (1 - la[0]);
+				G = pg * lc0 * la[0] + G * (1 - la[0]);
+				B = pb * lc0 * la[0] + B * (1 - la[0]);
 				A = la[0] + A * (1 - la[0]);
 			}
 			if (la[1] > 0) {
@@ -630,7 +633,7 @@ static void render(struct osd_canvas *c, const struct scene *sc, double u, doubl
 	PROF(2, pt);
 }
 
-/* --- the menu: the symbols, a row, the scrim and a hint (the launcher of package H, later the settings) --------------- */
+/* --- the menu: the symbols, a row and a hint (the launcher of package H and its opaque page) ---------------------------- */
 
 static const char *const ICON_NAME[OSD_ICONS] = { "hdmi", "film", "globe", "desk", "sliders", "power" };
 
@@ -720,7 +723,8 @@ void osd_draw_row(struct osd_canvas *c, const struct osd_row *r, int box[4])
 	memset(&s, 0, sizeof(s));
 	s.lw = 2.4 * f;
 	s.dim = 0.447;		/* 0.94 * 0.447 = the mock-up's 42 % white */
-	s.pill_a = 0.72;
+	s.pill_a = 1.0;		/* the lit pill of the opaque page: a little lighter than the ground (h713-settings' PAGEPILL) */
+	s.pill_rgb = OSD_PAGE_PILL;
 	s.panel = r->selected ? 1 : 3;
 	s.px = r->x * u, s.py = r->y * u, s.pw = r->w * u, s.ph = r->h * u;
 	if (r->selected) {
@@ -756,30 +760,20 @@ void osd_draw_hint(struct osd_canvas *c, double x, double baseline, const char *
 	osd_text(c, text, x0 + (arrows ? 68 * u : 0), y0, 26 * u, 0xffffff, 0.42f, 0);
 }
 
-void osd_draw_scrim(struct osd_canvas *c, const int box[4])
+/* a rectangle (x, y, w, h, clipped to the canvas) set to one colour, REPLACING what was there */
+static void fill_box(struct osd_canvas *c, const int box[4], uint32_t argb)
 {
-	double L = 700.0 * c->h / 1080;
 	int x0 = box[0] < 0 ? 0 : box[0], x1 = box[0] + box[2] > c->w ? c->w : box[0] + box[2];
 	int y0 = box[1] < 0 ? 0 : box[1], y1 = box[1] + box[3] > c->h ? c->h : box[1] + box[3];
 
-	for (int y = y0; y < y1; y++) {
-		uint32_t *row = c->px + (size_t)y * c->stride;
-
-		if (y > y0) {
-			memcpy(row + x0, c->px + (size_t)y0 * c->stride + x0, (size_t)(x1 - x0) * 4);
-			continue;
-		}
-		for (int x = x0; x < x1; x++) {		/* black: 0.70 at the edge, 0.25 at 45 %, none at the end */
-			double t = (x + 0.5) / L, a = t >= 1 ? 0 : t < 0.45 ? 0.70 - 0.45 * t / 0.45 : 0.25 * (1 - (t - 0.45) / 0.55);
-
-			row[x] = (uint32_t)(a * 255 + 0.5) << 24;
-		}
-	}
+	for (int y = y0; y < y1; y++)
+		for (int x = x0; x < x1; x++)
+			c->px[(size_t)y * c->stride + x] = argb;
 }
 
 /* --- the launcher: a column on the left edge, cut into bands that repaint on their own ------------------------------- */
 
-#define LAU_COLUMN	700	/* the scrim's width, 1080-line units */
+#define LAU_COLUMN	700	/* the column the list stands in (the tiles' left part), 1080-line units */
 #define LAU_FIRST	194	/* the first pill's top */
 #define LAU_PITCH	124	/* from one pill to the next */
 #define LAU_FOOT_PILL	844	/* the last row of the group at the foot sits with its top here, as in the mock-up */
@@ -813,30 +807,34 @@ static int lau_geometry(const struct osd_launcher *l, double top[OSD_LAUNCHER_RO
 int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l, int box[][4])
 {
 	double top[OSD_LAUNCHER_ROWS], y0[OSD_LAUNCHER_ROWS + 3], y1[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
-	int bands = lau_geometry(l, top, y0, y1);
+	int bands = lau_geometry(l, top, y0, y1), colw = (int)ceil(LAU_COLUMN * u);
 
 	if (l->n < 1)
 		return 0;
 	/* the header starts at the top of the canvas and the foot runs to its bottom; the rest is rounded once, so bands that meet in
-	 * units meet in pixels */
+	 * units meet in pixels. Tile k < bands is the band's left part (the column, where its content is), tile bands + k the right
+	 * part (the calm rest of the page, to the canvas' right edge) */
 	for (int k = 0; k < bands; k++) {
 		int a = k == 0 ? 0 : (int)floor(y0[k] * u + 0.5), b = k == bands - 2 ? c->h : (int)floor(y1[k] * u + 0.5);
 
-		box[k][0] = 0, box[k][1] = a, box[k][2] = (int)ceil(LAU_COLUMN * u), box[k][3] = b > a ? b - a : 0;
+		box[k][0] = 0, box[k][1] = a, box[k][2] = colw < c->w ? colw : c->w, box[k][3] = b > a ? b - a : 0;
+		box[bands + k][0] = box[k][2], box[bands + k][1] = a, box[bands + k][2] = c->w - box[k][2], box[bands + k][3] = box[k][3];
 	}
-	return bands;
+	return 2 * bands;
 }
 
-void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int band)
+void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int tile)
 {
-	int box[OSD_LAUNCHER_ROWS + 3][4], bands = osd_launcher_bands(c, l, box);
+	int box[2 * (OSD_LAUNCHER_ROWS + 3)][4], tiles = osd_launcher_bands(c, l, box), bands = tiles / 2;
 	double top[OSD_LAUNCHER_ROWS], y0[OSD_LAUNCHER_ROWS + 3], y1[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
-	int n = bands - 3;
+	int n = bands - 3, band = tile % (bands ? bands : 1);
 
-	if (band < 0 || band >= bands || !box[band][3])
+	if (tile < 0 || tile >= tiles || !box[tile][2] || !box[tile][3])
 		return;
 	lau_geometry(l, top, y0, y1);
-	osd_draw_scrim(c, box[band]);
+	fill_box(c, box[tile], OSD_PAGE_GROUND);
+	if (tile >= bands)			/* the right part: the ground alone, nothing shows through */
+		return;
 	if (band == 0) {
 		osd_text(c, l->head, 150 * u, 140 * u, 30 * u, 0xffffff, 0.42f, 0);
 	} else if (band <= n) {
@@ -845,7 +843,7 @@ void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int b
 		osd_draw_row(c, &r, NULL);
 	} else if (band == n + 1) {
 		osd_draw_hint(c, 150, 1010, "select \xc2\xb7 OK open \xc2\xb7 BACK close", 1);
-	}					/* band n + 2: the scrim alone */
+	}					/* band n + 2: the ground alone */
 }
 
 void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd_item *it, int box[4])

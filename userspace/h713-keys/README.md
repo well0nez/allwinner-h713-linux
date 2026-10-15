@@ -26,7 +26,7 @@ h713-keys run            # what the unit runs
 
 ## The launcher (Home)
 
-Package H of the media side project: Home opens a list on the left edge over the picture, drawn by `h713-osd` (its `launcher`
+Package H of the media side project: Home opens a page with a ground over the whole panel and the list on the left, drawn by `h713-osd` (its `launcher`
 command), Up and Down move, OK does what the entry says, Back and Home close, volume, mute and focus work as always. The entries are
 the files `/etc/h713/launcher.d/NN-name.conf` (`label`, `icon`, `unit` or `exec`, `show`, `active`, `now`, `group`, `fallback`;
 `rootfs/overlay-desktop/etc/h713/launcher.d/` has the three of package H: HDMI input, Kodi, Standby; the format is in

@@ -27,7 +27,7 @@ Volume and mute work without an HDMI signal: `h713-tv` keeps them as long as its
 
 ## The launcher (Home)
 
-Package H of the media side project. `KEY_HOMEPAGE` opens a list on the left edge over the picture - the mock-up's "Launcher C":
+Package H of the media side project. `KEY_HOMEPAGE` opens an **opaque page** over the whole panel (Marco, 15.10.2026: it must have a ground, it is not an overlay over the picture; the picture goes on behind it) with the list on the left - the mock-up's "Launcher C":
 a header line with the time and what runs (`20:47 - HDMI 1080p60`, `Kodi`), the entries, set apart at the foot Standby, and
 `select / OK open / BACK close`. h713-osd draws it (`launcher ...` on its socket, [h713-osd](h713-osd.md)); h713-keys is the
 controller. **Up/Down** move (no wrapping), **OK** does what the entry says and closes, **Back** and **Home** close, a

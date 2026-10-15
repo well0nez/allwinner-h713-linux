@@ -49,14 +49,18 @@ height / 1080):
 |---|---|
 | `osd_icon_by_name()`, `enum osd_icon` | the Strichsymbole of the mock-up: `hdmi`, `film`, `globe`, `desk`, `sliders`, `power` (48-unit boxes, round-capped strokes, the mock-up's paths; the globe's meridians are Beziers as chains of segments) |
 | `osd_draw_row()` | one row: a symbol, a label, and - when selected - the pill (fill 72 % and a white outline) around them; everything scales with the pill's height; the label is clipped to the pill |
-| `osd_draw_scrim()` | the dark gradient on the left edge (70 % at the edge, 25 % at 45 % of the column, none at 700 units); it *replaces* the pixels of a rectangle |
 | `osd_draw_hint()` | a dim hint line, the arrows for up and down drawn as shapes (the face has no U+25B2) |
-| `osd_launcher_bands()`, `osd_launcher_draw()` | the launcher "C": the column cut into **bands** (header, one per row of 124 units, foot, and the scrim-only gap between the rows at the top and those at the foot) that tile it; `osd_launcher_draw(c, l, band)` repaints one band (scrim first, then its content), so moving the selection repaints two rows' bands |
+| `osd_launcher_bands()`, `osd_launcher_draw()` | the launcher's **opaque page**: the ground (`OSD_PAGE_GROUND` 0xff0b0e0d) over the whole canvas, the mock-up's "Launcher C" list in the column on the left (header, up to six rows, Standby set apart at the foot, hint line), the rest calm. Cut into **tiles**: the page's bands (header, one per row of 124 units, foot, and the gap between the rows at the top and those at the foot) each in a left part (the column, 700 units) and a right part (the ground alone); `osd_launcher_draw(c, l, tile)` repaints one tile, so moving the selection repaints two row tiles of the column and not the page |
 
-The launcher is the column only: the picture stays visible to its right (`osd-mockup` draws the states of the mock-up as
-`launcher-*.pam`). The scrim is 700 units wide, not the mock-up's 1100: the volume strip starts at 690 and must never meet
-it. `test-menu` checks the invariant h713-osd's incremental redraw lives on - the bands tile the column, a repainted band
-is bit for bit what a full draw gives, a move of the selection changes two bands and no other.
+The page is **opaque** (Marco, 15.10.2026: "launcher and settings must have a ground - that is not the same as the overlays"): a
+translucent list over a picture is unreadable over some pictures. The ground and the lit pill (`OSD_PAGE_PILL` 0x1c2321) are the
+colours of `h713-settings`' `ui.c`, so that launcher and settings are one line. Everything but the ground stays inside a **safe
+margin of 5 %** on each side (`OSD_SAFE_PERCENT`: 96 px left and right, 54 px top and bottom at 1080p, 64 and 36 at 720p); `test-menu`
+measures it at 1080p, 720p and 540p for every selection, with six rows and with the three of package H - together with the page
+being opaque everywhere, the tiles covering the canvas exactly once, the lit pill's exact colour, and the invariant h713-osd's
+incremental redraw lives on: a tile repainted alone is bit for bit what a full draw gives, a move of the selection changes two tiles
+and no other. `osd-mockup` draws the page in the states of package H as `launcher-*.pam`. (The first design, a gradient over the
+running picture, is in the history of this file's commit: `0ad4e98`.)
 
 ## Text
 
