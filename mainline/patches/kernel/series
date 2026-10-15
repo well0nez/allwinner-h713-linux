@@ -684,3 +684,5 @@
 #   H6's 600 MHz (0293 held 432 MHz for the AV1 core alone; with the AV1 decoder off the codecs on the VE ran 28 % slow, and
 #   2160p30 did not keep up).
 0315-media-cedrus-the-h713-video-engine-runs-at-432-mhz-only-while-the-av1-decoder-is-on.patch
+#   0316 (15.10.2026): an H.265 job whose collocated_ref_idx lies outside the active reference list is refused, like 0309's.
+0316-media-cedrus-h265-the-collocated-picture-must-be-in-the-active-reference-list.patch
