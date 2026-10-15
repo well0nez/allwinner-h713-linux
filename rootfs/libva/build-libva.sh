@@ -1,4 +1,5 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-or-later
 # rootfs/libva/build-libva.sh - the VA-API driver for the stateless V4L2 decoders (cedrus, the AV1 core): megi's
 # libva-v4l2_request v1.2 plus the patches of rootfs/libva/patches/, cross-built with clang against the arm64
 # sysroot.
@@ -105,15 +106,28 @@ for c in H264 HEVC MPEG2 VP8 VP9 AV1; do
 done
 printf '    NEEDED: %s\n' "$need"
 
-# the licence text and where the source is: GPL-3.0 binaries go into an image
+# the licence text and where the source is: GPL-3.0 binaries go into an image, and GPL-3 section 6 wants a way to
+# the corresponding source that leads to exactly this build - so the repository commit, not just the repository.
+# Outside a git checkout (or in a worktree whose .git points to a path the container does not see) it says so.
 install -d "$STAGE/usr/local/share/doc/libva-v4l2-request"
 install -m 0644 "$SRC/COPYING" "$STAGE/usr/local/share/doc/libva-v4l2-request/COPYING"
+REPO_URL=https://github.com/well0nez/allwinner-h713-linux
+if REPO_COMMIT=$(git -C "$ROOT" rev-parse HEAD 2>/dev/null); then
+	REPO_TAG=$(git -C "$ROOT" describe --tags --exact-match HEAD 2>/dev/null) || REPO_TAG=
+	[[ -z $(git -C "$ROOT" status --porcelain -- rootfs/libva 2>/dev/null) ]] ||
+		REPO_COMMIT+=" plus uncommitted changes in rootfs/libva (not a release build)"
+else
+	REPO_COMMIT="unknown (not built from a git checkout)"; REPO_TAG=
+fi
 {
 	echo "libva-v4l2_request $LIBVA_VER (GPL-3.0-or-later), built for the H713 by rootfs/libva/build-libva.sh"
 	echo "upstream: $LIBVA_URL"
 	echo "commit:   $LIBVA_COMMIT"
-	echo "patches:  rootfs/libva/patches/ of https://github.com/well0nez/allwinner-h713-linux (0001-0009 Christopher Stenger's, 0010 on this project's; in this order):"
+	echo "patches:  rootfs/libva/patches/ of $REPO_URL"
+	echo "          at commit $REPO_COMMIT${REPO_TAG:+ (tag $REPO_TAG)}; GPL-3.0-or-later like the code they change"
+	echo "          (0001-0009 Christopher Stenger's, 0010 on this project's); in this order:"
 	sed 's/^/          /' "$PATCHES/series"
+	echo "build:    rootfs/libva/build-libva.sh and rootfs/mesa/cross-aarch64.ini.in at the same commit"
 } > "$STAGE/usr/local/share/doc/libva-v4l2-request/SOURCE"
 
 # 6. tarball + sizes. Sorted, owner 0:0 and, with SOURCE_DATE_EPOCH (release/build-all.sh), one mtime for all.
