@@ -61,7 +61,7 @@ so that Kodi under cage reaches the wall through the warp - with the keystone, t
 master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/PRUEFUNG-M3.md`).
 
 - **Protocols:** `wl_compositor`, `wl_shm`, `xdg_wm_base` (one fullscreen toplevel in the panel's size, a second one
-  is closed at once, popups are dismissed), `zwp_linux_dmabuf_v1` v4 with a format table out of EGL (every RGB
+  is asked to close at once - if it stays, it takes the panel over when the first one goes; popups are dismissed), `zwp_linux_dmabuf_v1` v4 with a format table out of EGL (every RGB
   format and modifier the render node imports, Kodi's AR30 + AFBC `0x0800000000000062` among them - without it cage
   copies every picture), `wl_output`, `wp_presentation` (CLOCK_MONOTONIC). No `wl_seat`: cage reads the remote
   through libinput itself.
@@ -81,7 +81,7 @@ master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/P
   than the panel sits in the middle (letterbox), never scaled, and gets the configure once more - cage misses the
   first one and would stay at 1280x720 (G1, 15.10.2026). With `warp = off` the client is shown without
   keystone. The client is drawn through the GPU even at the identity: the video plane takes NV12 only.
-- **Limits:** four connections see the globals, eight surfaces and eight imported dma-bufs per client, a buffer
+- **Limits:** four connections (a fifth gets an error and is closed), eight surfaces and eight imported dma-bufs per client, a buffer
   larger than the panel is refused, a buffer before the first configure is a protocol error; a client that goes
   away keeps the panel for two seconds (a cage restart), then the warp gives it back. A dma-buf shorter than the
   layout the GPU reads for its modifier fails before the import - LINEAR offset + pitch x height, u-interleaved in

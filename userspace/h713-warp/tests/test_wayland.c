@@ -7,7 +7,8 @@
  * feedback with Kodi's AR30/AFBC and renderD128 as the device, the panel as the output's mode and the toplevel's
  * size, the life of a buffer (taken, frame done, released, presented), wl_shm, the refusals (too large, a buffer
  * before the configure, a second toplevel, a fifth connection) and the two seconds after the client is gone; since
- * the review M4: a wl_shm line shorter than 4 x width (A2), a dma-buf shorter than its layout for every modifier (A3).
+ * the review M4: a wl_shm line shorter than 4 x width (A2), a dma-buf shorter than its layout for every modifier (A3),
+ * a waiting toplevel that takes the panel over and a fifth connection that is closed (A4).
  *
  *   test_wayland ./server_stub     exit 0: all passed
  */
@@ -22,6 +23,7 @@
 #include <time.h>
 #include <unistd.h>
 #include <sys/mman.h>
+#include <sys/socket.h>
 #include <sys/stat.h>
 #include <sys/wait.h>
 #include <wayland-client.h>
@@ -152,6 +154,30 @@ static void tl_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, 
 }
 static void tl_close(void *d, struct xdg_toplevel *t) { (void)d; (void)t; ev.closed = true; }
 static const struct xdg_toplevel_listener tl_l = { tl_configure, tl_close, NULL, NULL };
+
+/* A4: the client whose toplevel waits behind the shown one */
+static struct {
+	int w, h;
+	bool fullscreen, closed, done;
+} fev;
+static void f_xs_configure(void *d, struct xdg_surface *x, uint32_t serial) { (void)d; xdg_surface_ack_configure(x, serial); }
+static const struct xdg_surface_listener f_xs_l = { f_xs_configure };
+static void f_tl_configure(void *d, struct xdg_toplevel *t, int32_t w, int32_t h, struct wl_array *st)
+{
+	uint32_t *p;
+
+	(void)d;
+	(void)t;
+	fev.w = w;
+	fev.h = h;
+	fev.fullscreen = false;
+	wl_array_for_each(p, st)
+		fev.fullscreen |= *p == XDG_TOPLEVEL_STATE_FULLSCREEN;
+}
+static void f_tl_close(void *d, struct xdg_toplevel *t) { (void)d; (void)t; fev.closed = true; }
+static const struct xdg_toplevel_listener f_tl_l = { f_tl_configure, f_tl_close, NULL, NULL };
+static void f_done(void *d, struct wl_callback *cb, uint32_t t) { (void)d; (void)t; wl_callback_destroy(cb); fev.done = true; }
+static const struct wl_callback_listener f_cb_l = { f_done };
 
 static void released(void *d, struct wl_buffer *b) { (void)d; (void)b; ev.released = true; }
 static const struct wl_buffer_listener buf_l = { released };
@@ -456,15 +482,74 @@ int main(int argc, char **argv)
 	for (i = 0; i < 4; i++)
 		if (connect_to(&more[i], path) && more[i].comp)
 			seen++;
-	CHECK(seen == 3, "connections 2-4 see the globals, the fifth does not (%d of 4 did)", seen);
+	{
+		struct pollfd hp = { .fd = more[3].d ? wl_display_get_fd(more[3].d) : -1, .events = POLLIN };
+		char byte;
+
+		CHECK(seen == 3 && more[3].d && wl_display_get_error(more[3].d) == EPROTO,
+		      "connections 2-4 see the globals, the fifth gets an error (%d of 4 saw them, A4)", seen);
+		/* closed with the client's last request unread: a hangup, and recv says EOF or ECONNRESET */
+		int pr = hp.fd >= 0 ? poll(&hp, 1, 1000) : -1;
+		ssize_t rr = pr > 0 ? recv(hp.fd, &byte, 1, MSG_DONTWAIT) : -2;
+
+		CHECK((hp.revents & POLLHUP) && (rr == 0 || (rr < 0 && errno == ECONNRESET)),
+		      "... and the server closed it, not held it (A4: revents 0x%x)", hp.revents);
+	}
 	for (i = 0; i < 4; i++)
 		if (more[i].d)
 			wl_display_disconnect(more[i].d);
 
-	xdg_toplevel_destroy(tl);
-	wl_display_roundtrip(c.d);
-	CHECK(!server_says("gone", 1500), "the panel is held after the toplevel went (cage restart)");
-	CHECK(server_says("gone", 1500), "... and given back after two seconds");
+	/* M4 A4: a toplevel that waited (told "close", no frame callbacks) takes the panel over when the shown one goes */
+	{
+		struct conn f;
+		struct wl_surface *fs;
+		struct xdg_surface *fx;
+		struct xdg_toplevel *ftl;
+		struct wl_buffer *fb;
+		int ms;
+
+		xdg_toplevel_destroy(tl2);	/* c's second toplevel, never acknowledged: out of the way */
+		wl_display_roundtrip(c.d);
+		CHECK(connect_to(&f, path) && f.comp, "a client whose toplevel will wait");
+		xdg_wm_base_add_listener(f.wm, &wm_l, NULL);
+		fs = wl_compositor_create_surface(f.comp);
+		fx = xdg_wm_base_get_xdg_surface(f.wm, fs);
+		xdg_surface_add_listener(fx, &f_xs_l, NULL);
+		ftl = xdg_surface_get_toplevel(fx);
+		xdg_toplevel_add_listener(ftl, &f_tl_l, NULL);
+		wl_surface_commit(fs);
+		wl_display_roundtrip(f.d);
+		wl_display_roundtrip(f.d);
+		CHECK(fev.closed && fev.w == 0, "it waits: told close, configured 0x0");
+		wl_surface_attach(fs, shmbuf(&f, 64, 64), 0, 0);	/* a client that draws on the callback: one picture, then waits */
+		wl_callback_add_listener(wl_surface_frame(fs), &f_cb_l, NULL);
+		wl_surface_commit(fs);
+		for (ms = 300; ms > 0 && wl_display_roundtrip(f.d) >= 0; ms -= 10)
+			usleep(10000);
+		CHECK(!fev.done, "while it waits, its frame callback does not come");
+		xdg_toplevel_destroy(tl);
+		wl_display_roundtrip(c.d);
+		for (ms = 1000; (fev.w != ev.w || !fev.done) && ms > 0 && wl_display_roundtrip(f.d) >= 0; ms -= 10)
+			usleep(10000);
+		CHECK(fev.w == ev.w && fev.h == ev.h && fev.fullscreen,
+		      "the shown toplevel went: the waiting one gets the panel's configure %dx%d fullscreen (A4)", fev.w, fev.h);
+		CHECK(fev.done, "... and the frame callback it waited for (A4)");
+		fev.done = false;
+		fb = dmabuf(&f, fev.w, fev.h, true);
+		wl_surface_attach(fs, fb, 0, 0);
+		wl_callback_add_listener(wl_surface_frame(fs), &f_cb_l, NULL);
+		wl_surface_commit(fs);
+		wl_display_flush(f.d);
+		CHECK(server_says("frame", 1500), "its first picture is taken - within the two seconds, no new claim (A4)");
+		for (ms = 1000; !fev.done && ms > 0 && wl_display_roundtrip(f.d) >= 0; ms -= 10)
+			usleep(10000);
+		CHECK(fev.done, "... and its frame callback comes (A4)");
+		xdg_toplevel_destroy(ftl);
+		wl_display_roundtrip(f.d);
+		CHECK(!server_says("gone", 1500), "the panel is held after the toplevel went (cage restart)");
+		CHECK(server_says("gone", 1500), "... and given back after two seconds");
+		wl_display_disconnect(f.d);
+	}
 
 	wl_display_disconnect(c.d);
 	close(in[1]);

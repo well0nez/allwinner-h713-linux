@@ -87,11 +87,13 @@ struct wsurf {
 	bool p_attached, configured, acked, mapped, toplevel, sized;	/* sized: a configure went after a wrong size */
 	uint32_t serial;
 	struct wl_list p_frames, p_feedback;	/* the next commit's wl_callbacks and presentation feedback */
+	struct wl_list tl_link;			/* in server.toplevels while it is an xdg_toplevel, oldest first */
 };
 
 struct wclient {
 	struct wl_listener gone;
 	struct server *s;
+	struct wl_event_source *kick;	/* a connection beyond MAX_CLIENTS: closed from the loop's idle (M4 A4) */
 	bool allowed;
 	int surfaces, buffers;
 };
@@ -113,7 +115,7 @@ struct server {
 	bool kodi_format, stopping, live, ready, busy;
 	dev_t dev;
 	unsigned int pw, ph;
-	struct wl_list imports, outputs;
+	struct wl_list imports, outputs, toplevels;
 	struct gl_image *shm;
 	struct wsurf *top;			/* the one toplevel that is shown */
 	struct wbuf *pending;			/* committed, not taken */
@@ -607,7 +609,13 @@ static int hold_cb(void *data)
 	return 0;
 }
 
-/* the shown toplevel is gone (destroyed) or has no picture any more (a NULL buffer): two seconds for a new one */
+/*
+ * the shown toplevel is gone (destroyed) or has no picture any more (a NULL buffer): two seconds for a new one. A gone
+ * one hands the panel to the oldest toplevel still there (M4 A4): it was told "close", its pictures went back unseen
+ * and its frame callbacks never came while it waited - now its feedback is discarded, its callbacks come within a
+ * panel period (a client that draws on the callback draws again), and the configure tells it the panel's size; its
+ * next picture is taken like a first one.
+ */
 static void top_lost(struct server *s, bool destroyed)
 {
 	if (s->pending) {
@@ -617,16 +625,34 @@ static void top_lost(struct server *s, bool destroyed)
 		s->pending = NULL;
 	}
 	s->ready = false;
-	if (destroyed)
-		s->top = NULL;
-	else
+	if (destroyed) {
+		s->top = wl_list_empty(&s->toplevels) ? NULL : container_of(s->toplevels.next, struct wsurf, tl_link);
+		if (s->top && !s->stopping) {
+			s->top->sized = false;
+			discard(s, &s->top->p_feedback);
+			move_all(&s->idle, &s->top->p_frames);
+			if (s->idle_due <= 0)
+				s->idle_due = now_s() + s->period;
+			configure(s->top);
+			schedule(s);
+		}
+	} else {
 		s->top->mapped = false;
+	}
 	if (s->stopping)
 		return;
 	if (s->live)
 		wl_event_source_timer_update(s->hold, HOLD_MS);
 	else
 		warp_client_gone(s->r);
+}
+
+/* no longer a toplevel: out of the list, so it cannot take the panel over */
+static void toplevel_unlink(struct wsurf *w)
+{
+	if (w->toplevel)
+		wl_list_remove(&w->tl_link);
+	w->toplevel = false;
 }
 
 static void toplevel_destroyed(struct wl_resource *res)
@@ -636,7 +662,7 @@ static void toplevel_destroyed(struct wl_resource *res)
 	if (!w)
 		return;
 	w->role = NULL;
-	w->toplevel = false;
+	toplevel_unlink(w);
 	if (w->s->top == w)
 		top_lost(w->s, true);
 }
@@ -694,6 +720,7 @@ static void get_toplevel(struct wl_client *c, struct wl_resource *res, uint32_t 
 		return;
 	w->role = tl;
 	w->toplevel = true;
+	wl_list_insert(w->s->toplevels.prev, &w->tl_link);
 	if (wl_resource_get_version(tl) >= XDG_TOPLEVEL_WM_CAPABILITIES_SINCE_VERSION) {
 		struct wl_array caps;
 		uint32_t *p;
@@ -987,6 +1014,7 @@ static void surface_destroyed(struct wl_resource *res)
 		wl_resource_set_user_data(w->xdg, NULL);
 	if (w->role)
 		wl_resource_set_user_data(w->role, NULL);
+	toplevel_unlink(w);
 	if (w->s->top == w)
 		top_lost(w->s, true);
 	free(w);
@@ -1415,6 +1443,8 @@ static void client_gone(struct wl_listener *l, void *data)
 	struct import *imp, *t;
 
 	wl_list_remove(&wc->gone.link);
+	if (wc->kick)
+		wl_event_source_remove(wc->kick);
 	if (wc->allowed)
 		s->clients--;
 	wl_list_for_each_safe(imp, t, &s->imports, link)
@@ -1426,6 +1456,16 @@ static void client_gone(struct wl_listener *l, void *data)
 	free(wc);
 }
 
+/* a connection beyond MAX_CLIENTS: the error went out with its creation, now it goes (the idle source is one-shot) */
+static void kick_cb(void *data)
+{
+	struct wclient *wc = wclient_of(data);
+
+	if (wc)
+		wc->kick = NULL;
+	wl_client_destroy(data);
+}
+
 static void client_created(struct wl_listener *l, void *data)
 {
 	struct server *s = container_of(l, struct server, created);
@@ -1435,12 +1475,19 @@ static void client_created(struct wl_listener *l, void *data)
 		return;			/* without a record the filter shows it nothing */
 	wc->s = s;
 	wc->allowed = s->clients < MAX_CLIENTS;
-	if (wc->allowed)
-		s->clients++;
-	else
-		warn("wayland         a connection beyond %d sees no globals", MAX_CLIENTS);
 	wc->gone.notify = client_gone;
 	wl_client_add_destroy_listener(data, &wc->gone);
+	if (wc->allowed) {
+		s->clients++;
+		return;
+	}
+	/*
+	 * Closed, not held (M4 A4: 60 connections held 120 fds in the warp): an error on wl_display says why, and the
+	 * connection ends from the loop's idle - not here, inside libwayland's own creation of it.
+	 */
+	warn("wayland         a connection beyond %d is closed", MAX_CLIENTS);
+	wl_client_post_implementation_error(data, "more than %d connections to h713-warp", MAX_CLIENTS);
+	wc->kick = wl_event_loop_add_idle(s->loop, kick_cb, data);
 }
 
 static bool global_filter(const struct wl_client *c, const struct wl_global *g, void *data)
@@ -1566,6 +1613,7 @@ struct server *server_start(const char *path, struct runtime *r)
 	s->period = PERIOD_S;
 	wl_list_init(&s->imports);
 	wl_list_init(&s->outputs);
+	wl_list_init(&s->toplevels);
 	wl_list_init(&s->frames);
 	wl_list_init(&s->feedback);
 	wl_list_init(&s->idle);
