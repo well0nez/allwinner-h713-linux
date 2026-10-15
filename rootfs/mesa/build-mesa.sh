@@ -38,7 +38,9 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 # 1. source, pinned
 TARBALL="$CACHE/mesa-$MESA_VER.tar.xz"
-[[ -f "$TARBALL" ]] || curl -fsSL -o "$TARBALL" "$MESA_URL"
+# --retry-all-errors: a connection reset (15.10.2026, archive.mesa3d.org) is not a "transient error" to curl --retry alone.
+# Into a .part file first: a cut transfer must not stand as the tarball, where the next run takes it for the real one.
+[[ -f "$TARBALL" ]] || { curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o "$TARBALL.part" "$MESA_URL" && mv "$TARBALL.part" "$TARBALL"; }
 echo "$MESA_SHA256  $TARBALL" | sha256sum -c --quiet - || die "mesa tarball: sha256 does not match"
 [[ -f "$SYSROOT/usr/include/libdrm/drm.h" ]] || die "no sysroot at $SYSROOT (release/build-all.sh step 6 makes it)"
 [[ -d "$SYSROOT/usr/include/c++" ]] || die "sysroot without C++ headers (libstdc++-14-dev) - mesa has C++ parts"

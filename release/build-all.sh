@@ -3,7 +3,7 @@
 #
 #   release/build-all.sh --version v0.10 [--board hy310] [--variant NAME] [--vendor DIR]
 #                        [--wifi-env FILE] [--jobs N] [--skip-bl31] [--skip-uboot]
-#                        [--skip-kernel] [--skip-rootfs] [--test-image] [--standby] [--dry-run]
+#                        [--skip-kernel] [--skip-rootfs] [--test-image] [--standby] [--profile NAME[,NAME]] [--dry-run]
 #
 # --board <id> (default hy310) picks boards/<id>/board.env: the installer
 # profile, the kernel DTB the FIT carries, the U-Boot base defconfig and the
@@ -29,10 +29,16 @@
 # with suspend allowed, so that h713-power (on every image) offers it in its countdown; power.conf's
 # default stays poweroff. Only for STANDBY=sr, which follows from CRUST_DEFCONFIG on a verified board.
 #
+# --profile NAME[,NAME] (media side project): the rootfs gets the packages-NAME.txt lists and the overlay-NAME/ trees on top of the
+# base (build-rootfs.sh --profile), e.g. --profile media,desktop. With a profile of the media family (media, desktop) the VA-API
+# driver is cross-built first (step 6d, rootfs/libva/build-libva.sh) and laid in (build-rootfs.sh --libva). The image is named
+# $IMAGE_NAME-$VERSION-<profiles joined by '-'> (e.g. h713-hy310-v0.97-media-desktop), and the stamp says "profile:" and "libva:".
+# A profile image is not a release image (build-rootfs.sh warns when the tree is over the 500 MiB of doku/107 section 7.1).
+#
 # Order (doku/116 P4):
 #   1 bl31  1b crust  2 U-Boot (+ split SPL/proper + environment with CRC)  2b installer U-Boot (ums)
 #   2b2 probe U-Boot (h713_probe)  2c sunxi-fel (trap door)  3 kernel (+ modules)
-#   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv, h713-osd cross-built  7 rootfs
+#   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv, h713-osd cross-built (6b mesa, 6c h713-warp, 6d libva with --profile)  7 rootfs
 #   8 ext4 inputs  9 image  10 check (with --vendor: the full self-test)  11 stamp
 #
 # Runs on the work machine and drives the container h713-build (doku/50 §Bauen);
@@ -100,7 +106,7 @@ SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
-VERSION= BOARD=hy310 VARIANT= VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0 WANT_STANDBY=0
+VERSION= BOARD=hy310 VARIANT= VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0 WANT_STANDBY=0 PROFILES=
 SKIP_BL31=0 SKIP_UBOOT=0 SKIP_KERNEL=0 SKIP_ROOTFS=0
 while (($#)); do
 	case "$1" in
@@ -116,8 +122,9 @@ while (($#)); do
 	--skip-rootfs) SKIP_ROOTFS=1; shift ;;
 	--test-image)  TEST_IMAGE=1; shift ;;
 	--standby)     WANT_STANDBY=1; shift ;;
+	--profile)     PROFILES=${2:?}; shift 2 ;;
 	--dry-run)   DRY=1; shift ;;
-	-h|--help)   sed -n '2,46p' "$0"; exit 0 ;;
+	-h|--help)   sed -n '2,52p' "$0"; exit 0 ;;
 	*) echo "unknown: $1" >&2; exit 2 ;;
 	esac
 done
@@ -208,7 +215,18 @@ KDEF=${KERNEL_DEFCONFIG:-$(sed -n 's/^KERNEL_DEFCONFIG=\([^ #]*\).*/\1/p' "$MAIN
 UBOOT_BASE=${UBOOT_DEFCONFIG:-${UBOOT_BOARD}_defconfig}; UBOOT_BASE=${UBOOT_BASE%_defconfig}
 [[ -n "$VERSION" ]] || { echo "--version vX.Y is missing (name of the image: $IMAGE_NAME-vX.Y)" >&2; exit 2; }
 [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+(-[a-z0-9]+)?$ ]] || { echo "--version: expected vX.Y or vX.Y-beta, not '$VERSION'" >&2; exit 2; }
-NAME="$IMAGE_NAME-$VERSION"
+# A profile image says so in its name: the stamp and the file names must not pass it off as the base image.
+PROFILE_SUFFIX=
+if [[ -n "$PROFILES" ]]; then
+	[[ "$PROFILES" =~ ^[a-z0-9]+(,[a-z0-9]+)*$ ]] || { echo "--profile: expected NAME[,NAME] of lower-case letters and digits, not '$PROFILES'" >&2; exit 2; }
+	for pr in ${PROFILES//,/ }; do
+		[[ -f "$ROOTFS/packages-$pr.txt" ]] || { echo "--profile $pr: there is no $ROOTFS/packages-$pr.txt" >&2; exit 2; }
+	done
+	PROFILE_SUFFIX="-${PROFILES//,/-}"
+fi
+# The VA-API driver goes with the media family (build-rootfs.sh --libva lays it in for media and for desktop).
+WANT_LIBVA=0; [[ ",$PROFILES," == *,media,* || ",$PROFILES," == *,desktop,* ]] && WANT_LIBVA=1
+NAME="$IMAGE_NAME-$VERSION$PROFILE_SUFFIX"
 ((TEST_IMAGE)) && NAME="$NAME-TEST"        # the name is the first place it has to say so
 OUT="$MAINLINE/build/out"
 DELIVERY="$INSTALLER/out"
@@ -254,6 +272,7 @@ say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
 info "root $ROOT"
 info "board $UNIT ($STATUS, profile $TEST_PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles${DRAM_CLK:+, DRAM $DRAM_CLK MHz})"
 info "crust ${CRUST_DEFCONFIG:-none}, standby $STANDBY$( ((WANT_STANDBY)) && echo ', offered (--standby)' )"
+info "rootfs profile ${PROFILES:-none (base image)}$( ((WANT_LIBVA)) && echo ', with the VA-API driver (step 6d)' )"
 info "$REPRO_LINE"
 ((TEST_IMAGE)) && { say "TEST IMAGE for $UNIT (STATUS=$STATUS) -- not a release"
 	info "Nobody has reported a green run here. The table is marked test_for=$TEST_PROFILE, so h713-install"
@@ -277,7 +296,7 @@ for f in "$INSTALLER/h713-mkimage" "$INSTALLER/mkimage-inputs.sh" "$ROOTFS/build
 done
 [[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR does not look like an h713-extract output (no boot/mips/)"
 mkdir -p "$OUT" "$DELIVERY"
-((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}${CRUST_DEFCONFIG:+ + scp}) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv, rootfs, inputs, image $NAME"; exit 0; }
+((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}${CRUST_DEFCONFIG:+ + scp}) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv${PROFILES:+, libva (profile $PROFILES)}, rootfs${PROFILES:+ (profile $PROFILES)}, inputs, image $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
 if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- skipped (--skip-bl31, $OUT/bl31.bin is there)"
@@ -441,7 +460,7 @@ KEYRING_DIR="$MAINLINE/build/cache/keyring"; mkdir -p "$KEYRING_DIR"
 KEYRING="$KEYRING_DIR/debian-archive-keyring.pgp"
 if [[ ! -f "$KEYRING" ]]; then
 	DEB="$MAINLINE/build/cache/$(basename "$KEYRING_DEB_URL")"
-	[[ -f "$DEB" ]] || curl -fsSL -o "$DEB" "$KEYRING_DEB_URL"
+	[[ -f "$DEB" ]] || { curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o "$DEB.part" "$KEYRING_DEB_URL" && mv "$DEB.part" "$DEB"; }
 	echo "$KEYRING_DEB_SHA256  $DEB" | sha256sum -c --quiet - || die "keyring package: the sha256 does not match -- do not use it"
 	T=$(mktemp -d); ( cd "$T" && ar x "$DEB" && tar -xf data.tar.* "$KEYRING_IN_DEB" ) && cp "$T/$KEYRING_IN_DEB" "$KEYRING"; rm -rf "$T"
 fi
@@ -499,17 +518,34 @@ in_container "cd $WORK/userspace/h713-warp && make -s -B cross SYSROOT=$(c "$SYS
 WARP="$USERSPACE/h713-warp/h713-warp.aarch64-linux-gnu"; [[ -f "$WARP" ]] || die "no $WARP"
 info "h713-warp $(stat -c %s "$WARP") bytes, $(file -b "$WARP" 2>/dev/null | cut -d, -f1-2)"
 
+# --- 6d. libva: the VA-API driver for the media family of profiles ---------------
+# Needs the sysroot (libva-dev, libdrm headers) and nothing from the steps in between; the tarball goes into the
+# rootfs with build-rootfs.sh --libva. The base image does not carry it.
+LIBVA_TAR=
+if ((WANT_LIBVA)); then
+	say "6d/11 libva-v4l2_request cross-built (VA-API driver on cedrus; rootfs/libva/build-libva.sh)"
+	in_container "cd $WORK && rootfs/libva/build-libva.sh" > "$OUT/libva-cross.log" 2>&1 || { tail -20 "$OUT/libva-cross.log"; die "libva build failed (log: $OUT/libva-cross.log, $OUT/libva-build.log)"; }
+	LIBVA_TAR="$OUT/libva-v4l2-request-1.2.tar"; [[ -f "$LIBVA_TAR" ]] || die "no $LIBVA_TAR"
+	LIBVA_COMMIT=$(sed -n 's/^LIBVA_COMMIT=\([0-9a-f]*\).*/\1/p' "$ROOT/rootfs/libva/build-libva.sh")
+	LIBVA_PATCHES=$(grep -cv '^#\|^$' "$ROOT/rootfs/libva/patches/series")
+	grep -E "NEEDED|patches applied|installed" "$OUT/libva-cross.log" | sed 's/^ *//; s/^/    /'
+	info "driver tarball $(stat -c %s "$LIBVA_TAR") bytes, upstream ${LIBVA_COMMIT:0:12} + $LIBVA_PATCHES patches"
+fi
+
 # --- 7. rootfs --------------------------------------------------------------
 if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 rootfs -- skipped (--skip-rootfs)"
 	# the tar carries its board's /etc/h713/features: one for another board would
 	# expect hardware this one has not (or hide what it has)
 	rec=$(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./etc/h713/features 2>/dev/null | sed -n 's/^board = //p') || rec=
 	[[ -z "$rec" || "$rec" == "$BOARD" ]] || die "the rootfs to reuse was built for board $rec, not $BOARD -- build it again (no --skip-rootfs)"
+	# ... and its profile: a base tar must not become the image of --profile media,desktop (or the other way round)
+	recp=$(sed -n 's/^profile=//p' "$ROOTFS/out/hy310-rootfs.manifest" 2>/dev/null) || recp=
+	[[ "${recp:-none}" == "${PROFILES:-none}" ]] || die "the rootfs to reuse was built with profile '${recp:-?}', not '${PROFILES:-none}' -- build it again (no --skip-rootfs)"
 else
-	say "7/11 rootfs ($DEBIAN_SUITE/arm64, mmdebstrap in the container as root)"
+	say "7/11 rootfs ($DEBIAN_SUITE/arm64${PROFILES:+, profile $PROFILES}, mmdebstrap in the container as root)"
 	CRUST_ARGS=; [[ -f "$OUT/scp.bin" ]] && CRUST_ARGS="--crust $(c "$OUT")/scp.bin"
 	((WANT_STANDBY)) && CRUST_ARGS="$CRUST_ARGS --standby"
-	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${PROFILES:+--profile $PROFILES} ${LIBVA_TAR:+--libva $(c "$LIBVA_TAR")} ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
@@ -595,6 +631,12 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	echo "$W: $(git -C "$MAINLINE" rev-parse --short HEAD 2>/dev/null) ($(git -C "$MAINLINE" status --short 2>/dev/null | wc -l) local changes)"
 	echo "source date: $SOURCE_DATE_EPOCH ($(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ'), committer date of $REPRO_COMMIT)"
 	echo "$REPRO_LINE"
+	echo "profile:  ${PROFILES:-none (base image)}$( [[ -n "$PROFILES" ]] && echo ' -- not a release image: over the 500 MiB of doku/107 section 7.1, the base rootfs tar is replaced by the profile tar' )"
+	if [[ -n "$LIBVA_TAR" ]]; then
+		echo "libva:    libva-v4l2_request ${LIBVA_COMMIT:0:12} + $LIBVA_PATCHES patches (rootfs/libva/patches/series), tar sha256 $(sha256sum "$LIBVA_TAR" | cut -c1-16)"
+	else
+		echo "libva:    none (the base image carries no VA-API driver)"
+	fi
 	echo "rootfs packages: dpkg status $(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./var/lib/dpkg/status | sha256sum | cut -c1-16) -- the tar repeats only while $DEBIAN_MIRROR $DEBIAN_SUITE is at this state"
 	echo "U-Boot:   $(strings -n 8 "$OUT/uboot-proper-release.bin" | grep -m1 '^U-Boot 20')"
 	echo "building blocks (sha256, 16 characters):"
@@ -604,6 +646,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	[[ -f "$OUT/scp.bin" ]] && printf '  %-28s %s\n' "scp.bin (crust)" "$(sha256sum "$OUT/scp.bin" | cut -c1-16)"
 	printf '  %-28s %s\n' "h713-tv.aarch64-linux-gnu" "$(sha256sum "$TV" | cut -c1-16)"
 	printf '  %-28s %s\n' "mesa-panfrost-25.0.7.tar" "$(sha256sum "$MESA" | cut -c1-16)"
+	[[ -n "$LIBVA_TAR" ]] && printf '  %-28s %s\n' "libva-v4l2-request-1.2.tar" "$(sha256sum "$LIBVA_TAR" | cut -c1-16)"
 	printf '  %-28s %s\n' "hy310-rootfs.tar" "$(sha256sum "$ROOTFS/out/hy310-rootfs.tar" | cut -c1-16)"
 } > "$STAMP"
 sed 's/^/    /' "$STAMP"

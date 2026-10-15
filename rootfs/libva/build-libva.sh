@@ -45,9 +45,14 @@ TARBALL="$CACHE/libva-v4l2_request-$LIBVA_COMMIT.tar"
 if [[ ! -f "$TARBALL" ]]; then
 	say "fetch $LIBVA_URL"
 	[[ -d "$CACHE/repo.git" ]] || git init -q --bare "$CACHE/repo.git"
-	git -C "$CACHE/repo.git" cat-file -e "$LIBVA_COMMIT^{commit}" 2>/dev/null ||
-		git -C "$CACHE/repo.git" fetch -q "$LIBVA_URL" "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" >> "$LOG" 2>&1 ||
-		die "cannot fetch $LIBVA_URL (log: $LOG)"
+	# three tries: one reset connection (as with mesa's tarball, 15.10.2026) must not end a build of three quarters of an hour
+	fetched=0
+	git -C "$CACHE/repo.git" cat-file -e "$LIBVA_COMMIT^{commit}" 2>/dev/null && fetched=1
+	for try in 1 2 3; do
+		((fetched)) && break
+		git -C "$CACHE/repo.git" fetch -q "$LIBVA_URL" "+refs/heads/*:refs/heads/*" "+refs/tags/*:refs/tags/*" >> "$LOG" 2>&1 && fetched=1 || sleep 5
+	done
+	((fetched)) || die "cannot fetch $LIBVA_URL (log: $LOG)"
 	[[ $(git -C "$CACHE/repo.git" rev-parse "$LIBVA_COMMIT^{commit}") == "$LIBVA_COMMIT" ]] || die "commit $LIBVA_COMMIT is not what upstream has"
 	git -C "$CACHE/repo.git" archive --format=tar -o "$TARBALL.part" "$LIBVA_COMMIT" && mv "$TARBALL.part" "$TARBALL"
 fi
