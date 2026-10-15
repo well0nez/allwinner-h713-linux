@@ -159,6 +159,8 @@ static int next_key(int ms)
 /* --- the page ------------------------------------------------------------------------------------------------ */
 
 static unsigned dirty;
+static int patience = 10;		/* seconds the page waits for the picture to come back (H713_SETTINGS_PATIENCE) */
+static double unseen_since;		/* since when h713-osd has only been keeping the page (ms); 0: it is on the wall */
 static bool timing;			/* H713_SETTINGS_TIMES: one journal line per drawing, for the key-to-wall measurement (S3) */
 
 static double now_ms(void)
@@ -383,6 +385,7 @@ int main(int argc, char **argv)
 	}
 	clock_gettime(CLOCK_MONOTONIC, &last);
 	timing = *env("H713_SETTINGS_TIMES", "") != '\0';
+	patience = atoi(env("H713_SETTINGS_PATIENCE", "10"));
 
 	rows_init();
 	for (int i = 0; area && i < nareas; i++)
@@ -403,9 +406,17 @@ int main(int argc, char **argv)
 			ui_draw(&canvas, &v, dirty, box);
 			t1 = now_ms();
 			dirty = 0;
-			if (!test && !page_show(box)) {
-				fprintf(stderr, "h713-settings: nothing can be seen any more -- closing\n");
-				break;
+			if (!test) {
+				int shown = page_show(box);
+
+				if (shown < 0) {
+					fprintf(stderr, "h713-settings: h713-osd does not answer -- closing\n");
+					break;
+				}
+				if (!shown && !unseen_since)
+					unseen_since = now_ms();
+				else if (shown)
+					unseen_since = 0;
 			}
 			if (timing)
 				fprintf(stderr, "h713-settings: drawn %.1f ms (%dx%d px), shown %.1f ms\n", t1 - t0, box[2], box[3],
@@ -433,6 +444,11 @@ int main(int argc, char **argv)
 				fprintf(stderr, "h713-settings: no key for %d s -- closing\n", idle);
 				break;
 			}
+		}
+		/* nothing to be seen for a while (the signal does not come back): the remote is given back */
+		if (unseen_since && now_ms() - unseen_since > patience * 1000) {
+			fprintf(stderr, "h713-settings: nothing can be seen for %d s -- closing\n", patience);
+			break;
 		}
 	}
 	if (v.f == F_CORNERS)

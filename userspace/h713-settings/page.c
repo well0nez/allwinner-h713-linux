@@ -75,19 +75,24 @@ int page_open(struct osd_canvas *c, const char *path)
 	return 0;
 }
 
-/* true when the rectangle is on the wall; false when nothing can be seen any more (the signal went) or h713-osd is gone */
-bool page_show(const int box[4])
+/* 1: the rectangle is on the wall; 0: h713-osd keeps it and shows it when the picture is back (no signal at the moment: the
+ * autofocus has the panel, a source that changes its mode); -1: h713-osd is gone or refuses */
+int page_show(const int box[4])
 {
 	char line[96], answer[96];
 	ssize_t got;
 
-	if (sock < 0 || !box[2] || !box[3])
-		return sock >= 0;
+	if (sock < 0)
+		return -1;
+	if (!box[2] || !box[3])
+		return 1;
 	snprintf(line, sizeof(line), "page show %d %d %d %d\n", box[0], box[1], box[2], box[3]);
 	if (send(sock, line, strlen(line), MSG_NOSIGNAL) < 0 || (got = recv(sock, answer, sizeof(answer) - 1, 0)) <= 0)
-		return false;
+		return -1;
 	answer[got] = '\0';
-	return !strncmp(answer, "ok", 2) && !strstr(answer, "unseen");
+	if (strncmp(answer, "ok", 2))
+		return -1;
+	return strstr(answer, "waiting") || strstr(answer, "unseen") ? 0 : 1;
 }
 
 void page_close(void)

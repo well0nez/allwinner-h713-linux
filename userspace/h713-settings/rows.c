@@ -113,11 +113,15 @@ static int num_after(const char *s, const char *tag, int def)
 static void features(void)
 {
 	const char *argv[] = { "h713-features", "status", NULL };
+	static bool known;			/* the hardware does not change: asked once (a Python start is 0.2 s on the board) */
 	char *save = NULL, *line;
 
+	if (known)
+		return;
 	have_accel = have_cam = have_motor = false;
 	if (run(argv, out, sizeof(out), 5000) != 0)
 		return;		/* unknown: the controls stay hidden, nothing is guessed */
+	known = true;
 	for (line = strtok_r(out, "\n", &save); line; line = strtok_r(NULL, "\n", &save)) {
 		const char *w = line + strcspn(line, " ");
 		bool there;
@@ -243,7 +247,7 @@ static void picture_enter(struct area *a)
 			add_opt(r_preset, w, label);
 		}
 	r_preset->hidden = !r_preset->n;
-	tv("status");
+	tv("status brief");		/* 8 ms; the full status asks the firmware and takes 55 */
 	p = strstr(reply, "\npreset ");
 	if (p)
 		sscanf(p + 8, " %39s", cur);
@@ -554,9 +558,14 @@ static void power_enter(struct area *a)
 	struct row *k = &a->row[0], *rem = &a->row[1];
 	char v[24] = "poweroff";
 
+	static bool asked;			/* whether a standby can happen does not change while the box runs */
+
 	if (!k->n)
 		add_opt(k, "poweroff", "Power off");
-	standby_ok = run(argv, out, sizeof(out), 8000) == 0 && strstr(out, "offered in the countdown");
+	if (!asked) {
+		standby_ok = run(argv, out, sizeof(out), 8000) == 0 && strstr(out, "offered in the countdown");
+		asked = true;
+	}
 	if (standby_ok && k->n == 1)
 		add_opt(k, "standby", "Standby");
 	if (!conf_get(etc("power.conf"), "default", v, sizeof(v)))

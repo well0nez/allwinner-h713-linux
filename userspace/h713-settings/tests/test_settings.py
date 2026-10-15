@@ -156,6 +156,7 @@ class FakeOsd(threading.Thread):
         self.canvas = os.memfd_create("page")
         os.ftruncate(self.canvas, self.W * self.H * 4)
         self.opened = self.closed = False
+        self.conn = None
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.bind(path)
         self.sock.listen(2)
@@ -167,6 +168,7 @@ class FakeOsd(threading.Thread):
                 c, _ = self.sock.accept()
             except OSError:
                 return
+            self.conn = c
             with c:
                 while True:
                     data = c.recv(256)
@@ -183,6 +185,10 @@ class FakeOsd(threading.Thread):
                         socket.send_fds(c, [b"ok %d %d %d argb8888\n" % (self.W, self.H, self.W * 4)], [self.canvas])
                     elif line.startswith("page show"):
                         c.sendall(("%s\n" % self.answer).encode())
+
+    def drop(self):
+        """h713-osd goes away under the page: its end of the connection is closed."""
+        self.conn.shutdown(socket.SHUT_RDWR)
 
     def pixel(self, x, y):
         os.lseek(self.canvas, (y * self.W + x) * 4, os.SEEK_SET)
@@ -762,10 +768,31 @@ class Device(Base):
         b.press(OK)                                              # the remote was never taken: nothing reads this
         self.assertFalse(b.osd.opened)
 
-    def test_closes_when_nothing_can_be_seen_any_more(self):
-        b = self.box().start_device("Sound", osd_answer="ok unseen")
+    def test_waits_for_the_picture_and_then_closes(self):
+        b = self.box(extra_env={"H713_SETTINGS_PATIENCE": "2"}).start_device("Sound", osd_answer="ok waiting")
+        t0 = time.time()
+        self.assertEqual(b.proc.wait(timeout=8), 0)
+        self.assertGreaterEqual(time.time() - t0, 1.5)
+        self.assertIn("nothing can be seen for 2 s", b.proc.stderr.read())
+
+    def test_a_picture_that_comes_back_in_time_keeps_it_open(self):
+        b = self.box(extra_env={"H713_SETTINGS_PATIENCE": "3"}).start_device("Sound", osd_answer="ok waiting")
+        wait_for(lambda: len(b.osd.log) > 1)
+        time.sleep(1.0)
+        b.osd.answer = "ok"                                      # the autofocus gave the panel back
+        b.press(OK, DOWN)                                        # the next drawing is shown
+        time.sleep(3.5)
+        self.assertIsNone(b.proc.poll())
+        b.press(HOME)
         self.assertEqual(b.proc.wait(timeout=5), 0)
-        self.assertIn("nothing can be seen", b.proc.stderr.read())
+
+    def test_closes_when_h713_osd_is_gone(self):
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.osd.drop()
+        b.press(OK)                                              # the next drawing finds nobody
+        self.assertEqual(b.proc.wait(timeout=5), 0)              # the page is closed and the remote is given back
+        self.assertIn("h713-osd does not answer", b.proc.stderr.read())
 
     def test_no_remote_no_page(self):
         b = self.box().start_device("Sound", devices=0)

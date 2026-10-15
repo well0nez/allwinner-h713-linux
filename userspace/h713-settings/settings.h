@@ -75,7 +75,7 @@ void input_power(void);			/* hand a Power press to h713-power */
 
 /* page.c: h713-osd's page channel - a canvas to draw into, and the word which part of it is new */
 int page_open(struct osd_canvas *c, const char *path);
-bool page_show(const int box[4]);
+int page_show(const int box[4]);	/* 1 shown, 0 kept for the picture's return, -1 gone */
 void page_close(void);
 
 /* rows.c */
