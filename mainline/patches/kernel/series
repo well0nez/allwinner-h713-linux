@@ -686,3 +686,5 @@
 0315-media-cedrus-the-h713-video-engine-runs-at-432-mhz-only-while-the-av1-decoder-is-on.patch
 #   0316 (15.10.2026): an H.265 job whose collocated_ref_idx lies outside the active reference list is refused, like 0309's.
 0316-media-cedrus-h265-the-collocated-picture-must-be-in-the-active-reference-list.patch
+#   0317 (15.10.2026): cedrus_vp9_finish() keeps 15 bytes across load_probs() instead of a 2 KiB frame context on the stack.
+0317-media-cedrus-vp9-keep-only-the-tx-and-skip-probabilities-across-load-probs.patch
