@@ -75,13 +75,18 @@ master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/P
   callbacks done right then, released when the render fence of the frame that read it signals, presented with the
   flip fence's timestamp. At most one client frame per vsync; `--client-rate half` takes every second vsync.
 - **Colour:** BT.709 limited range computed inside the two keystone passes from the client's RGB; a picture smaller
-  than the panel sits in the middle (letterbox), never scaled. With `warp = off` the client is shown without
+  than the panel sits in the middle (letterbox), never scaled, and gets the configure once more - cage misses the
+  first one and would stay at 1280x720 (G1, 15.10.2026). With `warp = off` the client is shown without
   keystone. The client is drawn through the GPU even at the identity: the video plane takes NV12 only.
 - **Limits:** four connections see the globals, eight surfaces and eight imported dma-bufs per client, a buffer
   larger than the panel is refused, a buffer before the first configure is a protocol error; a client that goes
   away keeps the panel for two seconds (a cage restart), then the warp gives it back.
 - **Status:** `ctl status` has two more lines, `wayland` (clients, toplevel, formats) and `client` (taken,
   presented, discarded, busy, released, imports).
+
+Kodi sees 0 Hz under cage (wlroots' nested output has no rate) and picks the presentation protocol for its video
+sync: leave Kodi's "Sync playback to display" off (the default) - with it on, 1080p60 played at 18 fps and Kodi hung
+on stopping the video (G1).
 
 Kodi's unit (`h713-kodi.service`, profile `desktop`) sets `WAYLAND_DISPLAY=/run/h713-warp/wayland` and
 `WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and asks `h713-tv ctl source client` at its
