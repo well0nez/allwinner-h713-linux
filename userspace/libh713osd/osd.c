@@ -26,6 +26,7 @@ enum { P_SEG, P_ARC, P_RRECT_LINE };
 
 struct prim {
 	int type, tone;
+	double lw;		/* half the line width of this shape; 0: the scene's */
 	double a[10];		/* the shape's numbers, see prim_dist */
 };
 
@@ -33,8 +34,10 @@ struct scene {
 	struct prim p[MAXP];
 	int n;
 	double lw;		/* half the line width of icons and digits, px */
+	double dim;		/* the weight of a dim line */
+	double pill_a;		/* the alpha of the pill's fill */
 	double px, py, pw, ph;	/* the item's box: left, top, width, height */
-	int panel;		/* behind the lines: 0 nothing (the bare look), 1 the pill, 2 the badge's disc */
+	int panel;		/* behind the lines: 0 a soft shadow (the bare look), 1 the pill, 2 the badge's disc, 3 nothing */
 };
 
 static double clampd(double v, double lo, double hi)
@@ -381,6 +384,8 @@ static void layout(struct scene *s, const struct osd_canvas *c, const struct osd
 
 	memset(s, 0, sizeof(*s));
 	s->lw = 1.6 * u;
+	s->dim = DIM;
+	s->pill_a = 0.46;
 	s->panel = st->look == OSD_PILL;
 
 	if (it->kind == OSD_MUTE_BADGE) {
@@ -475,20 +480,20 @@ static double prof_now(void)
 #define PROF(i, t) ((void)0)
 #endif
 
-void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd_item *it, int box[4])
+/* the scene's rectangle, with a margin for the shadow, mixed over the canvas: every primitive's distance per pixel,
+ * then the panel (or the shadow) and the lines; box = the rectangle touched. u: one unit of the layout in pixels */
+static void render(struct osd_canvas *c, const struct scene *sc, double u, double fade, int box[4])
 {
 #ifdef OSD_PROFILE
 	double pt = prof_now();
 #endif
-	static struct scene s;
 	static double *dist;	/* the nearest edge per tone and pixel of the item's rectangle */
 	static size_t dcap;
-	double u = c->h / 1080.0 * (st->scale > 0 ? st->scale : 1), shadow = 14 * u;
-	double fade = clampd(it->alpha, 0, 1), reach;
+	const struct scene s = *sc;
+	double shadow = 14 * u, reach;
 	int x0, y0, x1, y1, bw, bh;
 	size_t n;
 
-	layout(&s, c, st, it);
 	x0 = (int)floor(s.px - shadow), y0 = (int)floor(s.py - shadow);
 	x1 = (int)ceil(s.px + s.pw + shadow), y1 = (int)ceil(s.py + s.ph + shadow);
 	x0 = x0 < 0 ? 0 : x0, y0 = y0 < 0 ? 0 : y0;
@@ -519,7 +524,9 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 		double *t = dist + (size_t)s.p[i].tone * n, b[4];
 		int bx0, by0, bx1, by1;
 
-		prim_bbox(&s.p[i], reach + s.lw, b);
+		double lw = s.p[i].lw ? s.p[i].lw : s.lw;
+
+		prim_bbox(&s.p[i], reach + lw, b);
 		bx0 = (int)floor(b[0]), by0 = (int)floor(b[1]), bx1 = (int)ceil(b[2]), by1 = (int)ceil(b[3]);
 		bx0 = bx0 < x0 ? x0 : bx0, by0 = by0 < y0 ? y0 : by0;
 		bx1 = bx1 > x1 ? x1 : bx1, by1 = by1 > y1 ? y1 : by1;
@@ -527,7 +534,7 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 			for (int x = bx0; x < bx1; x++) {
 				double *q = t + (size_t)(y - y0) * bw + (x - x0);
 
-				*q = fmin(*q, prim_dist(&s.p[i], x + 0.5, y + 0.5, s.lw));
+				*q = fmin(*q, prim_dist(&s.p[i], x + 0.5, y + 0.5, lw));
 			}
 	}
 
@@ -541,7 +548,7 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 	 * pixel with nothing but the panel over a clear canvas gets its value without mixing (11.10.2026 on the
 	 * board: the volume strip's mixing from 12 ms).
 	 */
-	const double half = AA / 2, pill_a = 0.46 * fade;
+	const double half = AA / 2, pill_a = s.pill_a * fade;
 	const uint32_t pill_px = (uint32_t)(pill_a * 255 + 0.5) << 24 | 10u << 16 | 12u << 8 | 16u;
 
 	for (int y = y0; y < y1; y++) {
@@ -570,6 +577,9 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 
 				la[0] = 0.38 * fade * cover(sqrt(dx * dx + dy * dy) - s.pw / 2, AA);
 				lc0 = 1;
+			} else if (s.panel == 3) {	/* nothing behind the lines (a menu row that is not the chosen one) */
+				la[0] = 0;
+				lc0 = 0;
 			} else {	/* the bare look: a soft shadow around every line keeps it legible on a bright picture */
 				double all = fmin(t[T_BRIGHT], fmin(t[T_DIM], t[T_RED]));
 
@@ -586,7 +596,7 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 				}
 				la[1] = la[2] = 0;
 			} else {
-				la[1] = 0.94 * fade * fmax(cover(t[T_BRIGHT], AA), DIM * cover(t[T_DIM], AA));
+				la[1] = 0.94 * fade * fmax(cover(t[T_BRIGHT], AA), s.dim * cover(t[T_DIM], AA));
 				la[2] = 0.96 * fade * cover(t[T_RED], AA);
 				if (la[0] <= 0 && la[1] <= 0 && la[2] <= 0)
 					continue;
@@ -618,4 +628,230 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd
 		}
 	}
 	PROF(2, pt);
+}
+
+/* --- the menu: the symbols, a row, the scrim and a hint (the launcher of package H, later the settings) --------------- */
+
+static const char *const ICON_NAME[OSD_ICONS] = { "hdmi", "film", "globe", "desk", "sliders", "power" };
+
+int osd_icon_by_name(const char *name)
+{
+	for (int i = 0; name && i < OSD_ICONS; i++)
+		if (!strcmp(name, ICON_NAME[i]))
+			return i;
+	return -1;
+}
+
+/* a cubic Bezier through the symbol's coordinates (p: four points x, y) as a chain of segments */
+static void bezier(struct scene *s, double ox, double oy, double k, const double p[8], int tone)
+{
+	double px = ox + p[0] * k, py = oy + p[1] * k;
+
+	for (int i = 1; i <= 8; i++) {
+		double t = i / 8.0, m = 1 - t, a = m * m * m, b = 3 * m * m * t, c = 3 * m * t * t, d = t * t * t;
+		double x = ox + (a * p[0] + b * p[2] + c * p[4] + d * p[6]) * k;
+		double y = oy + (a * p[1] + b * p[3] + c * p[5] + d * p[7]) * k;
+
+		seg(s, px, py, x, y, tone);
+		px = x, py = y;
+	}
+}
+
+/* one symbol of the mock-up's set (Strichsymbole in a box of 48 units, origin ox, oy, k pixels a unit) */
+static void micon(struct scene *s, int icon, double ox, double oy, double k, int tone)
+{
+#define X(v) (ox + (v) * k)
+#define Y(v) (oy + (v) * k)
+	switch (icon) {
+	case OSD_ICON_HDMI: {		/* a plug: the shell, two legs, the bar */
+		static const double c[] = { 9, 17, 39, 17, 39, 25, 35, 30, 13, 30, 9, 25 };
+
+		for (int i = 0; i < 6; i++)
+			seg(s, X(c[2 * i]), Y(c[2 * i + 1]), X(c[2 * ((i + 1) % 6)]), Y(c[2 * ((i + 1) % 6) + 1]), tone);
+		seg(s, X(17), Y(30), X(17), Y(35), tone);
+		seg(s, X(31), Y(30), X(31), Y(35), tone);
+		seg(s, X(15), Y(22), X(33), Y(22), tone);
+		break;
+	}
+	case OSD_ICON_FILM:		/* a screen with a play triangle */
+		rrect(s, P_RRECT_LINE, X(24), Y(24), 16 * k, 13 * k, 5 * k, tone);
+		seg(s, X(21), Y(19.5), X(21), Y(28.5), tone);
+		seg(s, X(21), Y(28.5), X(29), Y(24), tone);
+		seg(s, X(29), Y(24), X(21), Y(19.5), tone);
+		break;
+	case OSD_ICON_GLOBE: {
+		static const double l[] = { 24, 10, 19, 15, 19, 33, 24, 38 }, r[] = { 24, 10, 29, 15, 29, 33, 24, 38 };
+
+		arc(s, X(24), Y(24), 14 * k, 0, 360, tone);
+		seg(s, X(10), Y(24), X(38), Y(24), tone);
+		bezier(s, ox, oy, k, l, tone);
+		bezier(s, ox, oy, k, r, tone);
+		break;
+	}
+	case OSD_ICON_DESK:		/* a monitor on its stand */
+		rrect(s, P_RRECT_LINE, X(24), Y(21), 16 * k, 11 * k, 4 * k, tone);
+		seg(s, X(18), Y(38), X(30), Y(38), tone);
+		seg(s, X(24), Y(32), X(24), Y(38), tone);
+		break;
+	case OSD_ICON_SLIDERS: {	/* three tracks with a knob each; the track stops at the knob */
+		static const double ky[] = { 15, 24, 33 }, kx[] = { 18, 31, 22 };
+
+		for (int i = 0; i < 3; i++) {
+			seg(s, X(10), Y(ky[i]), X(kx[i] - 3.6), Y(ky[i]), tone);
+			seg(s, X(kx[i] + 3.6), Y(ky[i]), X(38), Y(ky[i]), tone);
+			arc(s, X(kx[i]), Y(ky[i]), 3.6 * k, 0, 360, tone);
+		}
+		break;
+	}
+	case OSD_ICON_POWER:		/* IEC 60417-5009: a ring open at the top, the stroke through the gap */
+		seg(s, X(24), Y(10), X(24), Y(23), tone);
+		arc(s, X(24), Y(24.665), 12.5 * k, 312.8, 587.2, tone);
+		break;
+	}
+#undef X
+#undef Y
+}
+
+void osd_draw_row(struct osd_canvas *c, const struct osd_row *r, int box[4])
+{
+	static struct scene s;
+	double u = c->h / 1080.0, f = r->h * u / 104;	/* f: this row in units of the launcher's 104-line pill */
+
+	memset(&s, 0, sizeof(s));
+	s.lw = 2.4 * f;
+	s.dim = 0.447;		/* 0.94 * 0.447 = the mock-up's 42 % white */
+	s.pill_a = 0.72;
+	s.panel = r->selected ? 1 : 3;
+	s.px = r->x * u, s.py = r->y * u, s.pw = r->w * u, s.ph = r->h * u;
+	if (r->selected) {
+		rrect(&s, P_RRECT_LINE, s.px + s.pw / 2, s.py + s.ph / 2, s.pw / 2, s.ph / 2, s.ph / 2, T_BRIGHT);
+		s.p[s.n - 1].lw = 1.5 * f;
+	}
+	micon(&s, r->icon, s.px + 32 * f, s.py + 16 * f, 1.5 * f, r->selected ? T_BRIGHT : T_DIM);
+	render(c, &s, u, 1.0, box);
+	osd_text(c, r->label, s.px + 132 * f, s.py + 65 * f, 38 * f, 0xfafafa, r->selected ? 0.94f : 0.42f, s.pw - 160 * f);
+}
+
+void osd_draw_hint(struct osd_canvas *c, double x, double baseline, const char *text, int arrows)
+{
+	static struct scene s;
+	double u = c->h / 1080.0, x0 = x * u, y0 = baseline * u;
+
+	if (arrows) {		/* the marks for up and down as shapes: the face has neither */
+		memset(&s, 0, sizeof(s));
+		s.lw = 1.5 * u;
+		s.dim = 0.447;
+		s.panel = 3;
+		s.px = x0, s.py = y0 - 26 * u, s.pw = 60 * u, s.ph = 30 * u;
+		for (int d = 0; d < 2; d++)	/* d 0: up, 1: down; three outlines inside each other make it solid */
+			for (int k = 0; k < 3; k++) {
+				double cx = x0 + (11 + 28 * d) * u, cy = y0 - 9 * u, dir = d ? 1 : -1, f = u * (1 - 0.36 * k);
+
+				seg(&s, cx, cy + dir * 8 * f, cx - 9 * f, cy - dir * 6 * f, T_DIM);
+				seg(&s, cx - 9 * f, cy - dir * 6 * f, cx + 9 * f, cy - dir * 6 * f, T_DIM);
+				seg(&s, cx + 9 * f, cy - dir * 6 * f, cx, cy + dir * 8 * f, T_DIM);
+			}
+		render(c, &s, u, 1.0, NULL);
+	}
+	osd_text(c, text, x0 + (arrows ? 68 * u : 0), y0, 26 * u, 0xffffff, 0.42f, 0);
+}
+
+void osd_draw_scrim(struct osd_canvas *c, const int box[4])
+{
+	double L = 700.0 * c->h / 1080;
+	int x0 = box[0] < 0 ? 0 : box[0], x1 = box[0] + box[2] > c->w ? c->w : box[0] + box[2];
+	int y0 = box[1] < 0 ? 0 : box[1], y1 = box[1] + box[3] > c->h ? c->h : box[1] + box[3];
+
+	for (int y = y0; y < y1; y++) {
+		uint32_t *row = c->px + (size_t)y * c->stride;
+
+		if (y > y0) {
+			memcpy(row + x0, c->px + (size_t)y0 * c->stride + x0, (size_t)(x1 - x0) * 4);
+			continue;
+		}
+		for (int x = x0; x < x1; x++) {		/* black: 0.70 at the edge, 0.25 at 45 %, none at the end */
+			double t = (x + 0.5) / L, a = t >= 1 ? 0 : t < 0.45 ? 0.70 - 0.45 * t / 0.45 : 0.25 * (1 - (t - 0.45) / 0.55);
+
+			row[x] = (uint32_t)(a * 255 + 0.5) << 24;
+		}
+	}
+}
+
+/* --- the launcher: a column on the left edge, cut into bands that repaint on their own ------------------------------- */
+
+#define LAU_COLUMN	700	/* the scrim's width, 1080-line units */
+#define LAU_FIRST	194	/* the first pill's top */
+#define LAU_PITCH	124	/* from one pill to the next */
+#define LAU_FOOT_PILL	844	/* the last row of the group at the foot sits with its top here, as in the mock-up */
+#define LAU_FOOT	958	/* the hint's band starts here */
+
+/* the pills' tops and every band's top and bottom, in 1080-line units: band 0 the header (down to the first pill's top less
+ * 10), band 1 + i row i (10 above its pill to 10 below: 124, so the rows tile), band n + 1 the foot, band n + 2 the gap that
+ * is left between the rows at the top and those at the foot (empty when there is none). Returns the count of bands. */
+static int lau_geometry(const struct osd_launcher *l, double top[OSD_LAUNCHER_ROWS], double y0[OSD_LAUNCHER_ROWS + 3],
+			double y1[OSD_LAUNCHER_ROWS + 3])
+{
+	int n = l->n < OSD_LAUNCHER_ROWS ? l->n : OSD_LAUNCHER_ROWS, ne = 0, ti = 0, ej = 0;
+	double gap0 = LAU_FIRST - 10, gap1 = LAU_FOOT;
+
+	for (int i = 0; i < n; i++)
+		ne += l->row[i].end != 0;
+	for (int i = 0; i < n; i++) {
+		top[i] = l->row[i].end ? LAU_FOOT_PILL - LAU_PITCH * (ne - 1 - ej++) : LAU_FIRST + LAU_PITCH * ti++;
+		y0[i + 1] = top[i] - 10, y1[i + 1] = top[i] + 114;
+		if (!l->row[i].end)
+			gap0 = y1[i + 1];
+		else if (gap1 == LAU_FOOT && ej == 1)
+			gap1 = y0[i + 1];
+	}
+	y0[0] = 0, y1[0] = LAU_FIRST - 10;
+	y0[n + 1] = LAU_FOOT, y1[n + 1] = 1080;
+	y0[n + 2] = gap0, y1[n + 2] = gap1 > gap0 ? gap1 : gap0;
+	return n + 3;
+}
+
+int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l, int box[][4])
+{
+	double top[OSD_LAUNCHER_ROWS], y0[OSD_LAUNCHER_ROWS + 3], y1[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
+	int bands = lau_geometry(l, top, y0, y1);
+
+	if (l->n < 1)
+		return 0;
+	/* the header starts at the top of the canvas and the foot runs to its bottom; the rest is rounded once, so bands that meet in
+	 * units meet in pixels */
+	for (int k = 0; k < bands; k++) {
+		int a = k == 0 ? 0 : (int)floor(y0[k] * u + 0.5), b = k == bands - 2 ? c->h : (int)floor(y1[k] * u + 0.5);
+
+		box[k][0] = 0, box[k][1] = a, box[k][2] = (int)ceil(LAU_COLUMN * u), box[k][3] = b > a ? b - a : 0;
+	}
+	return bands;
+}
+
+void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int band)
+{
+	int box[OSD_LAUNCHER_ROWS + 3][4], bands = osd_launcher_bands(c, l, box);
+	double top[OSD_LAUNCHER_ROWS], y0[OSD_LAUNCHER_ROWS + 3], y1[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
+	int n = bands - 3;
+
+	if (band < 0 || band >= bands || !box[band][3])
+		return;
+	lau_geometry(l, top, y0, y1);
+	osd_draw_scrim(c, box[band]);
+	if (band == 0) {
+		osd_text(c, l->head, 150 * u, 140 * u, 30 * u, 0xffffff, 0.42f, 0);
+	} else if (band <= n) {
+		struct osd_row r = { l->row[band - 1].icon, l->row[band - 1].label, band - 1 == l->sel, 118, top[band - 1], 520, 104 };
+
+		osd_draw_row(c, &r, NULL);
+	} else if (band == n + 1) {
+		osd_draw_hint(c, 150, 1010, "select \xc2\xb7 OK open \xc2\xb7 BACK close", 1);
+	}					/* band n + 2: the scrim alone */
+}
+
+void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd_item *it, int box[4])
+{
+	static struct scene s;
+
+	layout(&s, c, st, it);
+	render(c, &s, c->h / 1080.0 * (st->scale > 0 ? st->scale : 1), clampd(it->alpha, 0, 1), box);
 }

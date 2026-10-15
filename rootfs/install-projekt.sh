@@ -27,7 +27,8 @@
 #   5g. h713-features + unit (enabled), /etc/h713/features from boards/$H713_BOARD/board.env
 #   5h. crust (H713_CRUST_BIN, our own build) as /lib/firmware/$H713_BOARD-crust.bin; with
 #       H713_STANDBY=1 the standby sleep.conf.d and h713-power + unit (enabled) + power.conf,
-#       and h713-mips-restart, which h713-power runs after a standby to start the parked MIPS
+#       and h713-mips-restart, which h713-sleep-post.service (h713-mode sleep-post) runs after a sleep to start the parked MIPS
+#       (package H: h713-mode everywhere, the two sleep units with --standby)
 #   5i. h713-keys + unit (enabled) + keys.conf - the stock remote's keys (volume, mute, focus) -
 #       and h713-osd (cross-built) + unit (enabled) + osd.conf - the overlays over the picture
 #   5j. h713-cpufreq + unit (enabled) - schedutil's rate limit and the GPU's interrupt threads
@@ -275,6 +276,8 @@ check_sources() {
 		{ warn "missing: h713-power, h713-power.service or power.conf in $H713_POWER_SRC"; errors=1; }
 	[[ -x "$H713_POWER_SRC/h713-mips-restart" ]] || \
 		{ warn "missing: $H713_POWER_SRC/h713-mips-restart (without it the picture stays off after a standby)"; errors=1; }
+	[[ -x "$H713_POWER_SRC/h713-mode" && -f "$H713_POWER_SRC/h713-sleep-pre.service" && -f "$H713_POWER_SRC/h713-sleep-post.service" ]] || \
+		{ warn "missing: h713-mode, h713-sleep-pre.service or h713-sleep-post.service in $H713_POWER_SRC"; errors=1; }
 	if [[ -x "$H713_AF_BIN" ]]; then
 		local afkind; afkind=$(file -b "$H713_AF_BIN" 2>/dev/null || echo aarch64)
 		case "$afkind" in
@@ -634,21 +637,30 @@ if ((H713_STANDBY)); then
 		"[Sleep]" "AllowSuspend=yes" "SuspendState=mem" "MemorySleepMode=deep" "AllowHibernation=no" \
 		"AllowSuspendThenHibernate=no" "AllowHybridSleep=no" > "$TREE/etc/systemd/sleep.conf.d/10-h713.conf"
 	info "sleep.conf.d: mem, deep only"
+	# Every way into the sleep ends the same way (package H): the mode is remembered and ended before it, the picture path and
+	# the mode come back after it. Not on an image that cannot suspend: there is no sleep to wrap.
+	install -m 0644 "$H713_POWER_SRC/h713-sleep-pre.service" "$TREE/etc/systemd/system/h713-sleep-pre.service"
+	install -m 0644 "$H713_POWER_SRC/h713-sleep-post.service" "$TREE/etc/systemd/system/h713-sleep-post.service"
+	mkdir -p "$TREE/etc/systemd/system/sleep.target.wants" "$TREE/etc/systemd/system/suspend.target.wants"
+	ln -sfn ../h713-sleep-pre.service "$TREE/etc/systemd/system/sleep.target.wants/h713-sleep-pre.service"
+	ln -sfn ../h713-sleep-post.service "$TREE/etc/systemd/system/suspend.target.wants/h713-sleep-post.service"
+	info "h713-sleep-pre.service (sleep.target) and h713-sleep-post.service (suspend.target) enabled"
 fi
 # h713-power on every image (TODO 2.38): the power key's 15 s countdown over the picture. It offers the
 # standby only where the image allows suspend (the sleep.conf.d above) and crust is ready; elsewhere the
 # countdown ends in a power-off.
 install -m 0755 "$H713_POWER_SRC/h713-power" "$TREE/usr/local/sbin/h713-power"
-# The standby parks the display MIPS and the kernel does not start it again: h713-power runs
-# this after the standby when sun50i-h713-mips says parked (docs/tools/h713-power.md).
+# The standby parks the display MIPS and the kernel does not start it again: h713-mode sleep-post
+# (h713-sleep-post.service) runs this after every sleep when sun50i-h713-mips says parked (docs/tools/h713-power.md).
 install -m 0755 "$H713_POWER_SRC/h713-mips-restart" "$TREE/usr/local/sbin/h713-mips-restart"
+install -m 0755 "$H713_POWER_SRC/h713-mode" "$TREE/usr/local/sbin/h713-mode"
 install -m 0644 "$H713_POWER_SRC/h713-power.service" "$TREE/etc/systemd/system/h713-power.service"
 # h713-tv@.service names it as OnFailure: one MIPS reload per boot when h713-tv gave up (TODO 2.63)
 install -m 0644 "$H713_POWER_SRC/h713-tv-rescue.service" "$TREE/etc/systemd/system/h713-tv-rescue.service"
 ln -sfn ../h713-power.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
 [[ -f "$TREE/etc/h713/power.conf" ]] || install -m 0644 "$H713_POWER_SRC/power.conf" "$TREE/etc/h713/power.conf"
 info "/usr/local/sbin/h713-power, h713-power.service enabled, /etc/h713/power.conf"
-info "/usr/local/sbin/h713-mips-restart (h713-power starts the parked MIPS with it after a standby)"
+info "/usr/local/sbin/h713-mips-restart and h713-mode (h713-sleep-post starts the parked MIPS with it after a sleep)"
 
 # --- 5i. h713-keys and h713-osd: the remote's keys, the overlays over the picture ------
 # h713-keys gives volume, mute and focus their meaning (Bluetooth and IR, kernel 0252-0254) and tells

@@ -12,3 +12,4 @@ cage                         # single-window kiosk compositor: Kodi's first host
 labwc                        # stacking compositor for the desktop modes (package H)
 kodi                         # media centre; kodi-bin links libEGL/libGLESv2/libgbm (E2)
 glmark2-es2-wayland          # the E3 test: Renderer "Mali-G31 (Panfrost)" and a score
+fonts-quicksand              # the launcher's face (h713-osd, libh713osd text; SIL OFL 1.1, 0.4 MB); FreeType itself is linked into h713-osd (package H)

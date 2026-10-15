@@ -1,9 +1,10 @@
 #!/usr/bin/env python3
-"""h713-keys - the stock remote's keys: volume, mute, focus and the HDMI input, over Bluetooth and IR.
+"""h713-keys - the stock remote's keys: volume, mute, focus, the HDMI input and the launcher, over Bluetooth and IR.
 
 Reads only the stock remote - the Bluetooth LE remote (1d5a:c081, kernel 0169) and the IR receiver
 (sunxi-ir with the keymap rc-h713-fd02, kernel 0254) - never a keyboard that happens to have F4 or F5.
-No EVIOCGRAB: h713-power reads KEY_POWER from the same devices and stays the one that powers off.
+No EVIOCGRAB, except while the launcher is open (Home): then Kodi gets no key. h713-power reads KEY_POWER from the
+same devices and stays the one that powers off; a Power press with the launcher open is handed on to it.
 A held key repeats on the Bluetooth remote as on the IR receiver (500 ms, then every 125 ms): the input core's
 own 250/33 ms ran the volume from 100 to 15 in 1.6 s. OK arrives over Bluetooth as KEY_SELECT and is read as KEY_OK.
 
@@ -14,7 +15,9 @@ switches between the HDMI picture ("auto") and the console ("off") - the way bac
 the console. Each action is one journal line (the
 journal is how a key test is read) and one line to the overlay daemon h713-osd (/run/h713-osd/ctl) when
 it runs; the overlay never holds up the action.
-Home, Menu, Back, the arrows and OK are recognised and left for later; so are the mouse and the
+The launcher: Home opens the list on the left edge (h713-osd draws it; the entries are /etc/h713/launcher.d/NN-name.conf,
+docs/tools/h713-keys.md), Up/Down/OK/Back/Home work it, volume, mute and focus work as always. It opens only where h713-osd
+can show it. Menu, Back, the arrows and OK are recognised and left to Kodi with the launcher closed; so are the mouse and the
 microphone key over IR, which only ask for the Bluetooth pairing (KEY_F6) - nothing acts on that: a remote
 paired with another box since is re-paired with `h713-remote-pair forget` and Left+Right (TODO 2.54).
 
@@ -52,11 +55,18 @@ CODES = {"KEY_MUTE": 113, "KEY_VOLUMEDOWN": 114, "KEY_VOLUMEUP": 115, "KEY_F4": 
          "KEY_MICMUTE": 248, "KEY_SELECT": 353}
 NAMES = {v: k for k, v in CODES.items()}
 FOCUS_KEYS = {62: "up", 63: "down"}
-LATER = {172, 139, 158, 103, 108, 105, 106, 352, 61, 64}    # recognised, no action yet
+LATER = {139, 158, 103, 108, 105, 106, 352, 61, 64}    # recognised, no action yet (Kodi's, with the launcher closed)
 # KEY_F6 is the IR code of the mouse and the microphone key (0x0266, PRJ_BRC_PAIR): over IR both only ask
 # for the Bluetooth pairing (kernel 0254). h713-remote-pair's watch pairs only while no remote is bonded.
 SELECT_IS_OK = {353: 352}                   # the Bluetooth remote's OK is HID "Menu Pick" = KEY_SELECT (11.10., G-EU)
 EVIOCSREP = 0x40084503                      # _IOW('E', 0x03, unsigned int[2])
+EVIOCGRAB = 0x40044590                      # _IOW('E', 0x90, int)
+SYSTEMCTL = shlex.split(os.environ.get("H713_KEYS_SYSTEMCTL", "systemctl"))
+POWER_SOCK = os.environ.get("H713_KEYS_POWER", "/run/h713-power.sock")
+TRACE = os.environ.get("H713_KEYS_TRACE") == "1"
+LAUNCHER_D = "etc/h713/launcher.d"
+LAUNCHER_IDLE_S = 90                        # an open launcher closes after this long without a key
+ENTRY_KEYS = ("label", "icon", "unit", "exec", "show", "active", "now", "group", "fallback")
 REPEAT = (500, 125)                         # ms: rc-core's, what the IR receiver repeats with (read 11.10., G-EU)
 LIMITS = {"volume_step": 20, "focus_steps": 100}      # the largest value keys.conf may set
 DEFAULTS = {"volume_step": "5", "focus_steps": "20", "input_keys": ""}   # no input key until one is chosen
@@ -291,10 +301,123 @@ def remote_devices():
     return found
 
 
+def grab(fd, on):
+    """EVIOCGRAB on a device; the error text when the kernel refuses, else None."""
+    try:
+        fcntl.ioctl(fd, EVIOCGRAB, 1 if on else 0)
+        return None
+    except OSError as e:
+        return e.strerror or str(e)
+
+
+def check(cmd):
+    """True when the command line exits 0 (none counts as success); False when it is missing or takes over 3 s."""
+    try:
+        return not cmd or subprocess.run(shlex.split(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                                         timeout=3).returncode == 0
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+def launcher_entries():
+    """The entries of /etc/h713/launcher.d/*.conf in file-name order: key = value lines, # comments."""
+    entries = []
+    for f in sorted(glob.glob(path(LAUNCHER_D, "*.conf"))):
+        e = {}
+        for line in read(f).splitlines():
+            k, _, v = (x.strip() for x in line.split("#", 1)[0].partition("="))
+            if k in ENTRY_KEYS and v:
+                e[k] = v.replace(";", ",")
+        if e.get("label") and e.get("icon") and (e.get("unit") or e.get("exec")):
+            entries.append(e)
+        else:
+            log("%s: needs a label, an icon and a unit or an exec: left out" % f, "<4>")
+    return entries
+
+
+def signal_text():
+    """The HDMI signal as the header says it: 1080p60, or "no signal"."""
+    m = re.search(r"signal\s+(\d+)x(\d+)([pi])([\d.]+)", tv("status brief") or "")
+    return "%s%s%d" % (m.group(2), m.group(3), round(float(m.group(4)))) if m else "no signal"
+
+
+class Launcher:
+    """Home: the list on the left edge. Open = h713-osd shows it and the remote's devices are grabbed."""
+
+    def __init__(self):
+        self.entries, self.sel, self.last = None, 0, 0.0
+
+    def is_open(self):
+        return self.entries is not None
+
+    def open(self, devices):
+        entries = launcher_entries()
+        entries = [e for e in entries if check(e.get("show"))]
+        if not entries:
+            return log("Home: no launcher entries in /%s" % LAUNCHER_D)
+        cur = next((i for i, e in enumerate(entries) if not e.get("fallback") and e.get("active") and check(e["active"])), None)
+        if cur is None:
+            cur = next((i for i, e in enumerate(entries) if e.get("fallback")), 0)
+        now = entries[cur].get("now", entries[cur]["label"]).replace("{signal}", signal_text())
+        rows = ";".join("%s%s:%s" % (">" if e.get("group") == "end" else "", e["icon"], e["label"]) for e in entries)
+        answer = ctl(OSD_SOCK, "launcher %d;%s;%s" % (cur, now, rows), quiet=True) or ""
+        if not answer.startswith("ok") or answer.startswith("ok unseen"):
+            return log("Home: no launcher - h713-osd says %s" % (answer.strip() or "nothing (not running?)"))
+        failed = [(p, grab(fd, True)) for p, fd in devices.items()]
+        if any(err for _, err in failed):
+            for fd in devices.values():
+                grab(fd, False)
+            ctl(OSD_SOCK, "launcher close", quiet=True)
+            return log("Home: no launcher - the remote's devices cannot be held: %s" % failed, "<4>")
+        self.entries, self.sel, self.last = entries, cur, time.monotonic()
+        log("launcher open: %d entries, %s selected" % (len(entries), entries[cur]["label"]))
+
+    def close(self, devices):
+        self.entries = None
+        for fd in devices.values():
+            grab(fd, False)                  # first: Kodi and h713-power read again before the overlay is gone
+        ctl(OSD_SOCK, "launcher close", quiet=True)
+
+    def key(self, code, value, devices):
+        """True when the launcher takes this key (press 1 or repeat 2) - the others are the normal ones'."""
+        self.last = time.monotonic()
+        if code in (103, 108):               # up, down: move, no wrapping
+            sel = min(len(self.entries) - 1, max(0, self.sel + (1 if code == 108 else -1)))
+            if sel != self.sel:
+                self.sel = sel
+                ctl(OSD_SOCK, "launcher %d" % sel, quiet=True)
+        elif code in (172, 158) and value == 1:
+            self.close(devices)
+        elif code == 352 and value == 1:
+            e = self.entries[self.sel]
+            self.close(devices)
+            log("launcher: %s" % e["label"])
+            try:
+                subprocess.Popen(SYSTEMCTL + ["start", "--no-block", e["unit"]] if e.get("unit") else shlex.split(e["exec"]),
+                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+            except OSError as err:
+                log("launcher: %s does not start (%s)" % (e["label"], err.strerror), "<4>")
+        elif code == 116 and value == 1:     # the box is to go off: the countdown is h713-power's
+            self.close(devices)
+            try:
+                with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
+                    s.sendto(b"short", POWER_SOCK)
+            except OSError as err:
+                log("Power: h713-power does not answer (%s) - the press is lost" % err.strerror, "<4>")
+        else:
+            return False
+        return True
+
+    def tick(self, devices):
+        if self.is_open() and time.monotonic() - self.last > LAUNCHER_IDLE_S:
+            log("launcher closed: no key for %d s" % LAUNCHER_IDLE_S)
+            self.close(devices)
+
+
 def run(once):
     conf = Config()
     devices, buf, rescan, told = {}, {}, 0.0, set()
-    focus = Focus()
+    focus, launcher = Focus(), Launcher()
     while True:
         if time.monotonic() >= rescan:
             conf.load()
@@ -305,6 +428,8 @@ def run(once):
                 if p not in devices:
                     try:
                         devices[p] = os.open(p, os.O_RDONLY | os.O_NONBLOCK)
+                        if launcher.is_open():
+                            grab(devices[p], True)   # a remote that connects while the launcher is open
                         note = ""
                         if bluetooth_remote(p):
                             err = repeat_like_ir(devices[p])
@@ -333,12 +458,19 @@ def run(once):
             data = buf.pop(p, b"") + chunk
             n = len(data) - len(data) % EVENT.size
             buf[p] = data[n:]
-            for _, _, typ, code, value in EVENT.iter_unpack(data[:n]):
+            for sec, usec, typ, code, value in EVENT.iter_unpack(data[:n]):
                 if typ != EV_KEY or value not in (1, 2):
                     continue
+                if TRACE:                    # gate HL: the kernel's stamp of the key and the time it was read, CLOCK_REALTIME
+                    log("trace: %s value %d stamped %.4f read %.4f" % (NAMES.get(code, code), value, sec + usec / 1e6, time.time()))
                 code = SELECT_IS_OK.get(code, code)
                 acted = True
-                if code == 115:
+                if launcher.is_open() and launcher.key(code, value, devices):
+                    continue
+                if code == 172:
+                    if value == 1:
+                        launcher.open(devices)
+                elif code == 115:
                     action_volume(conf.number("volume_step"))
                 elif code == 114:
                     action_volume(-conf.number("volume_step"))
@@ -355,6 +487,7 @@ def run(once):
                     told.add(code)           # once: how a new key shows its code
                     log("%s (code %d): no meaning here" % (NAMES.get(code, "key"), code))
         focus.tick()
+        launcher.tick(devices)
         if once and acted:
             deadline = time.time() + 5               # the tests: let a running focus move end
             while focus.proc is not None and time.time() < deadline:
@@ -370,6 +503,7 @@ def status():
     print("remote: %s" % (" ".join(remote_devices()) or "none connected"))
     print("h713-tv: %s" % ("reachable" if ctl(TV_SOCK, "status brief", quiet=True) else "not reachable"))
     print("h713-osd: %s" % ("reachable" if os.path.exists(OSD_SOCK) else "not running"))
+    print("launcher: %s" % (", ".join(e["label"] for e in launcher_entries()) or "no entries (Home does nothing)"))
     return 0
 
 

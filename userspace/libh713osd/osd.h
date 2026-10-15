@@ -2,8 +2,9 @@
 /*
  * libh713osd - the overlays of the H713 projectors as ARGB pictures, and nothing else: no DRM, no sockets,
  * no clock. A caller (h713-osd, a test, later a desktop) says what is to be shown; the library draws it into
- * a buffer. Everything is a signed distance field evaluated per pixel, so it is crisp at any panel size and
- * needs no font or image file. README.md in this directory describes the shapes, the looks and the places.
+ * a buffer. The shapes are signed distance fields evaluated per pixel, so they are crisp at any panel size and
+ * need no image file; text (osd_text, below) is FreeType's and needs one font file, opened by the caller.
+ * README.md in this directory describes the shapes, the looks, the places and the text.
  */
 #ifndef H713_OSD_H
 #define H713_OSD_H
@@ -67,5 +68,89 @@ void osd_clear_box(struct osd_canvas *c, const int box[4]);
  * box[4] = x, y, w, h, so a caller can copy or pre-distort only that part. Items drawn one after another stack
  * (the later one over the earlier one). Not reentrant: one static work buffer. */
 void osd_draw(struct osd_canvas *c, const struct osd_style *s, const struct osd_item *it, int box[4]);
+
+/*
+ * The menu (osd.c): the pieces of the launcher on the left edge - Strichsymbole, a row, a scrim and a hint line -
+ * drawn in the look of the overlays (pill, white lines, bright and dim). Geometry is in "1080-line units": the
+ * mock-up's numbers, scaled by canvas height / 1080, so 720p and 1080p get the same layout. Package H's launcher and
+ * package S's settings are built from these; text needs osd_font_open() first (below).
+ */
+enum osd_icon { OSD_ICON_HDMI, OSD_ICON_FILM, OSD_ICON_GLOBE, OSD_ICON_DESK, OSD_ICON_SLIDERS, OSD_ICON_POWER, OSD_ICONS };
+
+/* the symbol's name in a launcher entry file ("hdmi", "film", "globe", "desk", "sliders", "power"); -1 if unknown */
+int osd_icon_by_name(const char *name);
+
+/* One row: a stadium (the pill) at x, y with width w and height h - the launcher's is 520 x 104 at x 118 - with a
+ * symbol at its left, the label after it, both bright inside a pill that is drawn (fill and a white outline) when
+ * selected, both dim and with no pill when not. Everything inside scales with h (the symbol is 0.69 h, the label 0.37 h).
+ * The label is clipped to the pill (no ellipsis). Mixed over what the canvas holds; box = the touched rectangle
+ * (the pill with a margin) when not NULL. Not reentrant. */
+struct osd_row {
+	int icon;		/* enum osd_icon */
+	const char *label;	/* UTF-8; needs osd_font_open() */
+	int selected;
+	double x, y, w, h;	/* the pill, in 1080-line units */
+};
+void osd_draw_row(struct osd_canvas *c, const struct osd_row *r, int box[4]);
+
+/* The launcher's scrim: black, 70 % at the left edge, 25 % at 45 % of 700 units, none from 700 on; REPLACES the
+ * pixels of box (x, y, w, h, clipped to the canvas), so it is also how a band of the column is cleared before its
+ * row is drawn again. */
+void osd_draw_scrim(struct osd_canvas *c, const int box[4]);
+
+/* A dim hint line, 26 units high, its baseline at y (1080-line units, x too): with arrows != 0 the marks for up and
+ * down (drawn as shapes, the face has no such glyphs) come first and the text after them. */
+void osd_draw_hint(struct osd_canvas *c, double x, double baseline, const char *text, int arrows);
+
+/*
+ * The launcher: a column on the left edge (the scrim, 700 units wide) with a header line, up to six rows and a hint line,
+ * the mock-up's "Launcher C". It is cut into BANDS that tile the column, so a caller can repaint only the bands that changed
+ * (a move of the selection changes two rows' bands, 124 units high each) and copy or pre-distort only those. Band 0 is the
+ * header, band 1 + i row i, band n + 1 the foot, band n + 2 the gap between the rows at the top and those at the foot - scrim
+ * only, drawn once (empty, height 0, when there is none). The bands are not in the order of their y.
+ */
+#define OSD_LAUNCHER_ROWS 6
+
+struct osd_launcher {
+	const char *head;	/* the header line, 30 units, dim: "20:47 \u00b7 HDMI 1080p60" (UTF-8) */
+	int n, sel;		/* the rows, the chosen one */
+	struct {
+		int icon;		/* enum osd_icon */
+		const char *label;
+		int end;		/* 1: in the group at the foot (Standby): bottom-anchored, apart from the others */
+	} row[OSD_LAUNCHER_ROWS];	/* the rows with end = 0 first, then those with end = 1 */
+};
+
+/* the rectangles (x, y, w, h in canvas pixels) of the bands; returns their count, n + 3 (0 for no rows); box needs
+ * OSD_LAUNCHER_ROWS + 3 entries */
+int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l, int box[][4]);
+
+/* repaint one band: the scrim REPLACES its pixels, then its content is drawn over it. All of them, in any order,
+ * make the whole launcher; the hint's words are fixed ("select, OK open, BACK close"). Needs osd_font_open(). */
+void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int band);
+
+/*
+ * Text (text.c, FreeType - link libfreetype; h713-osd links it statically). The one part of the library that reads
+ * a file: the font, opened once by the caller. The package's face on the image is Quicksand Medium
+ * (Debian fonts-quicksand, SIL OFL 1.1) at OSD_FONT. A string is UTF-8, drawn left to right on one baseline in one
+ * colour; there is no wrapping, no alignment and no cache - a caller that wants a centred or right-aligned
+ * string asks osd_text_width() first.
+ */
+#define OSD_FONT "/usr/share/fonts/truetype/quicksand/Quicksand-Medium.ttf"
+
+/* open the font face at path; 0 on success (and when one is open already), -1 if the file is missing or no font.
+ * The first face stays: a second call with another path is a no-op. Without a face osd_text draws nothing. */
+int osd_font_open(const char *path);
+
+/* the advance width, in canvas pixels, of utf8 set at px pixels (the em height - 38 for a launcher label on a
+ * 1080-line panel); 0 without a font. Unhinted and fractional: the width is what the designer drew. */
+double osd_text_width(const char *utf8, double px);
+
+/* utf8 with its left end at x and its baseline at y, px pixels high, in colour rgb (0xRRGGBB) with alpha 0..1 on
+ * top of the glyph's own coverage, mixed over the canvas in straight alpha (the same way osd_draw mixes). Pixels
+ * outside the canvas are clipped. max_w > 0 stops before the first glyph that would end beyond max_w pixels from
+ * x (no ellipsis); 0 = no limit. Returns the advance width of what was drawn. Not reentrant (one face). */
+double osd_text(struct osd_canvas *c, const char *utf8, double x, double baseline, double px, unsigned rgb,
+		float alpha, double max_w);
 
 #endif
