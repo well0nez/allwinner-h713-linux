@@ -10,7 +10,7 @@ rows.c      the areas and their rows: what each reads from a tool and the one co
 backend.c   the ways to the tools: a ctl socket, a program run or started, a "key = value" file changed in place
 input.c     the remote's devices, held alone while the page is open
 page.c      h713-osd's page channel: one memfd to draw into, "page show X Y W H"
-tests/      test_settings.py: 43 host tests
+tests/      test_settings.py: 51 host tests (two of them run the real h713-osd)
 ```
 
 ## Building and testing
