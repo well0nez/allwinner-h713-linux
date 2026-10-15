@@ -87,6 +87,10 @@ bool warp(const char *fmt, ...)
 static void exec_tool(const char *const *argv)
 {
 	char path[256];
+	int nul = open("/dev/null", O_RDONLY);
+
+	if (nul >= 0)
+		dup2(nul, 0);		/* a tool never reads the page's keys */
 
 	if (p_bin && *p_bin) {
 		snprintf(path, sizeof(path), "%s/%s", p_bin, argv[0]);

@@ -209,11 +209,22 @@ static void preset_apply(struct row *r, int dir)
 	areas[0].enter(&areas[0]);	/* the nine controls moved with the preset */
 }
 
+/* the value of a choice as the tool says it now (the answer to a bare ask), not as it was asked for: a refusal shows */
+static void choice_read(struct row *r, bool (*ask)(const char *fmt, ...), const char *cmd, const char *prefix)
+{
+	char cur[24] = "";
+
+	if (ask("%s", cmd) && !strncmp(reply, prefix, strlen(prefix)) && sscanf(reply + strlen(prefix), "%23s", cur) == 1 &&
+	    opt_find(r, cur) >= 0)
+		r->val = opt_find(r, cur);
+}
+
 static void aspect_apply(struct row *r, int dir)
 {
 	(void)dir;
 	if (tv("aspect %s", r->arg[r->val]))
 		picture_dirty();
+	choice_read(r, tv, "aspect", "ok aspect ");
 }
 
 static void picture_reset(struct row *r, int dir)
@@ -272,10 +283,11 @@ static struct row *r_corners, *r_auto, *r_afterfocus;
 
 static void after_move_set(const char *v)
 {
-	const char *restart[] = { "systemctl", "restart", "h713-keystone-auto", NULL };
+	const char *restart[] = { "systemctl", "restart", "--no-block", "h713-keystone-auto", NULL };
+	char o[128];
 
 	conf_set(etc("keystone.conf"), "after_move", v);
-	spawn(restart);		/* the unit reads the key at its start; the answer is not waited for */
+	run(restart, o, sizeof(o), 5000);	/* the unit reads the key at its start; queued, not waited for */
 }
 
 static void after_move_load(void)
@@ -325,6 +337,7 @@ static void mode_apply(struct row *r, int dir)
 {
 	(void)dir;
 	warp("mode %s", r->arg[r->val]);
+	choice_read(r, warp, "mode", "ok mode ");
 }
 
 static void keystone_reset(struct row *r, int dir)
@@ -421,6 +434,8 @@ static void mute_apply(struct row *r, int dir)
 {
 	r->val = dir ? dir > 0 : !r->val;
 	tv("mute %s", r->val ? "on" : "off");
+	if (tv("mute"))
+		r->val = !strncmp(reply, "ok mute on", 10);
 }
 
 static void sound_enter(struct area *a)
@@ -493,6 +508,8 @@ static void focus_start(void)
 static void focus_by_hand(struct row *r, int dir)
 {
 	(void)r;
+	if (job.pid > 0 && job.row != r_focus)
+		return;			/* the autofocus has the motor: a press now would run when it is over */
 	focus_pending += dir;
 	focus_start();
 }
@@ -513,6 +530,7 @@ static void source_apply(struct row *r, int dir)
 	(void)dir;
 	if (tv("source %s", r->arg[r->val]))
 		conf_set(etc("tv.conf"), "source", r->arg[r->val]);	/* h713-tv takes it as the start value */
+	choice_read(r, tv, "source", "ok source ");
 }
 
 static void input_enter(struct area *a)
@@ -540,6 +558,8 @@ static void power_apply(struct row *r, int dir)
 
 	(void)dir;
 	run(argv, o, sizeof(o), 15000);
+	if (conf_get(etc("power.conf"), "default", o, sizeof(o)) && opt_find(r, o) >= 0)
+		r->val = opt_find(r, o);	/* what h713-power wrote, not what was asked */
 }
 
 static void remote_apply(struct row *r, int dir)
@@ -550,6 +570,8 @@ static void remote_apply(struct row *r, int dir)
 	r->val = dir ? dir > 0 : !r->val;
 	argv[3] = r->val ? "on" : "off";
 	run(argv, o, sizeof(o), 15000);
+	if (conf_get(etc("power.conf"), "remote", o, sizeof(o)))
+		r->val = strcmp(o, "off") != 0;
 }
 
 static void power_enter(struct area *a)

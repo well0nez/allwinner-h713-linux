@@ -56,7 +56,7 @@ class FakeTv(Ctl):
         self.root = root
         self.c = dict(zip(("brightness", "contrast", "saturation", "hue", "sharpness"), PRESETS["standard"]))
         self.preset, self.aspect, self.volume, self.mute, self.source = "standard", "auto", 90, False, "hdmi"
-        self.saved = 0
+        self.saved, self.refuse_43 = 0, False
         super().__init__(path)
 
     def answer(self, line):
@@ -80,6 +80,8 @@ class FakeTv(Ctl):
         if w[0] == "status":
             return "ok status\nmode            auto\npreset          %s (from the device data)\nsaved           nothing\n" % self.preset
         if w[0] == "aspect":
+            if len(w) == 2 and w[1] == "4:3" and self.refuse_43:
+                return "error aspect 4:3 saved, but the plane could not be switched off\n"
             if len(w) == 2:
                 self.aspect = w[1]
             return "ok aspect %s (1) -- possible: auto proportional full 16:9 4:3 zoom\n" % self.aspect
@@ -427,6 +429,14 @@ class Picture(Base):
         self.assertIn("aspect proportional", b.tv.log)
         b.finish()
 
+    def test_a_refused_choice_shows_what_the_tool_holds(self):
+        b = self.box()
+        b.tv.refuse_43 = True
+        b.start("Picture")
+        b.keys("ok", *["down"] * 6, "ok", "down", "down", "down", "down", "ok")      # Aspect ratio > 4:3, which h713-tv refuses
+        self.assertIn("Aspect ratio choice [*Auto|", b.dump())
+        b.finish()
+
     def test_choice_can_be_cancelled(self):
         b = self.box().start("Picture")
         b.keys("ok", "down", "down", "down", "down", "down", "ok", "down", "back")
@@ -465,7 +475,7 @@ class Keystone(Base):
         self.assertIn("# keystone\n", conf)                  # the rest of the file is as it was
         self.assertIn("iio_name = sc7a20\n", conf)
         self.assertIn("hysteresis_degrees = 1.0\n", conf)
-        self.assertTrue(wait_for(lambda: b.tool_log("systemctl") == ["restart h713-keystone-auto"]))
+        self.assertEqual(b.tool_log("systemctl"), ["restart --no-block h713-keystone-auto"])
         b.keys("left")
         b.dump()
         self.assertIn("after_move = off\n", b.read("keystone.conf"))
