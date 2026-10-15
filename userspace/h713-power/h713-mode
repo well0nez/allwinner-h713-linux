@@ -1,0 +1,64 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-mode - what the panel shows besides the HDMI picture, and the way through a sleep (media side project, package H).
+# A MODE is a unit named by a launcher entry (/etc/h713/launcher.d/*.conf, "unit = h713-kodi.service"); while none of them
+# runs the panel shows the HDMI input. There is nothing to start here: the launcher starts a mode with systemctl, and the
+# units ride on `h713-tv ctl source auto` (the client before the ring, the ring back by itself when the client is gone).
+#
+#   h713-mode status      the mode units that run, or "hdmi"
+#   h713-mode hdmi        end every mode unit (Kodi quits cleanly, the HDMI picture is back ~2 s after cage is gone)
+#   h713-mode sleep-pre   before a sleep: write the running mode units to /run/h713-mode.resume (the one place the mode
+#                         before a sleep is remembered) and end them
+#   h713-mode sleep-post  after a sleep: bring the picture path back when the display MIPS is parked (h713-mips-restart
+#                         restarts h713-tv and h713-warp), then start what the file remembers and remove it
+#
+# h713-sleep-pre.service (Before=sleep.target) and h713-sleep-post.service (After=suspend.target) call the last two, so every
+# way into the sleep - the power key, the launcher, Kodi's own menu, `systemctl suspend` - ends the same way.
+# Tests only: H713_ROOT goes before /etc, /run and /sys; H713_SYSTEMCTL and H713_MIPS_RESTART replace the tools.
+set -u
+R=${H713_ROOT:-}
+D=$R/etc/h713/launcher.d
+MEM=$R/run/h713-mode.resume
+SYSTEMCTL=${H713_SYSTEMCTL:-systemctl}
+RESTART=${H713_MIPS_RESTART:-/usr/local/sbin/h713-mips-restart}
+
+say() { [ -n "${JOURNAL_STREAM:-}" ] || echo "h713-mode: $*" >&2; logger -t h713-mode -- "$*" 2>/dev/null || :; }
+units() { sed -n 's/^[[:space:]]*unit[[:space:]]*=[[:space:]]*\([^[:space:]#]*\).*/\1/p' "$D"/*.conf 2>/dev/null; }
+running() {	# the mode units that are active or on their way up
+	for u in $(units); do
+		case $($SYSTEMCTL is-active "$u" 2>/dev/null) in active|activating|reloading) echo "$u" ;; esac
+	done
+}
+parked() {
+	for f in "$R"/sys/bus/platform/drivers/sun50i-h713-mips/*/state; do
+		[ -e "$f" ] && { set -- $(head -n1 "$f"); [ "$1" = parked ]; return; }
+	done
+	return 1
+}
+
+case ${1:-} in
+status)
+	r=$(running | tr '\n' ' '); echo "${r:-hdmi}" ;;
+hdmi)
+	for u in $(units); do $SYSTEMCTL stop "$u" || say "ending $u failed"; done ;;
+sleep-pre)
+	running > "$MEM"
+	[ -s "$MEM" ] && say "before the sleep: $(tr '\n' ' ' < "$MEM")ended, remembered in $MEM" || say "before the sleep: HDMI"
+	for u in $(cat "$MEM"); do $SYSTEMCTL stop "$u" || say "ending $u failed"; done ;;
+sleep-post)
+	if parked; then
+		say "after the sleep: the display MIPS is parked, h713-mips-restart"
+		"$RESTART" || say "h713-mips-restart ended with $? (journal: h713-mips-restart): the picture may not be back"
+	else
+		say "after the sleep: the display MIPS is not parked, no restart"
+	fi
+	if [ -s "$MEM" ]; then
+		for u in $(cat "$MEM"); do say "back to $u"; $SYSTEMCTL start --no-block "$u" || say "starting $u failed"; done
+	else
+		say "back to HDMI"
+	fi
+	rm -f "$MEM" ;;
+*)
+	echo "usage: h713-mode status | hdmi | sleep-pre | sleep-post" >&2; exit 2 ;;
+esac

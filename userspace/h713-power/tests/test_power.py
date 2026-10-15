@@ -26,7 +26,7 @@ class Root:
     says short = standby unless conf names short itself: these are the standby's tests, and the shipped
     default is poweroff (Defaults below)."""
 
-    def __init__(self, mem_sleep="s2idle [deep]", ready="1", conf="", mips=None, suspend_ok=True, restart_rc=0,
+    def __init__(self, mem_sleep="s2idle [deep]", ready="1", conf="", mips=None, suspend_ok=True,
                  build2="0x00003318", fail_step=None, wake_irq=None):
         self.tmp = tempfile.TemporaryDirectory()        # removed with this object
         self.dir = self.tmp.name
@@ -52,21 +52,27 @@ class Root:
         for step in ("failed_freeze", "failed_prepare", "failed_suspend", "failed_suspend_late",
                      "failed_suspend_noirq"):
             self.put("sys/power/suspend_stats/" + step, "0")
-        self.put("systemctl", '#!/bin/sh\necho "$@" >> %s\n[ "$1" = suspend ] && { echo 1 > %s\n%s}\nexit 0\n'
-                 % (self.log, self.p("sys/power/suspend_stats/" + ("success" if suspend_ok else "fail")), more))
+        self.put("post-state", "inactive")
+        self.put("systemctl", '#!/bin/sh\necho "$@" >> %s\n[ "$1" = is-active ] && { cat %s; exit 0; }\n'
+                 '[ "$1" = suspend ] && { echo 1 > %s\n%s}\nexit 0\n'
+                 % (self.log, self.p("post-state"), self.p("sys/power/suspend_stats/" + ("success" if suspend_ok else "fail")), more))
         os.chmod(self.p("systemctl"), 0o755)
         if mips:
             self.put("sys/bus/platform/drivers/sun50i-h713-mips/3061000.mips/state",
                      "%s\n0x02001600=0x00000000 0x0200160c=0x00000000\n" % mips)
-        self.put("mips-restart", '#!/bin/sh\necho mips-restart >> %s\nexit %d\n' % (self.log, restart_rc))
-        os.chmod(self.p("mips-restart"), 0o755)
-        self.restart_tool = self.p("mips-restart")
 
     def __del__(self):
         self.tmp.cleanup()                               # now, without the ResourceWarning of a late cleanup
 
     def p(self, rel):
         return os.path.join(self.dir, rel)
+
+    def calls(self):
+        """every word the systemctl stand-in was called with, in order (is-active included)"""
+        if not os.path.exists(self.log):
+            return []
+        with open(self.log) as f:
+            return f.read().split()
 
     def put(self, rel, text):
         os.makedirs(os.path.dirname(self.p(rel)), exist_ok=True)
@@ -85,13 +91,13 @@ class Root:
                 time.sleep(1.5)
         threading.Thread(target=feed, daemon=True).start()
         env = dict(os.environ, H713_POWER_ROOT=self.dir, H713_SYSTEMCTL=self.p("systemctl"),
-                   H713_MIPS_RESTART=self.restart_tool, H713_POWER_OSD=osd or self.p("no-osd"))
+                   H713_POWER_CTL=self.p("power.sock"), H713_POWER_OSD=osd or self.p("no-osd"))
         out = subprocess.run([sys.executable, TOOL, "run", "--once"], env=env, capture_output=True,
                              text=True, timeout=20)
-        calls = []
-        if os.path.exists(self.log):
-            with open(self.log) as f:
-                calls = f.read().split()
+        calls = self.calls()
+        while "is-active" in calls:                      # the short press asks whether h713-sleep-post still runs
+            i = calls.index("is-active")
+            del calls[i:i + 2]
         return calls, out.stdout
 
 
@@ -238,39 +244,19 @@ class KeysOfTheStandby(unittest.TestCase):
 
 
 class AfterTheStandby(unittest.TestCase):
-    """A standby parks the display MIPS; h713-mips-restart brings the picture back, only from the park."""
+    """A standby parks the display MIPS; the picture and the mode come back through h713-sleep-post.service (systemd,
+    package H), not through this tool: it only waits for the unit and starts it again after a standby that did not happen."""
 
     SHORT = ((1, 0.3), (0, 0.2))
 
-    def test_a_parked_mips_is_restarted_after_the_standby(self):
+    def test_the_standby_leaves_the_picture_to_systemd(self):
         calls, out = Root(mips="parked").press(*self.SHORT)
-        self.assertEqual(calls, ["suspend", "mips-restart"], out)
-        self.assertIn("the display MIPS is parked: h713-mips-restart", out)
-        self.assertIn("h713-mips-restart: the picture path is back", out)
+        self.assertEqual(calls, ["suspend"], out)                 # no h713-mips-restart from here
+        self.assertNotIn("h713-mips-restart", out)
 
-    def test_a_running_mips_or_no_driver_is_left_alone(self):
-        calls, out = Root(mips="running").press(*self.SHORT)
-        self.assertEqual(calls, ["suspend"], out)
-        self.assertIn("h713-power: the display MIPS is running: no restart", out)
-        calls, out = Root().press(*self.SHORT)
-        self.assertEqual(calls, ["suspend"], out)
-        self.assertIn("<4>h713-power: the display MIPS is not known (no sun50i-h713-mips driver)", out)
-
-    def test_a_failed_restart_is_a_warning_not_a_power_off(self):
-        calls, out = Root(mips="parked", restart_rc=3).press(*self.SHORT)
-        self.assertEqual(calls, ["suspend", "mips-restart"], out)
-        self.assertIn("<4>h713-power: h713-mips-restart ended with 3", out)
-
-    def test_a_missing_restart_tool_is_a_warning(self):
-        r = Root(mips="parked")
-        r.restart_tool = r.p("no-such-tool")
-        calls, out = r.press(*self.SHORT)
-        self.assertEqual(calls, ["suspend"], out)
-        self.assertIn("<4>h713-power: h713-mips-restart cannot start", out)
-
-    def test_a_refused_standby_restarts_a_parked_mips_only_when_the_projector_stays_on(self):
+    def test_a_refused_standby_that_leaves_the_projector_on_runs_the_post_unit_again(self):
         calls, out = Root(mips="parked", suspend_ok=False, conf="refused = log\n").press(*self.SHORT)
-        self.assertEqual(calls, ["suspend", "mips-restart"], out)
+        self.assertEqual(calls, ["suspend", "start", "--no-block", "h713-sleep-post.service"], out)
         calls, out = Root(mips="parked", suspend_ok=False).press(*self.SHORT)
         self.assertEqual(calls, ["suspend", "poweroff"], out)
 
@@ -278,7 +264,7 @@ class AfterTheStandby(unittest.TestCase):
         # TODO 5.14 U2: a press while the box goes to sleep is no refusal - the projector stays on
         r = Root(mips="parked", suspend_ok=False, fail_step="failed_suspend_noirq", wake_irq="45")
         calls, out = r.press(*self.SHORT)
-        self.assertEqual(calls, ["suspend", "mips-restart"], out)
+        self.assertEqual(calls, ["suspend", "start", "--no-block", "h713-sleep-post.service"], out)
         self.assertIn("aborted by a wake-up (IRQ 45): the projector stays on", out)
 
     def test_a_wake_up_irq_of_an_earlier_cycle_does_not_count(self):
@@ -295,49 +281,27 @@ class AfterTheStandby(unittest.TestCase):
             calls, out = Root(mips="parked", suspend_ok=False, fail_step=step).press(*self.SHORT)
             self.assertEqual(calls, ["suspend", "poweroff"], (step, out))
 
-    def test_while_the_picture_comes_back_a_short_press_does_nothing_a_long_one_powers_off(self):
+    def test_while_the_post_unit_runs_a_short_press_does_nothing_a_long_one_powers_off(self):
         m, r = load(), Root(mips="parked")
         m.ROOT, m.SYSTEMCTL = r.dir, [r.p("systemctl")]
-
-        class Running:
-            def poll(self):
-                return None
-        m.restart, m.restart_since = Running(), time.monotonic()     # started just now, as picture_back() does
+        r.put("post-state", "activating")                            # what `systemctl is-active` says while it runs
         m.act("short", m.config()[0])
-        self.assertFalse(os.path.exists(r.log))
+        self.assertEqual(r.calls(), ["is-active", "h713-sleep-post.service"])    # asked, nothing else done
         m.act("long", m.config()[0])
-        with open(r.log) as f:
-            self.assertEqual(f.read().split(), ["poweroff"])
+        self.assertEqual(r.calls()[-1], "poweroff")
+        r.put("post-state", "inactive")                              # done (or hung and failed): the key counts again
+        m.act("short", m.config()[0])
+        self.assertEqual(r.calls()[-1], "suspend")
 
-    def test_a_restart_that_hangs_lets_the_short_press_go_after_the_limit(self):
-        # TODO 5.14 U6: a hung h713-mips-restart no longer swallows every short press until the next boot
-        import contextlib
-        import io
-        m, r = load(), Root(mips="parked")
-        m.ROOT, m.SYSTEMCTL = r.dir, [r.p("systemctl")]
-        m.MIPS_RESTART, m.RESTART_HANG_S = ["sleep", "30"], 0.3
-        out = io.StringIO()
-        try:
-            with contextlib.redirect_stdout(out):
-                m.picture_back()
-                first = m.restart
-                self.assertTrue(m.restarting())                       # within the limit: still coming back
-                m.act("short", m.config()[0])
-                self.assertFalse(os.path.exists(r.log))               # ignored, as before
-                time.sleep(0.5)
-                self.assertFalse(m.restarting())                      # past the limit: the key counts again
-                self.assertFalse(m.restarting())
-                m.picture_back()                                      # no second restart beside the hung one
-                self.assertIs(m.restart, first)
-                m.act("short", m.config()[0])
-            with open(r.log) as f:
-                self.assertEqual(f.read().split(), ["suspend"])
-            text = out.getvalue()
-            self.assertEqual(text.count("h713-mips-restart hangs since"), 1, text)
-            self.assertIn("still runs: no second one", text)
-        finally:
-            m.restart.kill()
-            m.restart.wait()
+    def test_can_standby_says_whether_one_can_happen(self):
+        a, b = Root(), Root(ready="0")
+        out = subprocess.run([sys.executable, TOOL, "can-standby"], env=dict(os.environ, H713_POWER_ROOT=a.dir),
+                             capture_output=True, text=True)
+        self.assertEqual((out.returncode, out.stdout.strip()), (0, "a standby can happen"))
+        out = subprocess.run([sys.executable, TOOL, "can-standby"], env=dict(os.environ, H713_POWER_ROOT=b.dir),
+                             capture_output=True, text=True)
+        self.assertEqual(out.returncode, 1)
+        self.assertIn("crust is not ready", out.stdout)
 
     def test_status_names_the_mips_state(self):
         r = Root(mips="parked")
@@ -345,6 +309,49 @@ class AfterTheStandby(unittest.TestCase):
         out = subprocess.run([sys.executable, TOOL, "status"], env=env, capture_output=True, text=True).stdout
         self.assertIn("display MIPS: parked", out)
 
+
+class Launcher(unittest.TestCase):
+    """The launcher's Power press arrives as a datagram; the countdown holds the remote's devices."""
+
+    def test_a_datagram_short_starts_the_countdown_and_the_devices_are_held(self):
+        import socket
+        r = Root()
+        m = load()
+        m.ROOT, m.SYSTEMCTL, m.CTL = r.dir, [r.p("systemctl")], r.p("power.sock")
+        grabbed = []
+        real = m.fcntl.ioctl
+        m.fcntl.ioctl = lambda fd, req, arg=0: grabbed.append((req, arg)) if req == m.EVIOCGRAB else real(fd, req, arg)
+        said = []
+        m.osd = lambda line: said.append(line) or "ok"
+        t = threading.Thread(target=lambda: m.run(once=True), daemon=True)
+        t.start()
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        for _ in range(100):
+            try:
+                c.sendto(b"short", r.p("power.sock"))
+                break
+            except OSError:
+                time.sleep(0.02)
+        time.sleep(0.6)
+        self.assertTrue([l for l in said if l.startswith("power ")], said)           # the countdown is on
+        self.assertIn((m.EVIOCGRAB, 1), grabbed)
+        # a second datagram is "act now": the choice is carried out, the devices are let go
+        c.sendto(b"short", r.p("power.sock"))
+        t.join(5)
+        c.close()
+        self.assertIn((m.EVIOCGRAB, 0), grabbed)
+        self.assertIn("suspend", r.calls())                          # the default of this Root is standby
+
+    def test_a_countdown_that_nobody_sees_holds_nothing(self):
+        m = load()
+        held = []
+        cd = m.Countdown({"default": "poweroff"}, say=lambda line: "ok unseen", hold=held.append)
+        self.assertFalse(cd.start())
+        self.assertEqual(held, [])
+        cd = m.Countdown({"default": "poweroff"}, say=lambda line: "ok", hold=held.append)
+        self.assertTrue(cd.start())
+        cd.close(False)
+        self.assertEqual(held, [True, False])
 
 
 class Defaults(unittest.TestCase):
