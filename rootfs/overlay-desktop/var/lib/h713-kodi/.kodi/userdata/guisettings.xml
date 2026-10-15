@@ -13,6 +13,9 @@
     <!-- a projector shows the picture for hours: no dimming screensaver, no display-off timer -->
     <setting id="screensaver.mode"></setting>
     <setting id="powermanagement.displaysoff">0</setting>
+    <!-- MPEG-2 on the VE: Kodi's default is software for MPEG-2. Measured on the HY310 (1080p30, 60 s, F, 15.10.2026): software 134 % of a core
+         (CPU 841 MHz mean, 14.7 ms GPU per frame), VAAPI 56 % (586 MHz, 11.1 ms); VAAPI ran 10 minutes without a dropped frame or a driver event -->
+    <setting id="videoplayer.usevaapimpeg2">true</setting>
     <!-- without this element Kodi throws the whole file away ("settings file doesn't contain <resolutions>") and starts from its defaults -->
     <resolutions />
 </settings>
