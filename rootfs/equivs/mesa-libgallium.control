@@ -1,5 +1,5 @@
 # Dummy for Debian trixie's mesa-libgallium: the real library is the mesa that rootfs/mesa/build-mesa.sh puts under /usr/local
-# (panfrost only, Wayland platform, glvnd, no LLVM). Debian's own mesa-libgallium would pull mesa-libgallium and libllvm19
+# (panfrost only, Wayland platform, glvnd, no LLVM). Debian's own mesa-libgallium would pull in libllvm19
 # (187 MiB). rootfs/build-rootfs.sh builds this file into a .deb (dpkg-deb, the same fields equivs-build reads) and
 # installs it with the base image, so apt knows the dependency is met.
 # The epoch keeps every Debian mesa update (25.0.7-2+deb13uN) below this version: apt never swaps a dummy for the real
