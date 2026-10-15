@@ -28,7 +28,7 @@ static struct osd_launcher mk(int sel, int n)
 
 static void full(struct osd_canvas *c, const struct osd_launcher *l)
 {
-	int box[OSD_LAUNCHER_ROWS + 2][4], n = osd_launcher_bands(c, l, box);
+	int box[OSD_LAUNCHER_ROWS + 3][4], n = osd_launcher_bands(c, l, box);
 
 	memset(c->px, 0, (size_t)c->h * c->stride * 4);
 	for (int b = 0; b < n; b++)
@@ -45,23 +45,44 @@ static int dark_rows(const struct osd_canvas *c, int x, int y0, int y1, int a)
 	return n;
 }
 
+/* the bands, sorted by their top, lie edge to edge from the top of the canvas to its bottom, none empty but the gap */
+static void tiles(int box[][4], int n, int h, const char *what)
+{
+	int order[OSD_LAUNCHER_ROWS + 3], at = 0;
+
+	for (int k = 0; k < n; k++)
+		order[k] = k;
+	for (int i = 1; i < n; i++)
+		for (int j = i; j > 0 && box[order[j]][1] < box[order[j - 1]][1]; j--) {
+			int x = order[j];
+
+			order[j] = order[j - 1], order[j - 1] = x;
+		}
+	for (int i = 0; i < n; i++) {
+		if (!box[order[i]][3])
+			continue;
+		CHECK(box[order[i]][1] == at, "%s: band %d starts at %d, not where the one before ended (%d)", what, order[i], box[order[i]][1], at);
+		at = box[order[i]][1] + box[order[i]][3];
+	}
+	CHECK(at == h, "%s: the bands end at %d of %d", what, at, h);
+}
+
 static void run(int w, int h)
 {
 	struct osd_canvas a = { .w = w, .h = h, .stride = w }, b = a;
 	struct osd_launcher l = mk(1, 6), l2 = mk(2, 6);
-	int box[OSD_LAUNCHER_ROWS + 2][4], n, same = 0;
+	int box[OSD_LAUNCHER_ROWS + 3][4], n, same = 0;
 	double u = h / 1080.0;
 
 	a.px = calloc((size_t)w * h, 4);
 	b.px = calloc((size_t)w * h, 4);
 
 	n = osd_launcher_bands(&a, &l, box);
-	CHECK(n == 8, "six rows are eight bands, got %d", n);
-	CHECK(box[0][1] == 0, "the header starts at the top: %d", box[0][1]);
-	CHECK(box[n - 1][1] + box[n - 1][3] == h, "the foot ends at the bottom: %d", box[n - 1][1] + box[n - 1][3]);
-	for (int k = 1; k < n; k++)
-		CHECK(box[k][1] == box[k - 1][1] + box[k - 1][3], "band %d starts where band %d ends (%d, %d+%d)", k, k - 1,
-		      box[k][1], box[k - 1][1], box[k - 1][3]);
+	CHECK(n == 9, "six rows are nine bands (header, six rows, foot, gap), got %d", n);
+	tiles(box, n, h, "six rows");
+	CHECK(box[8][3] > 0, "Standby is apart from the five rows above: a gap of %d rows", box[8][3]);
+	for (int k = 1; k <= 6; k++)
+		CHECK(box[k][3] >= (int)(123 * u) && box[k][3] <= (int)(125 * u) + 1, "row band %d is 124 units high: %d", k, box[k][3]);
 	CHECK(box[0][2] >= (int)(699 * u) && box[0][2] <= (int)(701 * u) + 1, "the column is 700 units wide: %d", box[0][2]);
 
 	/* all bands = the launcher; a second pass over every band changes nothing (scrim replaces, the row is mixed once) */
@@ -71,7 +92,7 @@ static void run(int w, int h)
 	full(&b, &l);
 	CHECK(!memcmp(a.px, b.px, (size_t)w * h * 4), "a second pass over the bands in reverse order changed pixels");
 
-	/* a move of the selection from row 1 to row 2: repaint bands 2 and 3 only, as a full draw of the new state */
+	/* a move of the selection from row 1 to row 2: repaint bands 2 and 3 only, as a full draw of the new state; the gap band, once */
 	full(&a, &l);
 	osd_launcher_draw(&a, &l2, 2);
 	osd_launcher_draw(&a, &l2, 3);
@@ -91,6 +112,8 @@ static void run(int w, int h)
 		for (int y = box[k][1]; y < box[k][1] + box[k][3]; y++)
 			diff += memcmp(a.px + (size_t)y * w, b.px + (size_t)y * w, (size_t)w * 4) != 0;
 		CHECK((k == 2 || k == 3) == (diff > 0), "band %d: %d rows differ", k, diff);
+		if (k == 2 || k == 3)
+			CHECK(box[k][3] <= (int)(125 * u) + 1, "a move repaints bands of 124 units, not %d rows", box[k][3]);
 	}
 
 	/* the pill of the chosen row: a white outline at x = 118 units and 638, round ends; rows not chosen have none */
@@ -120,9 +143,11 @@ static void run(int w, int h)
 	/* three rows (the rows of package H): HDMI and Kodi at the top, Standby alone at the foot */
 	l = mk(0, 3);
 	n = osd_launcher_bands(&a, &l, box);
-	CHECK(n == 5, "three rows are five bands, got %d", n);
+	CHECK(n == 6, "three rows are six bands, got %d", n);
+	tiles(box, n, h, "three rows");
 	full(&a, &l);
 	CHECK(box[3][1] <= (int)(844 * u) && box[3][1] + box[3][3] >= (int)(948 * u), "Standby's band holds its pill: %d+%d", box[3][1], box[3][3]);
+	CHECK(box[5][3] > (int)(300 * u), "the gap between Kodi and Standby is its own band: %d rows", box[5][3]);
 	free(a.px);
 	free(b.px);
 }

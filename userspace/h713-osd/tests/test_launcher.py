@@ -9,6 +9,7 @@ python3 -m unittest discover -s tests -v   (from userspace/h713-osd, after `make
 """
 
 import os
+import re
 import subprocess
 import time
 import unittest
@@ -85,6 +86,19 @@ class LauncherTest(OsdBase):
         self.assertGreater(len(inside), 60)
         worst = max(abs(a[i + 1] - a[i]) for i in inside[4:-8])
         self.assertLess(worst, 6, "alpha along x = %d jumps by %d" % (x, worst))
+
+    def test_a_move_puts_two_bands_not_the_column(self):
+        """the point of the bands: after the first puts into both buffers a move costs two rows' worth of pixels. A wipe flag that
+        stayed set after the first put made the third refresh wipe and put the whole column again (found reading the code)."""
+        self.start()
+        self.launcher(line(0))
+        column = COLUMN * H
+        for sel in (1, 2, 1, 0, 1, 2):
+            self.launcher(str(sel))
+            m = re.search(r"\((\d+) pixels\)", self.ctl("status"))
+            self.assertIsNotNone(m)
+            if sel in (1, 2) and self.tv.lines.count("osd show 0") + self.tv.lines.count("osd show 1") > 3:
+                self.assertLess(int(m.group(1)), column * 0.4, "after a move to %d: %s pixels of %d" % (sel, m.group(1), column))
 
     def test_close_leaves_nothing(self):
         self.start()

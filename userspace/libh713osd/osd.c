@@ -737,19 +737,20 @@ void osd_draw_hint(struct osd_canvas *c, double x, double baseline, const char *
 	static struct scene s;
 	double u = c->h / 1080.0, x0 = x * u, y0 = baseline * u;
 
-	if (arrows) {		/* ▲ and ▼ as outlines: the face has neither */
+	if (arrows) {		/* the marks for up and down as shapes: the face has neither */
 		memset(&s, 0, sizeof(s));
 		s.lw = 1.5 * u;
 		s.dim = 0.447;
 		s.panel = 3;
 		s.px = x0, s.py = y0 - 26 * u, s.pw = 60 * u, s.ph = 30 * u;
-		for (int d = 0; d < 2; d++) {	/* d 0: up, 1: down */
-			double cx = x0 + (11 + 28 * d) * u, cy = y0 - 9 * u, dir = d ? 1 : -1;
+		for (int d = 0; d < 2; d++)	/* d 0: up, 1: down; three outlines inside each other make it solid */
+			for (int k = 0; k < 3; k++) {
+				double cx = x0 + (11 + 28 * d) * u, cy = y0 - 9 * u, dir = d ? 1 : -1, f = u * (1 - 0.36 * k);
 
-			seg(&s, cx, cy + dir * 8 * u, cx - 9 * u, cy - dir * 6 * u, T_DIM);
-			seg(&s, cx - 9 * u, cy - dir * 6 * u, cx + 9 * u, cy - dir * 6 * u, T_DIM);
-			seg(&s, cx + 9 * u, cy - dir * 6 * u, cx, cy + dir * 8 * u, T_DIM);
-		}
+				seg(&s, cx, cy + dir * 8 * f, cx - 9 * f, cy - dir * 6 * f, T_DIM);
+				seg(&s, cx - 9 * f, cy - dir * 6 * f, cx + 9 * f, cy - dir * 6 * f, T_DIM);
+				seg(&s, cx + 9 * f, cy - dir * 6 * f, cx, cy + dir * 8 * f, T_DIM);
+			}
 		render(c, &s, u, 1.0, NULL);
 	}
 	osd_text(c, text, x0 + (arrows ? 68 * u : 0), y0, 26 * u, 0xffffff, 0.42f, 0);
@@ -784,49 +785,57 @@ void osd_draw_scrim(struct osd_canvas *c, const int box[4])
 #define LAU_FOOT_PILL	844	/* the last row of the group at the foot sits with its top here, as in the mock-up */
 #define LAU_FOOT	958	/* the hint's band starts here */
 
-/* the tops of the pills and the boundaries of the bands, in 1080-line units: b[0] = 0, b[i + 1] the foot of band i's top
- * (the band of row i is b[i + 1] .. b[i + 2]), b[n + 1] = LAU_FOOT; returns n + 2, the count of bands */
-static int lau_geometry(const struct osd_launcher *l, double top[OSD_LAUNCHER_ROWS], double b[OSD_LAUNCHER_ROWS + 3])
+/* the pills' tops and every band's top and bottom, in 1080-line units: band 0 the header (down to the first pill's top less
+ * 10), band 1 + i row i (10 above its pill to 10 below: 124, so the rows tile), band n + 1 the foot, band n + 2 the gap that
+ * is left between the rows at the top and those at the foot (empty when there is none). Returns the count of bands. */
+static int lau_geometry(const struct osd_launcher *l, double top[OSD_LAUNCHER_ROWS], double y0[OSD_LAUNCHER_ROWS + 3],
+			double y1[OSD_LAUNCHER_ROWS + 3])
 {
 	int n = l->n < OSD_LAUNCHER_ROWS ? l->n : OSD_LAUNCHER_ROWS, ne = 0, ti = 0, ej = 0;
+	double gap0 = LAU_FIRST - 10, gap1 = LAU_FOOT;
 
 	for (int i = 0; i < n; i++)
 		ne += l->row[i].end != 0;
-	for (int i = 0; i < n; i++)
+	for (int i = 0; i < n; i++) {
 		top[i] = l->row[i].end ? LAU_FOOT_PILL - LAU_PITCH * (ne - 1 - ej++) : LAU_FIRST + LAU_PITCH * ti++;
-	b[0] = 0;
-	for (int i = 0; i < n; i++)
-		b[i + 1] = top[i] - 10;
-	b[n + 1] = LAU_FOOT;
-	b[n + 2] = 1080;
-	return n + 2;
+		y0[i + 1] = top[i] - 10, y1[i + 1] = top[i] + 114;
+		if (!l->row[i].end)
+			gap0 = y1[i + 1];
+		else if (gap1 == LAU_FOOT && ej == 1)
+			gap1 = y0[i + 1];
+	}
+	y0[0] = 0, y1[0] = LAU_FIRST - 10;
+	y0[n + 1] = LAU_FOOT, y1[n + 1] = 1080;
+	y0[n + 2] = gap0, y1[n + 2] = gap1 > gap0 ? gap1 : gap0;
+	return n + 3;
 }
 
 int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l, int box[][4])
 {
-	double top[OSD_LAUNCHER_ROWS], b[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
-	int bands = lau_geometry(l, top, b);
+	double top[OSD_LAUNCHER_ROWS], y0[OSD_LAUNCHER_ROWS + 3], y1[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
+	int bands = lau_geometry(l, top, y0, y1);
 
-	if (bands < 2)
+	if (l->n < 1)
 		return 0;
-	/* band k = b[k] .. b[k + 1]; the header starts at the top of the canvas and the foot runs to its bottom */
+	/* the header starts at the top of the canvas and the foot runs to its bottom; the rest is rounded once, so bands that meet in
+	 * units meet in pixels */
 	for (int k = 0; k < bands; k++) {
-		int y0 = k ? (int)floor(b[k] * u + 0.5) : 0, y1 = k == bands - 1 ? c->h : (int)floor(b[k + 1] * u + 0.5);
+		int a = k == 0 ? 0 : (int)floor(y0[k] * u + 0.5), b = k == bands - 2 ? c->h : (int)floor(y1[k] * u + 0.5);
 
-		box[k][0] = 0, box[k][1] = y0, box[k][2] = (int)ceil(LAU_COLUMN * u), box[k][3] = y1 - y0;
+		box[k][0] = 0, box[k][1] = a, box[k][2] = (int)ceil(LAU_COLUMN * u), box[k][3] = b > a ? b - a : 0;
 	}
 	return bands;
 }
 
 void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int band)
 {
-	int box[OSD_LAUNCHER_ROWS + 2][4], bands = osd_launcher_bands(c, l, box);
-	double top[OSD_LAUNCHER_ROWS], b[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
-	int n = bands - 2;
+	int box[OSD_LAUNCHER_ROWS + 3][4], bands = osd_launcher_bands(c, l, box);
+	double top[OSD_LAUNCHER_ROWS], y0[OSD_LAUNCHER_ROWS + 3], y1[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
+	int n = bands - 3;
 
-	if (band < 0 || band >= bands)
+	if (band < 0 || band >= bands || !box[band][3])
 		return;
-	lau_geometry(l, top, b);
+	lau_geometry(l, top, y0, y1);
 	osd_draw_scrim(c, box[band]);
 	if (band == 0) {
 		osd_text(c, l->head, 150 * u, 140 * u, 30 * u, 0xffffff, 0.42f, 0);
@@ -834,9 +843,9 @@ void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int b
 		struct osd_row r = { l->row[band - 1].icon, l->row[band - 1].label, band - 1 == l->sel, 118, top[band - 1], 520, 104 };
 
 		osd_draw_row(c, &r, NULL);
-	} else {
+	} else if (band == n + 1) {
 		osd_draw_hint(c, 150, 1010, "select \xc2\xb7 OK open \xc2\xb7 BACK close", 1);
-	}
+	}					/* band n + 2: the scrim alone */
 }
 
 void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd_item *it, int box[4])
