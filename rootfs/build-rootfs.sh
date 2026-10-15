@@ -799,6 +799,15 @@ for alt in regulatory.db regulatory.db.p7s; do
 done
 info "regulatory.db -> upstream-signed (the kernel knows only sforshee/wens)"
 
+# 4k. Profile desktop: its mode units (Kodi, the desktop) are Wayland clients of h713-warp's server, which h713-tv shows only
+# under `source auto` - and h713-tv does not keep a source across its own restart (a restart or a crash with Kodi running
+# put the panel back on the ring and Kodi out of sight). So this image starts h713-tv on auto; the last line of tv.conf wins.
+if has_profile desktop; then
+	printf '\n# profile desktop (rootfs/build-rootfs.sh): a client of h713-warp stays on the panel across a restart of h713-tv\nsource = auto\n' \
+		>> "$TREE/etc/h713/tv.conf"
+	info "tv.conf: source = auto (profile desktop)"
+fi
+
 # --- 5. project parts ------------------------------------------------------
 if ((SKIP_PROJECT)); then
 	say "5/6 project parts skipped (--skip-project)"
@@ -956,6 +965,10 @@ if ((! SKIP_PROJECT)); then
 	t "h713-features linked"      test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-features.service"
 	t "h713-cpufreq linked"       test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-cpufreq.service"
 	t "keystone udev start"       test -f "$TREE/etc/udev/rules.d/99-h713-keystone.rules"
+	# Profile desktop: h713-tv comes up on `auto` (the mode units are clients of h713-warp)
+	if has_profile desktop; then
+		t "desktop: tv.conf starts on source auto"     grep -qx 'source = auto' "$TREE/etc/h713/tv.conf"
+	fi
 	if [[ -n "$BOARD" ]]; then
 		t "features of $BOARD"    grep -qx "board = $BOARD" "$TREE/etc/h713/features"
 	else

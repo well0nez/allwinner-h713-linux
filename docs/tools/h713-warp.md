@@ -66,7 +66,8 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
   copies every picture), `wl_output`, `wp_presentation` (CLOCK_MONOTONIC). No `wl_seat`: cage reads the remote
   through libinput itself.
 - **What h713-tv shows** is `h713-tv ctl source hdmi|client|auto` (`source =` in `tv.conf` at the start, default
-  `hdmi`). The warp claims the panel with `warp claim client` once a toplevel has its first picture; the claim
+  `hdmi`; the image of the profile `desktop` sets `auto`, because h713-tv does not keep a source across its own
+  restart). The warp claims the panel with `warp claim client` once a toplevel has its first picture; the claim
   needs no signal, and the capture stays closed. A change of `source` gives a standing claim back only when the
   new policy forbids it (a ring claim under `client`, a client claim under `hdmi`), and the warp claims again at
   once - the answer to a claim names the policy (`... source auto`). A claim the new policy allows stands, and the
@@ -98,7 +99,8 @@ on stopping the video (measured 15.10.2026).
 
 Kodi's unit (`h713-kodi.service`, profile `desktop`) sets `WAYLAND_DISPLAY=/run/h713-warp/wayland` and
 `WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and sets `h713-tv ctl source auto` at its
-start; there is no way back to run at its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the
+start (without a running h713-tv there is nothing to set: it comes up on `auto`); there is no way back to run at
+its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the
 warp gives the panel back two seconds after cage is gone and the ring is there again (M4, 15.10.2026: a SIGKILL of the
 unit's cgroup skipped the old `ExecStopPost=... source hdmi` and left the console). Measured: the host test (`make
 test`, a client against the server with the GPU stubbed); on the device see `doku/211` §10.

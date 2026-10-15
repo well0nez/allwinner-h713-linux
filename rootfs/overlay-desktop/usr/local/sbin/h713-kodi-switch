@@ -6,7 +6,17 @@
 # cage (PID) to end with it. Kodi then quits like from its own menu and keeps its state; whatever is left gets systemd's
 # SIGTERM afterwards, as before. h713-tv and h713-warp keep running under Kodi, so there is nothing to start
 # again: under `h713-tv ctl source auto` (the unit's start) the ring comes back by itself once cage is gone.
+#
+# h713-kodi-switch source - the unit's start (ExecStartPre=+, as root: h713-tv's socket is root's): `h713-tv ctl source auto`,
+# the client before the ring. Without h713-tv's socket there is nothing to tell: it has not started yet (the first seconds
+# after the boot, the 5 s after a crash) and comes up on `auto` by the desktop profile's tv.conf. A socket that is there and
+# an h713-tv that does not answer is an error of the start.
+# Tests only: H713_ROOT goes before /run, H713_TV replaces the tool.
+R=${H713_ROOT:-}
 case ${1:-} in
+source)
+	[ -S "$R/run/h713-tv/ctl" ] || exit 0
+	exec "${H713_TV:-/usr/local/sbin/h713-tv}" ctl source auto ;;
 quit)
 	# Kodi gone already (its own Exit): systemd runs ExecStop anyway, with MAINPID unset - "kill -0 0" would hold the
 	# way back to the HDMI input 15 s (measured 15.10.2026)
@@ -15,5 +25,5 @@ quit)
 	i=0
 	while kill -0 "${2:-0}" 2>/dev/null && [ "$i" -lt 75 ]; do sleep 0.2; i=$((i + 1)); done ;;
 *)
-	echo "usage: h713-kodi-switch quit PID" >&2; exit 2 ;;
+	echo "usage: h713-kodi-switch quit PID | source" >&2; exit 2 ;;
 esac
