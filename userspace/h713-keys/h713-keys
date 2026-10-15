@@ -15,9 +15,9 @@ switches between the HDMI picture ("auto") and the console ("off") - the way bac
 the console. Each action is one journal line (the
 journal is how a key test is read) and one line to the overlay daemon h713-osd (/run/h713-osd/ctl) when
 it runs; the overlay never holds up the action.
-The launcher: Home opens a page with the list on the left (h713-osd draws it, opaque over the whole panel; the entries are /etc/h713/launcher.d/NN-name.conf,
-docs/tools/h713-keys.md), Up/Down/OK/Back/Home work it, volume, mute and focus work as always. It opens only where h713-osd
-can show it. Menu, Back, the arrows and OK are recognised and left to Kodi with the launcher closed; so are the mouse and the
+The launcher: Home opens a page (h713-osd draws it; the entries are /etc/h713/launcher.d/NN-name.conf, docs/tools/h713-keys.md),
+Up/Down/OK/Back/Home work it, volume, mute and focus as always; it opens only where h713-osd can show it. Menu, Back, the
+arrows and OK are Kodi's with the launcher closed; so are the mouse and the
 microphone key over IR, which only ask for the Bluetooth pairing (KEY_F6) - nothing acts on that: a remote
 paired with another box since is re-paired with `h713-remote-pair forget` and Left+Right (TODO 2.54).
 
@@ -66,6 +66,7 @@ POWER_SOCK = os.environ.get("H713_KEYS_POWER", "/run/h713-power.sock")
 TRACE = os.environ.get("H713_KEYS_TRACE") == "1"
 LAUNCHER_D = "etc/h713/launcher.d"
 LAUNCHER_IDLE_S = 90                        # an open launcher closes after this long without a key
+SHOWN = {}                                  # command -> (time, answer) of check()
 ENTRY_KEYS = ("label", "icon", "unit", "exec", "show", "active", "now", "group", "fallback")
 REPEAT = (500, 125)                         # ms: rc-core's, what the IR receiver repeats with (read 11.10., G-EU)
 LIMITS = {"volume_step": 20, "focus_steps": 100}      # the largest value keys.conf may set
@@ -310,13 +311,17 @@ def grab(fd, on):
         return e.strerror or str(e)
 
 
-def check(cmd):
-    """True when the command line exits 0 (none counts as success); False when it is missing or takes over 3 s."""
+def check(cmd, keep=0):
+    """True when the command line exits 0 (none: yes); False when it is missing or takes over 3 s; keep: seconds an answer stands."""
+    old = SHOWN.get(cmd, (-1e9, False))
+    if keep and time.monotonic() - old[0] < keep:
+        return old[1]
     try:
-        return not cmd or subprocess.run(shlex.split(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
-                                         timeout=3).returncode == 0
+        ok = not cmd or subprocess.run(shlex.split(cmd), stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, timeout=3).returncode == 0
     except (OSError, subprocess.SubprocessError):
-        return False
+        ok = False
+    SHOWN[cmd] = (time.monotonic(), ok)
+    return ok
 
 
 def launcher_entries():
@@ -336,7 +341,6 @@ def launcher_entries():
 
 
 def signal_text():
-    """The HDMI signal as the header says it: 1080p60, or "no signal"."""
     m = re.search(r"signal\s+(\d+)x(\d+)([pi])([\d.]+)", tv("status brief") or "")
     return "%s%s%d" % (m.group(2), m.group(3), round(float(m.group(4)))) if m else "no signal"
 
@@ -352,7 +356,7 @@ class Launcher:
 
     def open(self, devices):
         entries = launcher_entries()
-        entries = [e for e in entries if check(e.get("show"))]
+        entries = [e for e in entries if check(e.get("show"), 60)]
         if not entries:
             return log("Home: no launcher entries in /%s" % LAUNCHER_D)
         cur = next((i for i, e in enumerate(entries) if not e.get("fallback") and e.get("active") and check(e["active"])), None)
@@ -365,9 +369,7 @@ class Launcher:
             return log("Home: no launcher - h713-osd says %s" % (answer.strip() or "nothing (not running?)"))
         failed = [(p, grab(fd, True)) for p, fd in devices.items()]
         if any(err for _, err in failed):
-            for fd in devices.values():
-                grab(fd, False)
-            ctl(OSD_SOCK, "launcher close", quiet=True)
+            self.close(devices)
             return log("Home: no launcher - the remote's devices cannot be held: %s" % failed, "<4>")
         self.entries, self.sel, self.last = entries, cur, time.monotonic()
         log("launcher open: %d entries, %s selected" % (len(entries), entries[cur]["label"]))
@@ -503,7 +505,6 @@ def status():
     print("remote: %s" % (" ".join(remote_devices()) or "none connected"))
     print("h713-tv: %s" % ("reachable" if ctl(TV_SOCK, "status brief", quiet=True) else "not reachable"))
     print("h713-osd: %s" % ("reachable" if os.path.exists(OSD_SOCK) else "not running"))
-    print("launcher: %s" % (", ".join(e["label"] for e in launcher_entries()) or "no entries (Home does nothing)"))
     return 0
 
 

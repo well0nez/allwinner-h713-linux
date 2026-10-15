@@ -56,8 +56,7 @@ fallback = yes                   # the current entry when no other `active` chec
 ```
 
 Up to six entries fit the picture (the mock-up's: HDMI input, Kodi, Browser, Desktop, Settings, Standby); the selection starts
-on the entry that is active. A file without label, icon and unit or exec is left out with a journal warning. `h713-keys status`
-lists what it found. `H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).
+on the entry that is active. A file without label, icon and unit or exec is left out with a journal warning. `H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).
 
 ## Why it reads only the remote
 
