@@ -12,6 +12,7 @@ h713-osd ctl volume 40               the volume overlay, 40 of 100
 h713-osd ctl mute on 40 | mute off 40   mute: the overlay, and the badge that stays while muted
 h713-osd ctl focus up|down [edge]    the focus; "edge": the end of the travel, the arrow turns red
 h713-osd ctl input console|hdmi      which input the picture comes from
+h713-osd ctl launcher 1;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby    the launcher (below); "launcher 2" moves, "launcher close" closes
 h713-osd ctl hide                    the overlay away now (a mute badge stays)
 h713-osd ctl status                  state, channel, matrix, style, and where the last refresh spent its time
 ```
@@ -64,10 +65,27 @@ draws the warp) would add an EGL dependency and share the GPU with the warp's 60
 happens a few times per key press; not worth it at these times - a later desktop compositor draws there anyway.
 `ctl status` shows the split of the last refresh: draw, ask, clear, pre-distort or copy, show.
 
+## The launcher
+
+`launcher SEL;NOW;[>]icon:label;...` (package H of the media side project, [docs/tools/h713-osd.md](../../docs/tools/h713-osd.md)):
+the mock-up's "Launcher C" - a column on the left edge, header and hint line, up to six rows, Standby set apart at the foot - that
+stays until it is closed. h713-keys is its controller; this daemon only draws and shows it. It is cut into **bands** (libh713osd:
+the header, one per row, the foot). A band is drawn again in the canvas when it changes and put into a buffer when that buffer
+does not hold its current picture (`gen[]`, `cgen[]`, `held[][]` in `main.c`): moving the selection costs two bands, not the
+column. Over a keystone the put is the pre-distortion, which walks every pixel it writes (about 80 ns each on the A53), so the
+column would cost 60-100 ms a key and two bands 10-15 ms (estimates from the volume strip's measured 6.4 ms; the launcher's own times
+on the board are not measured yet - gate HL). Two things make the bands tile on the panel: each band's source has
+two rows of its neighbours around it, so the bilinear sample at its edge is right; and it writes only the panel pixels whose
+source row lies in the band itself, so two bands never overwrite each other's edge with a half-transparent one. When the
+matrix changes, the picture under the launcher turns warped or straight, h713-tv comes back or the launcher closes, the buffers'
+launcher pixels are cleared (the column straight, the whole buffer through the matrix) and every band is put again. Volume, mute
+and the power countdown draw in the same canvas over it. `H713_OSD_FONT` names the font (the image's Quicksand by default),
+`H713_OSD_CLOCK` a fixed header time and `H713_OSD_TRACE=1` a journal line per refresh with wall-clock times (the tests; gate HL).
+
 ## Building and testing
 
 In the container `h713-build`: `make cross SYSROOT=...` for the board (clang, as h713-tv is built), `make host`
-and `make test` for the host tests (`tests/test_osd.py`, 11 tests, ~11 s): a fake h713-tv on a Unix socket that
+and `make test` for the host tests (`tests/test_osd.py`, 11 tests, ~11 s; `tests/test_launcher.py`, 8 tests with a font: `OSD_TEST_FONT`): a fake h713-tv on a Unix socket that
 hands memfds over instead of dma-bufs; the tests read where the overlay landed in the buffer - bottom centre,
 pre-distorted inward over a keystone, mirrored in rear mode, following a new warp.conf, the badge staying and
 coming back after h713-tv restarts, the badge drawn again when the picture under it turns warped or straight, and
