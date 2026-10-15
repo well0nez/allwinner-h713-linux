@@ -1,0 +1,115 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 15 Oct 2026 19:00:18 +0200
+Subject: [PATCH 17/17] VP8: take the quantiser deltas from a segment that was
+ not clamped
+
+VA-API hands out the quantiser indices already resolved per segment and
+component, q[i][k] = clamp(base_i + delta_k, 0, 127), and the driver gives
+the engine absolute segment indices plus the frame header's deltas,
+rebuilt as q[0][k] - q[0][0]. That is the delta only while segment 0's
+base and its sums stay inside 0..127. In delta mode with base index 110,
+segment 0 at +20 (130, clamped to 127) and a luma DC delta of -10,
+segment 0 gave -7, and the engine computed 83 instead of 80 for segment 1
+at -20, 103 instead of 100 for the others: a wrong DC quantiser in every
+macroblock of those segments.
+
+Take each delta from a segment where neither index is at a limit, which
+fixes it exactly; only when no segment has room (segment bases outside
+0..127, which encoders do not write) take the difference that gives the
+most segments VA-API's own index.
+
+A host test feeds vp8_fill_quant() 200000 random frames (segmentation
+off, absolute and delta mode, bases and deltas over their range) and
+compares what the engine computes from the controls with libvpx's
+clamp(clamp(base) + delta): wherever VA-API's numbers fix the delta, all
+indices now match (4 592 624); before, 356 414 did not, the case above
+among them.
+
+License: GPL-3.0-or-later, like the code it changes (libva-v4l2_request).
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/codec_vp8.c | 52 +++++++++++++++++++++++++++++++++++++++++++------
+ 1 file changed, 46 insertions(+), 6 deletions(-)
+
+diff --git a/src/codec_vp8.c b/src/codec_vp8.c
+index edefb79..9bc496c 100644
+--- a/src/codec_vp8.c
++++ b/src/codec_vp8.c
+@@ -4,7 +4,7 @@
+  * The V4L2 VP8 interface wants the segment and quantiser values as they
+  * appear in the bitstream; VA-API hands out fully resolved per-segment
+  * values instead, so those are passed on in absolute mode with the
+- * global deltas reconstructed from segment 0.
++ * global deltas reconstructed from a segment that was not clamped.
+  *
+  * Copyright (C) 2026 Ondrej Jirman <megi@xff.cz>
+  *
+@@ -143,6 +143,45 @@ static void vp8_fill_frame(struct v4l2r_context *ctx,
+ 	codec->have_picture = true;
+ }
+ 
++/*
++ * One of the five quantiser deltas of the frame header, recovered from the
++ * per-segment indices VA-API resolved: q[i][k] = clamp(base_i + delta_k),
++ * q[i][0] = clamp(base_i), clamped to 0..127. A segment where neither is at
++ * a clamp limit gives the delta exactly; segment 0 alone does not when its
++ * base was clamped (base 110 + segment delta 20 = 130 -> 127 turned a DC
++ * delta of -10 into -7, and the other segments, whose absolute index the
++ * engine adds the delta to, got it wrong).
++ *
++ * When every segment sits at a limit the delta cannot be told; then take the
++ * difference that gives the most segments VA-API's own index.
++ */
++static int16_t vp8_quant_delta(const uint16_t (*q)[6], unsigned int k)
++{
++	int best = 0, best_hits = -1;
++
++	for (unsigned int i = 0; i < 4; i++)
++		if (q[i][0] > 0 && q[i][0] < 127 && q[i][k] > 0 && q[i][k] < 127)
++			return (int16_t)q[i][k] - (int16_t)q[i][0];
++
++	for (unsigned int i = 0; i < 4; i++) {
++		int delta = (int)q[i][k] - (int)q[i][0];
++		int hits = 0;
++
++		for (unsigned int j = 0; j < 4; j++) {
++			int index = (int)q[j][0] + delta;
++
++			index = index < 0 ? 0 : index > 127 ? 127 : index;
++			hits += index == (int)q[j][k];
++		}
++		if (hits > best_hits) {
++			best = delta;
++			best_hits = hits;
++		}
++	}
++
++	return best;
++}
++
+ static void vp8_fill_quant(struct vp8_context *codec,
+ 			   const VAIQMatrixBufferVP8 *va_iq)
+ {
+@@ -150,12 +189,13 @@ static void vp8_fill_quant(struct vp8_context *codec,
+ 	const uint16_t (*q)[6] = va_iq->quantization_index;
+ 
+ 	frame->quant.y_ac_qi = q[0][0];
+-	frame->quant.y_dc_delta = (int16_t)q[0][1] - (int16_t)q[0][0];
+-	frame->quant.y2_dc_delta = (int16_t)q[0][2] - (int16_t)q[0][0];
+-	frame->quant.y2_ac_delta = (int16_t)q[0][3] - (int16_t)q[0][0];
+-	frame->quant.uv_dc_delta = (int16_t)q[0][4] - (int16_t)q[0][0];
+-	frame->quant.uv_ac_delta = (int16_t)q[0][5] - (int16_t)q[0][0];
++	frame->quant.y_dc_delta = vp8_quant_delta(q, 1);
++	frame->quant.y2_dc_delta = vp8_quant_delta(q, 2);
++	frame->quant.y2_ac_delta = vp8_quant_delta(q, 3);
++	frame->quant.uv_dc_delta = vp8_quant_delta(q, 4);
++	frame->quant.uv_ac_delta = vp8_quant_delta(q, 5);
+ 
++	/* Absolute per-segment indices (the segment mode is left absolute). */
+ 	for (int i = 0; i < 4; i++)
+ 		frame->segment.quant_update[i] = q[i][0];
+ }
+-- 
+2.43.0
+

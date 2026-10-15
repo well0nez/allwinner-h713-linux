@@ -14,3 +14,4 @@
 0014-Back-a-bare-10-bit-surface-with-NV12-when-no-decode.patch
 0015-Keep-a-context-alive-while-any-surface-call-is-insid.patch
 0016-HEVC-hand-the-entry-points-of-a-slice-with-tiles-to-.patch
+0017-VP8-take-the-quantiser-deltas-from-a-segment-that-wa.patch
