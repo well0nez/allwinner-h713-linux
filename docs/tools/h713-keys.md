@@ -37,7 +37,11 @@ mute and focus work as always. It closes by itself after 90 s without a key.
 **Nothing happens twice.** While the launcher is open h713-keys holds the remote's two devices with `EVIOCGRAB`, so Kodi (which
 reads them through cage and libinput) gets no key at all; closed, it lets go and everything is as it was. The press of Home
 that opens it still reaches Kodi first, so the Kodi keymap maps `homepage` and `browser_home` to nothing
-(`rootfs/overlay-desktop/.../keymaps/h713-power.xml`). It opens only where h713-osd can show it: without a signal (the console)
+(`rootfs/overlay-desktop/.../keymaps/h713-power.xml`; Kodi names the key `browser_home`). **The grab waits for the release of
+Home** (measured at the HY310, 15.10.2026, gate H2): grabbed with Home still down, the release never reached cage, cage held Home
+down, and Kodi - which repeats a key it never saw released - got a `browser_home` 30 times a second for as long as the launcher was
+open (harmless, mapped to noop, but not "no key"). The page is on the wall at the press; the keys are the launcher's from the release
+on (a Down pressed within the ~100 ms in between would reach both). It opens only where h713-osd can show it: without a signal (the console)
 or without h713-osd it answers `ok unseen`/nothing and h713-keys does not take the keys from anybody. A remote that connects
 while it is open is held at once.
 

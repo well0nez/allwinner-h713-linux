@@ -64,10 +64,8 @@ EVIOCGRAB = 0x40044590                      # _IOW('E', 0x90, int)
 SYSTEMCTL = shlex.split(os.environ.get("H713_KEYS_SYSTEMCTL", "systemctl"))
 POWER_SOCK = os.environ.get("H713_KEYS_POWER", "/run/h713-power.sock")
 TRACE = os.environ.get("H713_KEYS_TRACE") == "1"
-LAUNCHER_D = "etc/h713/launcher.d"
 LAUNCHER_IDLE_S = 90                        # an open launcher closes after this long without a key
 SHOWN = {}                                  # command -> (time, answer) of check()
-ENTRY_KEYS = ("label", "icon", "unit", "exec", "show", "active", "now", "group", "fallback")
 REPEAT = (500, 125)                         # ms: rc-core's, what the IR receiver repeats with (read 11.10., G-EU)
 LIMITS = {"volume_step": 20, "focus_steps": 100}      # the largest value keys.conf may set
 DEFAULTS = {"volume_step": "5", "focus_steps": "20", "input_keys": ""}   # no input key until one is chosen
@@ -327,16 +325,16 @@ def check(cmd, keep=0):
 def launcher_entries():
     """The entries of /etc/h713/launcher.d/*.conf in file-name order: key = value lines, # comments."""
     entries = []
-    for f in sorted(glob.glob(path(LAUNCHER_D, "*.conf"))):
+    for f in sorted(glob.glob(path("etc/h713/launcher.d", "*.conf"))):
         e = {}
         for line in read(f).splitlines():
             k, _, v = (x.strip() for x in line.split("#", 1)[0].partition("="))
-            if k in ENTRY_KEYS and v:
+            if k in ("label", "icon", "unit", "exec", "show", "active", "now", "group", "fallback") and v:
                 e[k] = v.replace(";", ",")
         if e.get("label") and e.get("icon") and (e.get("unit") or e.get("exec")):
             entries.append(e)
         else:
-            log("%s: needs a label, an icon and a unit or an exec: left out" % f, "<4>")
+            log("%s: needs label, icon and unit or exec: left out" % f, "<4>")
     return entries
 
 
@@ -349,16 +347,13 @@ class Launcher:
     """Home: the launcher page. Open = h713-osd shows it and the remote's devices are grabbed."""
 
     def __init__(self):
-        self.entries, self.sel, self.last = None, 0, 0.0
-
-    def is_open(self):
-        return self.entries is not None
+        self.entries, self.sel, self.last, self.held = None, 0, 0.0, False
 
     def open(self, devices):
         entries = launcher_entries()
         entries = [e for e in entries if check(e.get("show"), 60)]
         if not entries:
-            return log("Home: no launcher entries in /%s" % LAUNCHER_D)
+            return log("Home: no launcher entries in /etc/h713/launcher.d")
         cur = next((i for i, e in enumerate(entries) if not e.get("fallback") and e.get("active") and check(e["active"])), None)
         if cur is None:
             cur = next((i for i, e in enumerate(entries) if e.get("fallback")), 0)
@@ -367,15 +362,19 @@ class Launcher:
         answer = ctl(OSD_SOCK, "launcher %d;%s;%s" % (cur, now, rows), quiet=True) or ""
         if not answer.startswith("ok") or answer.startswith("ok unseen"):
             return log("Home: no launcher - h713-osd says %s" % (answer.strip() or "nothing (not running?)"))
-        failed = [(p, grab(fd, True)) for p, fd in devices.items()]
-        if any(err for _, err in failed):
-            self.close(devices)
-            return log("Home: no launcher - the remote's devices cannot be held: %s" % failed, "<4>")
-        self.entries, self.sel, self.last = entries, cur, time.monotonic()
+        self.entries, self.sel, self.last, self.held = entries, cur, time.monotonic(), False
         log("launcher open: %d entries, %s selected" % (len(entries), entries[cur]["label"]))
 
+    def hold(self, devices):
+        """The grab, once Home is up: its release must reach cage too, or cage holds Home down and Kodi repeats it (H2, 15.10.2026)."""
+        if self.entries is not None and not self.held:
+            self.held = True
+            if any([grab(fd, True) for fd in devices.values()]):
+                self.close(devices)
+                log("launcher closed: the remote's devices cannot be held", "<4>")
+
     def close(self, devices):
-        self.entries = None
+        self.entries, self.held = None, False
         for fd in devices.values():
             grab(fd, False)                  # first: Kodi and h713-power read again before the overlay is gone
         ctl(OSD_SOCK, "launcher close", quiet=True)
@@ -411,7 +410,7 @@ class Launcher:
         return True
 
     def tick(self, devices):
-        if self.is_open() and time.monotonic() - self.last > LAUNCHER_IDLE_S:
+        if self.entries is not None and time.monotonic() - self.last > LAUNCHER_IDLE_S:
             log("launcher closed: no key for %d s" % LAUNCHER_IDLE_S)
             self.close(devices)
 
@@ -430,7 +429,7 @@ def run(once):
                 if p not in devices:
                     try:
                         devices[p] = os.open(p, os.O_RDONLY | os.O_NONBLOCK)
-                        if launcher.is_open():
+                        if launcher.entries is not None:
                             grab(devices[p], True)   # a remote that connects while the launcher is open
                         note = ""
                         if bluetooth_remote(p):
@@ -461,17 +460,16 @@ def run(once):
             n = len(data) - len(data) % EVENT.size
             buf[p] = data[n:]
             for sec, usec, typ, code, value in EVENT.iter_unpack(data[:n]):
-                if typ != EV_KEY or value not in (1, 2):
+                if typ != EV_KEY or (value not in (1, 2) and not (value == 0 and code == 172)):
                     continue
                 if TRACE:                    # gate HL: the kernel's stamp of the key and the time it was read, CLOCK_REALTIME
                     log("trace: %s value %d stamped %.4f read %.4f" % (NAMES.get(code, code), value, sec + usec / 1e6, time.time()))
                 code = SELECT_IS_OK.get(code, code)
                 acted = True
-                if launcher.is_open() and launcher.key(code, value, devices):
+                if launcher.entries is not None and launcher.key(code, value, devices):
                     continue
                 if code == 172:
-                    if value == 1:
-                        launcher.open(devices)
+                    launcher.open(devices) if value == 1 else launcher.hold(devices) if value == 0 else None
                 elif code == 115:
                     action_volume(conf.number("volume_step"))
                 elif code == 114:
