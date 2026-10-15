@@ -3,7 +3,7 @@ Subject: media: verisilicon: h713 av1: hold the VE's reset while the core is tou
 
 The core runs behind the video engine's bus reset line, which cedrus
 pulses at a codec switch and on its watchdog. Two things a pulse does,
-both measured on the HY310 (package C, 13.10.2026, and C-reset, 14.10.):
+both measured on the HY310 (13. and 14.10.2026):
 into a frame in flight it stalls the core for good and the SoC soon
 after; into the register writes before the start it leaves base
 addresses at zero, and the core faults on a read at 0x3000 (46 s into a
@@ -16,7 +16,7 @@ the core must leave reset on a live bus. The holder bit next to the
 interrupt's makes the release idempotent: a timed-out frame can be ended
 by the watchdog and by a late interrupt both.
 
-With this the storms of package C-reset ran clean: six runs of 60 s
+With this the codec-switch storms of 0306 ran clean: six runs of 60 s
 H.264+VP9 and VP9+H.265 switching (2400 cedrus jobs each) next to AV1,
 all AV1 frames bit-exact, no driver line.
 ---

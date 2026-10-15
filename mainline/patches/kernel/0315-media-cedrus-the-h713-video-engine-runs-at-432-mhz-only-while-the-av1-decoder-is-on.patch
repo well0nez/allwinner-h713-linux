@@ -1,0 +1,101 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: cedrus: the H713 video engine runs at 432 MHz only while the AV1 decoder is on
+
+0293 holds the H713's video engine at 432 MHz because the AV1 core, which
+runs from the same module clock, stalls into its own timeout above that.
+Since 0310 the AV1 decoder is off, and nothing else asked for 432 MHz:
+cedrus ran its own codecs 28 % below the 600 MHz of the H6 variant whose
+compatible the H713 binds. At 432 MHz H.264 2160p decodes at 26 frames/s
+alone, and under Kodi HEVC 2160p30 reached 28.4 to 28.8 frames/s, so 4K
+did not play smoothly.
+
+The rate is now chosen at probe: 432 MHz while an enabled
+"allwinner,sun50i-h713-av1" node is in the device tree, the variant's
+600 MHz otherwise. Bringing the AV1 decoder back (dropping 0310) brings
+the 432 MHz back with it, and the AV1 driver still refuses to probe
+above 432 MHz. One line at probe names the rate.
+
+Measured on the HY310, 15.10.2026, the kernel before this patch against
+the kernel with it (a warm start between, the same userspace); under
+load the CCU reads PLL_VE at 432 MHz before and 600 MHz after:
+
+ - decoding alone (GStreamer into fakevideosink, wall clock with the
+   pipeline's start): H.264 2160p 24.3 -> 28.6 frames/s, HEVC 2160p
+   8 bit 49.0 -> 55.4 and 10 bit 43.3 -> 49.2, H.264 1080p 105 -> 129,
+   VP9 1080p60 189 -> 219;
+ - mpv, H.264 2160p30: 26.6 -> 30.0 frames/s out of the engine; HEVC
+   2160p30 30.0 at both rates;
+ - Kodi, H.264 2160p30 (a 10 s clip in a loop): 24.8 -> 27.6 frames/s
+   over a minute, 5 s windows at most 27.4 before and up to 30.0 after,
+   skipped frames 174 -> 70. HEVC 2160p30 stays at 28.6 frames/s: between
+   the loop's restarts it runs at 30.0 at either rate, so that clip loses
+   its frames to the restart and not to the engine;
+ - bit-exact at 600 MHz: the 33 clips of the decoder suite (H.264, HEVC
+   8 and 10 bit, VP8 and VP9 up to 2160p, MPEG-2 against the engine's own
+   earlier output), 112 of 112 clip runs in 55 minutes of decoding them
+   in a loop, and two codecs at once in 19 of 20 runs - the twentieth is
+   the known timeout next to VP8 after a codec switch, which the same
+   sequence shows at 432 MHz; that pair alone was bit-exact 20 of 20.
+
+Not measured: an hour of 4K playback in Kodi, and the HY300PRO-G-EU.
+---
+ .../staging/media/sunxi/cedrus/cedrus_hw.c    | 34 ++++++++++++++-----
+ 1 file changed, 26 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+index 2697fc774..e473dd583 100644
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -565,6 +565,30 @@ int cedrus_hw_resume(struct device *device)
+ 	return ret;
+ }
+ 
++/*
++ * The H713's AV1 decoder, a separate core, runs from this same module clock
++ * and stalls into its own timeout above 432 MHz. While its node is enabled
++ * the H713 VE runs there; with the AV1 decoder off nothing holds it, and it
++ * keeps the H6's 600 MHz (at 432 MHz H.264 2160p decodes at 26 frames/s).
++ */
++#define CEDRUS_H713_AV1_MAX_RATE	432000000
++
++static unsigned long cedrus_mod_rate(const struct cedrus_variant *variant)
++{
++	struct device_node *np;
++	bool av1;
++
++	if (!of_machine_is_compatible("allwinner,sun50i-h713"))
++		return variant->mod_rate;
++
++	np = of_find_compatible_node(NULL, NULL, "allwinner,sun50i-h713-av1");
++	av1 = np && of_device_is_available(np);
++	of_node_put(np);
++
++	return av1 ? min_t(unsigned long, variant->mod_rate,
++			   CEDRUS_H713_AV1_MAX_RATE) : variant->mod_rate;
++}
++
+ int cedrus_hw_probe(struct cedrus_dev *dev)
+ {
+ 	const struct cedrus_variant *variant;
+@@ -662,19 +686,13 @@ int cedrus_hw_probe(struct cedrus_dev *dev)
+ 		goto err_sram;
+ 	}
+ 
+-	/*
+-	 * The H713's AV1 decoder, a separate core, runs from this same module
+-	 * clock and stalls into its own timeout above 432 MHz, so the H713 VE
+-	 * runs there rather than at the H6's 600 MHz.
+-	 */
+-	ret = clk_set_rate(dev->mod_clk,
+-			   of_machine_is_compatible("allwinner,sun50i-h713") ?
+-			   432000000 : variant->mod_rate);
++	ret = clk_set_rate(dev->mod_clk, cedrus_mod_rate(variant));
+ 	if (ret) {
+ 		dev_err(dev->dev, "Failed to set clock rate\n");
+ 
+ 		goto err_sram;
+ 	}
++	dev_info(dev->dev, "module clock %lu Hz\n", clk_get_rate(dev->mod_clk));
+ 
+ 	pm_runtime_enable(dev->dev);
+ 	if (!pm_runtime_enabled(dev->dev)) {

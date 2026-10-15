@@ -4,7 +4,7 @@ Subject: mmc: sunxi: a failed multi-block read re-initialises the controller bef
 A data error in the middle of a CMD18 left the HY310's eMMC dead until a
 power cut (four times by 15.10.2026). Measured with a diagnostic patch (0311;
 it prints what finalize_request() clears and is not part of this series;
-arbeit/medien/VE-stabil, 15.10.2026), every step of it:
+15.10.2026), every step of it:
 
  - the error was a data CRC error after 165 of 256 blocks (int_sum 0x80); the
    FIFO held 6 words and BBCR trailed CBCR by 26 bytes, so the DMA side
@@ -32,7 +32,7 @@ Only CMD18: a single block fits the 1 KiB FIFO, writes do not fill it,
 and the CMD53 path has its own recovery. This does not explain or remove
 the CRC error itself; it makes one survivable.
 
-Measured with this patch (arbeit/medien/VE-stabil, parts 3 and 4, 15.10.2026):
+Measured with this patch (15.10.2026):
 
  - three data errors forced into a running dd read (the HS400 strobe delay
    moved for 0.25 s each: a start-bit error, a start-bit plus data CRC

@@ -165,10 +165,10 @@ CONFIG_VIDEO_SUN4I_CSI=y
 CONFIG_VIDEO_SUN6I_CSI=y
 CONFIG_VIDEO_SUN8I_DEINTERLACE=y
 CONFIG_VIDEO_SUN8I_ROTATE=y
-# The AV1 decoder (media side project, package C): hantro's H713 variant
-# (0303) at 0x01c0d000, IOMMU master 5, built by VIDEO_HANTRO_SUNXI (default y
-# on ARCH_SUNXI). It runs from the VE's module clock, which 0293 holds at
-# 432 MHz; the variant refuses to probe above that.
+# The AV1 decoder: hantro's H713 variant (0303) at 0x01c0d000, IOMMU master 5,
+# built by VIDEO_HANTRO_SUNXI (default y on ARCH_SUNXI). It runs from the VE's
+# module clock, which cedrus holds at 432 MHz while the AV1 node is enabled
+# (0293, 0315; 600 MHz otherwise); the variant refuses to probe above that.
 # CONFIG_VIDEO_HANTRO is not set
 # (14.10.2026, Marco: the AV1 decoder stays out for now - see 0310; the code of 0300-0307 stays in the series)
 CONFIG_DRM=y

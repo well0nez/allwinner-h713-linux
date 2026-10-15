@@ -7,9 +7,8 @@ host already does for its fast timings. Without it the controller holds
 the card clock as soon as its 1 KiB FIFO is full - which can happen in
 the middle of a block when the DMA falls behind.
 
-Measured on the HY310 before this patch (arbeit/medien/VE-stabil, part 3,
-15.10.2026, with the diagnostic patch 0311, which is not part of this
-series, and 0312):
+Measured on the HY310 before this patch (15.10.2026, with the
+diagnostic patch 0311, which is not part of this series, and 0312):
 
  - data CRC errors on eMMC reads come only while Kodi plays 4K video
    (VE decoding, the GPU taking the frames, cage, display): 22-24 per
@@ -22,7 +21,7 @@ series, and 0312):
    190 or more of its 256 words;
  - runtime PM made no difference (autosuspend against power/control=on).
 
-Measured with this patch (part 4, 15.10.2026), nine Kodi 4K runs of the
+Measured with this patch (15.10.2026), nine Kodi 4K runs of the
 same arms and load (four with Kodi cold, five from its cache with a dd
 reader next to it):
 
@@ -51,8 +50,8 @@ reader next to it):
 + * The eMMC host (not v5p3x) at HS200/HS400: start a block of a read only
 + * when the FIFO has room for all of it. Without the card read threshold
 + * the controller holds the card clock as soon as the FIFO is full, which
-+ * can be in the middle of a block. Measured on the HY310 (VE-stabil,
-+ * 15.10.2026): while Kodi plays 4K video the DMA falls behind, the FIFO is
++ * can be in the middle of a block. Measured on the HY310
++ * (15.10.2026): while Kodi plays 4K video the DMA falls behind, the FIFO is
 + * full in 2.9 % of the samples (never without that load), and reads see
 + * data CRC errors only under that load, mostly with the FIFO nearly full -
 + * 19 to 742 a minute, against none in over 40 GB without it. With the
