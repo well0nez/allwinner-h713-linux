@@ -12,6 +12,14 @@
 #   Wayland socket") without saving its state (resume points). F-opt O5, 15.10.2026.
 # * However Kodi ends - its own Exit, `systemctl stop h713-kodi`, a crash or the conflict above - ExecStopPost starts
 #   h713-tv@<node> and h713-warp again (h713-kodi-switch back).
+# * A standby stops Kodi before the sleep (Conflicts=/Before=sleep.target below; AU-74). Left running, cage kept Kodi's last
+#   frame on the panel through the sleep and after the wake until h713-mips-restart started h713-tv@<node> (Marco, 15.10.2026:
+#   about 10 s of a frozen Kodi picture). The stop runs the usual way: Kodi quits over JSON-RPC (2.2 s), ExecStopPost asks the
+#   HDMI side back, and h713-tv@<node> and h713-warp start about 0.1 s before the kernel's suspend entry and finish starting
+#   after the wake; h713-mips-restart (h713-power's path after a standby) restarts them as it does without Kodi. Measured at the
+#   HY310, 15.10.2026, two standbys with Kodi and one without: no Kodi picture after the wake, the HDMI picture back with the warp.
+# * The power key is h713-power's: Kodi reads the same key through libinput and would open its power menu while the projector
+#   goes to sleep; userdata/keymaps/h713-power.xml maps it to nothing (AU-74).
 #
 # * The VA-API wiring comes from the drop-in h713-kodi.service.d/10-h713-media-env.conf, a symlink to
 #   /usr/local/share/h713/systemd/h713-media-env.conf (AU-32, M2 Auflage 4): LIBVA_DRIVER_NAME and LIBVA_DRIVERS_PATH reach
@@ -29,6 +37,9 @@ After=seatd.service
 # After= only orders the switch: the stop of the one side runs before the start of the other.
 Conflicts=h713-warp.service
 After=h713-warp.service
+# A standby begins with stopping Kodi; Before= makes the sleep wait until Kodi has quit and the HDMI side is asked back.
+Conflicts=sleep.target
+Before=sleep.target
 
 [Service]
 Type=simple
