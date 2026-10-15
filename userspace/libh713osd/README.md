@@ -51,7 +51,7 @@ height / 1080):
 | `osd_draw_row()` | one row: a symbol, a label, and - when selected - the pill (fill 72 % and a white outline) around them; everything scales with the pill's height; the label is clipped to the pill |
 | `osd_draw_scrim()` | the dark gradient on the left edge (70 % at the edge, 25 % at 45 % of the column, none at 700 units); it *replaces* the pixels of a rectangle |
 | `osd_draw_hint()` | a dim hint line, the arrows for up and down drawn as shapes (the face has no U+25B2) |
-| `osd_launcher_bands()`, `osd_launcher_draw()` | the launcher "C": the column cut into **bands** (header, one per row, foot) that tile it top to bottom; `osd_launcher_draw(c, l, band)` repaints one band (scrim first, then its content), so moving the selection repaints two |
+| `osd_launcher_bands()`, `osd_launcher_draw()` | the launcher "C": the column cut into **bands** (header, one per row of 124 units, foot, and the scrim-only gap between the rows at the top and those at the foot) that tile it; `osd_launcher_draw(c, l, band)` repaints one band (scrim first, then its content), so moving the selection repaints two rows' bands |
 
 The launcher is the column only: the picture stays visible to its right (`osd-mockup` draws the states of the mock-up as
 `launcher-*.pam`). The scrim is 700 units wide, not the mock-up's 1100: the volume strip starts at 690 and must never meet

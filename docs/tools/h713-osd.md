@@ -29,7 +29,7 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   foot (Standby), which comes last; up to six. `launcher SEL` alone moves the selection. The answer is `ok unseen` when
   nothing can be seen (then it is not open), `error no font` without the face (`H713_OSD_FONT`, else
   `/usr/share/fonts/truetype/quicksand/Quicksand-Medium.ttf` from the `desktop` profile's `fonts-quicksand`).
-  The column is cut into bands - the header, one per row, the foot - and only the bands that changed are drawn again and put
+  The column is cut into bands - the header, one per row (124 units), the foot, the gap in between - and only the bands that changed are drawn again and put
   into a buffer: a move of the selection costs two bands, not the column, which matters over a keystone (the pre-distortion
   walks every pixel it puts). Each band is put from a source with two rows of its neighbours around it, but writes only the
   panel pixels of its own rows: otherwise the bilinear sample at the edge of a region sees nothing outside and a seam of

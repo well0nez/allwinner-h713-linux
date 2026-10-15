@@ -70,7 +70,8 @@ happens a few times per key press; not worth it at these times - a later desktop
 `launcher SEL;NOW;[>]icon:label;...` (package H of the media side project, [docs/tools/h713-osd.md](../../docs/tools/h713-osd.md)):
 the mock-up's "Launcher C" - a column on the left edge, header and hint line, up to six rows, Standby set apart at the foot - that
 stays until it is closed. h713-keys is its controller; this daemon only draws and shows it. It is cut into **bands** (libh713osd:
-the header, one per row, the foot). A band is drawn again in the canvas when it changes and put into a buffer when that buffer
+the header, one per row of 124 units, the foot, and the scrim-only gap between the rows at the top and those at the foot, which is
+drawn once). A band is drawn again in the canvas when it changes and put into a buffer when that buffer
 does not hold its current picture (`gen[]`, `cgen[]`, `held[][]` in `main.c`): moving the selection costs two bands, not the
 column. Over a keystone the put is the pre-distortion, which walks every pixel it writes (about 80 ns each on the A53), so the
 column would cost 60-100 ms a key and two bands 10-15 ms (estimates from the volume strip's measured 6.4 ms; the launcher's own times
