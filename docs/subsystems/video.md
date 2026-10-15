@@ -10,7 +10,8 @@ the VE included) runs behind the IOMMU: `CONFIG_SUN50I_IOMMU=y`, the VE is trans
 IOMMU group 0 at boot, the display stays physical. Measured on the HY310: H.264, HEVC 8 and 10 bit, VP8 and VP9
 decode bit-exact against ffmpeg up to 2160p, MPEG-2 equal to the VE's own output before the series (the VE's IDCT
 rounds differently from ffmpeg's); no IOMMU fault with valid streams, and a damaged stream no longer leaves the
-engine dead (`0308`). The VE runs at 600 MHz; 432 MHz only while the AV1 decoder is on (`0315`). The numbers are
+engine dead (`0308`). The VE runs at 600 MHz, 432 MHz only while the AV1 decoder is on (`0315`): at 600 MHz H.264
+2160p30 decodes at 30 frames/s in mpv (26.6 at 432 MHz). The numbers are
 in the texts of `0298` and `0305` - `0315`. Not measured on the HY300PRO-G-EU.
 
 *Superseded (13.10.2026):* "The decode and IOMMU half of this file comes from cstenger's `h713-display-video-path`

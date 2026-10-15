@@ -689,7 +689,7 @@
 #   0315-0319 (15.10.2026, review of 0271-0314 before main):
 #   0315: cedrus runs the H713 VE at 432 MHz only while an enabled AV1 node is in the device tree, else at the H6's 600 MHz
 #   (0293 held 432 MHz for the AV1 core alone; with the AV1 decoder off the codecs on the VE ran 28 % slow, and 2160p30
-#   did not keep up).
+#   did not keep up). Measured on the HY310: H.264 2160p in mpv 30.0 instead of 26.6 frames/s, the decoder suite bit-exact.
 #   0316: an H.265 job whose collocated_ref_idx lies outside the active reference list is refused, like 0309's indices.
 #   0317: cedrus_vp9_finish() keeps the 15 bytes it needs across load_probs() instead of a 2 KiB frame context on the stack
 #   (the one warning of the kernel build).
