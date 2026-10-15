@@ -2,8 +2,9 @@
 /*
  * libh713osd - the overlays of the H713 projectors as ARGB pictures, and nothing else: no DRM, no sockets,
  * no clock. A caller (h713-osd, a test, later a desktop) says what is to be shown; the library draws it into
- * a buffer. Everything is a signed distance field evaluated per pixel, so it is crisp at any panel size and
- * needs no font or image file. README.md in this directory describes the shapes, the looks and the places.
+ * a buffer. The shapes are signed distance fields evaluated per pixel, so they are crisp at any panel size and
+ * need no image file; text (osd_text, below) is FreeType's and needs one font file, opened by the caller.
+ * README.md in this directory describes the shapes, the looks, the places and the text.
  */
 #ifndef H713_OSD_H
 #define H713_OSD_H
@@ -67,5 +68,29 @@ void osd_clear_box(struct osd_canvas *c, const int box[4]);
  * box[4] = x, y, w, h, so a caller can copy or pre-distort only that part. Items drawn one after another stack
  * (the later one over the earlier one). Not reentrant: one static work buffer. */
 void osd_draw(struct osd_canvas *c, const struct osd_style *s, const struct osd_item *it, int box[4]);
+
+/*
+ * Text (text.c, FreeType - link libfreetype; h713-osd links it statically). The one part of the library that reads
+ * a file: the font, opened once by the caller. The package's face on the image is Quicksand Medium
+ * (Debian fonts-quicksand, SIL OFL 1.1) at OSD_FONT. A string is UTF-8, drawn left to right on one baseline in one
+ * colour; there is no wrapping, no alignment and no cache - a caller that wants a centred or right-aligned
+ * string asks osd_text_width() first.
+ */
+#define OSD_FONT "/usr/share/fonts/truetype/quicksand/Quicksand-Medium.ttf"
+
+/* open the font face at path; 0 on success (and when one is open already), -1 if the file is missing or no font.
+ * The first face stays: a second call with another path is a no-op. Without a face osd_text draws nothing. */
+int osd_font_open(const char *path);
+
+/* the advance width, in canvas pixels, of utf8 set at px pixels (the em height - 38 for a launcher label on a
+ * 1080-line panel); 0 without a font. Unhinted and fractional: the width is what the designer drew. */
+double osd_text_width(const char *utf8, double px);
+
+/* utf8 with its left end at x and its baseline at y, px pixels high, in colour rgb (0xRRGGBB) with alpha 0..1 on
+ * top of the glyph's own coverage, mixed over the canvas in straight alpha (the same way osd_draw mixes). Pixels
+ * outside the canvas are clipped. max_w > 0 stops before the first glyph that would end beyond max_w pixels from
+ * x (no ellipsis); 0 = no limit. Returns the advance width of what was drawn. Not reentrant (one face). */
+double osd_text(struct osd_canvas *c, const char *utf8, double x, double baseline, double px, unsigned rgb,
+		float alpha, double max_w);
 
 #endif

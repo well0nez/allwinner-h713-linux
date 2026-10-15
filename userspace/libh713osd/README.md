@@ -7,9 +7,11 @@ compositor (the rule of 2.45: drawing and the place it goes are separate). State
 (P0b of `arbeit/einblendungen-20261011/PLAN.md`); nothing on a device yet.
 
 ```
-osd.h          the interface: osd_canvas, osd_style (place, look, scale), osd_item (kind, value, flags, alpha)
+osd.h          the interface: osd_canvas, osd_style (place, look, scale), osd_item (kind, value, flags, alpha), and the text
 osd.c          the drawing
+text.c         text: osd_font_open, osd_text, osd_text_width (FreeType)
 osd-mockup.c   a host tool: every place, look and case as one PAM picture, to lay over photos
+test-text.c    the host test of the text (`make test`)
 ```
 
 ## How it draws
@@ -37,6 +39,19 @@ legible on a bright picture. A square card in the middle was tried and rejected 
 that are completely rectangular do not work"). Places: `OSD_BOTTOM` (centred above the lower edge, where the stock
 firmware shows its volume), `OSD_TOP_RIGHT`, `OSD_CENTER` (the same strip in the middle).
 
+## Text
+
+`osd_text(canvas, "Kodi", x, baseline, px, 0xfafafa, alpha, max_w)` draws a UTF-8 string in one colour with FreeType
+(`text.c`), mixed over the canvas in straight alpha like the shapes; `osd_text_width()` measures it, `osd_font_open()`
+opens the one face (the first call wins; without a face nothing is drawn and the width is 0). Layout is the simplest
+that is right for a menu: left to right, unhinted fractional advances, the font's kerning table if it has one, no
+wrapping, no alignment (measure, then place), no cache. The face on the image is **Quicksand Medium**
+(`fonts-quicksand`, SIL OFL 1.1, Debian trixie `0.2016-2.1`); it has no U+25B2/25BC, so arrows are drawn as shapes,
+not typed. The library links FreeType; `h713-osd` links it **statically** (`libfreetype.a` and its png, bz2, brotli and
+zlib from the sysroot's `libfreetype-dev`) so that the base image needs no FreeType package - only the font file, which the
+`desktop` profile brings. `make test` runs `test-text` (widths, where the pixels land, clipping, the straight-alpha
+mix, malformed UTF-8) against `OSD_TEST_FONT` or the image's font path and says "skipped" without one.
+
 ## Speed
 
 Measured on the HY310 (11.10.2026, `-DOSD_PROFILE` splits `osd_draw` into the work buffer's fill, the
@@ -58,5 +73,5 @@ against the board root, as `h713-warp` is built (not tried yet).
 ## Not decided, not measured
 
 Which place (the owner chooses on the mock-ups); whether the display's channel 2 wants premultiplied
-alpha (measured in 2.48 - the library writes straight alpha); text (a font comes with the power-off message,
-TODO 2.38). The time to draw one item on the board is not measured.
+alpha (measured in 2.48 - the library writes straight alpha). The time to draw one item on the board is not
+measured; text: the cost of a label on the board is not measured either (media side project, package H).
