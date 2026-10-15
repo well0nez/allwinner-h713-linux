@@ -1,0 +1,628 @@
+"""Host tests for h713-settings: a fake h713-tv and a fake h713-warp on Unix sockets (their answers copied from the real
+daemons' source: "ok ..." / "error ...", one line in, one answer, hang up), stand-in tools in a directory, and a
+temporary /etc/h713. The program runs with --test: keys as lines on stdin, "dump" prints the model, "snap FILE" the
+canvas. What a row sends to a tool is read from the fakes' logs; what it keeps for the next boot, from the files.
+
+python3 -m unittest discover -s tests -v   (from userspace/h713-settings, after `make host OSD=...`)
+"""
+
+import os
+import shutil
+import signal
+import socket
+import subprocess
+import tempfile
+import threading
+import time
+import unittest
+
+HERE = os.path.dirname(os.path.abspath(__file__))
+BIN = os.path.join(HERE, "..", "h713-settings")
+FONTS = [os.environ.get("H713_TEST_FONT", ""), "/usr/share/fonts/truetype/dejavu/DejaVuSans.ttf"]
+PRESETS = {  # name: (brightness, contrast, saturation, hue, sharpness) - h713-tv's compiled-in table
+    "standard": (50, 50, 50, 50, 50), "cinema": (50, 45, 45, 50, 40), "vivid": (50, 55, 60, 50, 60),
+    "game": (50, 50, 50, 50, 50), "computer": (50, 50, 50, 50, 0)}
+
+
+class Ctl(threading.Thread):
+    """One line in, one answer, hang up - as h713-tv and h713-warp do."""
+
+    def __init__(self, path):
+        super().__init__(daemon=True)
+        self.path, self.log = path, []
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.bind(path)
+        self.sock.listen(8)
+        self.start()
+
+    def run(self):
+        while True:
+            try:
+                c, _ = self.sock.accept()
+            except OSError:
+                return
+            with c:
+                line = c.recv(256).decode().strip()
+                self.log.append(line)
+                c.sendall(self.answer(line).encode())
+
+    def stop(self):
+        self.sock.close()
+
+
+class FakeTv(Ctl):
+    def __init__(self, path, root):
+        self.root = root
+        self.c = dict(zip(("brightness", "contrast", "saturation", "hue", "sharpness"), PRESETS["standard"]))
+        self.preset, self.aspect, self.volume, self.mute, self.source = "standard", "auto", 90, False, "hdmi"
+        self.saved = 0
+        super().__init__(path)
+
+    def answer(self, line):
+        w = line.split()
+        if w[0] == "list":
+            rows = "".join("  %-26s %d  (0..100)\n" % (k, v) for k, v in self.c.items())
+            return "ok controls\n" + rows + "  mode                       1 (standard)  menu 0..5\n"
+        if w[0] == "set" and len(w) == 3:
+            if w[1] not in self.c:
+                return 'error no control "%s" (h713-tv ctl list)\n' % w[1]
+            if not 0 <= int(w[2]) <= 100:
+                return "error %s: %s is outside 0..100\n" % (w[1], w[2])
+            self.c[w[1]] = int(w[2])
+            return "ok %s = %s\n" % (w[1].capitalize(), w[2])
+        if w[0] == "preset":
+            if len(w) == 1 or w[1] not in PRESETS:
+                return "error preset needs a name: " + " ".join(PRESETS) + "\n"
+            self.preset = w[1]
+            self.c = dict(zip(self.c, PRESETS[w[1]]))
+            return "ok preset %s (the compiled-in table)\n" % w[1]
+        if w[0] == "status":
+            return "ok status\nmode            auto\npreset          %s (from the device data)\nsaved           nothing\n" % self.preset
+        if w[0] == "aspect":
+            if len(w) == 2:
+                self.aspect = w[1]
+            return "ok aspect %s (1) -- possible: auto proportional full 16:9 4:3 zoom\n" % self.aspect
+        if w[0] == "volume":
+            if len(w) == 2:
+                self.volume = int(w[1])
+            return "ok volume %d (-12.0 dB)\n" % self.volume
+        if w[0] == "mute":
+            if len(w) == 2:
+                self.mute = w[1] == "on"
+            return "ok mute %s (DSP, the codec has no switch)\n" % ("on" if self.mute else "off")
+        if w[0] == "source":
+            if len(w) == 2:
+                self.source = w[1]
+            return "ok source %s\n" % self.source
+        if w[0] == "save":
+            self.saved += 1
+            return "ok saved in x: preset=%s\n" % self.preset
+        return "error unknown: %s\n" % w[0]
+
+
+class FakeWarp(Ctl):
+    KEYS = ("tl_x", "tl_y", "tr_x", "tr_y", "bl_x", "bl_y", "br_x", "br_y")
+
+    def __init__(self, path, root):
+        self.root = root
+        self.v = dict.fromkeys(self.KEYS, 0)
+        self.zoom, self.mode, self.pattern = 100, "front", None
+        super().__init__(path)
+
+    def write(self):
+        with open(os.path.join(self.root, "warp.conf"), "w") as f:
+            f.write("".join("%s = %d\n" % kv for kv in self.v.items()))
+
+    def answer(self, line):
+        w = line.split()
+        if w[0] == "zoom":
+            if len(w) == 2:
+                self.zoom = int(w[1])
+            return "ok zoom %d\n" % self.zoom
+        if w[0] == "mode":
+            if len(w) == 2:
+                self.mode = w[1]
+            return "ok mode %s\n" % self.mode
+        if w[:2] == ["keystone", "nudge"]:
+            k = "%s_%s" % (w[2], w[3])
+            self.v[k] = max(0, min(1000, self.v[k] + int(w[4])))
+            self.write()
+            return "ok %s = %d\n" % (k, self.v[k])
+        if w[:2] == ["keystone", "reset"]:
+            self.v = dict.fromkeys(self.KEYS, 0)
+            self.write()
+            return "ok keystone reset\n"
+        if w[:2] == ["test", "mask"]:
+            self.pattern = w[2]
+            return "ok test mask %s\n" % w[2]
+        if w[:2] == ["test", "off"]:
+            self.pattern = None
+            return "ok test off\n"
+        if w[0] == "on":
+            return "ok on\n"
+        return "error unknown: %s\n" % w[0]
+
+
+TOOLS = {
+    "h713-features": """echo "ok features  board hy310, FEATURES: accelerometer camera focus-motor (x)"
+printf '%-16s%s\\n' camera "$CAM" accelerometer "$ACC" focus-motor "$MOTOR"
+""",
+    "h713-power": """echo "$@" >> "$LOG/power.log"
+case "$1" in
+status) echo "standby: $STANDBY" ;;
+set) f="$ETC/power.conf"; if grep -q "^$2 *=" "$f"; then sed -i "s/^$2 *=.*/$2 = $3/" "$f"; else echo "$2 = $3" >> "$f"; fi ;;
+esac
+""",
+    "h713-keystone": 'echo "$@" >> "$LOG/keystone.log"; sleep "${JOBTIME:-0.3}"; exit "${JOBEXIT:-0}"\n',
+    "h713-autofocus": 'echo "$@" >> "$LOG/autofocus.log"; sleep "${JOBTIME:-0.3}"; exit "${JOBEXIT:-0}"\n',
+    "h713-focus": 'echo "$@" >> "$LOG/focus.log"; sleep 0.2\n',
+    "systemctl": 'echo "$@" >> "$LOG/systemctl.log"\n',
+    "iw": 'printf "Connected to aa:bb:cc:dd:ee:ff (on wlan0)\\n\\tSSID: Wohnzimmer\\n\\tfreq: 2437\\n\\tsignal: -52 dBm\\n"\n',
+    "ip": 'echo "wlan0            UP             192.168.8.131/24"\n',
+}
+
+
+class Box:
+    """The tools, the files and the program, in one temporary directory."""
+
+    def __init__(self, features="all", standby="offered in the countdown", wifi_mode="sta", extra_env=None):
+        self.dir = tempfile.mkdtemp(prefix="h713-settings-")
+        self.etc = os.path.join(self.dir, "etc")
+        self.bin = os.path.join(self.dir, "bin")
+        self.log = os.path.join(self.dir, "log")
+        for d in (self.etc, self.bin, self.log):
+            os.mkdir(d)
+        for name, body in TOOLS.items():
+            path = os.path.join(self.bin, name)
+            with open(path, "w") as f:
+                f.write("#!/bin/sh\n" + body)
+            os.chmod(path, 0o755)
+        present = "present  /dev/x  (stand-in)"
+        absent = "not present on this board"
+        have = lambda on: present if features in ("all", on) else absent
+        self.env = dict(os.environ, H713_SETTINGS_ETC=self.etc, H713_SETTINGS_BIN=self.bin, LOG=self.log, ETC=self.etc,
+                        H713_SETTINGS_TV=os.path.join(self.dir, "tv.sock"),
+                        H713_SETTINGS_WARP=os.path.join(self.dir, "warp.sock"),
+                        CAM=have("camera"), ACC=have("accelerometer"), MOTOR=have("focus-motor"), STANDBY=standby)
+        if features == "none":
+            self.env.update(CAM=absent, ACC=absent, MOTOR=absent)
+        self.env.update(extra_env or {})
+        self.write("power.conf", "# power\ndefault = poweroff\nlong_s = 3\nremote = on\n")
+        self.write("keystone.conf", "# keystone\niio_name = sc7a20\nafter_move = off   # the page writes this\nhysteresis_degrees = 1.0\n")
+        self.write("wifi.env", "mode=%s\nssid=Wohnzimmer\npassword=geheim-und-lang\n" % wifi_mode)
+        self.tv = FakeTv(self.env["H713_SETTINGS_TV"], self.etc)
+        self.warp = FakeWarp(self.env["H713_SETTINGS_WARP"], self.etc)
+        self.proc = None
+
+    def write(self, name, text):
+        with open(os.path.join(self.etc, name), "w") as f:
+            f.write(text)
+
+    def read(self, name):
+        try:
+            with open(os.path.join(self.etc, name)) as f:
+                return f.read()
+        except FileNotFoundError:
+            return ""
+
+    def tool_log(self, name):
+        try:
+            with open(os.path.join(self.log, name + ".log")) as f:
+                return f.read().splitlines()
+        except FileNotFoundError:
+            return []
+
+    def start(self, area=None, size="640x360"):
+        args = [BIN, "--test", "--size", size]
+        for font in FONTS:
+            if font and os.path.exists(font):
+                args += ["--font", font]
+                break
+        if area:
+            args += ["--area", area]
+        self.proc = subprocess.Popen(args, stdin=subprocess.PIPE, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     env=self.env, text=True, bufsize=1)
+        return self
+
+    def keys(self, *keys):
+        for k in keys:
+            self.proc.stdin.write(k + "\n")
+        self.proc.stdin.flush()
+
+    def dump(self):
+        self.keys("dump")
+        lines = []
+        for line in self.proc.stdout:
+            if line.strip() == "--":
+                break
+            lines.append(line.rstrip("\n"))
+        return "\n".join(lines)
+
+    def finish(self, sig=None):
+        if sig:
+            self.proc.send_signal(sig)
+        else:
+            self.proc.stdin.close()
+        try:
+            self.proc.wait(timeout=10)
+        except subprocess.TimeoutExpired:
+            self.proc.kill()
+            self.proc.wait()
+        err = self.proc.stderr.read()
+        self.proc.stdout.close()
+        self.proc.stderr.close()
+        return err
+
+    def close(self):
+        if self.proc and self.proc.poll() is None:
+            self.proc.kill()
+            self.proc.wait()
+        for f in (self.proc.stdin, self.proc.stdout, self.proc.stderr) if self.proc else ():
+            try:
+                f.close()
+            except (OSError, ValueError):
+                pass
+        self.tv.stop()
+        self.warp.stop()
+        shutil.rmtree(self.dir, ignore_errors=True)
+
+
+def wait_for(cond, seconds=5.0):
+    end = time.time() + seconds
+    while time.time() < end:
+        if cond():
+            return True
+        time.sleep(0.05)
+    return False
+
+
+class Base(unittest.TestCase):
+    def box(self, **kw):
+        b = Box(**kw)
+        self.addCleanup(b.close)
+        return b
+
+
+class Picture(Base):
+    def test_rows_come_from_the_tools(self):
+        b = self.box().start("Picture")
+        d = b.dump()
+        self.assertIn("Brightness slider 50 0..100", d)
+        self.assertIn("Tint slider 50 0..100", d)
+        self.assertIn("Picture mode choice [*Standard|Cinema|Vivid|Game|Computer]", d)
+        self.assertIn("Aspect ratio choice [*Auto|Original|Fill|16:9|4:3]", d)    # "zoom" is refused by h713-tv: no row for it
+        self.assertNotIn("Zoom|", d)
+        b.finish()
+
+    def test_a_held_key_is_one_command(self):
+        b = self.box().start("Picture")
+        b.keys("right", "ok", "right", "right", "right", "left")   # into the rows; three steps up, one down
+        d = b.dump()
+        self.assertIn("Brightness slider 60 0..100", d)
+        sets = [x for x in b.tv.log if x.startswith("set ")]
+        self.assertEqual(sets, ["set brightness 60"])
+        b.finish()
+
+    def test_saved_once_and_kept_for_the_start(self):
+        b = self.box().start("Picture")
+        b.keys("ok", "right", "right", "down", "right")
+        b.dump()
+        b.finish()                                    # leaving writes what was held back
+        self.assertEqual(b.tv.saved, 1)
+        self.assertEqual(b.tv.c["brightness"], 60)
+        self.assertEqual(b.tv.c["contrast"], 55)
+        self.assertIn("preset = last", b.read("tv.conf"))     # the kept values apply only for the preset kept: "last"
+
+    def test_save_waits_for_the_hand_to_rest(self):
+        b = self.box().start("Picture")
+        b.keys("ok", "right")
+        b.dump()
+        self.assertEqual(b.tv.saved, 0)
+        self.assertTrue(wait_for(lambda: b.tv.saved == 1, 4.0))
+        b.finish()
+
+    def test_preset_choice_reloads_the_sliders(self):
+        b = self.box().start("Picture")
+        b.keys("ok", "down", "down", "down", "down", "down", "ok", "down", "ok")   # Picture mode > Cinema
+        d = b.dump()
+        self.assertIn("preset cinema", b.tv.log)
+        self.assertIn("Contrast slider 45", d)
+        self.assertIn("Picture mode choice [Standard|*Cinema", d)
+        b.finish()
+
+    def test_aspect_choice_sends_the_tool_name(self):
+        b = self.box().start("Picture")
+        b.keys("ok", "down", "down", "down", "down", "down", "down", "ok", "down", "ok")    # Aspect ratio > Original
+        b.dump()
+        self.assertIn("aspect proportional", b.tv.log)
+        b.finish()
+
+    def test_choice_can_be_cancelled(self):
+        b = self.box().start("Picture")
+        b.keys("ok", "down", "down", "down", "down", "down", "ok", "down", "back")
+        self.assertIn("focus rows", b.dump())
+        self.assertNotIn("preset cinema", b.tv.log)
+        b.finish()
+
+    def test_reset_picture(self):
+        b = self.box().start("Picture")
+        b.tv.c["brightness"] = 80
+        b.keys("ok", "down", "down", "down", "down", "down", "down", "down", "ok")
+        d = b.dump()
+        self.assertIn("preset standard", b.tv.log)
+        self.assertIn("aspect auto", b.tv.log)
+        self.assertEqual(b.tv.saved, 1)
+        self.assertIn("Brightness slider 50", d)
+        self.assertIn('Reset picture action "Done"', d)
+        b.finish()
+
+    def test_a_missing_control_has_no_row(self):
+        b = self.box()
+        del b.tv.c["hue"]
+        d = b.start("Picture").dump()
+        self.assertIn("(hidden) Tint slider", d)
+        b.finish()
+
+
+class Keystone(Base):
+    def test_auto_keystone_writes_the_key_and_restarts_the_unit(self):
+        b = self.box().start("Keystone")
+        b.keys("ok", "ok")                                  # into the rows; the switch
+        d = b.dump()
+        self.assertIn("Auto keystone switch 1", d)
+        conf = b.read("keystone.conf")
+        self.assertIn("after_move = keystone\n", conf)
+        self.assertIn("# keystone\n", conf)                  # the rest of the file is as it was
+        self.assertIn("iio_name = sc7a20\n", conf)
+        self.assertIn("hysteresis_degrees = 1.0\n", conf)
+        self.assertTrue(wait_for(lambda: b.tool_log("systemctl") == ["restart h713-keystone-auto"]))
+        b.keys("left")
+        b.dump()
+        self.assertIn("after_move = off\n", b.read("keystone.conf"))
+        b.finish()
+
+    def test_measure_again_runs_the_tool_and_says_so(self):
+        b = self.box().start("Keystone")
+        b.keys("ok", "down", "ok")
+        self.assertIn('Measure again now action "Measuring..."', b.dump())
+        self.assertTrue(wait_for(lambda: 'Measure again now action "Done"' in b.dump(), 5))
+        self.assertEqual(b.tool_log("keystone"), ["once --apply"])
+        b.finish()
+
+    def test_a_failed_measurement_is_not_reported_as_done(self):
+        b = self.box(extra_env={"JOBEXIT": "5"}).start("Keystone")
+        b.keys("ok", "down", "ok")
+        self.assertTrue(wait_for(lambda: 'Measure again now action "Failed"' in b.dump(), 5))
+        b.finish()
+
+    def test_corners_move_the_way_the_arrow_points(self):
+        b = self.box().start("Keystone")
+        b.keys("ok", "down", "down", "ok")                 # Adjust corners by hand: top left, the mask on
+        self.assertIn("focus corners", b.dump())
+        self.assertEqual(b.warp.pattern, "tl")
+        b.keys("right", "down")                            # top left: right and down are inward
+        b.dump()
+        self.assertEqual((b.warp.v["tl_x"], b.warp.v["tl_y"]), (10, 10))
+        b.keys("ok", "left", "up")                         # top right: left is inward, up is outward (clamped at 0)
+        b.dump()
+        self.assertEqual((b.warp.v["tr_x"], b.warp.v["tr_y"]), (10, 0))
+        b.keys("ok", "up")                                 # bottom left: up is inward
+        b.dump()
+        self.assertEqual(b.warp.v["bl_y"], 10)
+        b.keys("back")
+        self.assertIn("focus rows", b.dump())
+        self.assertIsNone(b.warp.pattern)                  # the pattern is off again
+        self.assertIn("tl_x = 10", b.read("warp.conf"))    # the daemon keeps it, not this program
+        b.finish()
+
+    def test_leaving_while_a_corner_is_marked_clears_the_pattern(self):
+        b = self.box().start("Keystone")
+        b.keys("ok", "down", "down", "ok")
+        b.dump()
+        self.assertEqual(b.warp.pattern, "tl")
+        b.finish()
+        self.assertIsNone(b.warp.pattern)
+
+    def test_zoom_projection_reset(self):
+        b = self.box().start("Keystone")
+        b.keys("ok", "down", "down", "down", "left", "left")        # Zoom 100 -> 90
+        d = b.dump()
+        self.assertIn("Zoom slider 90 50..100", d)
+        self.assertEqual(b.warp.zoom, 90)
+        self.assertIn("on", b.warp.log)                                # a screen zoom needs the warp
+        b.keys("down", "ok", "down", "ok")                          # Projection > Rear
+        b.dump()
+        self.assertEqual(b.warp.mode, "rear")
+        b.warp.v["tl_x"] = 40
+        b.keys("down", "ok")                                        # Reset keystone
+        d = b.dump()
+        self.assertEqual(b.warp.v["tl_x"], 0)
+        self.assertEqual(b.warp.zoom, 100)
+        self.assertIn("Zoom slider 100", d)
+        b.finish()
+
+    def test_no_accelerometer_no_auto_keystone(self):
+        b = self.box(features="none")
+        d = b.start("Keystone").dump()
+        self.assertIn("(hidden) Auto keystone", d)
+        self.assertIn("(hidden) Measure again now", d)
+        self.assertNotIn("(hidden) Zoom", d)               # these need the warp, not the sensor
+        b.finish()
+
+
+class SoundFocus(Base):
+    def test_volume_and_mute(self):
+        b = self.box().start("Sound")
+        b.keys("ok", "right", "down", "ok")
+        d = b.dump()
+        self.assertEqual(b.tv.volume, 95)
+        self.assertTrue(b.tv.mute)
+        self.assertIn("Mute switch 1", d)
+        b.keys("left")
+        b.dump()
+        self.assertFalse(b.tv.mute)
+        b.finish()
+
+    def test_volume_stops_at_the_ends(self):
+        b = self.box().start("Sound")
+        b.keys("ok", *["right"] * 6)
+        b.dump()
+        self.assertEqual(b.tv.volume, 100)
+        b.finish()
+
+    def test_autofocus_and_after_a_move(self):
+        b = self.box().start("Focus")
+        b.keys("ok", "ok")
+        self.assertIn('Autofocus now action "Focusing..."', b.dump())
+        self.assertTrue(wait_for(lambda: 'Autofocus now action "Done"' in b.dump(), 5))
+        self.assertEqual(b.tool_log("autofocus"), ["run -q"])
+        b.keys("down", "ok")
+        b.dump()
+        self.assertIn("after_move = keystone+focus\n", b.read("keystone.conf"))     # it also turns the automatic on
+        b.keys("down", "down", "ok")                          # Focus by hand: nothing; back up and switch off
+        b.keys("up", "left")
+        b.dump()
+        self.assertIn("after_move = keystone\n", b.read("keystone.conf"))
+        b.finish()
+
+    def test_focus_by_hand_is_queued_while_the_motor_runs(self):
+        b = self.box().start("Focus")
+        b.keys("ok", "down", "down", "right")
+        wait_for(lambda: b.tool_log("focus") == ["up 20"], 3)
+        b.keys("right", "right", "left", "right")             # while the first run is going: counted, one run after it
+        self.assertTrue(wait_for(lambda: len(b.tool_log("focus")) == 2, 5))
+        self.assertEqual(b.tool_log("focus"), ["up 20", "up 40"])
+        b.finish()
+
+    def test_no_motor_no_focus_rows(self):
+        b = self.box(features="none")
+        d = b.start("Focus").dump()
+        self.assertEqual(d.count("(hidden)"), 3)
+        self.assertIn("focus areas", d)
+        b.keys("right")                                        # nothing to open
+        self.assertIn("focus areas", b.dump())
+        b.finish()
+
+
+class InputPowerWifi(Base):
+    def test_source_choice_is_sent_and_kept(self):
+        b = self.box().start("Input")
+        b.keys("ok", "ok", "up", "ok")                        # Source > Automatic (it stands on HDMI only)
+        d = b.dump()
+        self.assertEqual(b.tv.source, "auto")
+        self.assertIn("source = auto", b.read("tv.conf"))     # h713-tv reads this as the start value
+        self.assertIn("Source choice [*Automatic|HDMI only]", d)
+        b.keys("ok", "ok")                                    # the same again: nothing is sent, nothing written
+        b.dump()
+        self.assertEqual([x for x in b.tv.log if x.startswith("source ")], ["source auto"])
+        b.finish()
+
+    def test_standby_only_where_it_can_happen(self):
+        b = self.box(standby="not offered (no crust)")
+        d = b.start("Power").dump()
+        self.assertIn("Power key choice [*Power off]", d)
+        b.finish()
+
+    def test_power_key_and_remote(self):
+        b = self.box().start("Power")
+        b.keys("ok", "ok", "down", "ok")                      # Power key > Standby
+        b.keys("down", "left")                                # Remote power key off
+        b.dump()
+        self.assertEqual([x for x in b.tool_log("power") if x.startswith("set")],
+                         ["set default standby", "set remote off"])
+        self.assertIn("default = standby", b.read("power.conf"))
+        self.assertIn("remote = off", b.read("power.conf"))
+        b.finish()
+
+    def test_wifi_shows_and_never_the_password(self):
+        b = self.box().start("Wi-Fi")
+        d = b.dump()
+        self.assertIn('Mode info "Client"', d)
+        self.assertIn('Network info "Wohnzimmer"', d)
+        self.assertIn('Signal info "-52 dBm, excellent"', d)
+        self.assertIn('Address info "192.168.8.131"', d)
+        self.assertNotIn("geheim", d)
+        err = b.finish()
+        self.assertNotIn("geheim", err)
+
+    def test_wifi_as_an_access_point(self):
+        b = self.box(wifi_mode="ap").start("Wi-Fi")
+        d = b.dump()
+        self.assertIn('Mode info "Access point"', d)
+        self.assertIn('Network info "Wohnzimmer"', d)
+        b.finish()
+
+
+class Life(Base):
+    def test_back_in_the_areas_closes(self):
+        b = self.box().start()
+        b.keys("back")
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+
+    def test_areas_remember_their_row(self):
+        b = self.box().start("Picture")
+        b.keys("ok", "down", "down", "back", "down", "up", "ok")
+        self.assertIn("area Picture focus rows row 2", b.dump())
+        b.finish()
+
+    def test_sigterm_writes_what_was_held_back(self):
+        b = self.box().start("Picture")
+        b.keys("ok", "right")
+        b.dump()
+        b.finish(signal.SIGTERM)
+        self.assertEqual(b.tv.saved, 1)
+
+    def test_tools_gone_nothing_breaks(self):
+        b = self.box()
+        b.tv.stop()
+        b.warp.stop()
+        b.start()
+        d = b.dump()
+        self.assertIn("area Picture focus areas", d)
+        b.keys(*["down"] * 6)
+        self.assertIn("area Wi-Fi", b.dump())
+        b.keys("back")
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+
+
+class Render(Base):
+    def read_pam(self, path):
+        with open(path, "rb") as f:
+            head = b""
+            while not head.endswith(b"ENDHDR\n"):
+                head += f.readline()
+            w = int([l for l in head.split(b"\n") if l.startswith(b"WIDTH")][0].split()[1])
+            h = int([l for l in head.split(b"\n") if l.startswith(b"HEIGHT")][0].split()[1])
+            return w, h, f.read()
+
+    def px(self, img, x, y):
+        w, h, data = img
+        o = (y * w + x) * 4
+        return tuple(data[o:o + 4])
+
+    def test_the_page_is_drawn_where_the_mockup_has_it(self):
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        b = self.box().start("Picture", size="960x540")
+        b.keys("ok")
+        b.dump()
+        path = os.path.join(b.dir, "page.pam")
+        b.keys("snap " + path)
+        b.dump()
+        img = self.read_pam(path)
+        b.finish()
+        s = 0.5                                              # 960 / 1920
+        self.assertEqual(self.px(img, 5, 5), (0, 0, 0, 128))                       # the dimmed ground
+        self.assertGreater(self.px(img, int(1260 * s), int(202 * s))[3], 150)      # the pill of the selected row
+        edge = [self.px(img, x, int(202 * s)) for x in range(int(700 * s) - 1, int(700 * s) + 3)]
+        self.assertTrue(any(min(p) >= 250 for p in edge), edge)                    # its outline, white and whole
+        self.assertEqual(self.px(img, int(1000 * s), int(296 * s))[3], 128)        # no pill under the next row
+        self.assertGreater(self.px(img, int(331 * s), int(198 * s))[3], 150)       # the area pill
+        # the slider: lit up to 50 % of 540 px, dim beyond
+        self.assertEqual(self.px(img, int((1110 + 100) * s), int(202 * s))[:3], (255, 255, 255))
+        lit = self.px(img, int((1110 + 400) * s), int(202 * s))
+        self.assertLess(lit[0] * lit[3], 255 * 255)
+
+
+if __name__ == "__main__":
+    unittest.main()
