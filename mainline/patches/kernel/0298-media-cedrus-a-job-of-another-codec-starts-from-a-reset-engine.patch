@@ -27,8 +27,8 @@ error; the same run without this patch fails VP9+H.265 and H.265
 10-bit+VP9 in both rounds (0/300, 300-304 setup errors each). Three streams
 at once (H.264 1080p, H.265 1080p, VP9 720p) are bit-exact.
 
-Not cstenger's: found while porting his series (package B of the media
-side project); it belongs in front of his VP9 work wherever that goes.
+Not cstenger's: found while porting his series (13.10.2026); it belongs
+in front of his VP9 work wherever that goes.
 ---
 diff --git a/drivers/staging/media/sunxi/cedrus/cedrus.h b/drivers/staging/media/sunxi/cedrus/cedrus.h
 --- a/drivers/staging/media/sunxi/cedrus/cedrus.h

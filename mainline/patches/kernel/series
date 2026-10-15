@@ -656,7 +656,7 @@
 #   no AV1 stream is open (next to a decoding AV1 core the release cost frames or stopped the SoC); an H.265 reference must
 #   be a picture decoded here (index in range, MV column buffer present).
 0308-iommu-sun50i-media-cedrus-release-the-ve-s-iommu-ports-once-its-engine-has-stopped.patch
-0309-media-cedrus-an-h265-reference-must-be-in-the-dpb-the-job-hands-in.patch
+0309-media-cedrus-an-h265-reference-must-be-a-picture-decoded-here.patch
 #   0310 (14.10.2026, Marco): the AV1 decoder stays off for now - node disabled, CONFIG_VIDEO_HANTRO off in the board defconfig;
 #   the code of 0300-0307 stays. Reason in the patch; to bring it back, drop 0310 and turn the option on.
 0310-arm64-dts-h713-the-av1-decoder-stays-off-for-now.patch
