@@ -1,0 +1,157 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: drm: h713: afbd: the capture index is the field [2:0] of its word, as the firmware reads it
+
+0255 takes the slot to show from INCAP +0xa0c and drops the frame when the
+word is 3 or more. After some standbys to RAM the bits above [2:0] of that
+word are set (0x4b0/0x4b1/0x4b2, 0x4c0..0x4c2: bits [11:4] mirror +0xa08;
+also +0x004 bit 8 and +0xa24 bytes 1 and 3 differ from the good state),
+while the index in [2:0] steps 0, 1, 2 at the source's rate in the same
+place against the firmware's flip pointers as in a good boot. Compared as
+a whole word every sample is 3 or more, no frame is taken, no flip
+notifier runs, hdmirx returns no buffer and the warp waits for ever
+(AU-81). Only a warm start clears the bits.
+
+Measured 15.10.2026 on the HY310 (arbeit/medien/standby-erfassung): 3 hits
+in 15 fresh standbys (with and without Kodi, with the userspace of package
+G and before it, so the kernel alone); in a hit 4932 of 4932 samples of
++0xa0c were 3 or more, h713_afbd_pick_slots() would take 0 slots/s against
+60.5 in a good cycle, and `ring_select 0` brought 59.4 frames/s at once.
+The vendor firmware (AppTopProjectorCallback, display.bin 0x8b1076b8, the
+only reader of the register) loads +0xa0c and masks it with
+`andi s0, s0, 0x7`.
+
+The index is now read as the field GENMASK(2, 0), the check against the
+three ring slots stays. The first time the bits above it come or go, one
+journal line says so (not one per frame). Nothing is written to INCAP: what
+the upper bits mean is not known.
+
+Not yet measured with this patch (see arbeit/medien/standby-fix).
+---
+ drivers/gpu/drm/tiny/sun50i-h713-afbd.c | 55 ++++++++++++++++++++++++++++++++++++++++++----
+ 1 file changed, 51 insertions(+), 4 deletions(-)
+
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -130,7 +130,8 @@
+  *   +0x8f0  the luma slot table, six words, physical address >> 4; entries
+  *           0..2 are the three ring slots the firmware's pointers rotate over
+  *   +0x930  the chroma table, same shape, same order
+- *   +0xa0c  the index (0..2) of the slot the capture is writing right now
++ *   +0xa0c  the index (0..2) of the slot the capture is writing right now,
++ *           in bits [2:0]; the bits above it can be set (below)
+  *
+  * Measured 11.10.2026 on the HY300 Pro with a moving 1080p60 source scaled to
+  * the 720p panel (arbeit/aufnahme-takt-20261011, zeitleiste2.py, reading the
+@@ -144,6 +145,18 @@
+ #define H713_INCAP_SLOT_Y	0x8f0
+ #define H713_INCAP_SLOT_C	0x930
+ #define H713_INCAP_WRITING	0xa0c
++/*
++ * The index is the field [2:0] of that word, and only that field. After some
++ * standbys to RAM the bits above it are set (15.10.2026, HY310: 0x4b0..0x4b2
++ * and 0x4c0..0x4c2, bits [11:4] mirroring +0xa08, whose meaning is not known
++ * and which only a warm start clears), while [2:0] keeps stepping 0, 1, 2 at
++ * the source's rate, in the same place against the firmware's flip pointers
++ * as before. The vendor firmware reads the word the same way: the only reader of
++ * the register, AppTopProjectorCallback (display.bin 0x8b1076b8), loads
++ * +0xa0c and masks it with `andi s0, s0, 0x7`. Compared as a whole word with
++ * "< 3" the set bits made this driver drop every frame (AU-81).
++ */
++#define H713_INCAP_WRITING_IDX	GENMASK(2, 0)
+ #define H713_INCAP_RING_SLOTS	3
+ #define H713_INCAP_ADDR_SHIFT	4
+ 
+@@ -350,6 +363,8 @@
+ 	u32 ring_rate_sum;
+ 	u8 ring_rate_n;
+ 	bool ring_slow;
++	/* H713_INCAP_WRITING had bits above the index at the last look; ring_lock. */
++	bool incap_hi;
+ 	/* Under h713_afbd_flip_lock: it gates the same interrupt bit. */
+ 	bool vblank_on;
+ 	bool vsync_irq_on;	/* what the last update wrote to that bit */
+@@ -1025,14 +1040,24 @@
+  */
+ static bool h713_afbd_pick_slots(struct h713_afbd *h,
+ 				 struct h713_afbd_flip *done,
+-				 struct h713_afbd_flip *next)
++				 struct h713_afbd_flip *next,
++				 bool *hi_edge, u32 *word)
+ {
+ 	unsigned int idx, prev;
+ 	u32 frame;
++	bool hi;
+ 
+ 	if (regmap_read(h->incap, H713_INCAP_WRITING, &idx) ||
+ 	    regmap_read(h->incap, H713_INCAP_FRAME, &frame))
+ 		return false;
++	/* the bits above the index may be set; see H713_INCAP_WRITING_IDX */
++	hi = idx & ~H713_INCAP_WRITING_IDX;
++	if (hi != h->incap_hi) {
++		h->incap_hi = hi;
++		*hi_edge = true;
++		*word = idx;
++	}
++	idx &= H713_INCAP_WRITING_IDX;
+ 	if (idx >= H713_INCAP_RING_SLOTS)
+ 		return false;
+ 
+@@ -1057,6 +1082,25 @@
+ }
+ 
+ /*
++ * One line when the bits above the capture's index come or go, not one per
++ * frame: the state is what is worth seeing (AU-81), and it is outside the
++ * ring_lock so that the console is never written under it.
++ */
++static void h713_afbd_incap_note(struct h713_afbd *h, bool hi_edge, u32 word)
++{
++	if (!hi_edge)
++		return;
++	if (word & ~H713_INCAP_WRITING_IDX)
++		dev_info_ratelimited(h->drm.dev,
++				     "capture index word %#x has bits above [2:0] set; the slot index is taken from [2:0], as the firmware does\n",
++				     word);
++	else
++		dev_info_ratelimited(h->drm.dev,
++				     "capture index word %#x: the bits above [2:0] are clear again\n",
++				     word);
++}
++
++/*
+  * The vsync handler's look at the capture ring. Stock points its own channel
+  * at the two pointer registers (channel 1's bit 31 means "use the page flip
+  * pointers", doku/64); this driver takes the slot from the capture's own index
+@@ -1079,20 +1123,22 @@
+ {
+ 	struct h713_afbd_flip done, next;
+ 	unsigned long flags;
+-	bool notify, ok;
++	bool notify, ok, hi_edge = false;
++	u32 word = 0;
+ 
+ 	if (!h->ring_follow && !READ_ONCE(h713_afbd_flip_users))
+ 		return;
+ 
+ 	spin_lock_irqsave(&h->ring_lock, flags);
+ 	if (h->incap && READ_ONCE(h->incap_live) && READ_ONCE(ring_select) == 1) {
+-		ok = h713_afbd_pick_slots(h, &done, &next);
++		ok = h713_afbd_pick_slots(h, &done, &next, &hi_edge, &word);
+ 	} else {
+ 		ok = h713_afbd_read_ring(h, &done.y, &done.c);
+ 		next = done;
+ 	}
+ 	if (!ok || next.y == h->ring_y) {
+ 		spin_unlock_irqrestore(&h->ring_lock, flags);
++		h713_afbd_incap_note(h, hi_edge, word);
+ 		return;
+ 	}
+ 	h->ring_y = next.y;
+@@ -1100,6 +1146,7 @@
+ 		h713_afbd_queue_pair(h, next.y, next.c);
+ 	notify = READ_ONCE(h713_afbd_flip_users) != 0;
+ 	spin_unlock_irqrestore(&h->ring_lock, flags);
++	h713_afbd_incap_note(h, hi_edge, word);
+ 
+ 	if (!notify)
+ 		return;
