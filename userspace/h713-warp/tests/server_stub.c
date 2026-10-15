@@ -25,6 +25,7 @@ struct gl_image {
 
 static struct server *srv;
 static bool live;
+static void say(const char *w);
 
 void info(const char *fmt, ...) { (void)fmt; }
 void warn(const char *fmt, ...) { (void)fmt; }
@@ -69,7 +70,9 @@ struct gl_image *gl_image_dmabuf(int fd, uint32_t fourcc, uint64_t modifier, int
 struct gl_image *gl_image_shm(void) { return image(0, 0); }
 bool gl_image_upload(struct gl_image *im, const void *px, int w, int h, int stride, char *why, size_t n)
 {
-	(void)px; (void)stride; (void)why; (void)n;
+	(void)px; (void)why; (void)n;
+	if (stride < 4 * w)		/* wayland.c must never hand a short line to the upload (M4 A2) */
+		say("short-stride");
 	im->w = w;
 	im->h = h;
 	return true;

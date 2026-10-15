@@ -6,7 +6,8 @@
  * and what the review M3 asked for: the protocol set (no wl_seat, no subcompositor), CLOCK_MONOTONIC, a dma-buf
  * feedback with Kodi's AR30/AFBC and renderD128 as the device, the panel as the output's mode and the toplevel's
  * size, the life of a buffer (taken, frame done, released, presented), wl_shm, the refusals (too large, a buffer
- * before the configure, a second toplevel, a fifth connection) and the two seconds after the client is gone.
+ * before the configure, a second toplevel, a fifth connection) and the two seconds after the client is gone; since
+ * the review M4: a wl_shm line shorter than 4 x width (A2).
  *
  *   test_wayland ./server_stub     exit 0: all passed
  */
@@ -233,15 +234,52 @@ static struct wl_buffer *dmabuf(struct conn *c, int w, int h, bool immed)
 	return b;
 }
 
-static struct wl_buffer *shmbuf(struct conn *c, int w, int h)
+/* a wl_shm buffer of w x h with this stride in a pool exactly stride * h bytes long */
+static struct wl_buffer *shmbuf_stride(struct conn *c, int w, int h, int stride)
 {
-	int fd = memfd((size_t)w * (size_t)h * 4);
-	struct wl_shm_pool *pool = wl_shm_create_pool(c->shm, fd, w * h * 4);
-	struct wl_buffer *b = wl_shm_pool_create_buffer(pool, 0, w, h, w * 4, WL_SHM_FORMAT_XRGB8888);
+	int fd = memfd((size_t)stride * (size_t)h);
+	struct wl_shm_pool *pool = wl_shm_create_pool(c->shm, fd, stride * h);
+	struct wl_buffer *b = wl_shm_pool_create_buffer(pool, 0, w, h, stride, WL_SHM_FORMAT_XRGB8888);
 
 	wl_shm_pool_destroy(pool);
 	close(fd);
 	return b;
+}
+
+static struct wl_buffer *shmbuf(struct conn *c, int w, int h)
+{
+	return shmbuf_stride(c, w, h, w * 4);
+}
+
+/* a client of its own with a configured toplevel: commits b, says whether the server ended the connection with
+ * an error on the wl_buffer of this code */
+static bool buffer_error(const char *path, int w, int h, int stride, uint32_t code)
+{
+	const struct wl_interface *iface = NULL;
+	struct conn x;
+	struct wl_surface *xs;
+	struct xdg_surface *xx;
+	uint32_t id, got;
+	bool ok;
+
+	if (!connect_to(&x, path) || !x.comp)
+		return false;
+	xdg_wm_base_add_listener(x.wm, &wm_l, NULL);
+	xs = wl_compositor_create_surface(x.comp);
+	xx = xdg_wm_base_get_xdg_surface(x.wm, xs);
+	xdg_surface_add_listener(xx, &xs_l, NULL);
+	xdg_toplevel_add_listener(xdg_surface_get_toplevel(xx), &tl_l, NULL);
+	wl_surface_commit(xs);
+	ev.configured = false;
+	wait_for(&x, &ev.configured, 1000);
+	wl_surface_attach(xs, shmbuf_stride(&x, w, h, stride), 0, 0);
+	wl_surface_commit(xs);
+	wl_display_roundtrip(x.d);
+	got = wl_display_get_protocol_error(x.d, &iface, &id);
+	ok = wl_display_get_error(x.d) == EPROTO && iface == &wl_buffer_interface && got == code;
+	wl_display_disconnect(x.d);
+	usleep(100000);
+	return ok;
 }
 
 int main(int argc, char **argv)
@@ -317,6 +355,21 @@ int main(int argc, char **argv)
 	CHECK(server_says("frame", 2000) && wait_for(&c, &ev.released, 2000), "wl_shm 64x64 taken (letterbox) and released");
 	CHECK(wait_for(&c, &ev.configured, 1000), "a picture smaller than the panel gets the configure once more (cage, G1)");
 
+	/* M4 A2: a padded line is fine, a line shorter than 4 x width is a protocol error before anything reads it */
+	ev.released = false;
+	sb = shmbuf_stride(&c, 100, 50, 100 * 4 + 64);
+	wl_buffer_add_listener(sb, &buf_l, NULL);
+	wl_surface_attach(s, sb, 0, 0);
+	wl_surface_commit(s);
+	wl_display_flush(c.d);
+	CHECK(server_says("frame", 2000) && wait_for(&c, &ev.released, 2000), "wl_shm 100x50, stride 464 (padded): taken and released (A2)");
+	CHECK(buffer_error(path, 1920, 1080, 1920, WL_SHM_ERROR_INVALID_STRIDE),
+	      "wl_shm 1920x1080, stride 1920 (= width, libwayland lets it pass): error invalid_stride on the buffer (A2)");
+	CHECK(buffer_error(path, 64, 64, 64 * 4 - 4, WL_SHM_ERROR_INVALID_STRIDE),
+	      "wl_shm 64x64, stride 252 (one pixel short): error invalid_stride (A2)");
+	CHECK(!server_says("short-stride", 300), "no short line reached the upload");
+	wl_display_roundtrip(c.d);
+
 	dmabuf(&c, ev.cfg_w + 1, ev.cfg_h, false);
 	CHECK(wait_for(&c, &ev.failed, 1000), "a dma-buf larger than the panel fails");
 
@@ -324,6 +377,7 @@ int main(int argc, char **argv)
 	struct xdg_toplevel *tl2 = xdg_surface_get_toplevel(xdg_wm_base_get_xdg_surface(c.wm, s2));
 
 	xdg_toplevel_add_listener(tl2, &tl_l, NULL);
+	ev.closed = false;
 	wl_surface_commit(s2);
 	CHECK(wait_for(&c, &ev.closed, 1000), "a second toplevel is closed at once");
 

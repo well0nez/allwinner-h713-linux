@@ -887,6 +887,16 @@ static void surface_commit(struct wl_client *c, struct wl_resource *res)
 					       s->pw, s->ph);
 			return;
 		}
+		/*
+		 * libwayland checks only stride >= width; both formats it offers (XRGB/ARGB8888) take four bytes a pixel,
+		 * and the upload reads 4 * width a line - up to 3 * width past the pool's end (M4 A2). An error on the
+		 * buffer, as libwayland's own for a pool that shrank.
+		 */
+		if (sb && wl_shm_buffer_get_stride(sb) < 4 * wl_shm_buffer_get_width(sb)) {
+			wl_resource_post_error(w->p_buf, WL_SHM_ERROR_INVALID_STRIDE, "stride %d below 4 x width %d",
+					       wl_shm_buffer_get_stride(sb), wl_shm_buffer_get_width(sb));
+			return;
+		}
 	}
 	if (w->xdg && !w->role && !w->configured) {
 		wl_resource_post_error(w->xdg, XDG_SURFACE_ERROR_NOT_CONSTRUCTED, "a commit before get_toplevel");

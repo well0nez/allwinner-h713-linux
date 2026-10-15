@@ -1184,14 +1184,17 @@ struct gl_image *gl_image_dmabuf(int fd, uint32_t fourcc, uint64_t modifier, int
 	return im;
 }
 
+static bool unpack_rows;	/* GL_EXT_unpack_subimage: a padded line goes up in one call (M4 A2) */
+
 /* wl_shm: a texture the pixels are copied into, for test clients (G6) - the slow way, never Kodi's */
 struct gl_image *gl_image_shm(void)
 {
-	struct gl_image *im = gl_up && has_ext((const char *)glGetString(GL_EXTENSIONS),
-					      "GL_EXT_texture_format_BGRA8888") ? image_new() : NULL;
+	const char *ext = gl_up ? (const char *)glGetString(GL_EXTENSIONS) : NULL;
+	struct gl_image *im = ext && has_ext(ext, "GL_EXT_texture_format_BGRA8888") ? image_new() : NULL;
 
 	if (!im)
 		return NULL;
+	unpack_rows = has_ext(ext, "GL_EXT_unpack_subimage");
 	im->img = EGL_NO_IMAGE_KHR;
 	glGenTextures(1, &im->tex);
 	glActiveTexture(GL_TEXTURE0);
@@ -1204,12 +1207,20 @@ struct gl_image *gl_image_shm(void)
 	return im;
 }
 
-/* XRGB/ARGB8888 is B, G, R, X in memory: BGRA as GLES uploads it; GLES2 has no row length, so a padded
- * line goes up line by line */
+/*
+ * XRGB/ARGB8888 is B, G, R, X in memory: BGRA as GLES uploads it. Always one call (M4 A2): a line per call cost
+ * 430-550 ms for a 1080-line picture against 31-157 ms in one piece, and the server stood that long. A padded line
+ * goes up with GL_UNPACK_ROW_LENGTH_EXT; without the extension (or a stride that is no whole pixel) the lines are
+ * packed into one piece first. The stride is at least 4 * w: wayland.c refuses less.
+ */
 bool gl_image_upload(struct gl_image *im, const void *px, int w, int h, int stride, char *why, size_t n)
 {
+	unsigned char *packed = NULL;
+	size_t line = (size_t)w * 4;
 	int y;
 
+	if (stride < w * 4)
+		return oops(why, n, "wl_shm stride below 4 x width");
 	glActiveTexture(GL_TEXTURE0);
 	glBindTexture(GL_TEXTURE_2D, im->tex);
 	if (w != im->w || h != im->h) {
@@ -1217,12 +1228,20 @@ bool gl_image_upload(struct gl_image *im, const void *px, int w, int h, int stri
 		im->w = w;
 		im->h = h;
 	}
-	if (stride == w * 4)
-		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA_EXT, GL_UNSIGNED_BYTE, px);
-	else
+	if (stride != w * 4 && unpack_rows && stride % 4 == 0) {
+		glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, stride / 4);
+	} else if (stride != w * 4) {
+		packed = malloc(line * (size_t)h);
+		if (!packed)
+			return oops(why, n, "wl_shm upload: out of memory");
 		for (y = 0; y < h; y++)
-			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, w, 1, GL_BGRA_EXT, GL_UNSIGNED_BYTE,
-					(const unsigned char *)px + (size_t)y * (size_t)stride);
+			memcpy(packed + (size_t)y * line, (const unsigned char *)px + (size_t)y * (size_t)stride, line);
+		px = packed;
+	}
+	glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA_EXT, GL_UNSIGNED_BYTE, px);
+	if (stride != w * 4 && !packed)
+		glPixelStorei(GL_UNPACK_ROW_LENGTH_EXT, 0);
+	free(packed);
 	if (glGetError())
 		return oops(why, n, "wl_shm upload");
 	return true;
