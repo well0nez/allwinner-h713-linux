@@ -1,30 +1,30 @@
-# h713-kodi.service - Kodi under cage, drawn by h713-warp (profile desktop; media side project, packages F, F-opt, G).
+# h713-kodi.service - Kodi under cage, drawn by h713-warp (profile desktop).
 #
-# Not wanted by anything, on purpose: the panel shows the HDMI input until somebody starts this unit. Since package G
-# (Weg B'', mythos/PRUEFUNG-M3 Nr. 10) cage is no longer the display card's DRM master: it runs as a Wayland client of
+# Not wanted by anything, on purpose: the panel shows the HDMI input until somebody starts this unit. Cage is not
+# the display card's DRM master: it runs as a Wayland client of
 # h713-warp's server (WAYLAND_DISPLAY=/run/h713-warp/wayland, WLR_BACKENDS=wayland,libinput), passes Kodi's pictures
 # through, and h713-warp draws them through the keystone onto the video plane while h713-tv stays the master and the
 # only one that commits. So the keystone, the overlays (h713-osd) and the volume keys stay as they are with HDMI.
 # * The start sets h713-tv's source to `auto` (`h713-tv ctl source auto`): the client before the ring. The ring stays on
 #   the panel while Kodi starts, h713-warp swaps it for cage's first picture, and however Kodi ends - Quit, a crash, a
 #   SIGKILL of the whole unit - h713-warp gives the panel back two seconds after cage is gone and the ring is there
-#   again. No ExecStopPost: `auto` needs no way back (M4 A1; a SIGKILL of the cgroup skipped ExecStopPost, G6 Befund 1).
+#   again. No ExecStopPost: `auto` needs no way back (a SIGKILL of the cgroup skipped ExecStopPost, measured).
 #   tv.conf keeps `source = hdmi` as the start value. h713-tv and h713-warp keep running throughout.
 # * BindsTo=h713-warp.service: without the server cage has nothing to draw on; a stop or restart of h713-warp ends Kodi.
 # * A stop asks Kodi to quit first (JSON-RPC Application.Quit, ExecStop=) and waits for cage to end with it: a SIGTERM
 #   to the whole group lets cage close the socket under a running Kodi, which then aborts without saving its state
-#   (F-opt O5).
-# * A standby stops Kodi before the sleep (Conflicts=/Before=sleep.target; AU-74, kept as F-opt measured it, M3 Nr. 9).
+#   (measured 15.10.2026).
+# * A standby stops Kodi before the sleep (Conflicts=/Before=sleep.target).
 #   After the wake h713-mips-restart restarts h713-tv and h713-warp as without Kodi; tv.conf's "source =" decides.
 # * The power key is h713-power's and the volume keys are h713-keys' (with h713-osd's overlay over Kodi):
-#   userdata/keymaps/h713-power.xml maps them to nothing in Kodi (AU-74, M3 Nr. 8).
-# * cage reads the remote and the keys itself through libinput and seatd (F9); the warp's server has no wl_seat.
+#   userdata/keymaps/h713-power.xml maps them to nothing in Kodi.
+# * cage reads the remote and the keys itself through libinput and seatd; the warp's server has no wl_seat.
 #
 # * The VA-API wiring comes from the drop-in h713-kodi.service.d/10-h713-media-env.conf, a symlink to
-#   /usr/local/share/h713/systemd/h713-media-env.conf (AU-32, M2 Auflage 4).
+#   /usr/local/share/h713/systemd/h713-media-env.conf.
 # * Sound: KODI_AE_SINK=ALSA, the DSP bridge (ALSA `default`, guisettings.xml); h713-tv keeps the HDMI input's sound
-#   silent while the client is on the panel (M3 Nr. 6), the bridge plays on.
-# * No V4L2_REQUEST_SCALE here (M2 Auflage 6).
+#   silent while the client is on the panel (not measured with a client running), the bridge plays on.
+# * No V4L2_REQUEST_SCALE here: Kodi gets the full-size picture.
 [Unit]
 Description=Kodi under cage on the panel (a Wayland client of h713-warp)
 Documentation=file:/usr/local/share/h713/systemd/h713-media-env.conf

@@ -1,28 +1,33 @@
 # packages-media.txt - profile `media` (build-rootfs.sh --profile media), on top of packages.txt.
 #
-# Media side project (arbeit/medien), packages E and D: the players and their audio path, for the hardware
-# decoders (cedrus, hantro: packages B, C). Not in the base image: the projector moves HDMI input onto
-# a DRM plane and decodes nothing (doku/107 section 1) - this is for the box that plays files.
-# Same format as packages.txt. Everything here must install against the dummies in rootfs/equivs/, without
-# libllvm* and without mesa-libgallium (UMSETZUNG E1). The VA-API driver itself is not a package: this
-# profile lays rootfs/libva/'s tarball (build-rootfs.sh --libva) and rootfs/overlay-va/ (environment, unit drop-in) and rootfs/overlay-media/ (mpv.conf).
+# The players and their audio path, for the hardware decoders (cedrus, hantro). Not in the base image: the
+# projector moves HDMI input onto a DRM plane and decodes nothing (doku/107 section 1) - this is for the box
+# that plays files. Same format as packages.txt. Everything here must install against the dummies in
+# rootfs/equivs/, without libllvm* and without mesa-libgallium. The VA-API driver itself is not a package: this
+# profile lays rootfs/libva/'s tarball (build-rootfs.sh --libva) and rootfs/overlay-va/ (environment, unit
+# drop-in) and rootfs/overlay-media/ (mpv.conf, the WirePlumber rule, the masks of the PipeWire user units).
 
 ffmpeg                       # ffmpeg/ffprobe, libav*: software reference decode (framemd5) and the VA-API client (-hwaccel vaapi)
 mpv                          # the player; vo=gpu on EGL, hwdec=vaapi (/etc/mpv/mpv.conf)
 gstreamer1.0-tools           # gst-launch-1.0, gst-inspect-1.0
 gstreamer1.0-plugins-base    # playbin, audioconvert, videoconvert, ...
 gstreamer1.0-plugins-good    # matroska, mp4, v4l2
-gstreamer1.0-plugins-bad     # `va`: vah264dec, vah265dec, vaav1dec, ... (D2) and `v4l2codecs`: v4l2slh264dec, ... (D3), both
-                             # in this one package. It is big (GTK3, flite, onnxruntime, oneDNN, iso-codes: +197 MiB
-                             # installed, measured 13.10.2026) and there is no smaller package that has them (D, 13.10.2026)
+gstreamer1.0-plugins-bad     # `va`: vah264dec, vah265dec, ... and `v4l2codecs`: v4l2slh264dec, ..., both in this one package.
+                             # It is big (GTK3, flite, onnxruntime, oneDNN, iso-codes: +197 MiB installed, measured
+                             # 13.10.2026) and there is no smaller package that has them
 gstreamer1.0-gl              # glimagesink, glupload on EGL
 gstreamer1.0-alsa            # alsasink
-gstreamer1.0-pipewire        # pipewiresink/pipewiresrc: GStreamer's native PipeWire path (D6, D7)
+gstreamer1.0-pipewire        # pipewiresink/pipewiresrc: GStreamer's native PipeWire path
 pipewire                     # the mixer between players and the DSP PCM hw:hy310hdmi,0 (docs/subsystems/audio.md); players take it natively
-                             # (pipewiresink, mpv ao=pipewire). Not for Kodi: Kodi plays to ALSA `default` = the DSP bridge (M2, 14.10.2026)
+                             # (pipewiresink, mpv ao=pipewire). Not for Kodi: Kodi plays to ALSA `default` = the DSP bridge
 wireplumber                  # the session manager pipewire needs; overlay-media/etc/wireplumber/ makes the DSP bridge the default sink
-                             # (it picks the codec otherwise, silent with `DAC Source` = I2S) and keeps it off the video devices (D6)
-# Not pipewire-alsa: its 99-pipewire-default.conf turns ALSA's `default` into PipeWire, and with no PipeWire running (there is no
-# user manager on the box) `default` is dead - `aplay` gets "Host is down" (D N1, 14.10.2026), and with it every device sound and
-# Kodi. Add it only if a client ever needs `alsasink device=pipewire`.
+                             # (it picks the codec otherwise, silent with `DAC Source` = I2S) and keeps it off the video devices
+# Nothing starts PipeWire by itself. wireplumber pulls in dbus-user-session and libpam-systemd, so a login gets a systemd user
+# manager, and Debian enables pipewire, wireplumber and filter-chain for all users (default.target.wants). For root they do
+# not start (pipewire.service and pipewire.socket carry ConditionUser=!root; measured on the HY310: the manager for root runs, no
+# PipeWire process), but any other user with a login would get all three next to Kodi. overlay-media/etc/systemd/user/ masks
+# the four units for everyone; start `pipewire` and `wireplumber` by hand when a player needs them.
+# Not pipewire-alsa: its 99-pipewire-default.conf turns ALSA's `default` into PipeWire, and with no PipeWire running `default`
+# is dead - `aplay` gets "Host is down", and with it every device sound and Kodi. Add it only if a client ever needs
+# `alsasink device=pipewire`.
 vainfo                       # lists the profiles/entrypoints the VA-API driver advertises: first look when a player stays in software

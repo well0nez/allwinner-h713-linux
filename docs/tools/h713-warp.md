@@ -54,11 +54,11 @@ and saved at once. The clamp is the vendor's: the x of a corner is limited by th
 its row and the y by the one at the other end of its column, so the picture can never be pulled past its own
 width or height. The value that gives way is the one being set, never the one already there.
 
-## A Wayland client (media side project, package G)
+## A Wayland client
 
 The daemon is also a minimal Wayland server on `/run/h713-warp/wayland` (0660; `-w PATH` for another place),
 so that Kodi under cage reaches the wall through the warp - with the keystone, the overlays and h713-tv as the one
-master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/PRUEFUNG-M3.md`).
+master (measured on the HY310 on 15.10.2026, `doku/211` §10).
 
 - **Protocols:** `wl_compositor`, `wl_shm`, `xdg_wm_base` (one fullscreen toplevel in the panel's size, a second one
   is asked to close at once - if it stays, it takes the panel over when the first one goes; popups are dismissed), `zwp_linux_dmabuf_v1` v4 with a format table out of EGL (every RGB
@@ -80,7 +80,7 @@ master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/P
   flip fence's timestamp. At most one client frame per vsync; `--client-rate half` takes every second vsync.
 - **Colour:** BT.709 limited range computed inside the two keystone passes from the client's RGB; a picture smaller
   than the panel sits in the middle (letterbox), never scaled, and gets the configure once more - cage misses the
-  first one and would stay at 1280x720 (G1, 15.10.2026). With `warp = off` the client is shown without
+  first one and would stay at 1280x720 (measured 15.10.2026). With `warp = off` the client is shown without
   keystone. The client is drawn through the GPU even at the identity: the video plane takes NV12 only.
 - **Limits:** four connections (a fifth gets an error and is closed), eight surfaces and eight imported dma-bufs per client, a buffer
   larger than the panel is refused, a buffer before the first configure is a protocol error; a client that goes
@@ -94,15 +94,14 @@ master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/P
 
 Kodi sees 0 Hz under cage (wlroots' nested output has no rate) and picks the presentation protocol for its video
 sync: leave Kodi's "Sync playback to display" off (the default) - with it on, 1080p60 played at 18 fps and Kodi hung
-on stopping the video (G1).
+on stopping the video (measured 15.10.2026).
 
 Kodi's unit (`h713-kodi.service`, profile `desktop`) sets `WAYLAND_DISPLAY=/run/h713-warp/wayland` and
 `WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and sets `h713-tv ctl source auto` at its
 start; there is no way back to run at its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the
 warp gives the panel back two seconds after cage is gone and the ring is there again (M4, 15.10.2026: a SIGKILL of the
 unit's cgroup skipped the old `ExecStopPost=... source hdmi` and left the console). Measured: the host test (`make
-test`, a client against the server with the GPU stubbed); on the device see `arbeit/medien/G-warp-wayland/BERICHT.md`
-and `M4-AUFLAGEN.md`.
+test`, a client against the server with the GPU stubbed); on the device see `doku/211` §10.
 
 ## `/etc/h713/warp.conf`
 

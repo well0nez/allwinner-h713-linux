@@ -100,7 +100,7 @@ KEYRING_DEB_SHA256=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7
 KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byte-identical to the .gpg used so far (12.09.)
 # libwayland-dev, libwayland-egl-backend-dev, wayland-protocols, libglvnd-dev: mesa's Wayland platform and glvnd (rootfs/mesa/build-mesa.sh);
 # libglvnd-dev is also where h713-warp finds libEGL.so and libGLESv2.so now (the dispatchers, no longer in the mesa stage)
-# libva-dev: the VA-API headers megi's libva-v4l2_request driver is built against (rootfs/libva/build-libva.sh, media side project, package D);
+# libva-dev: the VA-API headers megi's libva-v4l2_request driver is built against (rootfs/libva/build-libva.sh);
 # the driver is built by that script on demand, not by this one: the base image does not carry it (profile media does)
 SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev,zlib1g-dev,libwayland-dev,libwayland-egl-backend-dev,wayland-protocols,libglvnd-dev,libva-dev
 DEBIAN_SUITE=trixie

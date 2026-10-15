@@ -1,4 +1,8 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-2.0-or-later
+# (this script and rootfs/mesa/cross-aarch64.ini.in are part of the Corresponding Source of a GPL-3.0-or-later driver,
+# so they carry a licence GPL-3 can take in; the rest of the repository is GPL-2.0, see LICENSE)
+#
 # rootfs/libva/build-libva.sh - the VA-API driver for the stateless V4L2 decoders (cedrus, the AV1 core): megi's
 # libva-v4l2_request v1.2 plus the patches of rootfs/libva/patches/, cross-built with clang against the arm64
 # sysroot.
@@ -7,7 +11,7 @@
 #   SYSROOT=... JOBS=... OUT=... rootfs/libva/build-libva.sh
 #
 # Why this driver: it is the one stock ffmpeg, mpv, GStreamer `va*dec` and Kodi can use to decode on the H713's
-# hardware, with no change to those players (media side project, package D). Upstream is Ondrej Jirman's (megi)
+# hardware, with no change to those players. Upstream is Ondrej Jirman's (megi)
 # GPL-3.0 rewrite; patches 0001-0009 are Christopher Stenger's (rootfs/libva/patches/, From: and Origin: in each),
 # made on the same base, 0010 on are this project's. 1.2 as released is not enough here: AV1 crashes, a resolution
 # change crashes, and GStreamer's dma-buf allocator shows green (patches/ headers say why).
@@ -73,8 +77,8 @@ done < "$PATCHES/series"
 printf '    %d patches applied to %s\n' "$n" "$LIBVA_COMMIT"
 sed "s|@SYSROOT@|$SYSROOT|g" "$ROOT/rootfs/mesa/cross-aarch64.ini.in" > "$BUILD/cross-aarch64.ini"
 
-# 3. configure. megi's own default build type (debugoptimized, -O2) is kept, the debug info goes at install (--strip):
-#    cstenger measured the driver in his build, not in an -O3 one. The module goes where LIBVA_DRIVERS_PATH points,
+# 3. configure. megi's own default build type (debugoptimized, -O2) is kept, the debug info goes at install (--strip),
+#    as in the build cstenger measured the driver in. The module goes where LIBVA_DRIVERS_PATH points,
 #    not into Debian's multiarch driver directory.
 say "meson setup (libva-v4l2_request $LIBVA_VER, sysroot $SYSROOT)"
 meson setup "$BUILD/build" "$SRC" --cross-file "$BUILD/cross-aarch64.ini" \
@@ -110,16 +114,27 @@ for c in H264 HEVC MPEG2 VP8 VP9 AV1; do
 done
 printf '    NEEDED: %s\n' "$need"
 
-# the licence text and where the source is: GPL-3.0 binaries go into an image
-install -d "$STAGE/usr/local/share/doc/libva-v4l2-request"
-install -m 0644 "$SRC/COPYING" "$STAGE/usr/local/share/doc/libva-v4l2-request/COPYING"
+# the licence text and the source: a GPL-3.0 binary goes into an image, so the image carries what GPL-3 section 6
+# calls the Corresponding Source - megi's tree at the pinned commit, the patches in the order of their list, and the
+# scripts that build it - next to the licence text. Nothing depends on a web page staying where it is.
+DOC="$STAGE/usr/local/share/doc/libva-v4l2-request"
+install -d "$DOC/source/patches"
+install -m 0644 "$SRC/COPYING" "$DOC/COPYING"
+xz -9 -T1 -c "$TARBALL" > "$DOC/source/libva-v4l2_request-$LIBVA_COMMIT.tar.xz"
+install -m 0644 "$PATCHES"/0*.patch "$PATCHES/series" "$DOC/source/patches/"
+install -m 0644 "$ROOT/rootfs/libva/build-libva.sh" "$ROOT/rootfs/mesa/cross-aarch64.ini.in" "$DOC/source/"
+# (REPO_REV=... overrides: a git worktree seen from the container has no usable .git)
+REPO_REV=${REPO_REV:-$(git -C "$ROOT" -c safe.directory='*' describe --tags --always 2>/dev/null || echo unknown)}
 {
 	echo "libva-v4l2_request $LIBVA_VER (GPL-3.0-or-later), built for the H713 by rootfs/libva/build-libva.sh"
-	echo "upstream: $LIBVA_URL"
-	echo "commit:   $LIBVA_COMMIT"
-	echo "patches:  rootfs/libva/patches/ of https://github.com/well0nez/allwinner-h713-linux (0001-0009 Christopher Stenger's, 0010 on this project's; in this order):"
-	sed 's/^/          /' "$PATCHES/series"
-} > "$STAGE/usr/local/share/doc/libva-v4l2-request/SOURCE"
+	echo "upstream:   $LIBVA_URL"
+	echo "commit:     $LIBVA_COMMIT (git archive of it: source/libva-v4l2_request-$LIBVA_COMMIT.tar.xz)"
+	echo "patches:    source/patches/, applied with patch -p1 --fuzz=0 in the order of source/patches/series"
+	echo "            (0001-0009 Christopher Stenger's, 0010 on this project's); the same files are rootfs/libva/patches/ of"
+	echo "            https://github.com/well0nez/allwinner-h713-linux, revision $REPO_REV"
+	echo "build:      source/build-libva.sh with source/cross-aarch64.ini.in (meson, clang, an arm64 sysroot with libva-dev and libdrm-dev)"
+	echo "licence:    COPYING (GPL-3.0); the build script and the cross file are GPL-2.0-or-later"
+} > "$DOC/SOURCE"
 
 # 6. tarball + sizes. Sorted, owner 0:0 and, with SOURCE_DATE_EPOCH (release/build-all.sh), one mtime for all.
 TAR="$OUT/libva-v4l2-request-$LIBVA_VER.tar"
