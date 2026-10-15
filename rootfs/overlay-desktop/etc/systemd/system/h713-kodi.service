@@ -20,8 +20,8 @@
 #   itself with Conflicts=sleep.target, which lost the fact that it had been running.
 # * The power key is h713-power's, the volume keys and Home are h713-keys' (with h713-osd's overlay over Kodi, Home opens the
 #   launcher): userdata/keymaps/h713-power.xml maps them to nothing in Kodi. While the launcher is open h713-keys holds the
-#   remote's devices, so Kodi gets no key at all. OK and Menu never reach Kodi through cage (libinput passes no key code above
-#   255), so h713-keys sends them to Kodi's JSON-RPC.
+#   remote's devices, so Kodi gets no key at all. The remote's OK and Menu reach Kodi as KEY_ENTER and KEY_COMPOSE
+#   (/etc/udev/rules.d/70-h713-remote.rules): xkb gives a client no evdev code above 247, which KEY_OK and KEY_SELECT are.
 # * cage reads the remote and the keys itself through libinput and seatd; the warp's server has no wl_seat.
 #
 # * The VA-API wiring comes from the drop-in h713-kodi.service.d/10-h713-media-env.conf, a symlink to

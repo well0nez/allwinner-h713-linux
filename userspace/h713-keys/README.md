@@ -12,7 +12,7 @@ over IR (the `sunxi-ir` receiver with the keymap `rc-h713-fd02`, kernel 0254):
 | `input_keys` (none by default) | switches `h713-tv` between the HDMI picture (`auto`) and the console (`off`) - the way back after someone forced the console; which key does it is still open, the remote has no record key |
 | power | nothing here: logind, or `h713-power` on an image with standby, powers off |
 | Home | opens the **launcher** (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
-| Menu, Back, arrows, OK | recognised and logged once with the launcher closed (they are Kodi's); OK over Bluetooth is `KEY_SELECT`, read as `KEY_OK` |
+| Menu, Back, arrows, OK | recognised and logged once with the launcher closed (they are Kodi's); OK arrives as `KEY_ENTER` and Menu as `KEY_COMPOSE`, see `70-h713-remote.rules` (below), and `KEY_ENTER` is read as `KEY_OK` |
 | mouse, microphone over IR (`KEY_F6`) | both send the same code `0x0266` - over IR they only ask for the Bluetooth pairing; logged once. Their own functions work over Bluetooth only |
 
 After each action it sends one line to the overlay daemon `h713-osd` (`/run/h713-osd/ctl`), if that runs:

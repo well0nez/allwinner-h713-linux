@@ -220,7 +220,7 @@ check_sources() {
 		errors=1
 	fi
 	for f in "$H713_OSD_SRC/h713-osd.service" "$H713_OSD_SRC/osd.conf" "$H713_OSD_SRC/README.md" \
-		 "$H713_KEYS_SRC/h713-keys.service" "$H713_KEYS_SRC/keys.conf" "$H713_KEYS_SRC/README.md"; do
+		 "$H713_KEYS_SRC/h713-keys.service" "$H713_KEYS_SRC/keys.conf" "$H713_KEYS_SRC/README.md" "$H713_KEYS_SRC/70-h713-remote.rules"; do
 		[[ -r "$f" ]] || { warn "missing: $f"; errors=1; }
 	done
 	[[ -x "$H713_KEYS_SRC/h713-keys" ]] || { warn "missing: $H713_KEYS_SRC/h713-keys"; errors=1; }
@@ -374,6 +374,7 @@ if ((DRY_RUN)); then
                 /usr/local/sbin/h713-mips-restart (the picture after a standby)" || echo "not offered - AllowSuspend=no (overlay)")
     5i. h713-keys, h713-osd
        h713-keys -> /usr/local/sbin/, h713-keys.service enabled, /etc/h713/keys.conf (if none)
+       70-h713-remote.rules -> /etc/udev/rules.d/ (the remote's OK and Menu as KEY_ENTER and KEY_COMPOSE)
        ${H713_OSD_BIN#"$PROJECT_ROOT"/}
            -> /usr/local/sbin/h713-osd, h713-osd.service enabled, /etc/h713/osd.conf (if none)
        README.md of both -> /usr/local/share/doc/h713-keys/, /usr/local/share/doc/h713-osd/
@@ -668,6 +669,7 @@ info "/usr/local/sbin/h713-mips-restart and h713-mode (h713-sleep-post starts th
 say "h713-keys, h713-osd"
 install -m 0755 "$H713_KEYS_SRC/h713-keys" "$TREE/usr/local/sbin/h713-keys"
 install -m 0644 "$H713_KEYS_SRC/h713-keys.service" "$TREE/etc/systemd/system/h713-keys.service"
+install -D -m 0644 "$H713_KEYS_SRC/70-h713-remote.rules" "$TREE/etc/udev/rules.d/70-h713-remote.rules"   # OK and Menu to codes a client gets
 ln -sfn ../h713-keys.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-keys.service"
 [[ -f "$TREE/etc/h713/keys.conf" ]] || install -m 0644 "$H713_KEYS_SRC/keys.conf" "$TREE/etc/h713/keys.conf"
 install -D -m 0644 "$H713_KEYS_SRC/README.md" "$TREE/usr/local/share/doc/h713-keys/README.md"

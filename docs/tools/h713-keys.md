@@ -20,7 +20,7 @@ h713-keys run            # what the unit runs
 | `input_keys` (none by default) | `h713-tv ctl off` (console) when the picture is on automatic, `h713-tv ctl auto` otherwise. The remote has no record key; which key gets this is open |
 | `KEY_POWER` | left alone: logind powers off, or [h713-power](h713-power.md) decides on an image with standby |
 | `KEY_HOMEPAGE` | opens the launcher (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
-| Menu, Back, arrows, OK | with the launcher closed: logged once as "recognised, no action yet" (they are Kodi's); OK arrives over Bluetooth as `KEY_SELECT` (HID "Menu Pick") and is read as `KEY_OK` |
+| Menu, Back, arrows, OK | with the launcher closed: logged once as "recognised, no action yet" (they are Kodi's); OK arrives as `KEY_ENTER` and Menu as `KEY_COMPOSE` (the udev rule below) and is read as `KEY_OK` |
 | `KEY_F6` (IR `0x0266`: the mouse **and** the microphone key) | logged once. Over IR both keys send this one code, the vendor's `PRJ_BRC_PAIR`: they ask for the Bluetooth pairing, and a second later the remote offers itself (measured 11.10.2026); their own functions run over Bluetooth only. Nothing acts on it: `h713-remote-pair` pairs only while no remote is bonded - a remote paired with another box since needs `h713-remote-pair forget`, then Left+Right (TODO 2.54) |
 
 Volume and mute work without an HDMI signal: `h713-tv` keeps them as long as its two sound cards are there.
@@ -61,6 +61,16 @@ fallback = yes                   # the current entry when no other `active` chec
 
 Up to six entries fit the picture (the mock-up's: HDMI input, Kodi, Browser, Desktop, Settings, Standby); the selection starts
 on the entry that is active. A file without label, icon and unit or exec is left out with a journal warning. `H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).
+
+## OK and Menu below code 248 (`70-h713-remote.rules`)
+
+The remote's OK is `KEY_OK` (352) over IR and `KEY_SELECT` (353, HID "Menu Pick" `0x0c0041`) over Bluetooth; its Menu is `KEY_MENU` (139, `0x0c0040`).
+xkb names evdev codes only up to 247, so cage's libinput hands a Wayland client no key above that, and `KEY_MENU`'s keysym (`XF86MenuKB`) is one Kodi does not know:
+with the stock codes OK and Menu never reached Kodi (gate H2, 15.10.2026), and would not reach labwc or Firefox either. The rule
+`/etc/udev/rules.d/70-h713-remote.rules` (installed with h713-keys) lets udev's `keyboard` builtin change the codes in the kernel, as hwdb's `KEYBOARD_KEY_` does:
+OK becomes `KEY_ENTER` (28, Return to every client) and Menu `KEY_COMPOSE` (127, keysym Menu, the context-menu key). IR matches by the device name `sunxi-ir`
+(scancodes `0x20b`, `0x21e` of the keymap `rc-h713-fd02`), Bluetooth by the ids 1d5a:c081. h713-keys reads `KEY_ENTER` as OK (and still `KEY_SELECT`/`KEY_OK`, should the
+rule not have run); h713-power took `KEY_ENTER` for OK already. `udevadm trigger --subsystem-match=input --action=change` applies the rule to a running box.
 
 ## Why it reads only the remote
 

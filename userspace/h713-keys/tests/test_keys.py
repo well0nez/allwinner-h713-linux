@@ -3,9 +3,11 @@
 python3 -m unittest discover -s tests -v   (from userspace/h713-keys)
 """
 
+import glob
 import importlib.machinery
 import importlib.util
 import os
+import re
 import socket
 import struct
 import tempfile
@@ -17,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROG = os.path.join(HERE, "..", "h713-keys")
 EVENT = struct.Struct("qqHHi")
 KEY = {"up": 115, "down": 114, "mute": 113, "f4": 62, "f5": 63, "record": 167, "power": 116, "home": 172, "search": 217,
-       "select": 353, "nav_up": 103, "nav_down": 108, "ok": 352, "back": 158, "left": 105}
+       "select": 353, "enter": 28, "compose": 127, "nav_up": 103, "nav_down": 108, "ok": 352, "back": 158, "left": 105}
 
 
 class FakeServer(threading.Thread):
@@ -400,6 +402,38 @@ class KeysTest(unittest.TestCase):
         self.assertEqual(sorted(c for c in calls if not c[1]), [("event0", False), ("event1", False)])
         time.sleep(0.2)
         self.assertEqual(self.systemctl_calls(), ["is-active --quiet h713-kodi.service", "start --no-block h713-kodi.service"])
+
+    def test_enter_is_ok_in_the_launcher(self):
+        """70-h713-remote.rules turns the remote's OK into KEY_ENTER: the launcher takes it as OK"""
+        self.launcher_d()
+        self.grabs()
+        self.keys("home", "nav_down", "enter")
+        self.run_once()
+        time.sleep(0.2)
+        self.assertEqual(self.systemctl_calls(), ["is-active --quiet h713-kodi.service", "start --no-block h713-kodi.service"])
+
+    def test_enter_and_compose_with_the_launcher_closed_are_kodis(self):
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        self.press("enter")
+        self.press("compose")
+        self.run_once()
+        self.assertIn("KEY_OK: recognised, no action yet", out)
+        self.assertIn("127: recognised, no action yet", out)
+        self.assertFalse([m for m in out if "no meaning here" in m], out)
+
+    def test_the_udev_rule_names_the_scancodes_of_the_ir_keymap(self):
+        """the rule's IR scancodes are the keymap's for KEY_OK and KEY_MENU (kernel 0254) - they must not drift apart"""
+        root = os.path.join(HERE, "..", "..", "..")
+        with open(glob.glob(os.path.join(root, "mainline", "patches", "kernel", "0254-*.patch"))[0]) as f:
+            keymap = f.read()
+        with open(os.path.join(HERE, "..", "70-h713-remote.rules")) as f:
+            rule = f.read()
+        ok = re.search(r"\{ 0x0([0-9a-f]{3}), KEY_OK \}", keymap).group(1)
+        menu = re.search(r"\{ 0x0([0-9a-f]{3}), KEY_MENU \}", keymap).group(1)
+        self.assertIn('ENV{KEYBOARD_KEY_%s}="enter"' % ok, rule)
+        self.assertIn('ENV{KEYBOARD_KEY_%s}="compose"' % menu, rule)
+        self.assertGreater(rule.index('IMPORT{builtin}="keyboard"'), rule.rindex('ENV{KEYBOARD_KEY_'))    # udev runs an IMPORT before the assignments of its own line
 
     def test_a_running_kodi_is_the_selected_entry(self):
         self.launcher_d()
