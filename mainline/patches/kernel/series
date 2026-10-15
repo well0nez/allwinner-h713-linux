@@ -680,3 +680,7 @@
 #   Measured on the HY310 (15.10.2026): 25 standbys, pictures in all 25; the bits above the index were set after 9 of them and
 #   the warp ran at the clean state's rate there (59.40 frames/s, ctl check 900 without a differing row).
 0314-drm-h713-afbd-the-capture-index-is-the-field-2-0-of-its-word-as-the-firmware-reads-it.patch
+#   0315 (15.10.2026): cedrus runs the H713 VE at 432 MHz only while an enabled AV1 node is in the device tree, else at the
+#   H6's 600 MHz (0293 held 432 MHz for the AV1 core alone; with the AV1 decoder off the codecs on the VE ran 28 % slow, and
+#   2160p30 did not keep up).
+0315-media-cedrus-the-h713-video-engine-runs-at-432-mhz-only-while-the-av1-decoder-is-on.patch
