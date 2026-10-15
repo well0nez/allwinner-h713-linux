@@ -23,18 +23,22 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   no standby on this board, the ring alone. Each line keeps it one second. The answer is `ok unseen` when nothing can be
   seen (no signal, the console; no h713-tv) - h713-power then acts at once.
 - `pair` - "hold Left + Right" for 10 s after the remote was forgotten (h713-panel, TODO 2.54).
-- `launcher SEL;NOW;[>]icon:label;...` - the launcher (h713-keys, package H of the media side project): a column on the left
-  edge that stays until `launcher close`. `SEL` the chosen row, `NOW` the second half of the header (`HDMI 1080p60`; the clock is
-  h713-osd's), then the rows - icon one of `hdmi film globe desk sliders power`, a `>` in front puts a row in the group at the
-  foot (Standby), which comes last; up to six. `launcher SEL` alone moves the selection. The answer is `ok unseen` when
-  nothing can be seen (then it is not open), `error no font` without the face (`H713_OSD_FONT`, else
+- `launcher SEL;NOW;[>]icon:label;...` - the launcher (h713-keys, package H of the media side project): an **opaque page** over the whole
+  panel, not an overlay over the picture (Marco, 15.10.2026: it must have a ground): the ground `0xff0b0e0d`, the list of "Launcher C" in
+  the column on the left, the rest calm, everything inside a safe margin of 5 % on each side (96 / 54 px at 1080p); it stays until
+  `launcher close`. `SEL` the chosen row (the lit pill `0x1c2321`, the colours of h713-settings), `NOW` the second half of the header
+  (`HDMI 1080p60`; the clock is h713-osd's), then the rows - icon one of `hdmi film globe desk sliders power`, a `>` in front puts a
+  row in the group at the foot (Standby), which comes last; up to six. `launcher SEL` alone moves the selection. The answer is
+  `ok unseen` when nothing can be seen (then it is not open), `error no font` without the face (`H713_OSD_FONT`, else
   `/usr/share/fonts/truetype/quicksand/Quicksand-Medium.ttf` from the `desktop` profile's `fonts-quicksand`).
-  The column is cut into bands - the header, one per row (124 units), the foot, the gap in between - and only the bands that changed are drawn again and put
-  into a buffer: a move of the selection costs two bands, not the column, which matters over a keystone (the pre-distortion
-  walks every pixel it puts). Each band is put from a source with two rows of its neighbours around it, but writes only the
-  panel pixels of its own rows: otherwise the bilinear sample at the edge of a region sees nothing outside and a seam of
-  lighter pixels shows at every boundary (measured in the host test before it was fixed: alpha down to 60 % on one row).
-  Volume, mute and the power countdown work over it. `H713_OSD_TRACE=1` adds a journal line per refresh with wall-clock times.
+  The page is cut into tiles - the header, one per row (124 units), the foot, the gap in between, each in a left part (the column) and a
+  right part (the ground) - and only the tiles that changed are drawn again and put into a buffer: a move of the selection costs two
+  tiles of the column, not the page, which matters over a keystone (the pre-distortion walks every pixel it puts; the page is two million
+  pixels). The buffer that is not shown is filled in the idle time after a refresh. Each tile is put from a source with two rows and
+  columns of its neighbours around it, writing only the panel pixels whose source lies in the tile (and only the pixels that count):
+  otherwise the bilinear sample at its edge sees nothing outside and a seam or a hole shows at every boundary - in an opaque page a
+  hole shows the picture. Volume, mute and the power countdown are drawn into the page and ride in the tiles they touch.
+  `H713_OSD_TRACE=1` adds a journal line per refresh and prefill with wall-clock times.
 
 ## The page channel (package S)
 
@@ -92,5 +96,5 @@ a milder one (both measured 11.10.2026).
 - No overlay on the console (no signal): it waits for the picture - decided 11.10.2026 (the console cannot be
   distorted, and an overlay over it would freeze it).
 - No fade-out.
-- The launcher's scrim is 700 units wide, not the mock-up's 1100: the volume strip starts at 690 and must never meet it.
+- The launcher is not an overlay over the picture any more: while it is open the picture is hidden behind its page.
 - In the image since 11.10.2026 (`rootfs/install-projekt.sh` 5i, enabled); an image with it is not built and installed yet.

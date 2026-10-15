@@ -12,7 +12,7 @@ over IR (the `sunxi-ir` receiver with the keymap `rc-h713-fd02`, kernel 0254):
 | `input_keys` (none by default) | switches `h713-tv` between the HDMI picture (`auto`) and the console (`off`) - the way back after someone forced the console; which key does it is still open, the remote has no record key |
 | power | nothing here: logind, or `h713-power` on an image with standby, powers off |
 | Home | opens the **launcher** (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
-| Menu, Back, arrows, OK | recognised and logged once with the launcher closed (they are Kodi's); OK over Bluetooth is `KEY_SELECT`, read as `KEY_OK` |
+| Menu, Back, arrows, OK | recognised and logged once with the launcher closed (they are Kodi's); OK arrives as `KEY_ENTER` and Menu as `KEY_COMPOSE`, see `70-h713-remote.rules` (below), and `KEY_ENTER` is read as `KEY_OK` |
 | mouse, microphone over IR (`KEY_F6`) | both send the same code `0x0266` - over IR they only ask for the Bluetooth pairing; logged once. Their own functions work over Bluetooth only |
 
 After each action it sends one line to the overlay daemon `h713-osd` (`/run/h713-osd/ctl`), if that runs:
@@ -26,12 +26,12 @@ h713-keys run            # what the unit runs
 
 ## The launcher (Home)
 
-Package H of the media side project: Home opens a list on the left edge over the picture, drawn by `h713-osd` (its `launcher`
+Package H of the media side project: Home opens a page with a ground over the whole panel and the list on the left, drawn by `h713-osd` (its `launcher`
 command), Up and Down move, OK does what the entry says, Back and Home close, volume, mute and focus work as always. The entries are
 the files `/etc/h713/launcher.d/NN-name.conf` (`label`, `icon`, `unit` or `exec`, `show`, `active`, `now`, `group`, `fallback`;
 `rootfs/overlay-desktop/etc/h713/launcher.d/` has the three of package H: HDMI input, Kodi, Standby; the format is in
 [docs/tools/h713-keys.md](../../docs/tools/h713-keys.md)). While it is open the remote's two devices are **grabbed**
-(`EVIOCGRAB`), so Kodi, which reads them through cage, gets no key; it opens only where `h713-osd` can show it and closes by
+(`EVIOCGRAB`, taken at the release of Home: grabbed earlier, cage would hold Home down and Kodi repeat it), so Kodi, which reads them through cage, gets no key; it opens only where `h713-osd` can show it and closes by
 itself after 90 s. A Power press with it open closes it and goes on to `h713-power` (a datagram `short`).
 
 ## Only the remote

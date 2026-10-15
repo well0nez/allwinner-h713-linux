@@ -3,9 +3,11 @@
 python3 -m unittest discover -s tests -v   (from userspace/h713-keys)
 """
 
+import glob
 import importlib.machinery
 import importlib.util
 import os
+import re
 import socket
 import struct
 import tempfile
@@ -17,7 +19,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROG = os.path.join(HERE, "..", "h713-keys")
 EVENT = struct.Struct("qqHHi")
 KEY = {"up": 115, "down": 114, "mute": 113, "f4": 62, "f5": 63, "record": 167, "power": 116, "home": 172, "search": 217,
-       "select": 353, "nav_up": 103, "nav_down": 108, "ok": 352, "back": 158, "left": 105}
+       "select": 353, "enter": 28, "compose": 127, "nav_up": 103, "nav_down": 108, "ok": 352, "back": 158, "left": 105}
 
 
 class FakeServer(threading.Thread):
@@ -329,6 +331,13 @@ class KeysTest(unittest.TestCase):
 
     # --- the launcher (package H) ----------------------------------------------------------------------------------
 
+    def keys(self, *names):
+        """presses in order; a Home is followed by its release, as a real remote sends it (the grab waits for it)"""
+        for k in names:
+            self.press(k)
+            if k == "home":
+                self.press("home", value=0)
+
     def launcher_d(self, **files):
         """etc/h713/launcher.d/<name>.conf = the given text; the defaults are the three entries of package H"""
         d = os.path.join(self.root, "etc/h713/launcher.d")
@@ -360,21 +369,71 @@ class KeysTest(unittest.TestCase):
     def test_home_opens_the_launcher_and_holds_the_remote(self):
         self.launcher_d()
         calls = self.grabs()
-        self.press("home")
+        self.keys("home")
         self.run_once()
         self.assertEqual(self.osds.lines, ["launcher 0;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby"])   # 59.94 -> 60
         self.assertEqual(sorted(calls), [("event0", True), ("event1", True)])      # the IR receiver and the remote, no keyboard
 
+    def test_the_grab_waits_for_the_release_of_home(self):
+        """H2, 15.10.2026: a grab while Home is down lost its release for cage, cage held Home down and Kodi repeated it at 30 Hz"""
+        self.launcher_d()
+        calls = self.grabs()
+        fds = {"event0": os.open(os.path.join(self.root, "dev/input/event0"), os.O_RDONLY | os.O_NONBLOCK),
+               "event1": os.open(os.path.join(self.root, "dev/input/event1"), os.O_RDONLY | os.O_NONBLOCK)}
+        l = self.mod.Launcher()
+        l.open(fds)                                  # the press of Home
+        self.assertEqual((l.entries is not None, calls), (True, []))
+        l.hold(fds)                                  # its release
+        self.assertEqual(sorted(calls), [("event0", True), ("event1", True)])
+        l.hold(fds)                                  # another release: nothing is grabbed twice
+        self.assertEqual(len(calls), 2)
+        l.close(fds)
+        l.hold(fds)                                  # the release of the Home that closed it: nothing
+        self.assertEqual([c for c in calls if c[1]], [("event0", True), ("event1", True)])
+        for fd in fds.values():
+            os.close(fd)
+
     def test_down_ok_starts_kodi_and_lets_go(self):
         self.launcher_d()
         calls = self.grabs()
-        for k in ("home", "nav_down", "ok"):
-            self.press(k)
+        self.keys("home", "nav_down", "ok")
         self.run_once()
         self.assertEqual(self.osds.lines[1:], ["launcher 1", "launcher close"])
         self.assertEqual(sorted(c for c in calls if not c[1]), [("event0", False), ("event1", False)])
         time.sleep(0.2)
         self.assertEqual(self.systemctl_calls(), ["is-active --quiet h713-kodi.service", "start --no-block h713-kodi.service"])
+
+    def test_enter_is_ok_in_the_launcher(self):
+        """70-h713-remote.rules turns the remote's OK into KEY_ENTER: the launcher takes it as OK"""
+        self.launcher_d()
+        self.grabs()
+        self.keys("home", "nav_down", "enter")
+        self.run_once()
+        time.sleep(0.2)
+        self.assertEqual(self.systemctl_calls(), ["is-active --quiet h713-kodi.service", "start --no-block h713-kodi.service"])
+
+    def test_enter_and_compose_with_the_launcher_closed_are_kodis(self):
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        self.press("enter")
+        self.press("compose")
+        self.run_once()
+        self.assertIn("KEY_OK: recognised, no action yet", out)
+        self.assertIn("127: recognised, no action yet", out)
+        self.assertFalse([m for m in out if "no meaning here" in m], out)
+
+    def test_the_udev_rule_names_the_scancodes_of_the_ir_keymap(self):
+        """the rule's IR scancodes are the keymap's for KEY_OK and KEY_MENU (kernel 0254) - they must not drift apart"""
+        root = os.path.join(HERE, "..", "..", "..")
+        with open(glob.glob(os.path.join(root, "mainline", "patches", "kernel", "0254-*.patch"))[0]) as f:
+            keymap = f.read()
+        with open(os.path.join(HERE, "..", "70-h713-remote.rules")) as f:
+            rule = f.read()
+        ok = re.search(r"\{ 0x0([0-9a-f]{3}), KEY_OK \}", keymap).group(1)
+        menu = re.search(r"\{ 0x0([0-9a-f]{3}), KEY_MENU \}", keymap).group(1)
+        self.assertIn('ENV{KEYBOARD_KEY_%s}="enter"' % ok, rule)
+        self.assertIn('ENV{KEYBOARD_KEY_%s}="compose"' % menu, rule)
+        self.assertGreater(rule.index('IMPORT{builtin}="keyboard"'), rule.rindex('ENV{KEYBOARD_KEY_'))    # udev runs an IMPORT before the assignments of its own line
 
     def test_a_running_kodi_is_the_selected_entry(self):
         self.launcher_d()
@@ -388,8 +447,7 @@ class KeysTest(unittest.TestCase):
     def test_back_and_home_close_without_acting(self):
         self.launcher_d()
         self.grabs()
-        for k in ("home", "back", "home", "home"):
-            self.press(k)
+        self.keys("home", "back", "home", "home")
         self.run_once()
         self.assertEqual([l.split(";")[0] for l in self.osds.lines], ["launcher 0", "launcher close", "launcher 0", "launcher close"])
         self.assertEqual([c for c in self.systemctl_calls() if c.startswith("start")], [])
@@ -398,8 +456,7 @@ class KeysTest(unittest.TestCase):
         """volume, mute and focus work with the launcher open; Left, Menu, the other keys are nobody's"""
         self.launcher_d()
         self.grabs()
-        for k in ("home", "up", "left"):
-            self.press(k)
+        self.keys("home", "up", "left")
         self.run_once()
         self.assertEqual(self.tv.volume, 55)
         self.assertIn("volume 55", self.osds.lines)
@@ -408,8 +465,7 @@ class KeysTest(unittest.TestCase):
     def test_power_closes_the_launcher_and_goes_on_to_h713_power(self):
         self.launcher_d()
         calls = self.grabs()
-        for k in ("home", "power"):
-            self.press(k)
+        self.keys("home", "power")
         self.run_once()
         self.assertEqual(self.osds.lines[-1], "launcher close")
         self.assertTrue(all(not c[1] for c in calls[-2:]))
@@ -419,8 +475,7 @@ class KeysTest(unittest.TestCase):
         self.launcher_d()
         self.osds.answer = lambda line: "ok unseen\n"
         calls = self.grabs()
-        for k in ("home", "nav_down"):
-            self.press(k)
+        self.keys("home", "nav_down")
         self.run_once()
         self.assertEqual(calls, [])
         self.assertEqual(self.osds.lines, [self.osds.lines[0]])            # the second key found no launcher: not sent
@@ -438,7 +493,7 @@ class KeysTest(unittest.TestCase):
         calls = []
         self.mod.grab = lambda fd, on: calls.append(on) or ("Device or resource busy" if on and len(calls) == 2 else None)
         self.press("search", dev=0)
-        self.press("home")
+        self.keys("home")
         self.run_once()
         self.assertEqual(self.osds.lines[-1], "launcher close")             # the one that was held is let go again
         self.assertIn(False, calls)
@@ -453,8 +508,7 @@ class KeysTest(unittest.TestCase):
             f.write("#!/bin/sh\necho ran > %s.out\n" % run)
         os.chmod(run, 0o755)
         self.grabs()
-        for k in ("home", "nav_down", "ok"):
-            self.press(k)
+        self.keys("home", "nav_down", "ok")
         self.run_once()
         self.assertEqual(self.osds.lines[0], "launcher 0;A,x;globe:A,x;desk:B")    # sorted by file name, a ";" cannot split a field
         time.sleep(0.3)
@@ -467,12 +521,12 @@ class KeysTest(unittest.TestCase):
         l = self.mod.Launcher()
         fd = os.open(os.path.join(self.root, "dev/input/event1"), os.O_RDONLY | os.O_NONBLOCK)
         l.open({"event1": fd})
-        self.assertTrue(l.is_open())
+        self.assertIsNotNone(l.entries)
         l.tick({"event1": fd})
-        self.assertTrue(l.is_open())
+        self.assertIsNotNone(l.entries)
         l.last -= self.mod.LAUNCHER_IDLE_S + 1
         l.tick({"event1": fd})
-        self.assertFalse(l.is_open())
+        self.assertIsNone(l.entries)
         self.assertEqual(self.osds.lines[-1], "launcher close")
         self.assertEqual(grabbed[-1][1], False)
         os.close(fd)

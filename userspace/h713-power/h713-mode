@@ -7,7 +7,10 @@
 # units ride on `h713-tv ctl source auto` (the client before the ring, the ring back by itself when the client is gone).
 #
 #   h713-mode status      the mode units that run, or "hdmi"
-#   h713-mode hdmi        end every mode unit (Kodi quits cleanly, the HDMI picture is back ~2 s after cage is gone)
+#   h713-mode hdmi        the HDMI picture back at once - `h713-tv ctl source hdmi` takes the panel from the mode's client (measured at the
+#                         HY310: the ring is back 0.27 s later, Kodi still quitting) - then end every mode unit (Kodi quits cleanly in ~2.5 s).
+#                         Without the first step the ring came back only ~2 s after cage was gone: 4.9-5.6 s from OK, over the gate's 5 s.
+#                         It also leaves the source on `hdmi`, the start value, where `auto` (set by the unit's start) stayed until h713-tv restarted
 #   h713-mode sleep-pre   before a sleep: write the running mode units to /run/h713-mode.resume (the one place the mode
 #                         before a sleep is remembered) and end them
 #   h713-mode sleep-post  after a sleep: bring the picture path back when the display MIPS is parked (h713-mips-restart
@@ -15,13 +18,14 @@
 #
 # h713-sleep-pre.service (Before=sleep.target) and h713-sleep-post.service (After=suspend.target) call the last two, so every
 # way into the sleep - the power key, the launcher, Kodi's own menu, `systemctl suspend` - ends the same way.
-# Tests only: H713_ROOT goes before /etc, /run and /sys; H713_SYSTEMCTL and H713_MIPS_RESTART replace the tools.
+# Tests only: H713_ROOT goes before /etc, /run and /sys; H713_SYSTEMCTL, H713_MIPS_RESTART and H713_TV replace the tools.
 set -u
 R=${H713_ROOT:-}
 D=$R/etc/h713/launcher.d
 MEM=$R/run/h713-mode.resume
 SYSTEMCTL=${H713_SYSTEMCTL:-systemctl}
 RESTART=${H713_MIPS_RESTART:-/usr/local/sbin/h713-mips-restart}
+TV=${H713_TV:-/usr/local/sbin/h713-tv}
 
 say() { [ -n "${JOURNAL_STREAM:-}" ] || echo "h713-mode: $*" >&2; logger -t h713-mode -- "$*" 2>/dev/null || :; }
 units() { sed -n 's/^[[:space:]]*unit[[:space:]]*=[[:space:]]*\([^[:space:]#]*\).*/\1/p' "$D"/*.conf 2>/dev/null; }
@@ -41,6 +45,7 @@ case ${1:-} in
 status)
 	r=$(running | tr '\n' ' '); echo "${r:-hdmi}" ;;
 hdmi)
+	[ -x "$TV" ] && { "$TV" ctl source hdmi >/dev/null 2>&1 || say "h713-tv ctl source hdmi failed"; }
 	for u in $(units); do $SYSTEMCTL stop "$u" || say "ending $u failed"; done ;;
 sleep-pre)
 	running > "$MEM"

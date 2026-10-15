@@ -70,8 +70,8 @@ void osd_clear_box(struct osd_canvas *c, const int box[4]);
 void osd_draw(struct osd_canvas *c, const struct osd_style *s, const struct osd_item *it, int box[4]);
 
 /*
- * The menu (osd.c): the pieces of the launcher on the left edge - Strichsymbole, a row, a scrim and a hint line -
- * drawn in the look of the overlays (pill, white lines, bright and dim). Geometry is in "1080-line units": the
+ * The menu (osd.c): the pieces of the launcher - Strichsymbole, a row and a hint line - drawn in the look of the overlays
+ * (pill, white lines, bright and dim) on the launcher's opaque page. Geometry is in "1080-line units": the
  * mock-up's numbers, scaled by canvas height / 1080, so 720p and 1080p get the same layout. Package H's launcher and
  * package S's settings are built from these; text needs osd_font_open() first (below).
  */
@@ -80,9 +80,17 @@ enum osd_icon { OSD_ICON_HDMI, OSD_ICON_FILM, OSD_ICON_GLOBE, OSD_ICON_DESK, OSD
 /* the symbol's name in a launcher entry file ("hdmi", "film", "globe", "desk", "sliders", "power"); -1 if unknown */
 int osd_icon_by_name(const char *name);
 
+/* The opaque page's colours (the same as h713-settings' ui.c, so that the launcher and the settings are one line): the ground
+ * of the whole page, ARGB, fully opaque, and the lit pill of the chosen row, a little lighter (RGB). */
+#define OSD_PAGE_GROUND	0xff0b0e0du
+#define OSD_PAGE_PILL	0x1c2321u
+/* Nothing of the launcher but the ground may lie in the outer 5 % of the page on each side (96 px left and right, 54 px
+ * top and bottom at 1080p; 64 and 36 at 720p) - the part of a projected wall that is cut off or distorted most. */
+#define OSD_SAFE_PERCENT 5
+
 /* One row: a stadium (the pill) at x, y with width w and height h - the launcher's is 520 x 104 at x 118 - with a
- * symbol at its left, the label after it, both bright inside a pill that is drawn (fill and a white outline) when
- * selected, both dim and with no pill when not. Everything inside scales with h (the symbol is 0.69 h, the label 0.37 h).
+ * symbol at its left, the label after it, both bright inside a pill that is drawn (the lit pill's fill and a white outline)
+ * when selected, both dim and with no pill when not. Everything inside scales with h (the symbol is 0.69 h, the label 0.37 h).
  * The label is clipped to the pill (no ellipsis). Mixed over what the canvas holds; box = the touched rectangle
  * (the pill with a margin) when not NULL. Not reentrant. */
 struct osd_row {
@@ -93,21 +101,19 @@ struct osd_row {
 };
 void osd_draw_row(struct osd_canvas *c, const struct osd_row *r, int box[4]);
 
-/* The launcher's scrim: black, 70 % at the left edge, 25 % at 45 % of 700 units, none from 700 on; REPLACES the
- * pixels of box (x, y, w, h, clipped to the canvas), so it is also how a band of the column is cleared before its
- * row is drawn again. */
-void osd_draw_scrim(struct osd_canvas *c, const int box[4]);
-
 /* A dim hint line, 26 units high, its baseline at y (1080-line units, x too): with arrows != 0 the marks for up and
  * down (drawn as shapes, the face has no such glyphs) come first and the text after them. */
 void osd_draw_hint(struct osd_canvas *c, double x, double baseline, const char *text, int arrows);
 
 /*
- * The launcher: a column on the left edge (the scrim, 700 units wide) with a header line, up to six rows and a hint line,
- * the mock-up's "Launcher C". It is cut into BANDS that tile the column, so a caller can repaint only the bands that changed
- * (a move of the selection changes two rows' bands, 124 units high each) and copy or pre-distort only those. Band 0 is the
- * header, band 1 + i row i, band n + 1 the foot, band n + 2 the gap between the rows at the top and those at the foot - scrim
- * only, drawn once (empty, height 0, when there is none). The bands are not in the order of their y.
+ * The launcher: an OPAQUE page over the whole canvas (Marco, 15.10.2026: it must have a ground, it is not an overlay over the
+ * picture) in the ground colour, with the mock-up's "Launcher C" list in the column on the left - a header line, up to six rows,
+ * a hint line - and the rest calm. Everything but the ground stays inside the safe margin (OSD_SAFE_PERCENT). It is cut into
+ * TILES, so a caller can repaint only the tiles that changed (a move of the selection changes two rows' tiles, 700 x 124 units
+ * each) and copy or pre-distort only those. A band is a strip of the page: band 0 the header, band 1 + i row i, band n + 1 the
+ * foot, band n + 2 the gap between the rows at the top and those at the foot (empty, height 0, when there is none). Tile k < n + 3
+ * is the band's left part, the column x 0..700 where its content is; tile n + 3 + k its right part, to the canvas' edge, the
+ * ground alone. The tiles tile the canvas; they are not in the order of their y.
  */
 #define OSD_LAUNCHER_ROWS 6
 
@@ -121,13 +127,13 @@ struct osd_launcher {
 	} row[OSD_LAUNCHER_ROWS];	/* the rows with end = 0 first, then those with end = 1 */
 };
 
-/* the rectangles (x, y, w, h in canvas pixels) of the bands; returns their count, n + 3 (0 for no rows); box needs
- * OSD_LAUNCHER_ROWS + 3 entries */
+/* the rectangles (x, y, w, h in canvas pixels) of the tiles; returns their count, 2 * (n + 3) (0 for no rows); box needs
+ * 2 * (OSD_LAUNCHER_ROWS + 3) entries */
 int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l, int box[][4]);
 
-/* repaint one band: the scrim REPLACES its pixels, then its content is drawn over it. All of them, in any order,
- * make the whole launcher; the hint's words are fixed ("select, OK open, BACK close"). Needs osd_font_open(). */
-void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int band);
+/* repaint one tile: the ground REPLACES its pixels, then its content is drawn over it. All of them, in any order, make the whole
+ * opaque page; the hint's words are fixed ("select, OK open, BACK close"). Needs osd_font_open(). */
+void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int tile);
 
 /*
  * Text (text.c, FreeType - link libfreetype; h713-osd links it statically). The one part of the library that reads
