@@ -1339,12 +1339,14 @@ static bool display_hide(struct display *d)
 struct warp {
 	int peer;			/* the daemon's connection, -1: none */
 	bool claimed;
+	bool client;			/* it draws a Wayland client, not the ring (package G): no signal needed */
+	int flip;			/* client: our dup of the last commit's OUT_FENCE (the flip), -1 none */
 	uint32_t handle[WARP_BUFS], fb_id[WARP_BUFS];
 	unsigned int pitch, coff;	/* NV12: the line pitch, the chroma plane's offset */
 	unsigned long commits, busy, errors;
 };
 
-static struct warp warp = { .peer = -1 };
+static struct warp warp = { .peer = -1, .flip = -1 };
 
 static void warp_free(struct display *d)
 {
@@ -1410,8 +1412,9 @@ static bool warp_alloc(struct display *d, int *fds)
  * event, because this program must not wait a vsync per frame -- the kernel's
  * EBUSY for a commit still in flight is the "the daemon was early" answer.
  */
-static bool warp_commit(struct display *d, int n, int fence, bool *busy)
+static bool warp_commit(struct display *d, int n, int fence, bool *busy, int *flip)
 {
+	int32_t out = -1;		/* the client's flip fence (OUT_FENCE_PTR), package G */
 	static const char *const name[] = {
 		"FB_ID", "CRTC_ID", "SRC_X", "SRC_Y", "SRC_W", "SRC_H",
 		"CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H", "IN_FENCE_FD",
@@ -1446,6 +1449,14 @@ static bool warp_commit(struct display *d, int n, int fence, bool *busy)
 	 */
 	if (ok && d->has_windows)
 		ok = add(req, d, "src-window", 0) && add(req, d, "dst-window", 0);
+	/*
+	 * A Wayland client is paced by the flip itself (package G, M3 4/5): the CRTC's OUT_FENCE signals when
+	 * this frame is on the panel (the afbd driver arms the event at the vsync IRQ), and h713-warp gets it
+	 * with the answer. The ring's warp is paced by the capture and stays as it was.
+	 */
+	if (ok && warp.client)
+		ok = drmModeAtomicAddProperty(req, d->crtc_id, prop_id(&d->crtc_props, "OUT_FENCE_PTR"),
+					      (uint64_t)(uintptr_t)&out) >= 0;
 	/* an overlay change waiting for this frame goes with it: one commit, no EBUSY between the two (6h) */
 	bool rides = ok && osd_ride(req, d);
 	ret = ok ? drmModeAtomicCommit(d->fd, req, flags, NULL) : -EINVAL;
@@ -1454,6 +1465,7 @@ static bool warp_commit(struct display *d, int n, int fence, bool *busy)
 		osd_rode(!ret);
 	if (!ret) {
 		warp.commits++;
+		*flip = out;
 		return true;
 	}
 	if (ok && errno == EBUSY) {
@@ -1482,6 +1494,10 @@ static void warp_release(struct display *d)
 	osd_drop(d);
 	warp_free(d);
 	warp.claimed = false;
+	warp.client = false;
+	if (warp.flip >= 0)
+		close(warp.flip);
+	warp.flip = -1;
 	d->warped = false;
 	display_release_master(d);
 	console_restore();
@@ -1693,19 +1709,48 @@ static void osd_drop(struct display *d)
 		osd.shown = false;
 }
 
+/*
+ * A Wayland client may rest for seconds (Kodi's menu: 0.1 frames a second, package F), so under it an overlay change
+ * cannot wait for the warp's next frame (package G, M3 7): once the last flip is on the panel and no warp line is
+ * waiting, the primary plane is committed on its own; otherwise the change rides as with the ring, and the loop looks
+ * again when the flip fence signals (osd_settle). The ring's warp keeps riding: it sends a frame every vsync.
+ */
+static bool osd_alone(const struct display *d)
+{
+	struct pollfd pf[2] = { { .fd = warp.flip, .events = POLLIN }, { .fd = warp.peer, .events = POLLIN } };
+
+	if (!d->warped || !warp.client)
+		return false;
+	if (warp.flip >= 0 && poll(pf, 1, 0) != 1)
+		return false;		/* the last flip is still in flight */
+	return poll(pf + 1, 1, 0) == 0;	/* and no frame is waiting to be committed */
+}
+
 /* the wanted buffer over the picture, if there is a picture to lay it over */
 static void osd_resume(struct display *d)
 {
 	if (!osd.claimed || osd.want < 0 || !(d->on || d->warped) || !d->master)
 		return;
-	if (d->warped) {		/* with the warp's next frame */
+	if (d->warped && !osd_alone(d)) {	/* with the warp's next frame */
 		osd.queued = true;
 		return;
 	}
+	osd.queued = false;
 	if (osd_commit(d, osd.fb_id[osd.want], 2)) {
 		osd.shown = true;
 		osd.shows++;
 	}
+}
+
+/* the flip a queued change waited for is on the panel (client only): the change goes now, on its own */
+static void osd_settle(struct display *d)
+{
+	if (!osd.queued || !osd_alone(d))
+		return;
+	if (osd.want >= 0)
+		osd_resume(d);
+	else
+		osd_drop(d);
 }
 
 static void osd_release(struct display *d)
@@ -1759,7 +1804,7 @@ static void osd_serve(struct display *d)
 		}
 	} else if (!strcmp(buf, "osd hide")) {
 		osd.want = -1;
-		if (d->warped && osd.shown) {
+		if (d->warped && osd.shown && !osd_alone(d)) {
 			osd.queued = true;	/* the console's framebuffer back with the next frame */
 			answer = "ok\n";
 		} else {
@@ -2941,6 +2986,13 @@ static void audio_read_source(struct audio *a, struct capture *cap)
 /* the rule of doku/101 section 1 E, in one place */
 static bool audio_want(const struct audio *a, bool picture)
 {
+	/*
+	 * A Wayland client on the panel (package G, M3 6): the picture is not the HDMI input's, so neither is the sound.
+	 * audio_evaluate() silences it with the picture standing - the HDMI branch behind its own mute, the DAC on I2S,
+	 * and the bridge (Kodi's sound) goes on playing.
+	 */
+	if (warp.claimed && warp.client)
+		return false;
 	switch (a->policy) {
 	case AUDIO_ON:
 		return true;
@@ -2956,6 +3008,8 @@ static bool audio_want(const struct audio *a, bool picture)
 /* which of the reasons it was -- the journal line has to name one */
 static const char *audio_why_quiet(const struct audio *a, bool picture)
 {
+	if (warp.claimed && warp.client)
+		return "a Wayland client is on the panel";
 	if (a->policy == AUDIO_OFF)
 		return "ctl audio off";
 	if (!a->have_source)
@@ -3358,6 +3412,20 @@ static bool audio_policy_parse(const char *text, enum audio_policy *p)
 #define CTL_MAXLINE	512
 
 enum policy { POLICY_AUTO, POLICY_OFF };
+/* what the panel shows (media side project, package G): the HDMI input, a Wayland client through h713-warp's server, or
+ * the client while there is one and the input otherwise. "ctl source" at run time, "source =" in tv.conf at the start. */
+enum source { SOURCE_HDMI, SOURCE_CLIENT, SOURCE_AUTO };
+static const char *const source_name[] = { "hdmi", "client", "auto" };
+
+static int source_by_name(const char *w)
+{
+	int i;
+
+	for (i = 0; i < 3; i++)
+		if (w && !strcasecmp(w, source_name[i]))
+			return i;
+	return -1;
+}
 
 /* ------------------------------------------------------------------ *
  * The start mode, and the mode last set: /etc/h713/tv.conf
@@ -3389,6 +3457,10 @@ enum policy { POLICY_AUTO, POLICY_OFF };
  *                               11.10. midday, before the capture slot came from
  *                               the capture's own index and 1080p60 on a 720p
  *                               panel was shown frame for frame
+ *       source = hdmi | client | auto  what the panel shows at the start (package G): the HDMI
+ *                               input (the default), a Wayland client drawn by h713-warp, or
+ *                               the client while there is one; "ctl source" changes it until
+ *                               the next start
  *
  * The keys are the file format, and since v0.8-beta they speak English like
  * the values. Their German spellings ("zustand", "daten", "rechner") and the
@@ -3443,6 +3515,7 @@ struct conf {
 	char calculator[160];	/* calculator = PATH; "none" = do not compute */
 	int edid;		/* edid = block0 | block1; -1 = not said */
 	bool edid_panel;	/* edid_prefer = panel (true) | file */
+	int source;		/* source = hdmi | client | auto (enum source) */
 	char input[24];	/* --input; the input h713-pq is asked about */
 	char lut[160];		/* where h713-pq is told to write the LUT */
 };
@@ -3495,6 +3568,7 @@ static void conf_read(struct conf *c)
 	c->preset[0] = '\0';
 	c->edid = -1;
 	c->edid_panel = false;
+	c->source = SOURCE_HDMI;
 	snprintf(c->data, sizeof(c->data), "%s", PQ_DATA);
 	snprintf(c->calculator, sizeof(c->calculator), "%s", PQ_BIN);
 	snprintf(c->input, sizeof(c->input), "%s", PQ_INPUT);
@@ -3599,8 +3673,14 @@ static void conf_read(struct conf *c)
 			else
 				warn("%s:%u: edid_prefer = \"%s\" unknown (panel file) -- panel stays",
 				     c->path, n, val);
+		} else if (!strcasecmp(key, "source")) {
+			if (source_by_name(val) >= 0)
+				c->source = source_by_name(val);
+			else
+				warn("%s:%u: source = \"%s\" unknown (hdmi client auto) -- hdmi stays",
+				     c->path, n, val);
 		} else {
-			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator, edid, edid_prefer)",
+			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator, edid, edid_prefer, source)",
 			     c->path, n, key);
 		}
 	}
@@ -3613,6 +3693,7 @@ struct control {
 	int lock_fd;		/* flock on <dir>/lock: one instance per socket */
 	const char *path;
 	enum policy policy;
+	int source;		/* enum source: what the panel shows, "ctl source" */
 	const struct conf *conf;
 	const char *state_path;	/* NULL: the mode is not kept */
 	char state_known[8];	/* what the state file holds: "auto", "off", "" */
@@ -4053,9 +4134,11 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		  d->warped ? "warped (h713-warp draws on the video plane)" :
 		  d->on ? "plane on" : "console",
 		  d->master ? ", DRM master held" : "");
+	reply_add(r, "source          %s\n", source_name[c->source]);
 	if (warp.claimed)
-		reply_add(r, "warp            on, video plane %u: %lu commits, %lu busy, %lu refused\n",
-			  d->plane_id, warp.commits, warp.busy, warp.errors);
+		reply_add(r, "warp            on (%s), video plane %u: %lu commits, %lu busy, %lu refused\n",
+			  warp.client ? "a Wayland client" : "the ring", d->plane_id, warp.commits, warp.busy,
+			  warp.errors);
 	if (d->src_w)
 		reply_add(r, "buffer          %ux%u NV16, line pitch %u on panel %ux%u\n", d->src_w, d->src_h, d->src_pitch,
 			  d->width, d->height);
@@ -5036,8 +5119,12 @@ static struct control ctl;	/* defined with the control socket below */
  * plane goes down first and the master is taken for the whole warp; the
  * answer goes out here, because the fds have to travel with that line.
  */
-static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display *d, int conn)
+static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display *d, int conn,
+			   const char *what)
 {
+	/* "warp claim client" (package G): h713-warp draws a Wayland client; plain "warp claim" is the ring */
+	bool client = what && !strcmp(what, "client");
+	bool allowed = client ? ctl.source != SOURCE_HDMI : ctl.source != SOURCE_CLIENT;
 	char cbuf[CMSG_SPACE(sizeof(int) * WARP_BUFS)] = { 0 }, line[64];
 	int fds[WARP_BUFS] = { -1, -1, -1 };
 	struct iovec io = { line, 0 };
@@ -5055,6 +5142,16 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 		reply_fail(r, "no video plane with IN_FENCE_FD on CRTC %u", d->crtc_id);
 		return;
 	}
+	if (what && !client && strcmp(what, "ring")) {
+		reply_fail(r, "warp claim takes ring or client, not \"%s\"", what);
+		return;
+	}
+	if (client && !d->crtc_props.list)
+		props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &d->crtc_props);
+	if (client && !prop_id(&d->crtc_props, "OUT_FENCE_PTR")) {
+		reply_fail(r, "CRTC %u has no OUT_FENCE_PTR -- a client cannot be paced", d->crtc_id);
+		return;
+	}
 	/* "off" holds until "auto": without this the warp, asking once a second,
 	 * took the picture back about a second after "off" (TODO 2.27)
 	 */
@@ -5062,7 +5159,13 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 		reply_fail(r, "console forced (\"ctl off\") -- ask again");
 		return;
 	}
-	if (cap->last_sig != 1) {
+	/* the source decides (package G); h713-warp reads the policy from this line and asks again */
+	if (!allowed) {
+		reply_fail(r, "source is %s -- no %s claim, ask again", source_name[ctl.source],
+			   client ? "client" : "ring");
+		return;
+	}
+	if (!client && cap->last_sig != 1) {
 		/* the warp asks again once a second; the console stays until then */
 		reply_fail(r, "no signal to warp -- the console stays, ask again");
 		return;
@@ -5077,8 +5180,9 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 		reply_fail(r, "the three %ux%u NV12 buffers could not be made (%s) -- the ring stays",
 			   d->width, d->height, strerror(errno));
 	} else {
-		io.iov_len = (size_t)snprintf(line, sizeof(line), "ok %u %u %u nv12 %u\n",
-					      d->width, d->height, warp.pitch, warp.coff);
+		io.iov_len = (size_t)snprintf(line, sizeof(line), "ok %u %u %u nv12 %u source %s\n",
+					      d->width, d->height, warp.pitch, warp.coff,
+					      source_name[ctl.source]);
 		cm = CMSG_FIRSTHDR(&msg);
 		cm->cmsg_level = SOL_SOCKET;
 		cm->cmsg_type = SCM_RIGHTS;
@@ -5098,9 +5202,11 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 		return;
 	}
 	warp.claimed = true;
+	warp.client = client;
 	warp.peer = conn;
 	d->warped = true;
-	info("warp            claimed: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u",
+	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u",
+	     client ? " for a Wayland client (no signal needed, the HDMI sound silent)" : "",
 	     d->width, d->height, warp.pitch, warp.coff, d->plane_id);
 }
 
@@ -5118,7 +5224,7 @@ static bool warp_serve(struct display *d)
 	struct cmsghdr *cm;
 	bool busy = false;
 	ssize_t got;
-	int fence = -1, n = -1;
+	int fence = -1, n = -1, flip = -1;
 
 	got = recvmsg(warp.peer, &msg, MSG_DONTWAIT);
 	if (got <= 0) {			/* the daemon is gone: A2's lifetime */
@@ -5155,7 +5261,7 @@ static bool warp_serve(struct display *d)
 
 			clock_gettime(CLOCK_MONOTONIC, &c0);
 			gap = prev.tv_sec ? (c0.tv_sec - prev.tv_sec) * 1e3 + (c0.tv_nsec - prev.tv_nsec) / 1e6 : 0;
-			answer = warp_commit(d, n, fence, &busy) ? "ok\n" :
+			answer = warp_commit(d, n, fence, &busy, &flip) ? "ok\n" :
 				 busy ? "ok busy\n" : "error the commit was refused\n";
 			clock_gettime(CLOCK_MONOTONIC, &c1);
 			took = (c1.tv_sec - c0.tv_sec) * 1e3 + (c1.tv_nsec - c0.tv_nsec) / 1e6;
@@ -5181,8 +5287,28 @@ static bool warp_serve(struct display *d)
 		}
 	if (fence >= 0)
 		close(fence);
-	if (send(warp.peer, answer, strlen(answer), MSG_NOSIGNAL) >= 0)
+	if (flip >= 0) {
+		/* the client's flip fence goes with the "ok"; our dup is what an overlay change waits for (M3 7) */
+		char fbuf[CMSG_SPACE(sizeof(int))] = { 0 };
+		struct iovec fio = { (void *)(uintptr_t)answer, strlen(answer) };
+		struct msghdr fm = { .msg_iov = &fio, .msg_iovlen = 1, .msg_control = fbuf,
+				     .msg_controllen = sizeof(fbuf) };
+		struct cmsghdr *fc = CMSG_FIRSTHDR(&fm);
+		ssize_t sent;
+
+		fc->cmsg_level = SOL_SOCKET;
+		fc->cmsg_type = SCM_RIGHTS;
+		fc->cmsg_len = CMSG_LEN(sizeof(int));
+		memcpy(CMSG_DATA(fc), &flip, sizeof(int));
+		sent = sendmsg(warp.peer, &fm, MSG_NOSIGNAL);
+		if (warp.flip >= 0)
+			close(warp.flip);
+		warp.flip = flip;
+		if (sent >= 0)
+			return false;
+	} else if (send(warp.peer, answer, strlen(answer), MSG_NOSIGNAL) >= 0) {
 		return false;
+	}
 	warn("warp            answering \"%s\": %s", buf, strerror(errno));
 	warp_release(d);
 
@@ -5190,19 +5316,47 @@ static bool warp_serve(struct display *d)
 }
 
 /* warp [status] for the human; "claim" is h713-warp's (A1) */
-static void cmd_warp(struct reply *r, struct capture *cap, struct display *d, const char *what,
-		     int conn)
+static bool cmd_warp(struct reply *r, struct capture *cap, struct display *d, const char *what,
+		     const char *src, int conn)
 {
-	if (what && !strcmp(what, "claim"))
-		cmd_warp_claim(r, cap, d, conn);
-	else if (what && strcmp(what, "status"))
+	if (what && !strcmp(what, "claim")) {
+		cmd_warp_claim(r, cap, d, conn, src);
+		return warp.claimed && warp.client;	/* the sound goes quiet behind a client (M3 6) */
+	}
+	if (what && strcmp(what, "status"))
 		reply_fail(r, "warp knows \"status\" here; on, off and the keystone are h713-warp ctl");
 	else if (!warp.claimed)
 		reply_add(r, "ok warp off -- nothing claimed; \"h713-warp ctl status\" says why\n");
 	else
-		reply_add(r, "ok warp on -- h713-warp draws, video plane %u, %ux%u NV12, line pitch %u, %lu commits, %lu busy, %lu refused\n",
-			  d->plane_id, d->width, d->height, warp.pitch,
-			  warp.commits, warp.busy, warp.errors);
+		reply_add(r, "ok warp on -- h713-warp draws %s, video plane %u, %ux%u NV12, line pitch %u, %lu commits, %lu busy, %lu refused\n",
+			  warp.client ? "a Wayland client" : "the ring", d->plane_id, d->width, d->height,
+			  warp.pitch, warp.commits, warp.busy, warp.errors);
+	return false;
+}
+
+/*
+ * "source [hdmi|client|auto]" (package G): what the panel shows. A change gives a standing warp claim back, whichever
+ * it was: h713-warp asks again at once and learns the new policy from the answer (ENTWURF G v3 D4) - a ring claim under
+ * "auto" would otherwise never hear that a client may come first. Not saved; "source =" in tv.conf is the start value.
+ */
+static bool cmd_source(struct reply *r, struct display *d, const char *what)
+{
+	int s = what ? source_by_name(what) : ctl.source;
+
+	if (s < 0) {
+		reply_fail(r, "source takes hdmi, client or auto, not \"%s\"", what);
+		return false;
+	}
+	if (what && s != ctl.source) {
+		ctl.source = s;
+		info("source          %s%s", source_name[s], warp.claimed ? " -- the warp's claim is given back" : "");
+		warp_release(d);
+		reply_add(r, "ok source %s\n", source_name[s]);
+		return true;		/* the ring, the console, or the claim h713-warp sends next */
+	}
+	reply_add(r, "ok source %s%s\n", source_name[s],
+		  !warp.claimed ? "" : warp.client ? " -- h713-warp shows a Wayland client" : " -- h713-warp shows the ring");
+	return false;
 }
 
 /* "osd claim": the two buffers, their fds with the answer */
@@ -6672,6 +6826,9 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        (S_EDID blocks=0), load the EDID again, HPD high (~1 s, blocks)\n"
 		  "  edid block0|block1    publish that half of " EDID_FILE " to the source (a replug\n"
 		  "                        with it); tv.conf \"edid =\" makes it the standing setting\n"
+		  "  source [hdmi|client|auto]  what the panel shows: the HDMI input, a Wayland client\n"
+		  "                        through h713-warp, or the client while there is one; not\n"
+		  "                        saved (tv.conf \"source =\" is the start value)\n"
 		  "  warp [status]         has h713-warp the video plane? plus its counters\n"
 		  "  osd [status]          has h713-osd an overlay over the picture? plus its counters\n"
 		  "  hdcp                  HDCP: version negotiated, authenticated, the 1.4 and 2.2 keys and the\n"
@@ -6735,7 +6892,9 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 	} else if (!strcmp(cmd, "zoom")) {
 		return cmd_zoom(r, d, a1, a2);
 	} else if (!strcmp(cmd, "warp")) {
-		cmd_warp(r, cap, d, a1, conn);
+		return cmd_warp(r, cap, d, a1, a2, conn);
+	} else if (!strcmp(cmd, "source")) {
+		return cmd_source(r, d, a1);
 	} else if (!strcmp(cmd, "osd")) {
 		cmd_osd(r, d, a1, conn);
 	} else if (!strcmp(cmd, "audio")) {
@@ -6931,6 +7090,11 @@ static void evaluate(struct capture *cap, struct display *d,
 	 * bypass and asks again once a second; "warp claim" is refused until a
 	 * signal is back, and the state below shows the console meanwhile.
 	 */
+	/* a Wayland client needs no signal: signal events leave its claim alone (package G) */
+	if (warp.claimed && warp.client) {
+		retry_stop(rt);
+		return;
+	}
 	if (warp.claimed) {
 		retry_stop(rt);
 		sig = capture_signal(cap, &t);
@@ -6945,6 +7109,12 @@ static void evaluate(struct capture *cap, struct display *d,
 	}
 	/* "off" over the control socket: the console stays, whatever the signal does */
 	if (ctl.policy == POLICY_OFF) {
+		retry_stop(rt);
+		display_hide(d);
+		return;
+	}
+	/* "source client" and no client claimed yet: the console, until h713-warp has one to show */
+	if (ctl.source == SOURCE_CLIENT) {
 		retry_stop(rt);
 		display_hide(d);
 		return;
@@ -7178,7 +7348,7 @@ int main(int argc, char **argv)
 	struct audio au = { .settle_fd = -1, .tick_fd = -1 };
 	struct conf conf = { .path = CONF_FILE };
 	enum audio_policy apol;
-	struct pollfd fds[8];
+	struct pollfd fds[9];
 	const char *sock = CTL_SOCKET;
 	const char *startpreset = "standard";
 	int sfd, arg, rc = 0;
@@ -7259,6 +7429,7 @@ int main(int argc, char **argv)
 	ctl.state_path = conf.keep ? conf.state_path : NULL;
 	state_read(&ctl);
 	ctl.policy = start_policy(&ctl);
+	ctl.source = conf.source;
 	/* a client that hangs up mid-answer must not take the daemon with it (S12 F1) */
 	signal(SIGPIPE, SIG_IGN);
 
@@ -7518,7 +7689,8 @@ int main(int argc, char **argv)
 	/*
 	 * Six sources, three of which may be absent: the control socket when
 	 * its bind failed, and the two audio timers with -a none; then the
-	 * warp's and the overlay's connections, set in the loop. poll()
+	 * warp's and the overlay's connections, set in the loop, and a client's
+	 * flip fence while an overlay change waits for it (package G). poll()
 	 * ignores an entry with a negative fd and reports revents 0 for it, so
 	 * the table keeps its fixed indices instead of shifting.
 	 */
@@ -7542,6 +7714,9 @@ int main(int argc, char **argv)
 		fds[6].events = POLLIN;
 		fds[7].fd = osd.peer;	/* only while h713-osd has claimed */
 		fds[7].events = POLLIN;
+		/* an overlay change waiting for a client's flip (M3 7) */
+		fds[8].fd = osd.queued && warp.client ? warp.flip : -1;
+		fds[8].events = POLLIN;
 		{
 			static struct timespec last_ret;
 			struct timespec now;
@@ -7619,6 +7794,8 @@ int main(int argc, char **argv)
 		}
 		if (fds[7].fd >= 0 && fds[7].revents)
 			LOOP_TIMED("an overlay line", osd_serve(&d));
+		if (fds[8].fd >= 0 && fds[8].revents)
+			LOOP_TIMED("the overlay after a client's flip", osd_settle(&d));
 		if (fds[3].revents & POLLIN) {
 			struct timespec t0, t1, t2;
 			bool again;
