@@ -22,8 +22,12 @@ struct view {
 #define D_NOTE		(1u << 21)
 #define D_ALL		(1u << 30)
 
-/* draw what `dirty` names into the canvas; box = x, y, w, h of what was touched (the union) */
-void ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[4]);
+#define MAXBOX 8
+
+/* draw what `dirty` names into the canvas; box[i] = x, y, w, h of what was touched, as separate rectangles - a row and the
+ * note at the foot are two small ones, not the big one around both (what h713-osd puts through a keystone is paid for by
+ * the pixel); returns how many */
+int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[][4]);
 
 int visible_rows(const struct area *a);
 struct row *visible_row(struct area *a, int i);

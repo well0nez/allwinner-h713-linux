@@ -401,24 +401,28 @@ int main(int argc, char **argv)
 	dirty = D_ALL;
 	for (;;) {
 		bool changed = false;
-		int k, box[4];
+		int k, box[MAXBOX][4];
 
 		rows_tick(&changed);
 		if (changed)
 			dirty |= D_AREAS;
 		if (dirty) {
 			double t0 = now_ms(), t1;
+			int pieces = ui_draw(&canvas, &v, dirty, box), shown = 1;
 
-			ui_draw(&canvas, &v, dirty, box);
 			t1 = now_ms();
 			dirty = 0;
-			if (!test) {
-				int shown = page_show(box);
+			if (!test)
+				for (int i = 0; i < pieces && shown >= 0; i++) {
+					int s = page_show(box[i]);
 
-				if (shown < 0) {
-					fprintf(stderr, "h713-settings: h713-osd does not answer -- closing\n");
-					break;
+					shown = s < 0 ? s : shown && s;
 				}
+			if (shown < 0) {
+				fprintf(stderr, "h713-settings: h713-osd does not answer -- closing\n");
+				break;
+			}
+			if (!test) {
 				if (!shown && !unseen_since)
 					unseen_since = now_ms();
 				else if (shown)
@@ -430,7 +434,8 @@ int main(int argc, char **argv)
 
 				clock_gettime(CLOCK_REALTIME, &rt);
 				done = rt.tv_sec * 1e3 + rt.tv_nsec / 1e6;
-				fprintf(stderr, "h713-settings: drawn %.1f ms (%dx%d px), shown %.1f ms", t1 - t0, box[2], box[3], now_ms() - t1);
+				fprintf(stderr, "h713-settings: drawn %.1f ms (%d pieces, %d px high), shown %.1f ms", t1 - t0, pieces,
+					pieces ? box[pieces - 1][3] : 0, now_ms() - t1);
 				if (key > 0 && done - key < 10000)	/* the key's own stamp to h713-osd's answer: the flip is up to a vsync later */
 					fprintf(stderr, ", key to answer %.1f ms", done - key);
 				fprintf(stderr, "\n");

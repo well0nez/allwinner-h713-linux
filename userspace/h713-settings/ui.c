@@ -13,7 +13,8 @@
 
 static struct osd_canvas *cv;
 static double U, XOFF;			/* panel pixels per design pixel; the left margin of a panel wider than 16:9 */
-static int bx0, by0, bx1, by1;		/* what this call touched, in panel pixels */
+static int bx0, by0, bx1, by1;		/* what this piece touched, in panel pixels */
+static int nbox, rbox[MAXBOX][4];	/* the pieces so far, x y w h */
 
 #define BRIGHT	0xffffffu
 #define PILL	0x0e1110u
@@ -110,6 +111,37 @@ static void text(double x, double y, double size, float a, const char *s, int al
 
 	osd_text(cv, s, (align ? x - w : x) * U + XOFF, y * U, size * U, BRIGHT, a, 0);
 	touch(align ? x - w - 2 : x - 2, y - size, align ? x + 2 : x + w + 2, y + size * 0.4);
+}
+
+/* the piece drawn so far is one rectangle to show; it joins one that lies within 24 rows of it (the pill of a row reaches
+ * past the pitch), else it stands alone */
+static void seal(void)
+{
+	int x0 = bx0, y0 = by0, x1 = bx1, y1 = by1;
+
+	if (x1 <= x0 || y1 <= y0)
+		return;
+	bx0 = cv->w, by0 = cv->h, bx1 = by1 = 0;
+	for (int i = 0; i < nbox; i++) {
+		int *r = rbox[i];
+
+		if (y0 <= r[1] + r[3] + 24 && y1 >= r[1] - 24) {
+			int nx0 = x0 < r[0] ? x0 : r[0], ny0 = y0 < r[1] ? y0 : r[1];
+			int nx1 = x1 > r[0] + r[2] ? x1 : r[0] + r[2], ny1 = y1 > r[1] + r[3] ? y1 : r[1] + r[3];
+
+			r[0] = nx0, r[1] = ny0, r[2] = nx1 - nx0, r[3] = ny1 - ny0;
+			return;
+		}
+	}
+	if (nbox == MAXBOX) {		/* more pieces than places: into the last one */
+		int *r = rbox[MAXBOX - 1], nx1 = x1 > r[0] + r[2] ? x1 : r[0] + r[2], ny1 = y1 > r[1] + r[3] ? y1 : r[1] + r[3];
+
+		r[0] = x0 < r[0] ? x0 : r[0], r[1] = y0 < r[1] ? y0 : r[1];
+		r[2] = nx1 - r[0], r[3] = ny1 - r[1];
+		return;
+	}
+	rbox[nbox][0] = x0, rbox[nbox][1] = y0, rbox[nbox][2] = x1 - x0, rbox[nbox][3] = y1 - y0;
+	nbox++;
 }
 
 int visible_rows(const struct area *a)
@@ -375,7 +407,7 @@ static void draw_corner_hint(const struct view *v)
 	     "Arrows move it    OK next corner    Back done", 0);
 }
 
-void ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[4])
+int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[][4])
 {
 	struct area *a = &areas[v->area];
 	int n = visible_rows(a);
@@ -384,41 +416,50 @@ void ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box
 	U = c->h / 1080.0;
 	XOFF = (c->w - 1920 * U) / 2;
 	bx0 = c->w, by0 = c->h, bx1 = by1 = 0;
+	nbox = 0;
 	if (v->f == F_CORNERS) {
 		/* nothing of the page over the calibration picture: only the hint */
 		if (dirty & D_ALL)
 			clear_box(0, 0, 1920, 1080, 0);
 		draw_corner_hint(v);
+		seal();
 	} else {
 		if (dirty & D_ALL)
 			clear_box(0, 0, 1920, 1080, BACKDROP);
+		seal();
 		if (dirty & (D_ALL | D_AREAS))
-			for (int i = 0; i < nareas; i++)
+			for (int i = 0; i < nareas; i++) {
 				draw_area(v, i);
+				seal();
+			}
 		if (v->f == F_CHOICE) {
 			struct row *r = visible_row(a, v->row);
 
 			if (dirty & D_ALL) {
 				clear_box(690, 70, 1830, 140, BACKDROP);
 				text(752, 120, 26, 0.7f, r->label, 0);	/* which row these options are for */
+				seal();
 			}
 			/* the highlighted one last: its pill reaches 5 px into the room of its neighbours */
 			for (int pass = 0; pass < 2; pass++)
 				for (int k = 0; k < r->n; k++)
-					if ((k == v->choice) == pass && (dirty & (D_ALL | D_AREAS | D_ROW(k))))
+					if ((k == v->choice) == pass && (dirty & (D_ALL | D_AREAS | D_ROW(k)))) {
 						draw_option(v, r, k);
+						seal();
+					}
 		} else {
 			for (int pass = 0; pass < 2; pass++)
 				for (int k = 0; k < n; k++)
-					if ((v->f != F_AREAS && k == v->row) == pass && (dirty & (D_ALL | D_AREAS | D_ROW(k))))
+					if ((v->f != F_AREAS && k == v->row) == pass && (dirty & (D_ALL | D_AREAS | D_ROW(k)))) {
 						draw_row(v, visible_row(a, k), k);
+						seal();
+					}
 		}
-		if (dirty & (D_ALL | D_NOTE | D_AREAS))
+		if (dirty & (D_ALL | D_NOTE | D_AREAS)) {
 			draw_note(v, visible_row(a, v->row));
+			seal();
+		}
 	}
-	if (bx1 <= bx0 || by1 <= by0) {
-		box[0] = box[1] = box[2] = box[3] = 0;
-		return;
-	}
-	box[0] = bx0, box[1] = by0, box[2] = bx1 - bx0, box[3] = by1 - by0;
+	memcpy(box, rbox, sizeof(int) * 4 * (size_t)nbox);
+	return nbox;
 }

@@ -846,8 +846,24 @@ class Device(Base):
         self.assertGreaterEqual(len(names), 3)                    # the whole page, the rows after OK, the row after Right
         self.assertEqual(names[0], "0001.pam")
         err = b.proc.stderr.read()
-        self.assertRegex(err, r"drawn [\d.]+ ms \(640x360 px\), shown [\d.]+ ms\n")                 # the first, whole page: no key
-        self.assertRegex(err, r"drawn [\d.]+ ms \(\d+x\d+ px\), shown [\d.]+ ms, key to answer [\d.]+ ms")
+        self.assertRegex(err, r"drawn [\d.]+ ms \(1 pieces, 360 px high\), shown [\d.]+ ms\n")      # the first, whole page: no key
+        self.assertRegex(err, r"drawn [\d.]+ ms \(\d+ pieces, \d+ px high\), shown [\d.]+ ms, key to answer [\d.]+ ms")
+
+    def test_a_move_shows_the_rows_and_the_note_apart(self):
+        b = self.box()
+        b.start_device("Picture")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(OK)                                              # into the rows
+        time.sleep(0.5)
+        n = len(b.osd.log)
+        b.press(DOWN)                                            # a move: two rows, and the note at the foot
+        self.assertTrue(wait_for(lambda: len(b.osd.log) >= n + 2, 5))
+        shows = [l.split() for l in b.osd.log[n:] if l.startswith("page show")]
+        self.assertEqual(len(shows), 2, b.osd.log[n:])
+        heights = sorted(int(s[5]) for s in shows)
+        self.assertTrue(heights[1] < 360 * 0.4, shows)           # neither is the big rectangle around both
+        b.press(HOME)
+        b.proc.wait(timeout=5)
 
     def test_a_key_keeps_it_open(self):
         b = self.box().start_device("Sound", idle=2)
