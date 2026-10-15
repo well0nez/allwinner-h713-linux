@@ -86,7 +86,7 @@ MODROOT="$PROJECT_ROOT/mainline/build/modroot.GUT-bad2f16b"
 H713_TV_SRC="$PROJECT_ROOT/userspace/h713-tv"
 H713_TV_BIN="$H713_TV_SRC/h713-tv.aarch64-linux-gnu"
 MESA_TAR="$PROJECT_ROOT/mainline/build/out/mesa-panfrost-25.0.7.tar"   # rootfs/mesa/build-mesa.sh
-LIBVA_TAR="$PROJECT_ROOT/mainline/build/out/libva-v4l2-request-1.2.tar" # rootfs/libva/build-libva.sh; laid in by profile media only
+LIBVA_TAR="$PROJECT_ROOT/mainline/build/out/libva-v4l2-request-1.2.tar" # rootfs/libva/build-libva.sh; laid in by profiles media and desktop
 H713_PQ_SRC="$PROJECT_ROOT/userspace/h713-pq"
 
 usage() {

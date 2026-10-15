@@ -1,6 +1,6 @@
 # `rootfs/libva/` - the VA-API driver for the hardware decoders
 
-`build-libva.sh` cross-builds one module, `usr/local/lib/dri/v4l2_request_drv_video.so` (about 140 KiB, links libc only), the
+`build-libva.sh` cross-builds one module, `usr/local/lib/dri/v4l2_request_drv_video.so` (about 150 KiB, links libc only), the
 VA-API driver that lets stock ffmpeg, mpv, GStreamer `va*dec` and Kodi decode on the SoC: H.264, HEVC, MPEG-2, VP8, VP9 on the
 video engine (cedrus) and AV1 on its own core (hantro). The decoders themselves are kernel drivers; this module is the part
 that sits between libva and their V4L2 stateless interface.
