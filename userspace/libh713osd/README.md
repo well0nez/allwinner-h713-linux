@@ -11,7 +11,7 @@ osd.h          the interface: osd_canvas, osd_style (place, look, scale), osd_it
 osd.c          the drawing
 text.c         text: osd_font_open, osd_text, osd_text_width (FreeType)
 osd-mockup.c   a host tool: every place, look and case as one PAM picture, to lay over photos
-test-text.c    the host test of the text (`make test`)
+test-text.c    the host test of the text (`make test`), test-menu.c the host test of the launcher's drawing
 ```
 
 ## How it draws
@@ -38,6 +38,25 @@ behind the strip, the owner's preference - and `OSD_BARE` - no panel, a soft dar
 legible on a bright picture. A square card in the middle was tried and rejected on 11.10.2026 ("rounded backgrounds
 that are completely rectangular do not work"). Places: `OSD_BOTTOM` (centred above the lower edge, where the stock
 firmware shows its volume), `OSD_TOP_RIGHT`, `OSD_CENTER` (the same strip in the middle).
+
+## The menu and the launcher
+
+Package H of the media side project (`arbeit/medien`, the launcher of the Kodi image) and package S (settings) draw menus
+in the overlays' look, so the library has the pieces, in "1080-line units" (the mock-up's numbers, scaled by canvas
+height / 1080):
+
+| Function | What it draws |
+|---|---|
+| `osd_icon_by_name()`, `enum osd_icon` | the Strichsymbole of the mock-up: `hdmi`, `film`, `globe`, `desk`, `sliders`, `power` (48-unit boxes, round-capped strokes, the mock-up's paths; the globe's meridians are Beziers as chains of segments) |
+| `osd_draw_row()` | one row: a symbol, a label, and - when selected - the pill (fill 72 % and a white outline) around them; everything scales with the pill's height; the label is clipped to the pill |
+| `osd_draw_scrim()` | the dark gradient on the left edge (70 % at the edge, 25 % at 45 % of the column, none at 700 units); it *replaces* the pixels of a rectangle |
+| `osd_draw_hint()` | a dim hint line, the arrows for up and down drawn as shapes (the face has no U+25B2) |
+| `osd_launcher_bands()`, `osd_launcher_draw()` | the launcher "C": the column cut into **bands** (header, one per row, foot) that tile it top to bottom; `osd_launcher_draw(c, l, band)` repaints one band (scrim first, then its content), so moving the selection repaints two |
+
+The launcher is the column only: the picture stays visible to its right (`osd-mockup` draws the states of the mock-up as
+`launcher-*.pam`). The scrim is 700 units wide, not the mock-up's 1100: the volume strip starts at 690 and must never meet
+it. `test-menu` checks the invariant h713-osd's incremental redraw lives on - the bands tile the column, a repainted band
+is bit for bit what a full draw gives, a move of the selection changes two bands and no other.
 
 ## Text
 

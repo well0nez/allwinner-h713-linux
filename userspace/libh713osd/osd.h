@@ -70,6 +70,64 @@ void osd_clear_box(struct osd_canvas *c, const int box[4]);
 void osd_draw(struct osd_canvas *c, const struct osd_style *s, const struct osd_item *it, int box[4]);
 
 /*
+ * The menu (osd.c): the pieces of the launcher on the left edge - Strichsymbole, a row, a scrim and a hint line -
+ * drawn in the look of the overlays (pill, white lines, bright and dim). Geometry is in "1080-line units": the
+ * mock-up's numbers, scaled by canvas height / 1080, so 720p and 1080p get the same layout. Package H's launcher and
+ * package S's settings are built from these; text needs osd_font_open() first (below).
+ */
+enum osd_icon { OSD_ICON_HDMI, OSD_ICON_FILM, OSD_ICON_GLOBE, OSD_ICON_DESK, OSD_ICON_SLIDERS, OSD_ICON_POWER, OSD_ICONS };
+
+/* the symbol's name in a launcher entry file ("hdmi", "film", "globe", "desk", "sliders", "power"); -1 if unknown */
+int osd_icon_by_name(const char *name);
+
+/* One row: a stadium (the pill) at x, y with width w and height h - the launcher's is 520 x 104 at x 118 - with a
+ * symbol at its left, the label after it, both bright inside a pill that is drawn (fill and a white outline) when
+ * selected, both dim and with no pill when not. Everything inside scales with h (the symbol is 0.69 h, the label 0.37 h).
+ * The label is clipped to the pill (no ellipsis). Mixed over what the canvas holds; box = the touched rectangle
+ * (the pill with a margin) when not NULL. Not reentrant. */
+struct osd_row {
+	int icon;		/* enum osd_icon */
+	const char *label;	/* UTF-8; needs osd_font_open() */
+	int selected;
+	double x, y, w, h;	/* the pill, in 1080-line units */
+};
+void osd_draw_row(struct osd_canvas *c, const struct osd_row *r, int box[4]);
+
+/* The launcher's scrim: black, 70 % at the left edge, 25 % at 45 % of 700 units, none from 700 on; REPLACES the
+ * pixels of box (x, y, w, h, clipped to the canvas), so it is also how a band of the column is cleared before its
+ * row is drawn again. */
+void osd_draw_scrim(struct osd_canvas *c, const int box[4]);
+
+/* A dim hint line, 26 units high, its baseline at y (1080-line units, x too): with arrows != 0 the marks for up and
+ * down (drawn as shapes, the face has no such glyphs) come first and the text after them. */
+void osd_draw_hint(struct osd_canvas *c, double x, double baseline, const char *text, int arrows);
+
+/*
+ * The launcher: a column on the left edge (the scrim, 700 units wide) with a header line, up to six rows and a hint line,
+ * the mock-up's "Launcher C". It is cut into BANDS - the header, one per row, the foot - that tile the column from top
+ * to bottom, so a caller can repaint only the bands that changed (a move of the selection changes two) and copy or
+ * pre-distort only those. Band 0 is the header, band 1 + i row i, band n + 1 the foot.
+ */
+#define OSD_LAUNCHER_ROWS 6
+
+struct osd_launcher {
+	const char *head;	/* the header line, 30 units, dim: "20:47 \u00b7 HDMI 1080p60" (UTF-8) */
+	int n, sel;		/* the rows, the chosen one */
+	struct {
+		int icon;		/* enum osd_icon */
+		const char *label;
+		int end;		/* 1: in the group at the foot (Standby): bottom-anchored, apart from the others */
+	} row[OSD_LAUNCHER_ROWS];	/* the rows with end = 0 first, then those with end = 1 */
+};
+
+/* the rectangles (x, y, w, h in canvas pixels) of the bands; returns their count, n + 2 (0 if n < 0) */
+int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l, int box[][4]);
+
+/* repaint one band: the scrim REPLACES its pixels, then its content is drawn over it. All of them, in any order,
+ * make the whole launcher; the hint's words are fixed ("select, OK open, BACK close"). Needs osd_font_open(). */
+void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int band);
+
+/*
  * Text (text.c, FreeType - link libfreetype; h713-osd links it statically). The one part of the library that reads
  * a file: the font, opened once by the caller. The package's face on the image is Quicksand Medium
  * (Debian fonts-quicksand, SIL OFL 1.1) at OSD_FONT. A string is UTF-8, drawn left to right on one baseline in one
