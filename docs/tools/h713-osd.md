@@ -56,6 +56,11 @@ answers after `osd show`: `ok waiting` means h713-tv has no picture at the momen
 has the panel, a source changes its mode). Popups and the mute badge are not drawn while a page is open; the page covers the
 panel, and a launcher does not open over it. `page` in `ctl status` says open or closed. Host tests: `tests/test_page.py`.
 
+The new rows are kept as up to four ranges (one that lies within 24 rows of another joins it), so a row and the note at the foot are
+two small puts, not the rectangle around both; each is written a half row wider than it tiles, because a panel pixel reads two source
+rows. A whole page that was shown is owed to the **other** buffer too: it is put right after the answer, not at the next key.
+Measured on the host (`arbeit/medien/S-einstellungen/laeufe/bench-opak-host.txt`): the whole panel through a keystone ~65 ms, a row ~11 ms.
+
 ## /etc/h713/osd.conf
 
 Read again when it changes, no restart:

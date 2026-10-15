@@ -742,6 +742,17 @@ static int page_put(int b, bool skew)
 	return area;
 }
 
+/* more than a third of the panel's rows still to be put into the buffer the next refresh draws into: after a whole page was
+ * shown (the buffer on the panel got it), the other one owes it too - and would take it at the next key, a key's worth late */
+static bool page_owes_much(void)
+{
+	int rows = 0;
+
+	for (int i = 0; i < PAGE_RANGES; i++)
+		rows += page.dirty[tv.next][i][1] > page.dirty[tv.next][i][0] ? page.dirty[tv.next][i][1] - page.dirty[tv.next][i][0] : 0;
+	return page.open && rows * 3 > canvas.h;
+}
+
 /* the page's pixels out of buffer b: the whole buffer (through the matrix they are everywhere), and all of it again to put */
 static void page_wipe(int b)
 {
@@ -1366,6 +1377,8 @@ static int run(void)
 		if (again)
 			refresh();
 		page_answer();
+		if (again && page_owes_much())
+			refresh();	/* the page has its answer: the other buffer takes its share now, not at the next key */
 		arm(tfd);
 	}
 	if (page.fd >= 0)

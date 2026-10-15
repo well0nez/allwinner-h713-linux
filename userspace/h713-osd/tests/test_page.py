@@ -86,6 +86,19 @@ class PageTest(PageBase):
         self.assertEqual(self.shown(), bytes(c.map))
         self.assertIn("osd picture", self.tv.lines)
 
+    def test_the_other_buffer_has_the_page_too_without_a_second_show(self):
+        """a whole page is put into the buffer on the panel and, right after the answer, into the other one: the next key finds
+        both current (it would otherwise pay for the whole page again)"""
+        self.start()
+        c = self.page()
+        c.paint(0, H)
+        c.show(0, H)
+        time.sleep(0.4)
+        both = [os.pread(fd, PITCH * H, 0) for fd in self.tv.bufs]
+        self.assertEqual(both[0], bytes(c.map))
+        self.assertEqual(both[1], bytes(c.map))
+        self.assertEqual(self.tv.lines.count("osd show 0") + self.tv.lines.count("osd show 1"), 2)
+
     def test_a_partial_show_is_what_a_fresh_page_shows(self):
         self.start()
         c = self.page()
