@@ -71,7 +71,8 @@ master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/P
   new policy forbids it (a ring claim under `client`, a client claim under `hdmi`), and the warp claims again at
   once - the answer to a claim names the policy (`... source auto`). A claim the new policy allows stands, and the
   `ok` of the next frame names the policy (`ok source auto`): `hdmi` <-> `auto` no longer takes the ring off the
-  panel. Under `auto` a client goes before the ring. Under `client` without a client the warp asks `source` alone
+  panel. A client that waits behind a ring claim does not rely on that frame - a stalled ring sends none - the warp
+  asks h713-tv's `source` when the client comes and once a second while it waits. Under `auto` a client goes before the ring. Under `client` without a client the warp asks `source` alone
   once a second instead of starting the capture for a ring claim that would be refused (M4, 15.10.2026).
 - **A buffer's life:** pending when committed (a newer commit releases an untaken one at once), taken when its
   dma-buf is readable and the previous frame is on the panel (h713-tv's flip fence, sent with the `ok`), the frame

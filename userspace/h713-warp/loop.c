@@ -257,6 +257,13 @@ void warp_apply(struct runtime *r)
 		server_redraw(r->srv);
 		return;
 	}
+	/*
+	 * A client is shown while the ring stands and h713-tv's last word was not "auto": ask it (M4 A1). A policy change
+	 * reaches the warp with the "ok" of the next ring frame - and a ring that stalls sends none (HY310, 15.10.2026 after
+	 * a standby: the ring claimed, 0 frames, Kodi waited five minutes behind it). main.c asks again once a second.
+	 */
+	if (r->state == WARP_ON && r->src == SRC_RING && client && r->peer.tv_source != TV_AUTO)
+		peer_source(&r->peer);
 	if (r->state == WARP_ON && client && r->peer.tv_source == TV_AUTO)
 		warp_disengage(r, "a Wayland client came, and \"source auto\" puts it before the ring");
 	if (r->state != WARP_ON && client && engage_client(r))

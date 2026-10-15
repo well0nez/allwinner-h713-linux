@@ -135,6 +135,7 @@ int main(int argc, char **argv)
 	const char *sock = WARP_SOCKET, *tv = TV_SOCKET, *video = NULL, *wl = WAYLAND_SOCKET;
 	struct pollfd fds[6];
 	int sfd, arg, rc = 0;
+	double asked;			/* the last time a waiting client asked h713-tv's source (M4 A1) */
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	memset(&r, 0, sizeof(r));
@@ -209,10 +210,13 @@ int main(int argc, char **argv)
 	r.check.slot = -1;
 	r.source.held = -1;
 	r.mark_corner = -1;		/* "test mask" marks no corner until one is named */
+	asked = 0;
 	for (;;) {
 		bool live = r.state == WARP_ON;
 		bool want = r.on || server_shown(r.srv);	/* something to claim the panel for */
 		int timeout = -1;
+		/* a client waits behind a ring claim: h713-tv's source is asked once a second (M4 A1, loop.c warp_apply) */
+		bool waiting = live && r.src == SRC_RING && server_shown(r.srv) && r.peer.tv_source != TV_AUTO;
 
 		server_flush(r.srv);
 		fds[5].fd = server_fd(r.srv);
@@ -232,6 +236,8 @@ int main(int argc, char **argv)
 		if (live && r.pattern != PATTERN_NONE)
 			timeout = PATTERN_MS;
 		else if (!live && want)
+			timeout = RETRY_MS;
+		if (waiting && (timeout < 0 || timeout > RETRY_MS))
 			timeout = RETRY_MS;
 		if (r.check.slot >= 0)
 			timeout = 2;		/* the self-check's second draw is due */
@@ -278,6 +284,11 @@ int main(int argc, char **argv)
 		} else if (live && r.pattern != PATTERN_NONE && !fds[5].revents) {
 			warp_pump(&r);
 		} else if (!live && want && !fds[5].revents) {
+			warp_apply(&r);
+		}
+		if (waiting && r.state == WARP_ON && r.src == SRC_RING && server_shown(r.srv) &&
+		    r.peer.tv_source != TV_AUTO && now_s() - asked >= RETRY_MS / 1e3) {
+			asked = now_s();
 			warp_apply(&r);
 		}
 		warp_check_tick(&r);
