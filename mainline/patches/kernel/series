@@ -668,3 +668,8 @@
 #   runtime resume before the stop. On the HY310: three forced errors and about 2000 natural ones under Kodi 4K, no hang -
 #   a net, not a cure (0313 removes the errors).
 0312-mmc-sunxi-a-failed-multi-block-read-re-initialises-the-controller-before-the-stop.patch
+#   0313 (package VE-stabil, 15.10.2026, measured): the eMMC host uses the card read threshold at HS200/HS400, so a read block
+#   starts only when the FIFO has room for it; without it the controller holds the card clock mid-block when the DMA falls behind
+#   under 4K playback, and the reads saw data CRC errors only then. On the HY310: 0 errors on 30946 MiB of Kodi 4K reads against
+#   1899 on 19049 MiB, FIFO full in 0.002 % of the samples instead of 2.9 %.
+0313-mmc-sunxi-the-emmc-host-starts-a-read-block-only-when-the-fifo-has-room-for-it.patch
