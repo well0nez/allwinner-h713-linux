@@ -122,6 +122,8 @@ void input_close(void)
  * recognised and has no meaning on the page. */
 static int map(int code, int value)
 {
+	if (value == 0)
+		return 0;		/* a release is no key (on the box a press and its release moved an arrow twice) */
 	switch (code) {			/* the arrows go on repeating: a held key moves on */
 	case KEY_UP:
 		return KE_UP;

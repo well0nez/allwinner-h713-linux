@@ -761,6 +761,19 @@ class Device(Base):
         self.assertEqual(b.proc.wait(timeout=5), 0)
         self.assertFalse(b.tv.mute)
 
+    def test_an_arrow_press_and_its_release_is_one_step(self):
+        # found on the box 15.10.: the real remote sends value 1 then value 0, and the release moved the arrow a second time
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(OK)
+        b.press(RIGHT, value=1)
+        b.press(RIGHT, value=0)
+        self.assertTrue(wait_for(lambda: b.tv.volume == 95, 5))
+        time.sleep(0.5)
+        self.assertEqual(b.tv.volume, 95)                       # not 100
+        b.press(HOME)
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+
     def test_power_is_handed_to_h713_power(self):
         b = self.box().start_device("Sound")
         wait_for(lambda: len(b.osd.log) > 1)
