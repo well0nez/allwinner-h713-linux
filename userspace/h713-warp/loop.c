@@ -83,6 +83,53 @@ static void note(struct runtime *r, const char *why)
 {
 	snprintf(r->why, sizeof(r->why), "%s", why);
 }
+
+/* The render node closes when nothing needs it: no claim, and no client buffer imported (package G). The bypass
+ * without a client keeps the shipped behaviour: the node is not even open. */
+void warp_gl_idle(struct runtime *r)
+{
+	if (r->state != WARP_ON && !server_busy(r->srv) && gl_is_open())
+		gl_close();
+}
+
+static void on_common(struct runtime *r)
+{
+	r->state = WARP_ON;
+	r->source.held = -1;
+	r->check.slot = -1;
+	r->fails = 0;
+	r->frames = r->dropped = r->refused = 0;
+	r->f_mark = 0;
+	r->t_mark = r->t_start = now_s();
+	r->why[0] = '\0';
+}
+
+/* The panel for the Wayland client (package G, ENTWURF v3 section 5): no capture - the claim needs no signal and the
+ * capture ring stays closed (-11.9 MiB, G-M) - only the render node and h713-tv's three targets. */
+static bool engage_client(struct runtime *r)
+{
+	char why[WARP_WHY];
+
+	if (gl_open(r->render_node, why, sizeof(why)) ||
+	    !peer_claim(&r->peer, SRC_CLIENT, why, sizeof(why)) ||
+	    !gl_targets(&r->peer, why, sizeof(why))) {
+		peer_release(&r->peer);
+		gl_targets_drop();
+		note(r, why);
+		warp_gl_idle(r);
+		return false;
+	}
+	r->src = SRC_CLIENT;
+	on_common(r);
+	gl_edge(r->on ? warp_edge_for(r) : 0);
+	info("warp            on: %s renders the Wayland client %ux%u NV12 onto the video plane%s", gl_renderer(),
+	     r->peer.width, r->peer.height, r->on ? "" : " (warp = off: no keystone)");
+	server_panel(r->srv, r->peer.width, r->peer.height);
+	server_engaged(r->srv, true);
+
+	return true;
+}
+
 bool warp_engage(struct runtime *r)
 {
 	char why[WARP_WHY];
@@ -113,7 +160,9 @@ bool warp_engage(struct runtime *r)
 	}
 	if (gl_open(r->render_node, why, sizeof(why)) ||
 	    (r->pattern == PATTERN_NONE && !gl_source(&r->source, why, sizeof(why)))) {
-		gl_close();
+		gl_source_drop();
+		if (!server_busy(r->srv))
+			gl_close();
 		if (r->pattern == PATTERN_NONE) {
 			r->refused_w = r->source.width;
 			r->refused_h = r->source.height;
@@ -125,24 +174,19 @@ bool warp_engage(struct runtime *r)
 		note(r, why);
 		return false;
 	}
-	if (!peer_claim(&r->peer, why, sizeof(why)) ||
+	if (!peer_claim(&r->peer, SRC_RING, why, sizeof(why)) ||
 	    !gl_targets(&r->peer, why, sizeof(why))) {
 		peer_release(&r->peer);
+		gl_targets_drop();
 		gl_source_drop();
-		gl_close();
+		warp_gl_idle(r);
 		source_stop(&r->source);
 		note(r, why);
 		return false;
 	}
 	gl_edge(warp_edge_for(r));
-	r->state = WARP_ON;
-	r->source.held = -1;
-	r->check.slot = -1;
-	r->fails = 0;
-	r->frames = r->dropped = r->refused = 0;
-	r->f_mark = 0;
-	r->t_mark = r->t_start = now_s();
-	r->why[0] = '\0';
+	r->src = SRC_RING;
+	on_common(r);
 	info("warp            on: %s renders %ux%u NV12 onto the video plane%s",
 	     gl_renderer(), r->peer.width, r->peer.height,
 	     r->pattern == PATTERN_NONE ? "" : ", test pattern");
@@ -152,14 +196,21 @@ bool warp_engage(struct runtime *r)
 
 void warp_disengage(struct runtime *r, const char *why)
 {
-	if (r->state == WARP_ON) {
+	bool was = r->state == WARP_ON;
+
+	if (was) {
+		if (r->src == SRC_CLIENT)
+			server_engaged(r->srv, false);
 		gl_source_drop();
 		source_stop(&r->source);
+		gl_targets_drop();
 		peer_release(&r->peer);
-		gl_close();
-		info("warp            off: %s", why);
 	}
 	r->state = r->on ? WARP_BYPASS : WARP_OFF;
+	if (was) {
+		warp_gl_idle(r);
+		info("warp            off: %s", why);
+	}
 	note(r, why);
 }
 
@@ -180,19 +231,36 @@ int warp_edge_for(struct runtime *r)
 void warp_apply(struct runtime *r)
 {
 	int eff[WARP_KEYS];
-	bool want;
+	bool want, client = server_shown(r->srv);
 
 	warp_effective(&r->conf, eff);
 	want = r->on && (r->pattern != PATTERN_NONE || !warp_identity(eff) ||
 			 r->conf.mode != MODE_FRONT);	/* a mirrored identity needs the GPU */
+
+	/*
+	 * A Wayland client (package G) is drawn whenever it is shown and h713-tv lets it: always through the GPU, even
+	 * at the identity (there is no other way onto the panel for it, M3 11). A keystone or pattern change only asks
+	 * for the picture again. A ring claim gives way to a client by itself only under "source auto"; under "hdmi"
+	 * h713-tv would refuse the client, and every switch would blink the wall.
+	 */
+	if (r->state == WARP_ON && r->src == SRC_CLIENT) {
+		gl_edge(r->on ? warp_edge_for(r) : 0);
+		server_redraw(r->srv);
+		return;
+	}
+	if (r->state == WARP_ON && client && r->peer.tv_source == TV_AUTO)
+		warp_disengage(r, "a Wayland client came, and \"source auto\" puts it before the ring");
+	if (r->state != WARP_ON && client && engage_client(r))
+		return;
 
 	if (!want) {
 		if (r->state == WARP_ON)
 			warp_disengage(r, r->on ? "the identity needs no GPU (bypass)"
 						: "ctl off");
 		r->state = r->on ? WARP_BYPASS : WARP_OFF;
-		note(r, r->on ? "the identity needs no GPU: h713-tv is on the ring (M10)"
-			      : "ctl off");
+		if (!client)	/* else the reason stays the client's: h713-tv's refusal */
+			note(r, r->on ? "the identity needs no GPU: h713-tv is on the ring (M10)"
+				      : "ctl off");
 		return;
 	}
 	if (r->state != WARP_ON)
@@ -355,8 +423,12 @@ bool warp_pump(struct runtime *r)
 	t1 = now_s();
 	if (tracing)
 		c3 = thread_us();
-	rc = peer_frame(&r->peer, target, fence, why, sizeof(why));
+	int flip;
+
+	rc = peer_frame(&r->peer, target, fence, &flip, why, sizeof(why));
 	t2 = now_s();
+	if (flip >= 0)
+		close(flip);	/* a client claim's flip fence: a test pattern does not need it */
 	if (tracing) {
 		const struct gl_cost *g = gl_last_cost();
 		double gpu_ms = -1;
@@ -415,6 +487,109 @@ bool warp_pump(struct runtime *r)
 	r->check.last_pump = now_s();
 
 	return true;
+}
+
+bool warp_client_live(const struct runtime *r)
+{
+	return r->state == WARP_ON && r->src == SRC_CLIENT;
+}
+
+/*
+ * The client's quad: the keystone as for the ring (with "warp = off" none, ENTWURF v3 D8), and a picture smaller
+ * than the panel in the middle at its own size (letterbox, M3 11) - the unit quad scaled first, so K * S.
+ */
+static void client_matrix(const struct runtime *r, const struct gl_image *im, float out[16])
+{
+	static const double id[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	const double *k = r->on && r->matrix_valid ? r->m : id;
+	double sx = (double)gl_image_width(im) / r->peer.width, sy = (double)gl_image_height(im) / r->peer.height;
+	int i;
+
+	sx = sx > 1 ? 1 : sx;
+	sy = sy > 1 ? 1 : sy;
+	for (i = 0; i < 16; i++)	/* column-major: S scales the first two columns */
+		out[i] = (float)(k[i] * (i < 4 ? sx : i < 8 ? sy : 1.0));
+}
+
+/* after h713-tv's answer: the target moves on a commit, stays on a busy; a broken link ends the claim */
+static int client_answer(struct runtime *r, int rc, double t0, const char *why)
+{
+	if (rc < 0) {
+		warp_disengage(r, why);
+		return -1;
+	}
+	if (rc == 0) {
+		r->target = (r->target + 1) % WARP_TARGETS;
+		account(r, t0);
+	} else {
+		r->dropped++;
+	}
+	return rc;
+}
+
+/* One client frame (wayland.c takes the buffer): draw, the render fence to h713-tv and a dup of it back to the
+ * server - the buffer is released when it signals (M3 3) - and h713-tv's flip fence, the client's clock (M3 4/5). */
+int warp_client_frame(struct runtime *r, const struct gl_image *im, int *render, int *flip)
+{
+	char why[WARP_WHY];
+	double t0 = now_s();
+	float m[16];
+	int fence, rc;
+
+	*render = *flip = -1;
+	if (!warp_client_live(r))
+		return -1;
+	client_matrix(r, im, m);
+	if (!gl_draw_client(r->target, im, m, why, sizeof(why))) {
+		if (++r->fails >= FAILS_MAX) {
+			warp_disengage(r, why);
+			return -1;
+		}
+		warn("warp            %s (%u of %d)", why, r->fails, FAILS_MAX);
+		return 2;
+	}
+	r->fails = 0;
+	fence = gl_fence();
+	*render = fence >= 0 ? dup(fence) : -1;
+	rc = peer_frame(&r->peer, r->target, fence, flip, why, sizeof(why));
+	if (fence >= 0)
+		close(fence);
+	return client_answer(r, rc, t0, why);
+}
+
+/* after "ok busy": the same target, drawn already, once more; render is the frame's render fence or -1 */
+int warp_client_resend(struct runtime *r, int render, int *flip)
+{
+	char why[WARP_WHY];
+	int rc;
+
+	*flip = -1;
+	if (!warp_client_live(r)) {
+		if (render >= 0)
+			close(render);
+		return -1;
+	}
+	rc = peer_frame(&r->peer, r->target, render, flip, why, sizeof(why));
+	if (render >= 0)
+		close(render);
+	return client_answer(r, rc, now_s(), why);
+}
+
+void warp_client_shown(struct runtime *r)
+{
+	if (r->state != WARP_ON || r->src != SRC_CLIENT)
+		warp_apply(r);
+}
+
+/* the client is gone for good (two seconds without a new one, wayland.c): the panel goes back, h713-tv shows
+ * what "source" says, and the ring's warp claims again if it is wanted */
+void warp_client_gone(struct runtime *r)
+{
+	if (warp_client_live(r)) {
+		warp_disengage(r, "the Wayland client is gone");
+		warp_apply(r);
+	}
+	warp_gl_idle(r);
 }
 
 /* The self-check's second half, from the main loop once the 12 ms are over:
@@ -523,6 +698,9 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 	else
 		text_add(&t, "panel           nothing claimed (%s)\n", r->peer.path);
 	text_add(&t, "renderer        %s\n", gl_renderer());
+	if (r->state == WARP_ON)
+		text_add(&t, "drawing         %s\n", r->src == SRC_CLIENT ? "the Wayland client" : "the capture ring");
+	server_status(r->srv, &t);
 	text_add(&t, "frames          %lu at %.1f fps, dropped %lu, commits %lu, busy %lu, link errors %lu\n",
 		 r->frames, r->fps, r->dropped, r->peer.commits, r->peer.busy,
 		 r->peer.errors);

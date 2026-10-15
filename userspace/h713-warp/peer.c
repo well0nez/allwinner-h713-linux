@@ -77,7 +77,7 @@ static void close_targets(struct peer *p)
  * talking must not stop this loop.
  */
 static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
-		     size_t n, int *fds, int want, int ms, char *why, size_t wn)
+		     size_t n, int *fds, int want, int need, int ms, char *why, size_t wn)
 {
 	char cbuf[CMSG_SPACE(sizeof(int) * WARP_TARGETS)];
 	struct cmsghdr *cm;
@@ -87,6 +87,7 @@ static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 	ssize_t got;
 	int i, k = 0;
 
+	reply[0] = '\0';
 	memset(&msg, 0, sizeof(msg));
 	memset(cbuf, 0, sizeof(cbuf));
 	io.iov_base = (void *)(size_t)line;
@@ -156,9 +157,9 @@ static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 				close(fd);	/* more than asked for: not ours */
 		}
 	}
-	if (k < want) {
+	if (k < need) {
 		snprintf(why, wn, "%s answered \"%s\" with %d of %d file descriptors",
-			 p->path, reply, k, want);
+			 p->path, reply, k, need);
 		while (k > 0)
 			close(fds[--k]);
 		return false;
@@ -168,11 +169,29 @@ static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 	return true;
 }
 
-bool peer_claim(struct peer *p, char *why, size_t n)
+/* h713-tv names its "source" with every answer to a claim (package G): "... source auto", "error source is hdmi ..." */
+static void tv_source(struct peer *p, const char *reply)
+{
+	const char *s = strstr(reply, "source ");
+	char w[8] = "";
+
+	if (s) {
+		s += 7;
+		if (!strncmp(s, "is ", 3))
+			s += 3;
+		sscanf(s, "%7[a-z]", w);
+	}
+	p->tv_source = !strcmp(w, "hdmi") ? TV_HDMI : !strcmp(w, "client") ? TV_CLIENT :
+		       !strcmp(w, "auto") ? TV_AUTO : TV_UNKNOWN;
+}
+
+bool peer_claim(struct peer *p, int src, char *why, size_t n)
 {
 	struct sockaddr_un addr;
 	char reply[WARP_LINE];
 	unsigned int w = 0, h = 0, pitch = 0, coff = 0;
+	/* the ring's line is the one every h713-tv knows; a client's is new (package G) */
+	const char *line = src == SRC_CLIENT ? "warp claim client\n" : "warp claim\n";
 
 	if (p->fd >= 0)
 		return true;
@@ -195,12 +214,14 @@ bool peer_claim(struct peer *p, char *why, size_t n)
 		p->fd = -1;
 		return false;
 	}
-	if (!exchange(p, "warp claim\n", -1, reply, sizeof(reply), p->target,
-		      WARP_TARGETS, CLAIM_MS, why, n)) {
+	if (!exchange(p, line, -1, reply, sizeof(reply), p->target,
+		      WARP_TARGETS, WARP_TARGETS, CLAIM_MS, why, n)) {
+		tv_source(p, reply);
 		close(p->fd);
 		p->fd = -1;
 		return false;
 	}
+	tv_source(p, reply);
 	if (strncmp(reply, "ok", 2) ||
 	    sscanf(reply, "ok %u %u %u nv12 %u", &w, &h, &pitch, &coff) != 4 || !w || !h ||
 	    pitch < w || coff < pitch * h) {
@@ -232,15 +253,21 @@ bool peer_claim(struct peer *p, char *why, size_t n)
  * signal to fall back to bypass. The fence fd is ours to close either way:
  * the kernel does not take ownership of an IN_FENCE_FD.
  */
-int peer_frame(struct peer *p, int index, int fence, char *why, size_t n)
+int peer_frame(struct peer *p, int index, int fence, int *flip, char *why, size_t n)
 {
 	char line[64], reply[WARP_LINE];
 
+	*flip = -1;
 	snprintf(line, sizeof(line), "warp frame %d\n", index);
-	if (!exchange(p, line, fence, reply, sizeof(reply), NULL, 0, FRAME_MS,
+	if (!exchange(p, line, fence, reply, sizeof(reply), flip, 1, 0, FRAME_MS,
 		      why, n)) {
 		p->errors++;
 		return -1;
+	}
+	if (strncmp(reply, "ok", 2) || strstr(reply, "busy")) {
+		if (*flip >= 0)
+			close(*flip);
+		*flip = -1;
 	}
 	if (strncmp(reply, "ok", 2)) {
 		snprintf(why, n, "h713-tv: %s", reply);
@@ -261,7 +288,7 @@ void peer_release(struct peer *p)
 	char reply[WARP_LINE], why[WARP_WHY];
 
 	if (p->fd >= 0) {
-		exchange(p, "warp release\n", -1, reply, sizeof(reply), NULL, 0,
+		exchange(p, "warp release\n", -1, reply, sizeof(reply), NULL, 0, 0,
 			 FRAME_MS, why, sizeof(why));
 		close(p->fd);
 	}

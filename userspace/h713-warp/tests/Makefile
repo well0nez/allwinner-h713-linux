@@ -26,17 +26,33 @@ HOST_LDLIBS   ?= $(shell pkg-config --libs egl glesv2 2>/dev/null || echo "-lEGL
 WARP           = ..
 GEOM           = ../../libh713geom
 
-all: test_gl
+all: test_wayland server_stub
 
 test_gl: test_gl.c $(WARP)/gl.c $(GEOM)/matrix.c $(WARP)/warp.h $(GEOM)/geom.h
 	$(HOST_CC) $(HOST_CPPFLAGS) $(CFLAGS) -I$(GEOM) $(LDFLAGS) -o $@ test_gl.c \
 	    $(WARP)/gl.c $(GEOM)/matrix.c $(HOST_LDLIBS) -lm
 
+# The Wayland server (package G) against a client: wayland.c with the GPU and the loop stubbed. Needs only
+# libwayland-dev and the protocol code the parent Makefile generates into ../gen ("make test" there).
+WL_CFLAGS = -I$(WARP) -I$(WARP)/gen -I$(GEOM) -I/usr/include/drm -I/usr/include/libdrm
+PROTO_C   = $(wildcard $(WARP)/gen/*-protocol.c)
+
+server_stub: server_stub.c $(WARP)/wayland.c $(WARP)/warp.h $(PROTO_C)
+	$(HOST_CC) $(CFLAGS) $(WL_CFLAGS) $(LDFLAGS) -o $@ server_stub.c $(WARP)/wayland.c $(PROTO_C) -lwayland-server
+
+test_wayland: test_wayland.c $(PROTO_C)
+	$(HOST_CC) $(CFLAGS) $(WL_CFLAGS) $(LDFLAGS) -o $@ test_wayland.c $(PROTO_C) -lwayland-client
+
+# T1a/T1b need EGL/GLES development files and a GLES driver: neither is in the build container, so they are
+# built only where pkg-config finds egl (as before package G, they were not run in the container)
 run: all
-	@./test_gl; rc=$$?; test $$rc -ne 77 || echo "     (T1a/T1b skipped)"; \
-	 test $$rc -eq 0 -o $$rc -eq 77
+	@./test_wayland ./server_stub
+	@if pkg-config --exists egl glesv2 2>/dev/null || [ -n "$(HOST_LDLIBS_GL)" ]; then \
+	   $(MAKE) test_gl && { ./test_gl; rc=$$?; test $$rc -ne 77 || echo "     (T1a/T1b skipped)"; \
+	   test $$rc -eq 0 -o $$rc -eq 77; }; \
+	 else echo "     (T1a/T1b not built: no EGL/GLES development files here)"; fi
 
 clean:
-	rm -f test_gl
+	rm -f test_gl test_wayland server_stub
 
 .PHONY: all run clean

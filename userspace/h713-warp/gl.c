@@ -178,6 +178,20 @@ const char *const gl_pattern_shader =
 	"  col = mix(col, 1.0, corner);\n"
 	"  gl_FragColor = vec4(vec3((16.0 + 219.0*col)/255.0), 1.0); }\n";
 
+/* The Wayland client (package G): RGB in, the panel's NV12 out, and the colour maths INSIDE the keystone passes - T3's
+ * variant B, 4.16 ms a frame for an AFBC source against 7.0 for a pass of its own (AU-47). BT.709 limited range: Y =
+ * 16/255 + (219/255) (0.2126 R + 0.7152 G + 0.0722 B), Cb/Cr = 128/255 + (224/255) (B - Y') / 1.8556 and (R - Y') /
+ * 1.5748. The chroma pass draws at half size, and the linear sampler averages the 2 x 2 RGB pixels under each output
+ * pixel. AR30 is read normalised like any other format; alpha is ignored (premultiplied over black). */
+const char *const gl_rgb_luma_shader =
+	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y;\n"
+	"void main() { gl_FragColor = vec4(dot(texture2D(u_y, v_uv).rgb, vec3(0.1825859, 0.6142306, 0.0620071))\n"
+	"  + 0.0627451, 0.0, 0.0, 1.0); }\n";
+const char *const gl_rgb_chroma_shader =
+	"precision highp float; varying vec2 v_uv; uniform sampler2D u_y;\n"
+	"void main() { vec3 c = texture2D(u_y, v_uv).rgb; float y = dot(c, vec3(0.2126, 0.7152, 0.0722));\n"
+	"  gl_FragColor = vec4((c.b - y) * 0.4733948 + 0.5019608, (c.r - y) * 0.5578050 + 0.5019608, 0.0, 1.0); }\n";
+
 static const char *const NEED[] = {
 	"EGL_EXT_image_dma_buf_import", "EGL_KHR_surfaceless_context",
 	"EGL_ANDROID_native_fence_sync", "GL_OES_EGL_image",
@@ -198,6 +212,9 @@ static EGLDisplay dpy = EGL_NO_DISPLAY;
 static EGLContext ctx = EGL_NO_CONTEXT;
 static char renderer[128] = "not opened";
 static GLuint prog_warp, prog_pattern, prog_luma, prog_chroma, prog_edge_y, prog_edge_c;
+static GLuint prog_rgb_y, prog_rgb_c;	/* the Wayland client's two passes */
+static bool gl_up;			/* gl_open() succeeded and gl_close() has not run since */
+static unsigned int gl_gen = 1;		/* counts gl_close(): an image of an older one is gone */
 
 /*
  * What a pass sets on its program, and what it set last time. Mesa's
@@ -215,7 +232,7 @@ struct pass_state {
 	float edge[2];
 	bool k_set, edge_set;
 };
-static struct pass_state pass_luma, pass_chroma, pass_edge_y, pass_edge_c;
+static struct pass_state pass_luma, pass_chroma, pass_edge_y, pass_edge_c, pass_rgb_y, pass_rgb_c;
 static GLuint quad_vbo;		/* the unit quad, uploaded once */
 static bool quad_bound;		/* the vertex pointers point at it (text_draw moves them) */
 static GLuint ring_vbo;		/* the border's ring, uploaded when the mask count changes */
@@ -507,6 +524,9 @@ int gl_open(const char *node, char *why, size_t n)
 	EGLint v[2], num = 0;
 	int i;
 
+	/* once: the ring and the Wayland client share the one context (package G) */
+	if (gl_up)
+		return 0;
 	dpy = display_for(node);
 	if (dpy == EGL_NO_DISPLAY || !eglInitialize(dpy, v, v + 1)) {
 		oops(why, n, "eglInitialize");
@@ -553,8 +573,12 @@ int gl_open(const char *node, char *why, size_t n)
 		return 1;
 	prog_edge_y = program(gl_edge_shader, why, n);
 	prog_edge_c = prog_edge_y ? program(gl_edge_shader, why, n) : 0;
-	if (!prog_edge_c)
+	prog_rgb_y = prog_edge_c ? program(gl_rgb_luma_shader, why, n) : 0;
+	prog_rgb_c = prog_rgb_y ? program(gl_rgb_chroma_shader, why, n) : 0;
+	if (!prog_rgb_c)
 		return 1;
+	pass_init(&pass_rgb_y, prog_rgb_y);
+	pass_init(&pass_rgb_c, prog_rgb_c);
 	pass_init(&pass_luma, prog_luma);
 	pass_init(&pass_chroma, prog_chroma);
 	pass_init(&pass_edge_y, prog_edge_y);
@@ -576,8 +600,14 @@ int gl_open(const char *node, char *why, size_t n)
 		quad_bound = false;
 	}
 	why[0] = '\0';
+	gl_up = true;
 
 	return 0;
+}
+
+bool gl_is_open(void)
+{
+	return gl_up;
 }
 
 /* the locations once, the sampler units for good, the rest "not set yet" */
@@ -1056,19 +1086,220 @@ int gl_fence(void)
 	return fd;
 }
 
-void gl_close(void)
+/* ---------------- the Wayland client (package G) ------------------------ */
+
+struct gl_image {
+	EGLImageKHR img;		/* a client dma-buf; EGL_NO_IMAGE_KHR for the wl_shm texture */
+	GLuint tex;
+	int w, h;
+	unsigned int gen;		/* gl_gen at its making */
+};
+
+/*
+ * The formats a client may send (M3 1): what EGL imports on the render node, not a list by hand - cage passes Kodi's
+ * buffer through only when Kodi's format and modifier (AR30, AFBC 0x0800000000000062, G0b) are among the host's. RGB
+ * only: the passes compute YCbCr from RGB (ENTWURF G v3 D2), and a modifier EGL may only sample as an external
+ * texture is left out (the shader takes a sampler2D).
+ */
+static const uint32_t RGB[] = {
+	DRM_FORMAT_ARGB2101010, DRM_FORMAT_XRGB2101010, DRM_FORMAT_ABGR2101010, DRM_FORMAT_XBGR2101010,
+	DRM_FORMAT_ARGB8888, DRM_FORMAT_XRGB8888, DRM_FORMAT_ABGR8888, DRM_FORMAT_XBGR8888,
+	DRM_FORMAT_RGBA8888, DRM_FORMAT_RGBX8888, DRM_FORMAT_BGRA8888, DRM_FORMAT_BGRX8888, DRM_FORMAT_RGB565,
+};
+
+int gl_formats(struct gl_format *out, int max, char *why, size_t n)
 {
-	if (check_fbo) {
-		glDeleteFramebuffers(1, &check_fbo);
-		glDeleteTextures(1, &check_tex);
-		check_fbo = check_tex = 0;
-		free(check_a);
-		free(check_b);
-		check_a = check_b = NULL;
+	PFNEGLQUERYDMABUFFORMATSEXTPROC qf =
+		(PFNEGLQUERYDMABUFFORMATSEXTPROC)eglGetProcAddress("eglQueryDmaBufFormatsEXT");
+	PFNEGLQUERYDMABUFMODIFIERSEXTPROC qm =
+		(PFNEGLQUERYDMABUFMODIFIERSEXTPROC)eglGetProcAddress("eglQueryDmaBufModifiersEXT");
+	EGLint fmt[128], nf = 0, nm, i, j, k = 0;
+	EGLuint64KHR mod[64];
+	EGLBoolean ext[64];
+	unsigned int r;
+
+	if (!gl_up || !has_ext(eglQueryString(dpy, EGL_EXTENSIONS), "EGL_EXT_image_dma_buf_import_modifiers") ||
+	    !qf || !qm || !qf(dpy, 128, fmt, &nf)) {
+		snprintf(why, n, "the render node has no EGL_EXT_image_dma_buf_import_modifiers");
+		return -1;
 	}
+	for (r = 0; r < sizeof(RGB) / sizeof(RGB[0]); r++)
+		for (i = 0; i < nf; i++) {
+			if ((uint32_t)fmt[i] != RGB[r])
+				continue;
+			if (!qm(dpy, fmt[i], 64, mod, ext, &nm))
+				nm = 0;
+			for (j = 0; j < nm && k < max; j++)
+				if (!ext[j])
+					out[k++] = (struct gl_format){ RGB[r], mod[j] };
+			if (!nm && k < max)	/* the format with the driver's own layout only */
+				out[k++] = (struct gl_format){ RGB[r], DRM_FORMAT_MOD_INVALID };
+		}
+	why[0] = '\0';
+
+	return k;
+}
+
+static struct gl_image *image_new(void)
+{
+	struct gl_image *im = calloc(1, sizeof(*im));
+
+	if (im)
+		im->gen = gl_gen;
+	return im;
+}
+
+struct gl_image *gl_image_dmabuf(int fd, uint32_t fourcc, uint64_t modifier, int w, int h,
+				 uint32_t offset, uint32_t pitch, char *why, size_t n)
+{
+	EGLint a[17], i = 0;
+	struct gl_image *im = gl_up ? image_new() : NULL;
+
+	if (!im) {
+		snprintf(why, n, gl_up ? "out of memory" : "the render node is not open");
+		return NULL;
+	}
+	a[i++] = EGL_WIDTH;			a[i++] = w;
+	a[i++] = EGL_HEIGHT;			a[i++] = h;
+	a[i++] = EGL_LINUX_DRM_FOURCC_EXT;	a[i++] = (EGLint)fourcc;
+	a[i++] = EGL_DMA_BUF_PLANE0_FD_EXT;	a[i++] = fd;
+	a[i++] = EGL_DMA_BUF_PLANE0_OFFSET_EXT;	a[i++] = (EGLint)offset;
+	a[i++] = EGL_DMA_BUF_PLANE0_PITCH_EXT;	a[i++] = (EGLint)pitch;
+	if (modifier != DRM_FORMAT_MOD_INVALID) {
+		a[i++] = EGL_DMA_BUF_PLANE0_MODIFIER_LO_EXT;	a[i++] = (EGLint)(modifier & 0xffffffffu);
+		a[i++] = EGL_DMA_BUF_PLANE0_MODIFIER_HI_EXT;	a[i++] = (EGLint)(modifier >> 32);
+	}
+	a[i] = EGL_NONE;
+	im->img = p_img_new(dpy, EGL_NO_CONTEXT, EGL_LINUX_DMA_BUF_EXT, NULL, a);
+	if (im->img == EGL_NO_IMAGE_KHR) {
+		snprintf(why, n, "EGL import of a %dx%d %.4s buffer, modifier 0x%llx: egl 0x%x", w, h,
+			 (const char *)&fourcc, (unsigned long long)modifier, eglGetError());
+		free(im);
+		return NULL;
+	}
+	im->tex = texture(im->img, 0);
+	im->w = w;
+	im->h = h;
+
+	return im;
+}
+
+/* wl_shm: a texture the pixels are copied into, for test clients (G6) - the slow way, never Kodi's */
+struct gl_image *gl_image_shm(void)
+{
+	struct gl_image *im = gl_up && has_ext((const char *)glGetString(GL_EXTENSIONS),
+					      "GL_EXT_texture_format_BGRA8888") ? image_new() : NULL;
+
+	if (!im)
+		return NULL;
+	im->img = EGL_NO_IMAGE_KHR;
+	glGenTextures(1, &im->tex);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, im->tex);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_S, GL_CLAMP_TO_EDGE);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_WRAP_T, GL_CLAMP_TO_EDGE);
+
+	return im;
+}
+
+/* XRGB/ARGB8888 is B, G, R, X in memory: BGRA as GLES uploads it; GLES2 has no row length, so a padded
+ * line goes up line by line */
+bool gl_image_upload(struct gl_image *im, const void *px, int w, int h, int stride, char *why, size_t n)
+{
+	int y;
+
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, im->tex);
+	if (w != im->w || h != im->h) {
+		glTexImage2D(GL_TEXTURE_2D, 0, GL_BGRA_EXT, w, h, 0, GL_BGRA_EXT, GL_UNSIGNED_BYTE, NULL);
+		im->w = w;
+		im->h = h;
+	}
+	if (stride == w * 4)
+		glTexSubImage2D(GL_TEXTURE_2D, 0, 0, 0, w, h, GL_BGRA_EXT, GL_UNSIGNED_BYTE, px);
+	else
+		for (y = 0; y < h; y++)
+			glTexSubImage2D(GL_TEXTURE_2D, 0, 0, y, w, 1, GL_BGRA_EXT, GL_UNSIGNED_BYTE,
+					(const unsigned char *)px + (size_t)y * (size_t)stride);
+	if (glGetError())
+		return oops(why, n, "wl_shm upload");
+	return true;
+}
+
+int gl_image_width(const struct gl_image *im)
+{
+	return im->w;
+}
+
+int gl_image_height(const struct gl_image *im)
+{
+	return im->h;
+}
+
+bool gl_image_stale(const struct gl_image *im)
+{
+	return im->gen != gl_gen || !gl_up;
+}
+
+void gl_image_free(struct gl_image *im)
+{
+	if (!im)
+		return;
+	if (!gl_image_stale(im)) {
+		glDeleteTextures(1, &im->tex);
+		if (im->img != EGL_NO_IMAGE_KHR)
+			p_img_del(dpy, im->img);
+	}
+	free(im);
+}
+
+/* one pass of the client's picture into one plane, the soft border over it as for the ring */
+static void client_pass(GLuint fbo, int fw, int fh, float c0, float c1, struct pass_state *p,
+			struct pass_state *edge, GLuint tex, const float m[16])
+{
+	int e[2];
+	float ef[2];
+
+	gl_edge_mask(panel_w, panel_h, edge_px, e);
+	ef[0] = (float)e[0];
+	ef[1] = (float)e[1];
+	glBindFramebuffer(GL_FRAMEBUFFER, fbo);
+	glViewport(0, 0, (GLsizei)fw, (GLsizei)fh);
+	glClearColor(c0, c1, 0, 1);
+	glClear(GL_COLOR_BUFFER_BIT);
+	pass_use(p, m, ef);
+	glActiveTexture(GL_TEXTURE0);
+	glBindTexture(GL_TEXTURE_2D, tex);
+	quad_use();
+	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
+	if (e[0] > 0)
+		edge_draw(edge, e, m);
+}
+
+/* the client's frame: Y at full size, CbCr at half, video black around the quad (letterbox and keystone alike) */
+bool gl_draw_client(int target_index, const struct gl_image *im, const float m[16], char *why, size_t n)
+{
+	GLenum err;
+
+	client_pass(target[target_index].fbo[0], (int)panel_w, (int)panel_h, 16.0f / 255.0f, 0.0f,
+		    &pass_rgb_y, &pass_edge_y, im->tex, m);
+	client_pass(target[target_index].fbo[1], (int)panel_w / 2, (int)panel_h / 2, 128.0f / 255.0f,
+		    128.0f / 255.0f, &pass_rgb_c, &pass_edge_c, im->tex, m);
+	err = glGetError();
+	if (err) {
+		snprintf(why, n, "client draw: gl 0x%x", err);
+		return false;
+	}
+	return true;
+}
+
+/* the three panel buffers' images, FBOs and renderbuffers: the claim they belong to is about to go */
+void gl_targets_drop(void)
+{
 	int i, k;
 
-	gl_source_drop();
 	for (i = 0; i < WARP_TARGETS; i++) {
 		for (k = 0; k < 2; k++) {
 			if (target[i].fbo[k])
@@ -1080,6 +1311,20 @@ void gl_close(void)
 		}
 		memset(&target[i], 0, sizeof(target[i]));
 	}
+}
+
+void gl_close(void)
+{
+	if (check_fbo) {
+		glDeleteFramebuffers(1, &check_fbo);
+		glDeleteTextures(1, &check_tex);
+		check_fbo = check_tex = 0;
+		free(check_a);
+		free(check_b);
+		check_a = check_b = NULL;
+	}
+	gl_source_drop();
+	gl_targets_drop();
 	if (ring_vbo)
 		glDeleteBuffers(1, &ring_vbo);
 	if (quad_vbo)
@@ -1098,7 +1343,11 @@ void gl_close(void)
 	memset(&pass_chroma, 0, sizeof(pass_chroma));
 	memset(&pass_edge_y, 0, sizeof(pass_edge_y));
 	memset(&pass_edge_c, 0, sizeof(pass_edge_c));
-	prog_edge_y = prog_edge_c = 0;
+	memset(&pass_rgb_y, 0, sizeof(pass_rgb_y));
+	memset(&pass_rgb_c, 0, sizeof(pass_rgb_c));
+	prog_edge_y = prog_edge_c = prog_rgb_y = prog_rgb_c = 0;
+	gl_up = false;
+	gl_gen++;
 	ring_vbo = 0;
 	snprintf(renderer, sizeof(renderer), "not opened");
 }

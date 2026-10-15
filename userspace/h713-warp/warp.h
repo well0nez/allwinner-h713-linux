@@ -17,6 +17,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <time.h>
 #include <stddef.h>
 
@@ -26,6 +27,7 @@
 #define TV_SOCKET	"/run/h713-tv/ctl"
 #define RENDER_NODE	"/dev/dri/renderD128"
 #define V4L2_NAME	"sun50i-h713-hdmirx"
+#define WAYLAND_SOCKET	"/run/h713-warp/wayland"	/* the Wayland server (package G): WAYLAND_DISPLAY */
 
 #define WARP_TARGETS	3	/* triple buffering on the panel side (M9) */
 #define WARP_SLOTS	3	/* capture ring slots (M5) */
@@ -46,9 +48,15 @@ struct textbuf {
 __attribute__((format(printf, 2, 3)))
 void text_add(struct textbuf *t, const char *fmt, ...);
 
+/* what a claim is for (package G): the capture ring, or a Wayland client of wayland.c */
+enum warp_source { SRC_RING, SRC_CLIENT };
+/* h713-tv's "source" as its last answer to a claim named it */
+enum tv_source { TV_UNKNOWN, TV_HDMI, TV_CLIENT, TV_AUTO };
+
 struct peer {
 	const char *path;
 	int fd;				/* -1: no connection */
+	int tv_source;			/* enum tv_source */
 	int target[WARP_TARGETS];	/* dma-buf fds of the panel buffers */
 	unsigned int width, height, pitch;
 	unsigned int coff;		/* NV12: the chroma plane's offset in each buffer */
@@ -56,8 +64,9 @@ struct peer {
 };
 
 void peer_init(struct peer *p, const char *path);
-bool peer_claim(struct peer *p, char *why, size_t n);
-int peer_frame(struct peer *p, int index, int fence, char *why, size_t n);
+bool peer_claim(struct peer *p, int src, char *why, size_t n);
+/* flip: the commit's flip fence when h713-tv sends one (a client claim), else -1; ours to close */
+int peer_frame(struct peer *p, int index, int fence, int *flip, char *why, size_t n);
 void peer_release(struct peer *p);
 
 struct source {
@@ -101,6 +110,25 @@ void gl_source_drop(void);
 bool gl_draw(int target, int slot, const float m[16], int pattern, int mark_corner,
 	     const char *const labels[5], const float lm[16], char *why, size_t n);
 int gl_fence(void);			/* an out-fence fd, or -1 */
+bool gl_is_open(void);
+void gl_targets_drop(void);		/* the three panel buffers' images, before their claim is given back */
+
+/* the Wayland client's pictures (package G): RGB in, BT.709 limited range out, in the two passes */
+struct gl_format {
+	uint32_t fourcc;
+	uint64_t modifier;
+};
+struct gl_image;			/* one imported client buffer, or the wl_shm upload texture */
+int gl_formats(struct gl_format *out, int max, char *why, size_t n);	/* the RGB formats EGL imports */
+struct gl_image *gl_image_dmabuf(int fd, uint32_t fourcc, uint64_t modifier, int w, int h,
+				 uint32_t offset, uint32_t pitch, char *why, size_t n);
+struct gl_image *gl_image_shm(void);
+bool gl_image_upload(struct gl_image *im, const void *px, int w, int h, int stride, char *why, size_t n);
+int gl_image_width(const struct gl_image *im);
+int gl_image_height(const struct gl_image *im);
+bool gl_image_stale(const struct gl_image *im);	/* made before the last gl_close(): gone with it */
+void gl_image_free(struct gl_image *im);
+bool gl_draw_client(int target, const struct gl_image *im, const float m[16], char *why, size_t n);
 /*
  * What a frame costs, for "ctl trace": CPU microseconds of this thread in the
  * two passes (clock CLOCK_THREAD_CPUTIME_ID, so the clock governor does not
@@ -130,6 +158,8 @@ extern const char *const gl_chroma_shader;	/* CbCr in, CbCr out */
 extern const char *const gl_edge_shader;	/* the soft border's ring, blended */
 void gl_edge_ring(const int e[2], float v[40]);	/* its ten vertices (x, y, u, v) */
 extern const char *const gl_pattern_shader;
+extern const char *const gl_rgb_luma_shader;	/* RGB in, Y out (variant B, T3) */
+extern const char *const gl_rgb_chroma_shader;	/* RGB in, CbCr out */
 
 /* ---------------- what the daemon is doing (loop.c) -------------------- */
 enum warp_state {
@@ -138,11 +168,16 @@ enum warp_state {
 	WARP_ON		/* the GPU path stands */
 };
 
+struct server;
+
 struct runtime {
 	struct warp_conf conf;
 	struct peer peer;
 	struct source source;
+	struct server *srv;		/* the Wayland server, NULL when it could not start */
 	enum warp_state state;
+	int src;			/* enum warp_source: what the claim is for while WARP_ON */
+	int client_rate;		/* 1: a client frame every vsync, 2: every second (--client-rate half) */
 	bool on;			/* "ctl on"/"ctl off": run time only */
 	int pattern;			/* enum warp_pattern */
 	int mark_corner;		/* the mask's marked corner, 0..3 tl tr bl br, -1 none */
@@ -185,6 +220,28 @@ int warp_edge_for(struct runtime *r);	/* the soft edge, 0 at the identity */
 bool warp_pump(struct runtime *r);	/* one capture frame; false: fell back */
 void warp_check_tick(struct runtime *r);	/* the self-check's second draw, from the main loop */
 void warp_status(struct runtime *r, char *buf, size_t n);
+
+/* for the Wayland side (loop.c): the client is on the panel; one client frame -- 0 committed, 1 h713-tv was busy
+ * (the target is drawn and kept), 2 not drawn, -1 the warp fell back; the same target again after a busy */
+bool warp_client_live(const struct runtime *r);
+int warp_client_frame(struct runtime *r, const struct gl_image *im, int *render, int *flip);
+int warp_client_resend(struct runtime *r, int render, int *flip);
+void warp_client_shown(struct runtime *r);	/* a toplevel has its first picture: claim the panel for it */
+void warp_client_gone(struct runtime *r);	/* ... it is gone for good: give the panel back */
+void warp_gl_idle(struct runtime *r);		/* close the render node if nothing needs it */
+
+/* ---------------- the Wayland server (wayland.c), package G ------------ */
+struct server *server_start(const char *path, struct runtime *r);
+void server_stop(struct server *s);
+int server_fd(const struct server *s);		/* the event loop's fd for poll(), -1 none */
+void server_dispatch(struct server *s);
+void server_flush(struct server *s);
+bool server_shown(const struct server *s);	/* a toplevel with a picture: something to claim for */
+bool server_busy(const struct server *s);	/* imports alive: the render node stays open */
+void server_engaged(struct server *s, bool on);	/* the warp shows the client now / not any more */
+void server_panel(struct server *s, unsigned int w, unsigned int h);
+void server_redraw(struct server *s);		/* the keystone moved or a pattern went: draw again */
+void server_status(const struct server *s, struct textbuf *t);
 
 /* ---------------- the control socket and the client (ctl.c) ------------ */
 struct control {

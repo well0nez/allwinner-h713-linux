@@ -13,8 +13,10 @@
 #                       pkg-config lookup when the host has no -dev files, e.g.
 #                         make host HOST_CPPFLAGS="-I../tmp/hostinc -I/usr/include/drm" \
 #                                   HOST_LDLIBS="-l:libEGL.so.1 -l:libGLESv2.so.2"
-#   make test           build and run the host test of tests/ (T1a, T1b); the matrix and
-#                       warp.conf tests (T2, T3, T4) are in ../libh713geom
+#   make test           build and run the host tests of tests/: the Wayland server against a
+#                       client (no GPU, in the container), and T1a/T1b (the shaders, skipped
+#                       without EGL/GLES development files); the matrix and warp.conf tests
+#                       (T2, T3, T4) are in ../libh713geom
 #   make install-cross  install the CROSS-built binary (DESTDIR=...)
 #   make clean
 #
@@ -33,7 +35,7 @@
 
 CFLAGS      ?= -O2 -g
 CFLAGS      += -std=c11 -Wall -Wextra -Wshadow -Wvla
-LIBS         = -lEGL -lGLESv2 -lm
+LIBS         = -lEGL -lGLESv2 -lwayland-server -lm
 
 PREFIX      ?= /usr/local
 BINDIR      ?= $(PREFIX)/bin
@@ -51,9 +53,29 @@ HOST_LDLIBS   ?= $(shell pkg-config --libs egl glesv2 2>/dev/null || echo "$(LIB
 # the keystone geometry and warp.conf live in ../libh713geom, shared with h713-osd (TODO 2.44); they are
 # compiled in here, in the order they always had, so the binary is the one it was before the move
 GEOM = ../libh713geom
-SRC = main.c $(GEOM)/config.c ctl.c peer.c capture.c gl.c $(GEOM)/matrix.c loop.c
-HDR = warp.h $(GEOM)/geom.h
-CFLAGS += -I$(GEOM)
+SRC = main.c $(GEOM)/config.c ctl.c peer.c capture.c gl.c $(GEOM)/matrix.c loop.c wayland.c $(PROTO_C)
+HDR = warp.h $(GEOM)/geom.h $(PROTO_H)
+CFLAGS += -I$(GEOM) -Igen
+
+# The Wayland server (package G): the three protocols outside libwayland, as wayland-scanner makes them
+# from wayland-protocols' XML. The XML comes from the board root (wayland-protocols in the sysroot, the
+# medien side project's), the scanner from the build container (libwayland-bin, AU-12).
+WAYLAND_SCANNER ?= wayland-scanner
+WL_PROTOCOLS    ?= $(SYSROOT)/usr/share/wayland-protocols
+PROTOS  = xdg-shell linux-dmabuf-v1 presentation-time
+PROTO_C = $(PROTOS:%=gen/%-protocol.c)
+PROTO_H = $(PROTOS:%=gen/%-server-protocol.h)
+xml = $(WL_PROTOCOLS)/stable/$(patsubst %-v1,%,$(1))/$(1).xml
+
+gen/%-server-protocol.h:
+	@mkdir -p gen
+	$(WAYLAND_SCANNER) server-header $(call xml,$*) $@
+gen/%-client-protocol.h:
+	@mkdir -p gen
+	$(WAYLAND_SCANNER) client-header $(call xml,$*) $@
+gen/%-protocol.c:
+	@mkdir -p gen
+	$(WAYLAND_SCANNER) private-code $(call xml,$*) $@
 
 cross: h713-warp.$(TARGET)
 
@@ -72,9 +94,9 @@ h713-warp.$(TARGET): $(SRC) $(HDR)
 host: h713-warp
 
 h713-warp: $(SRC) $(HDR)
-	$(HOST_CC) $(HOST_CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $(SRC) $(HOST_LDLIBS) -lm
+	$(HOST_CC) $(HOST_CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $(SRC) $(HOST_LDLIBS) -lwayland-server -lm
 
-test:
+test: $(PROTO_C) $(PROTO_H) $(PROTOS:%=gen/%-client-protocol.h)
 	$(MAKE) -C tests HOST_CPPFLAGS="$(HOST_CPPFLAGS)" HOST_LDLIBS="$(HOST_LDLIBS)" run
 
 install-cross: h713-warp.$(TARGET)
@@ -84,6 +106,7 @@ install-cross: h713-warp.$(TARGET)
 
 clean:
 	rm -f h713-warp h713-warp.$(TARGET)
+	rm -rf gen
 	$(MAKE) -C tests clean
 
 .PHONY: cross host test install-cross clean
