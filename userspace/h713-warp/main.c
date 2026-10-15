@@ -272,8 +272,14 @@ int main(int argc, char **argv)
 			info("exit            signal %u received", si.ssi_signo);
 			break;
 		}
-		if (fds[5].fd >= 0 && fds[5].revents)
+		if (fds[5].fd >= 0 && fds[5].revents) {
 			server_dispatch(r.srv);
+			/* The dispatch may have handed the panel from the ring to a client (its first picture): the capture
+			 * event polled above belongs to a ring that is gone, and source_stop() left its fd open - a pump now
+			 * would dequeue from a stopped queue, or restart the capture under the client's claim. */
+			if (r.state != WARP_ON || r.src != SRC_RING)
+				fds[2].revents = 0;
+		}
 		if (fds[3].fd >= 0 && (fds[3].revents & (POLLHUP | POLLERR | POLLNVAL))) {
 			warp_disengage(&r, "h713-tv closed the connection");
 			/* h713-tv gave the claim back on purpose ("ctl source"): ask again at once (ENTWURF G v3 D4) */
