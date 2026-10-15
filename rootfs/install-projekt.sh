@@ -71,6 +71,8 @@ H713_POWER_SRC=${H713_POWER_SRC:-$PROJECT_ROOT/userspace/h713-power}
 H713_KEYS_SRC=${H713_KEYS_SRC:-$PROJECT_ROOT/userspace/h713-keys}
 H713_OSD_SRC=${H713_OSD_SRC:-$PROJECT_ROOT/userspace/h713-osd}
 H713_OSD_BIN=${H713_OSD_BIN:-$H713_OSD_SRC/h713-osd.aarch64-linux-gnu}
+H713_SETTINGS_SRC=${H713_SETTINGS_SRC:-$PROJECT_ROOT/userspace/h713-settings}
+H713_SETTINGS_BIN=${H713_SETTINGS_BIN:-$H713_SETTINGS_SRC/h713-settings.aarch64-linux-gnu}
 H713_CPUFREQ_SRC=${H713_CPUFREQ_SRC:-$PROJECT_ROOT/userspace/h713-cpufreq}
 # crust, built by release/build-all.sh from crust-h713/ - a build product of ours, not a vendor file,
 # so it is not in FORBIDDEN_NAMES. The name is the board's: the rootfs can be built without a board,
@@ -217,6 +219,18 @@ check_sources() {
 	else
 		warn "h713-osd is missing: $H713_OSD_BIN"
 		info "cross-build it:  make -C ${H713_OSD_SRC#"$PROJECT_ROOT"/} cross SYSROOT=..."
+		errors=1
+	fi
+	if [[ -x "$H713_SETTINGS_BIN" ]]; then
+		local skind; skind=$(file -b "$H713_SETTINGS_BIN" 2>/dev/null || echo '?')
+		case "$skind" in
+		*aarch64*|*ARM\ aarch64*) : ;;
+		'?') warn "file(1) is missing -- the architecture of h713-settings is unchecked" ;;
+		*) warn "h713-settings is NOT aarch64: $skind"; errors=1 ;;
+		esac
+	else
+		warn "h713-settings is missing: $H713_SETTINGS_BIN"
+		info "cross-build it:  make -C ${H713_SETTINGS_SRC#"$PROJECT_ROOT"/} cross SYSROOT=..."
 		errors=1
 	fi
 	for f in "$H713_OSD_SRC/h713-osd.service" "$H713_OSD_SRC/osd.conf" "$H713_OSD_SRC/README.md" \
@@ -377,6 +391,8 @@ if ((DRY_RUN)); then
        ${H713_OSD_BIN#"$PROJECT_ROOT"/}
            -> /usr/local/sbin/h713-osd, h713-osd.service enabled, /etc/h713/osd.conf (if none)
        README.md of both -> /usr/local/share/doc/h713-keys/, /usr/local/share/doc/h713-osd/
+       ${H713_SETTINGS_BIN#"$PROJECT_ROOT"/} -> /usr/local/bin/h713-settings (the settings page, started by the launcher's
+           entry launcher.d/50-settings.conf of the desktop profile), README.md -> /usr/local/share/doc/h713-settings/
     5j. h713-cpufreq
        h713-cpufreq -> /usr/local/sbin/, h713-cpufreq.service enabled (rate limit 20 ms, GPU
        interrupt threads SCHED_OTHER - the table in the script)
@@ -677,6 +693,9 @@ ln -sfn ../h713-osd.service "$TREE/etc/systemd/system/multi-user.target.wants/h7
 [[ -f "$TREE/etc/h713/osd.conf" ]] || install -m 0644 "$H713_OSD_SRC/osd.conf" "$TREE/etc/h713/osd.conf"
 install -D -m 0644 "$H713_OSD_SRC/README.md" "$TREE/usr/local/share/doc/h713-osd/README.md"
 info "/usr/local/sbin/h713-keys and h713-osd, both units enabled, /etc/h713/keys.conf and osd.conf"
+install -m 0755 "$H713_SETTINGS_BIN" "$TREE/usr/local/bin/h713-settings"
+install -D -m 0644 "$H713_SETTINGS_SRC/README.md" "$TREE/usr/local/share/doc/h713-settings/README.md"
+info "/usr/local/bin/h713-settings (the settings page; the launcher entry is the desktop profile's)"
 
 # --- 5j. h713-cpufreq: the CPU clock under the warp's load ---------------------
 say "h713-cpufreq"

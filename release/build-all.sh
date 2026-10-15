@@ -475,6 +475,10 @@ info "h713-tv $(stat -c %s "$TV") bytes, $(file -b "$TV" 2>/dev/null | cut -d, -
 in_container "cd $WORK/userspace/h713-osd && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-osd-cross.log" 2>&1 || { tail -20 "$OUT/h713-osd-cross.log"; die "cross-building h713-osd failed (log: $OUT/h713-osd-cross.log)"; }
 OSD="$USERSPACE/h713-osd/h713-osd.aarch64-linux-gnu"; [[ -f "$OSD" ]] || die "no $OSD"
 info "h713-osd $(stat -c %s "$OSD") bytes, $(file -b "$OSD" 2>/dev/null | cut -d, -f1-2)"
+# The settings page (package S): the same libraries, FreeType linked in; install-projekt.sh (5i) wants it too.
+in_container "cd $WORK/userspace/h713-settings && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-settings-cross.log" 2>&1 || { tail -20 "$OUT/h713-settings-cross.log"; die "cross-building h713-settings failed (log: $OUT/h713-settings-cross.log)"; }
+SETTINGS="$USERSPACE/h713-settings/h713-settings.aarch64-linux-gnu"; [[ -f "$SETTINGS" ]] || die "no $SETTINGS"
+info "h713-settings $(stat -c %s "$SETTINGS") bytes, $(file -b "$SETTINGS" 2>/dev/null | cut -d, -f1-2)"
 # The autofocus metric in C (Q11): optional for the tool, which falls back to Python,
 # but the image should carry it - the fallback is ten times slower on the A53.
 in_container "cd $WORK/userspace/h713-autofocus && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-afmetric-cross.log" 2>&1 || { tail -20 "$OUT/h713-afmetric-cross.log"; die "cross-building h713-afmetric failed (log: $OUT/h713-afmetric-cross.log)"; }

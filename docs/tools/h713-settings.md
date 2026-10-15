@@ -2,7 +2,8 @@
 
 The page Android calls "Settings", in the style of the overlays: the areas on the left, the rows of the open area on the
 right, white lines on a dark translucent ground, driven by the remote. The launcher's entry "Settings" opens it
-(`/etc/h713/launcher.d/50-settings.conf`), Back at the top level closes it. Everything the box can do from a shell with
+(`/etc/h713/launcher.d/50-settings.conf`, which starts it as the transient unit `h713-settings` - its journal is kept and a second OK
+cannot start a second page), Back at the top level closes it. Everything the box can do from a shell with
 `h713-... ctl` is reachable here, and **every row is one existing command or one `key = value` of a file in `/etc/h713`**:
 a tool that cannot do something has no row for it. Texts on the wall are English. The look is the owner's choice S1 of
 the mockup `arbeit/medien/H-desktop/mockups/launcher-einstellungen.html` (areas left, rows right).
@@ -19,9 +20,10 @@ h713-settings --test [--size WxH] [--area NAME]              the page for the ho
 
 **The wall.** h713-osd is the one program that holds h713-tv's overlay channel and knows how to put a picture over the HDMI
 picture - straight, or pre-distorted by the keystone's matrix - so the page claims nothing itself. It connects to h713-osd's
-page channel (`/run/h713-osd/ctl`, `page open`): the answer carries one memfd the size of the panel (ARGB8888) that the page
-maps and draws into, and `page show X Y W H` names what is new. h713-osd copies or pre-distorts that rectangle before it
-answers. The connection is the page's life: it ends, and the page is gone. The page is opened **before** it takes the
+[page channel](h713-osd.md) (`/run/h713-osd/ctl`, `page open`): the answer carries one memfd the size of the panel (ARGB8888)
+that the page maps and draws into, and `page show X Y W H` names the rows that are new. h713-osd copies or pre-distorts them
+before it answers. The connection is the page's life: it ends, and the page is gone. The text is libh713osd's `osd_text`; the face
+(Quicksand Medium, the `desktop` profile's `fonts-quicksand`) must be there - a page without words is not opened. The page is opened **before** it takes the
 remote: when h713-osd cannot show it (no signal, not running) it does not open - nobody is deaf to a page nobody sees.
 A row that changed is drawn alone and only its rectangle is shown.
 

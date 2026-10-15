@@ -12,6 +12,7 @@ import signal
 import socket
 import struct
 import subprocess
+import sys
 import tempfile
 import threading
 import time
@@ -281,23 +282,24 @@ class Box:
                                      env=self.env, text=True, bufsize=1)
         return self
 
-    def start_device(self, area=None, osd_answer="ok", refuse=None, idle=None, devices=2):
-        """The program as the launcher starts it: no --test, the remote's devices as FIFOs, h713-osd's page channel."""
-        self.osd = FakeOsd(os.path.join(self.dir, "osd.sock"), osd_answer, refuse)
+    def start_device(self, area=None, osd_answer="ok", refuse=None, idle=None, devices=2, font=True, osd_socket=None):
+        """The program as the launcher starts it: no --test, the remote's devices as FIFOs, h713-osd's page channel (a fake
+        of it, or the real daemon's socket)."""
+        self.osd = FakeOsd(os.path.join(self.dir, "osd.sock"), osd_answer, refuse) if not osd_socket else None
         self.fifos = []
         for i in range(devices):
             path = os.path.join(self.dir, "event%d" % i)
             os.mkfifo(path)
             self.fifos.append((path, os.open(path, os.O_RDWR)))      # a writer end of our own keeps the FIFO from hanging up
-        self.env.update(H713_SETTINGS_OSD=self.osd.path, H713_SETTINGS_POWER=os.path.join(self.dir, "power.sock"),
+        self.env.update(H713_SETTINGS_OSD=osd_socket or self.osd.path, H713_SETTINGS_POWER=os.path.join(self.dir, "power.sock"),
                         H713_SETTINGS_INPUT=",".join(p for p, _ in self.fifos))
         self.power = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
         self.power.bind(self.env["H713_SETTINGS_POWER"])
         self.power.settimeout(3)
         args = [BIN]
-        for font in FONTS:
-            if font and os.path.exists(font):
-                args += ["--font", font]
+        for path in FONTS if font else ():
+            if path and os.path.exists(path):
+                args += ["--font", path]
                 break
         if area:
             args += ["--area", area]
@@ -343,8 +345,9 @@ class Box:
     def close(self):
         for _, w in getattr(self, "fifos", []):
             os.close(w)
-        if hasattr(self, "osd"):
+        if getattr(self, "osd", None):
             self.osd.stop()
+        if hasattr(self, "power"):
             self.power.close()
         if self.proc and self.proc.poll() is None:
             self.proc.kill()
@@ -690,6 +693,7 @@ UP, DOWN, LEFT, RIGHT, OK, SELECT, BACK, HOME, POWER = 103, 108, 105, 106, 352, 
 VOLUP, VOLDOWN, MUTE, F4, F5 = 115, 114, 113, 62, 63
 
 
+@unittest.skipUnless(any(f and os.path.exists(f) for f in FONTS), "no font (set H713_TEST_FONT)")
 class Device(Base):
     def test_opens_on_the_wall_first_then_takes_the_remote(self):
         b = self.box().start_device("Sound")
@@ -804,6 +808,14 @@ class Device(Base):
         self.assertEqual(b.proc.wait(timeout=5), 0)              # the page is closed and the remote is given back
         self.assertIn("h713-osd does not answer", b.proc.stderr.read())
 
+    def test_no_font_no_page(self):
+        b = self.box()
+        b.env["H713_SETTINGS_FONT"] = "/nonexistent/font.ttf"
+        b.start_device("Sound", font=False)
+        self.assertEqual(b.proc.wait(timeout=5), 5)
+        self.assertFalse(b.osd.opened)                           # nothing was asked of h713-osd, no remote was taken
+        self.assertIn("without words", b.proc.stderr.read())
+
     def test_no_remote_no_page(self):
         b = self.box().start_device("Sound", devices=0)
         self.assertEqual(b.proc.wait(timeout=5), 4)
@@ -840,6 +852,86 @@ class Device(Base):
             time.sleep(0.8)
             b.press(DOWN)                                        # nothing to do in the areas but it counts as a key
         self.assertIsNone(b.proc.poll())
+        b.press(HOME)
+        b.proc.wait(timeout=5)
+
+
+OSD_DIR = os.path.join(HERE, "..", "..", "h713-osd")
+OSD_BIN = os.path.join(OSD_DIR, "h713-osd")
+
+
+@unittest.skipUnless(os.path.exists(OSD_BIN) and any(f and os.path.exists(f) for f in FONTS),
+                     "needs the real h713-osd (make -C ../h713-osd host) and a font")
+class Stack(Base):
+    """h713-settings, the real h713-osd and a fake h713-tv (the one of h713-osd's own tests): the page as the wall gets it."""
+
+    def setUp(self):
+        sys.path.insert(0, os.path.join(OSD_DIR, "tests"))
+        import test_osd
+        self.W, self.H, self.PITCH = test_osd.W, test_osd.H, test_osd.PITCH
+        self.dir = tempfile.mkdtemp(prefix="h713-stack-")
+        self.addCleanup(shutil.rmtree, self.dir, True)
+        self.osd_tv = test_osd.FakeTv(os.path.join(self.dir, "wall.sock"))
+        self.osd_tv.start()
+        self.addCleanup(self.osd_tv.stop)
+        self.osd_sock = os.path.join(self.dir, "osd.sock")
+        self.daemon = None
+        self.addCleanup(self.stop_daemon)
+
+    def start_daemon(self):
+        env = dict(os.environ, H713_OSD_SOCKET=self.osd_sock, H713_OSD_TV=os.path.join(self.dir, "wall.sock"),
+                   H713_OSD_WARP_CONF=os.path.join(self.dir, "warp.conf"), H713_OSD_CONF=os.path.join(self.dir, "osd.conf"),
+                   H713_OSD_FONT=[f for f in FONTS if f and os.path.exists(f)][0])
+        self.daemon = subprocess.Popen([OSD_BIN, "run"], env=env, stderr=subprocess.PIPE)
+        self.assertTrue(wait_for(lambda: os.path.exists(self.osd_sock), 5))
+
+    def stop_daemon(self):
+        if self.daemon:
+            self.daemon.terminate()
+            self.daemon.wait(5)
+            self.daemon.stderr.close()
+            self.daemon = None
+
+    def shown(self):
+        return None if self.osd_tv.shown is None else os.pread(self.osd_tv.bufs[self.osd_tv.shown], self.PITCH * self.H, 0)
+
+    def test_the_page_is_on_the_wall_and_follows_the_keys(self):
+        self.start_daemon()
+        b = self.box().start_device("Picture", osd_socket=self.osd_sock)
+        self.assertTrue(wait_for(lambda: self.shown() is not None, 8))
+        time.sleep(0.3)
+        page = self.shown()
+        a = lambda x, y: page[(y * self.W + x) * 4 + 3]
+        self.assertEqual(a(3, 3), 128)                           # the dimmed ground reaches every corner
+        self.assertEqual(a(self.W - 4, self.H - 4), 128)
+        self.assertGreater(a(int(331 / 3), int(198 / 3)), 150)   # the pill of the open area, at the mockup's place (u = 1/3)
+        b.press(OK)                                              # into the rows: the first row is lit
+        time.sleep(0.8)
+        page = self.shown()
+        b.press(RIGHT)                                           # Brightness 55: its slider grows
+        self.assertTrue(wait_for(lambda: b.tv.c["brightness"] == 55, 5))
+        time.sleep(0.5)
+        after = self.shown()
+        self.assertNotEqual(after, page)
+        row = int(202 / 3)                                       # only the rows of the slider's row differ
+        changed = [y for y in range(self.H) if after[y * self.PITCH:(y + 1) * self.PITCH] != page[y * self.PITCH:(y + 1) * self.PITCH]]
+        self.assertTrue(changed and min(changed) >= row - 25 and max(changed) <= row + 25, (min(changed), max(changed)))
+        b.press(HOME)
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertTrue(wait_for(lambda: self.osd_tv.shown is None, 5))      # the end of the page takes it from the wall
+
+    def test_the_page_through_a_keystone(self):
+        with open(os.path.join(self.dir, "warp.conf"), "w") as f:
+            f.write("bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = on\n")
+        self.osd_tv.picture = "warped"
+        self.start_daemon()
+        b = self.box().start_device("Sound", osd_socket=self.osd_sock)
+        self.assertTrue(wait_for(lambda: self.shown() is not None, 8))
+        time.sleep(0.3)
+        page = self.shown()
+        a = lambda x, y: page[(y * self.W + x) * 4 + 3]
+        self.assertEqual(a(self.W // 2, 3), 128)                 # the top edge is whole
+        self.assertEqual(a(2, self.H - 4), 0)                    # the pulled-in bottom corner is not: it went through the matrix
         b.press(HOME)
         b.proc.wait(timeout=5)
 

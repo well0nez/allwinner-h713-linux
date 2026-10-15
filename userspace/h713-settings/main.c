@@ -367,8 +367,11 @@ int main(int argc, char **argv)
 	signal(SIGTERM, on_term);
 	signal(SIGINT, on_term);
 	signal(SIGPIPE, SIG_IGN);
-	if (osd_font_open(font))
-		fprintf(stderr, "h713-settings: font %s: not opened - the page has no text\n", font);
+	if (osd_font_open(font)) {
+		fprintf(stderr, "h713-settings: font %s: not opened%s\n", font, test ? " - the page has no text" : " -- a page without words is not opened");
+		if (!test)
+			return 5;
+	}
 	if (test) {
 		canvas.px = calloc((size_t)w * h, 4);
 		canvas.w = canvas.stride = w;
