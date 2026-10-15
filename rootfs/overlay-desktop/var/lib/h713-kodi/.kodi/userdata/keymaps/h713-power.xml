@@ -4,7 +4,10 @@
      ActivateWindow(ShutdownMenu): Kodi opened its power menu while h713-power was already taking the projector into standby
      (Marco, 15.10.2026). noop leaves the key to h713-power. Kodi reads every file in userdata/keymaps/ over its defaults.
      The volume keys are h713-keys' as well: h713-tv runs under Kodi, h713-keys sets the DSP volume with h713-osd's
-     overlay over Kodi's picture, and Kodi stays at 100 - one place for the volume. -->
+     overlay over Kodi's picture, and Kodi stays at 100 - one place for the volume.
+     Home is the launcher's since package H: h713-keys opens it and holds the remote's devices from then on, so Kodi gets
+     nothing while it is open - but the press that opens it reaches Kodi like any other, and Kodi's keyboard.xml maps the
+     home-page key (KEY_HOMEPAGE, which Kodi names browser_home; homepage is mapped too) to ActivateWindow(Home). noop leaves it to h713-keys. -->
 <keymap>
   <global>
     <keyboard>
@@ -12,6 +15,8 @@
       <volume_up>noop</volume_up>
       <volume_down>noop</volume_down>
       <volume_mute>noop</volume_mute>
+      <homepage>noop</homepage>
+      <browser_home>noop</browser_home>
     </keyboard>
   </global>
 </keymap>

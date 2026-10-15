@@ -69,7 +69,19 @@ in `/sys/power/suspend_stats` (`failed_freeze` to `failed_suspend_noirq`) moved,
 the file and an earlier failure would leave the last resume's interrupt there. The file exists with
 `CONFIG_PM_DEBUG`; without it every failure is a refusal, as before (TODO 5.14, review U2).
 
-**The picture after a standby.** The standby parks the display MIPS (cpu_comm, `suspend_late`), and
+**The picture after a standby - systemd's since package H.** What this paragraph describes below, h713-power did itself until
+the launcher (media side project): any way into the sleep - the power key, the launcher's Standby entry, Kodi's Suspend menu,
+`systemctl suspend` - must end with the picture and the mode back, so it is now `h713-sleep-pre.service` (`Before=sleep.target`:
+remember the running mode, HDMI or Kodi, in `/run/h713-mode.resume` and end it) and `h713-sleep-post.service`
+(`After=suspend.target`: `h713-mips-restart` when the MIPS is parked, then start what was remembered), both calling
+`h713-mode` (`userspace/h713-power/h713-mode`). h713-power only waits: while the post unit is `activating` a short press does
+nothing; after a standby that did not happen (aborted by a wake-up, or refused with `refused = log`) it starts the post unit once
+more, which does nothing twice. It also answers `can-standby` (exit 0 when a standby can happen now; the launcher's entry asks), takes
+a datagram `short` on `/run/h713-power.sock` (`H713_POWER_CTL`) as a short press (the launcher hands a Power press on that
+way), and holds the remote's devices (`EVIOCGRAB`) for the 15 s of its countdown, so that Kodi does not move with Left, Right,
+OK and Back. The earlier text, kept as the record of what h713-power did before:
+
+The standby parks the display MIPS (cpu_comm, `suspend_late`), and
 nothing in the kernel starts it again: after the resume the wall would stay on the console. When the
 projector stays on after a standby - or after a refused one with `refused = log`, the park may have come
 before the refusal - and the driver `sun50i-h713-mips` says `parked`, h713-power starts
