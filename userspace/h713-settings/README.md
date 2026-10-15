@@ -27,4 +27,4 @@ make cross SYSROOT=/work/repo-neu/mainline/build/sysroot-arm64 FT=<a root with F
 The tests read what a row sends from the fakes' logs and what it keeps from the files; one renders the page and checks where
 the pill, its outline and the slider land. Environment overrides for the tests: `H713_SETTINGS_TV`, `_WARP`, `_ETC`, `_BIN`
 (the tools' directory), `_OSD`, `_INPUT` (files in place of the remote's devices), `_POWER`, `_SYS`, `_DEV`, `_FONT`, `_IDLE`,
-`_TIMES` (one journal line per drawing: the milliseconds it took and its size).
+`_TIMES` (one journal line per drawing: the milliseconds it took and its size), `_SNAP` (a directory: the canvas after every drawing, as PAM), `_PATIENCE`.

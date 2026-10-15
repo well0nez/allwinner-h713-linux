@@ -817,6 +817,23 @@ class Device(Base):
         self.assertGreaterEqual(time.time() - t0, 1.5)
         self.assertIn("no key for 2 s", b.proc.stderr.read())
 
+    def test_every_drawing_can_be_kept_as_evidence(self):
+        b = self.box()
+        snap = os.path.join(b.dir, "snap")
+        os.mkdir(snap)
+        b.env["H713_SETTINGS_SNAP"] = snap
+        b.env["H713_SETTINGS_TIMES"] = "1"
+        b.start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(OK, RIGHT)
+        self.assertTrue(wait_for(lambda: b.tv.volume == 95, 5))
+        b.press(HOME)
+        b.proc.wait(timeout=5)
+        names = sorted(os.listdir(snap))
+        self.assertGreaterEqual(len(names), 3)                    # the whole page, the rows after OK, the row after Right
+        self.assertEqual(names[0], "0001.pam")
+        self.assertRegex(b.proc.stderr.read(), r"drawn [\d.]+ ms \(640x360 px\), shown [\d.]+ ms")
+
     def test_a_key_keeps_it_open(self):
         b = self.box().start_device("Sound", idle=2)
         for _ in range(4):

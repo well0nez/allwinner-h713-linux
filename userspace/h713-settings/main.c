@@ -161,6 +161,8 @@ static int next_key(int ms)
 static unsigned dirty;
 static int patience = 10;		/* seconds the page waits for the picture to come back (H713_SETTINGS_PATIENCE) */
 static double unseen_since;		/* since when h713-osd has only been keeping the page (ms); 0: it is on the wall */
+static const char *snapdir = "";	/* H713_SETTINGS_SNAP: a directory; each drawing is kept in it */
+static int snapn;
 static bool timing;			/* H713_SETTINGS_TIMES: one journal line per drawing, for the key-to-wall measurement (S3) */
 
 static double now_ms(void)
@@ -386,6 +388,7 @@ int main(int argc, char **argv)
 	clock_gettime(CLOCK_MONOTONIC, &last);
 	timing = *env("H713_SETTINGS_TIMES", "") != '\0';
 	patience = atoi(env("H713_SETTINGS_PATIENCE", "10"));
+	snapdir = env("H713_SETTINGS_SNAP", "");
 
 	rows_init();
 	for (int i = 0; area && i < nareas; i++)
@@ -421,6 +424,12 @@ int main(int argc, char **argv)
 			if (timing)
 				fprintf(stderr, "h713-settings: drawn %.1f ms (%dx%d px), shown %.1f ms\n", t1 - t0, box[2], box[3],
 					now_ms() - t1);
+			if (*snapdir) {		/* evidence: the page's canvas after every drawing, as PAM (pam2png.py) */
+				char p[300];
+
+				snprintf(p, sizeof(p), "%s/%04d.pam", snapdir, ++snapn);
+				snap(p);
+			}
 		}
 		if (quit)
 			break;
