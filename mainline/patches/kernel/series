@@ -673,3 +673,10 @@
 #   under 4K playback, and the reads saw data CRC errors only then. On the HY310: 0 errors on 30946 MiB of Kodi 4K reads against
 #   1899 on 19049 MiB, FIFO full in 0.002 % of the samples instead of 2.9 %.
 0313-mmc-sunxi-the-emmc-host-starts-a-read-block-only-when-the-fifo-has-room-for-it.patch
+#   0314 (package standby-fix, 15.10.2026): afbd reads the capture's write index (INCAP +0xa0c) as the field [2:0], as the vendor
+#   firmware does (`andi 0x7`). After some standbys to RAM the bits above are set (0x4b0..0x4b2) while [2:0] runs as in a good
+#   state, and 0255 dropped every frame because it compared the whole word with "< 3": the warp got no picture until a warm
+#   start (AU-81). One journal line when the upper bits come or go; nothing is written to INCAP.
+#   Measured on the HY310 (15.10.2026): 25 standbys, pictures in all 25; the bits above the index were set after 9 of them and
+#   the warp ran at the clean state's rate there (59.40 frames/s, ctl check 900 without a differing row).
+0314-drm-h713-afbd-the-capture-index-is-the-field-2-0-of-its-word-as-the-firmware-reads-it.patch
