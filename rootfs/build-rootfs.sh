@@ -965,9 +965,14 @@ if ((! SKIP_PROJECT)); then
 	t "h713-features linked"      test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-features.service"
 	t "h713-cpufreq linked"       test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-cpufreq.service"
 	t "keystone udev start"       test -f "$TREE/etc/udev/rules.d/99-h713-keystone.rules"
-	# Profile desktop: h713-tv comes up on `auto` (the mode units are clients of h713-warp)
+	# Profile desktop: Kodi does not run as root (h713-kodi.service), its user comes from sysusers.d at the first boot, h713-warp
+	# hands its Wayland socket to the group the compositor is in, and h713-tv comes up on `auto`
 	if has_profile desktop; then
 		t "desktop: tv.conf starts on source auto"     grep -qx 'source = auto' "$TREE/etc/h713/tv.conf"
+		t "desktop: sysusers.d entry for h713-kodi"    grep -q '^u h713-kodi ' "$TREE/usr/lib/sysusers.d/h713-kodi.conf"
+		t "desktop: Kodi runs as h713-kodi"            grep -qx 'User=h713-kodi' "$TREE/etc/systemd/system/h713-kodi.service"
+		t "desktop: the Kodi unit is hardened"         grep -qx 'NoNewPrivileges=yes' "$TREE/etc/systemd/system/h713-kodi.service"
+		t "desktop: the Wayland socket has a group"    grep -q '^ExecStart=.* -g video ' "$TREE/etc/systemd/system/h713-warp.service"
 	fi
 	if [[ -n "$BOARD" ]]; then
 		t "features of $BOARD"    grep -qx "board = $BOARD" "$TREE/etc/h713/features"

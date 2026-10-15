@@ -200,6 +200,7 @@ struct runtime {
 	} check;
 	char why[WARP_WHY];		/* why it is not WARP_ON */
 	const char *render_node;
+	const char *wl_group;		/* -g: the Wayland socket's group, so that a client that is not root can connect */
 	double m[16];			/* the matrix in use, column major */
 	float mf[16];			/* ... as the uniform wants it */
 	float lf[16];			/* the mode's flip alone: what the mask's labels go through */

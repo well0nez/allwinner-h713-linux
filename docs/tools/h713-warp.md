@@ -56,7 +56,8 @@ width or height. The value that gives way is the one being set, never the one al
 
 ## A Wayland client
 
-The daemon is also a minimal Wayland server on `/run/h713-warp/wayland` (0660; `-w PATH` for another place),
+The daemon is also a minimal Wayland server on `/run/h713-warp/wayland` (0660; `-w PATH` for another place, `-g GROUP`
+for the group that owns it - the unit passes `video`, so that cage, which is not root, can connect),
 so that Kodi under cage reaches the wall through the warp - with the keystone, the overlays and h713-tv as the one
 master (measured on the HY310 on 15.10.2026, `doku/211` §10).
 
@@ -97,7 +98,8 @@ Kodi sees 0 Hz under cage (wlroots' nested output has no rate) and picks the pre
 sync: leave Kodi's "Sync playback to display" off (the default) - with it on, 1080p60 played at 18 fps and Kodi hung
 on stopping the video (measured 15.10.2026).
 
-Kodi's unit (`h713-kodi.service`, profile `desktop`) sets `WAYLAND_DISPLAY=/run/h713-warp/wayland` and
+Kodi's unit (`h713-kodi.service`, profile `desktop`) runs cage and Kodi as the system user `h713-kodi` (groups `video`,
+`render`, `audio`; not root), sets `WAYLAND_DISPLAY=/run/h713-warp/wayland` and
 `WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and sets `h713-tv ctl source auto` at its
 start (without a running h713-tv there is nothing to set: it comes up on `auto`); there is no way back to run at
 its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the

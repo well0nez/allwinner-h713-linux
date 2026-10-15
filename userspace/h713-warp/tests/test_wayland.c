@@ -14,6 +14,7 @@
  */
 #include <errno.h>
 #include <fcntl.h>
+#include <grp.h>
 #include <poll.h>
 #include <signal.h>
 #include <stdbool.h>
@@ -334,6 +335,58 @@ static bool buffer_error(const char *path, int w, int h, int stride, uint32_t co
 	return ok;
 }
 
+/* h713-warp -g GROUP: the named group owns the socket at 0660, so that a client that is not root (Kodi's cage) can connect;
+ * a group that does not exist leaves the socket as it was and the server runs (U-2). Needs a second group of the user to
+ * be able to tell the two apart. */
+static void group_test(const char *stub, const char *dir)
+{
+	gid_t gl[64], other = (gid_t)-1;
+	int n = getgroups(64, gl), i, k, in[2], out[2];
+	struct group *g;
+	struct stat st;
+	char path[64];
+	pid_t pid;
+
+	for (i = 0; i < n; i++)
+		if (gl[i] != getegid())
+			other = gl[i];
+	g = other != (gid_t)-1 ? getgrgid(other) : NULL;
+	if (!g) {
+		printf("     (-g: this user has no second group, the socket's group is not checked)\n");
+		return;
+	}
+	for (k = 0; k < 2; k++) {
+		const char *name = k ? "h713-no-such-group" : g->gr_name;
+
+		snprintf(path, sizeof(path), "%s/group%d", dir, k);
+		if (pipe2(in, O_CLOEXEC) || pipe2(out, O_CLOEXEC))
+			exit(2);
+		pid = fork();
+		if (!pid) {
+			dup2(in[0], 0);
+			dup2(out[1], 1);
+			execl(stub, stub, path, name, (char *)NULL);
+			_exit(127);
+		}
+		close(in[0]);
+		close(out[1]);
+		srv = fdopen(out[0], "r");
+		setvbuf(srv, NULL, _IONBF, 0);
+		if (!server_says("up", 3000) || stat(path, &st)) {
+			CHECK(0, "-g %s: the server is up with its socket", name);
+		} else if (!k) {
+			CHECK(st.st_gid == other && (st.st_mode & 0777) == 0660, "-g %s: the socket belongs to that group, 0660", name);
+		} else {
+			CHECK(st.st_gid == getegid() && (st.st_mode & 0777) == 0660,
+			      "-g with a group that does not exist: the server runs, the socket stays as it was");
+		}
+		fclose(srv);
+		close(in[1]);
+		waitpid(pid, &i, 0);
+		unlink(path);
+	}
+}
+
 int main(int argc, char **argv)
 {
 	char dir[] = "/tmp/h713-warp-test-XXXXXX", path[64];
@@ -345,6 +398,7 @@ int main(int argc, char **argv)
 	if (argc != 2 || !mkdtemp(dir) || pipe2(in, O_CLOEXEC) || pipe2(out, O_CLOEXEC) || stat("/dev/null", &st))
 		return 2;
 	ev.dev = st.st_rdev;
+	group_test(argv[1], dir);
 	snprintf(path, sizeof(path), "%s/wayland", dir);
 	pid = fork();
 	if (!pid) {

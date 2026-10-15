@@ -29,7 +29,9 @@ StartLimitBurst=3
 
 [Service]
 Type=simple
-ExecStart=/usr/local/bin/h713-warp run
+# -g video: the Wayland socket (/run/h713-warp/wayland, 0660) belongs to the group of seatd's socket, so that a compositor
+# that is not root (cage under h713-kodi.service) can connect. The control socket stays root's.
+ExecStart=/usr/local/bin/h713-warp -g video run
 Restart=on-failure
 RestartSec=5s
 

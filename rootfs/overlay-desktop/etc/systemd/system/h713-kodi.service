@@ -27,6 +27,12 @@
 #   remote's devices, so Kodi gets no key at all. The remote's OK and Menu reach Kodi as KEY_ENTER and KEY_COMPOSE
 #   (/etc/udev/rules.d/70-h713-remote.rules): xkb gives a client no evdev code above 247, which KEY_OK and KEY_SELECT are.
 # * cage reads the remote and the keys itself through libinput and seatd; the warp's server has no wl_seat.
+# * Not root: cage and Kodi parse media from outside, load add-ons and answer JSON-RPC on 127.0.0.1:9090, so they run as the
+#   system user h713-kodi (usr/lib/sysusers.d/h713-kodi.conf) with the groups the devices ask for: video (seatd's socket,
+#   h713-warp's Wayland socket, the decoders' /dev/video* and /dev/media*), render (renderD128), audio (ALSA, the DSP bridge).
+#   HOME is the StateDirectory, chowned to the user at the first start; /tmp is private. The hardening is h713-warp.service's
+#   without MemoryDenyWriteExecute (Kodi runs Python add-ons). The source command is the one thing that needs root (h713-tv's
+#   socket is root's): "+" runs it outside the user and the sandbox.
 #
 # * The VA-API wiring comes from the drop-in h713-kodi.service.d/10-h713-media-env.conf, a symlink to
 #   /usr/local/share/h713/systemd/h713-media-env.conf.
@@ -43,8 +49,17 @@ After=h713-warp.service
 
 [Service]
 Type=simple
+User=h713-kodi
+Group=h713-kodi
+SupplementaryGroups=video render audio
+StateDirectory=h713-kodi
 RuntimeDirectory=h713-kodi
 RuntimeDirectoryMode=0700
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
 Environment=XDG_RUNTIME_DIR=/run/h713-kodi
 Environment=HOME=/var/lib/h713-kodi
 Environment=KODI_TEMP=/tmp/h713-kodi
@@ -55,7 +70,7 @@ Environment=WLR_BACKENDS=wayland,libinput
 Environment=WLR_RENDER_DRM_DEVICE=/dev/dri/by-path/platform-1800000.gpu-render
 Environment=WLR_RENDERER=gles2
 ExecStartPre=/bin/mkdir -p /tmp/h713-kodi
-ExecStartPre=/usr/local/sbin/h713-kodi-switch source
+ExecStartPre=+/usr/local/sbin/h713-kodi-switch source
 ExecStart=/usr/bin/cage -- /usr/bin/kodi-standalone --windowing=wayland
 ExecStop=/usr/local/sbin/h713-kodi-switch quit $MAINPID
 KillSignal=SIGTERM
