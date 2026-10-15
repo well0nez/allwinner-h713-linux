@@ -1,0 +1,284 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 15 Oct 2026 18:43:42 +0200
+Subject: [PATCH 15/17] Keep a context alive while any surface call is inside
+ it
+
+vaSyncSurface, vaQuerySurfaceStatus and vaDestroySurfaces read
+surface->ctx and the CAPTURE index without a lock and then call into that
+context: its codec lock, its mutex, its video fd, its free list. Meanwhile
+vaDestroyContext on another thread clears surface->ctx, hands the CAPTURE
+buffers over to their surfaces and frees the context. Only the image and
+export paths held the view lock (0003), so the other three could use a
+context after it was freed.
+
+That is what a resolution change does in FFmpeg and mpv: the decoder
+thread destroys the old context while another thread syncs a frame of it,
+queries it, or releases the old pool. A host test drives the real driver
+code with a dummy context and makes the threads meet where they can
+(vaSyncSurface about to lock the context's mutex, vaQuerySurfaceStatus
+reaping it, a codec flush about to lock the codec lock, and
+vaDestroySurfaces freeing the surface while vaDestroyContext is giving it
+its buffer); under AddressSanitizer all four were heap-use-after-free
+before this change.
+
+Now every surface call that reaches into a context holds the view lock
+shared for its whole call, and vaDestroyContext takes it exclusively before
+it stops the queues, not only for the handover: a call already inside
+finishes first, a later one finds surface->ctx cleared. The pair
+surface->ctx / capture index is read once per call. Releasing a destroyed
+surface's buffer into the free list takes the codec lock, as the decode
+path that pops it does. The format converter and the video processing
+state go under the exclusive lock as well. With this, all four meetings
+wait instead, and the sanitizer stays quiet.
+
+Lock order is unchanged: view lock, codec lock, context mutex, driver
+mutex; nothing that holds one of the later ones takes the view lock.
+
+License: GPL-3.0-or-later, like the code it changes (libva-v4l2_request).
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/context.c      | 43 ++++++++++++++++++--------
+ src/surface.c      | 76 +++++++++++++++++++++++++++++++++++-----------
+ src/v4l2_request.h |  8 +++--
+ 3 files changed, 94 insertions(+), 33 deletions(-)
+
+diff --git a/src/context.c b/src/context.c
+index 29b7ab0..889dad0 100644
+--- a/src/context.c
++++ b/src/context.c
+@@ -876,19 +876,26 @@ void v4l2r_context_release_capture(struct v4l2r_context *ctx, int index)
+ 	if (index < 0 || index >= (int)ctx->nb_captures)
+ 		return;
+ 
++	/* The free list is also popped by the decode path (capture_buffer_bind,
++	 * under the codec lock), which may run on another thread while a
++	 * client destroys surfaces of the same context. */
++	pthread_mutex_lock(&ctx->codec_lock);
++
+ 	/* Only owned buffers transition to free; ignore an already-free one. */
+-	if (!ctx->captures[index].surface)
+-		return;
++	if (ctx->captures[index].surface) {
++		/* Orphan the buffer for later recycling. It keeps its
++		 * last_ref_seq so a future decode that recycles it still waits
++		 * out any frame that referenced its contents. */
++		v4l2r_trace("release surface 0x%08x, orphan CAPTURE buffer #%d "
++			  "(free list now %u)\n",
++			  ctx->captures[index].surface->id, index,
++			  ctx->free_count + 1);
++		ctx->captures[index].surface->capture_index = -1;
++		ctx->captures[index].surface = NULL;
++		free_list_push(ctx, index);
++	}
+ 
+-	/* Orphan the buffer for later recycling. It keeps its last_ref_seq so
+-	 * a future decode that recycles it still waits out any frame that
+-	 * referenced its contents. */
+-	v4l2r_trace("release surface 0x%08x, orphan CAPTURE buffer #%d "
+-		  "(free list now %u)\n",
+-		  ctx->captures[index].surface->id, index, ctx->free_count + 1);
+-	ctx->captures[index].surface->capture_index = -1;
+-	ctx->captures[index].surface = NULL;
+-	free_list_push(ctx, index);
++	pthread_mutex_unlock(&ctx->codec_lock);
+ }
+ 
+ void v4l2r_flush_surface(struct v4l2r_surface *surface)
+@@ -1235,6 +1242,18 @@ VAStatus v4l2r_DestroyContext(VADriverContextP va_ctx, VAContextID context_id)
+ 		if (ctx->captures[i].surface)
+ 			v4l2r_sync_capture(ctx, i);
+ 
++	/*
++	 * From here on the context is torn down and freed. Surface calls on
++	 * other threads reach into it through surface->ctx (vaSyncSurface,
++	 * vaQuerySurfaceStatus, vaDestroySurfaces, the image and export
++	 * paths), and each holds the view lock shared for its whole call. So
++	 * take it exclusively before the queues go: a call already inside
++	 * finishes first, and a later one finds surface->ctx cleared below.
++	 * Before, only the handover was covered, and a vaSyncSurface that
++	 * had read surface->ctx locked the mutex of a freed context.
++	 */
++	pthread_rwlock_wrlock(&drv->view_lock);
++
+ 	if (ctx->video_fd >= 0 && ctx->streaming) {
+ 		type = ctx->output_format.type;
+ 		ioctl(ctx->video_fd, VIDIOC_STREAMOFF, &type);
+@@ -1248,8 +1267,6 @@ VAStatus v4l2r_DestroyContext(VADriverContextP va_ctx, VAContextID context_id)
+ 	for (unsigned int i = 0; i < V4L2R_OUTPUT_BUFFERS; i++)
+ 		output_buffer_cleanup(ctx, &ctx->output[i]);
+ 
+-	pthread_rwlock_wrlock(&drv->view_lock);
+-
+ 	/* Decoded frames outlive their context (see
+ 	 * v4l2r_surface_adopt_capture); a frame mid-decode has no content
+ 	 * worth keeping. */
+diff --git a/src/surface.c b/src/surface.c
+index d9a6154..3dfc9d3 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -92,10 +92,23 @@ VAStatus v4l2r_DestroySurfaces(VADriverContextP va_ctx, VASurfaceID *surface_lis
+ 
+ 	for (int i = 0; i < num_surfaces; i++) {
+ 		struct v4l2r_surface *surface;
++		struct v4l2r_context *ctx;
++		int index;
++
++		/* Shared view lock, like every surface call that reaches into
++		 * the surface's context: vaDestroyContext on another thread
++		 * hands the context's CAPTURE buffers to their surfaces and
++		 * frees the context only with it held exclusively. Without
++		 * it, a pool released on one thread (FFmpeg after a resolution
++		 * change) freed a surface the handover was still writing to,
++		 * or released a buffer into a context already freed. */
++		pthread_rwlock_rdlock(&drv->view_lock);
+ 
+ 		surface = V4L2R_SURFACE_GET(drv, surface_list[i]);
+-		if (!surface)
++		if (!surface) {
++			pthread_rwlock_unlock(&drv->view_lock);
+ 			return VA_STATUS_ERROR_INVALID_SURFACE;
++		}
+ 
+ 		/* Wait for any pending decode (and conversion, which holds a
+ 		 * pointer to the surface); the CAPTURE buffer itself stays
+@@ -103,15 +116,18 @@ VAStatus v4l2r_DestroySurfaces(VADriverContextP va_ctx, VASurfaceID *surface_lis
+ 		 * detached from the surface and returned to the free pool
+ 		 * for reuse by later decodes. */
+ 		v4l2r_surface_ready(surface);
+-		if (surface->ctx && surface->capture_index >= 0)
+-			v4l2r_context_release_capture(surface->ctx,
+-						      surface->capture_index);
++		ctx = surface->ctx;
++		index = surface->capture_index;
++		if (ctx && index >= 0)
++			v4l2r_context_release_capture(ctx, index);
+ 
+ 		v4l2r_surface_free_backing(surface);
+ 
+ 		pthread_mutex_lock(&drv->mutex);
+ 		v4l2r_handles_free(&drv->surfaces, surface_list[i]);
+ 		pthread_mutex_unlock(&drv->mutex);
++
++		pthread_rwlock_unlock(&drv->view_lock);
+ 	}
+ 
+ 	return VA_STATUS_SUCCESS;
+@@ -121,20 +137,25 @@ VAStatus v4l2r_SyncSurface(VADriverContextP va_ctx, VASurfaceID render_target)
+ {
+ 	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
+ 	struct v4l2r_surface *surface;
++	VAStatus status;
+ 
++	/* Shared view lock: the surface's context cannot be destroyed while
++	 * this waits on it (see v4l2r_DestroySurfaces). */
++	pthread_rwlock_rdlock(&drv->view_lock);
+ 	surface = V4L2R_SURFACE_GET(drv, render_target);
+-	if (!surface)
+-		return VA_STATUS_ERROR_INVALID_SURFACE;
++	status = surface ? v4l2r_surface_ready(surface) :
++			   VA_STATUS_ERROR_INVALID_SURFACE;
++	pthread_rwlock_unlock(&drv->view_lock);
+ 
+-	return v4l2r_surface_ready(surface);
++	return status;
+ }
+ 
+-VAStatus v4l2r_QuerySurfaceStatus(VADriverContextP va_ctx,
+-				  VASurfaceID render_target,
+-				  VASurfaceStatus *status)
++static VAStatus query_surface_status(struct v4l2r_driver *drv,
++				     VASurfaceID render_target,
++				     VASurfaceStatus *status)
+ {
+-	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
+ 	struct v4l2r_surface *surface;
++	struct v4l2r_context *ctx;
+ 
+ 	surface = V4L2R_SURFACE_GET(drv, render_target);
+ 	if (!surface)
+@@ -143,9 +164,10 @@ VAStatus v4l2r_QuerySurfaceStatus(VADriverContextP va_ctx,
+ 	/* A frame held back for reordering reports rendering until submitted. */
+ 	v4l2r_flush_surface(surface);
+ 
+-	if (surface->ctx && surface->capture_index >= 0 &&
++	ctx = surface->ctx;
++	if (ctx && surface->capture_index >= 0 &&
+ 	    surface->status == VASurfaceRendering)
+-		v4l2r_reap_capture(surface->ctx);
++		v4l2r_reap_capture(ctx);
+ 
+ 	*status = surface->status;
+ 
+@@ -156,6 +178,21 @@ VAStatus v4l2r_QuerySurfaceStatus(VADriverContextP va_ctx,
+ 	return VA_STATUS_SUCCESS;
+ }
+ 
++VAStatus v4l2r_QuerySurfaceStatus(VADriverContextP va_ctx,
++				  VASurfaceID render_target,
++				  VASurfaceStatus *status)
++{
++	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
++	VAStatus ret;
++
++	/* Shared view lock, see v4l2r_DestroySurfaces. */
++	pthread_rwlock_rdlock(&drv->view_lock);
++	ret = query_surface_status(drv, render_target, status);
++	pthread_rwlock_unlock(&drv->view_lock);
++
++	return ret;
++}
++
+ VAStatus v4l2r_QuerySurfaceAttributes(VADriverContextP va_ctx, VAConfigID config,
+ 				      VASurfaceAttrib *attrib_list,
+ 				      unsigned int *num_attribs)
+@@ -250,18 +287,23 @@ VAStatus v4l2r_QuerySurfaceAttributes(VADriverContextP va_ctx, VAConfigID config
+  */
+ VAStatus v4l2r_surface_ready(struct v4l2r_surface *surface)
+ {
++	struct v4l2r_context *ctx;
+ 	VAStatus status;
++	int index;
+ 
+ 	v4l2r_flush_surface(surface);
+ 
+-	if (!surface->ctx || surface->capture_index < 0)
++	/* Read once: the callers hold the view lock, so the context cannot go
++	 * away, but the pair must not be read across a change either. */
++	ctx = surface->ctx;
++	index = surface->capture_index;
++	if (!ctx || index < 0)
+ 		return VA_STATUS_SUCCESS;
+ 
+ 	uint64_t t0 = v4l2r_now_ns();
+-	status = v4l2r_sync_capture(surface->ctx, surface->capture_index);
++	status = v4l2r_sync_capture(ctx, index);
+ 	v4l2r_trace("export sync (surface 0x%08x buf #%d): %.2f ms\n",
+-		    surface->id, surface->capture_index,
+-		    (v4l2r_now_ns() - t0) / 1e6);
++		    surface->id, index, (v4l2r_now_ns() - t0) / 1e6);
+ 	if (status != VA_STATUS_SUCCESS)
+ 		return status;
+ 
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index e51ce56..7c12b70 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -413,9 +413,11 @@ struct v4l2r_driver {
+ 	struct v4l2r_handles buffers;
+ 	struct v4l2r_handles images;
+ 	pthread_mutex_t mutex;
+-	/* Readers of surface memory (images, exports) hold this shared;
+-	 * DestroyContext holds it exclusively while it hands still-referenced
+-	 * CAPTURE buffers over to their surfaces. */
++	/* Every surface call that reaches into the surface's context (images,
++	 * exports, sync, status, destroy) holds this shared; DestroyContext
++	 * holds it exclusively while it tears down the queues and hands
++	 * still-referenced CAPTURE buffers over to their surfaces, and frees
++	 * the context only after every surface has let go of it. */
+ 	pthread_rwlock_t view_lock;
+ 
+ 	struct v4l2r_decoder decoders[V4L2R_MAX_DECODERS];
+-- 
+2.43.0
+
