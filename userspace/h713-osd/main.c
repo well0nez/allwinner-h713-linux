@@ -104,12 +104,12 @@ static struct {
 
 /*
  * The launcher (package H of the media side project): a column on the left edge that stays until it is closed, cut
- * into bands (libh713osd: the header, one per row, the foot). A band is repainted in the canvas when it changes and put
+ * into bands (libh713osd: the header, one per row, the foot, the gap between the rows at the top and those at the foot). A band is repainted in the canvas when it changes and put
  * into a buffer when that buffer does not hold its current picture - a move of the selection costs two bands, not the
  * column (the pre-distortion walks every pixel of what it puts). gen[] is what each band should show, cgen[] what the
  * canvas holds, held[][] what each of the two buffers holds.
  */
-#define BANDS (OSD_LAUNCHER_ROWS + 2)
+#define BANDS (OSD_LAUNCHER_ROWS + 3)
 static struct {
 	bool open;
 	struct osd_launcher l;
@@ -613,7 +613,7 @@ static int lau_put(int b, bool skew)
 	for (int k = 0; k < n; k++) {
 		int r[4] = { box[k][0], box[k][1] > LAU_MARGIN ? box[k][1] - LAU_MARGIN : 0, box[k][2], 0 }, out[4];
 
-		if (lau.held[b][k] == lau.cgen[k])
+		if (!box[k][3] || lau.held[b][k] == lau.cgen[k])
 			continue;
 		r[3] = (box[k][1] + box[k][3] + LAU_MARGIN < canvas.h ? box[k][1] + box[k][3] + LAU_MARGIN : canvas.h) - r[1];
 		if (skew) {	/* source row i is the pixel row between i - 0.5 and i + 0.5; the canvas edges keep their fade */
@@ -628,6 +628,7 @@ static int lau_put(int b, bool skew)
 	}
 	lau.live[b] = true;
 	lau.skew[b] = skew;
+	lau.wipe[b] = false;	/* a buffer that held nothing needed no wipe: the flag must not make the next refresh wipe it */
 	return area;
 }
 

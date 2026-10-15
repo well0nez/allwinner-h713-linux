@@ -123,7 +123,7 @@ int main(int argc, char **argv)
 		return 0;
 	}
 	for (size_t k = 0; k < sizeof(LAUNCHERS) / sizeof(LAUNCHERS[0]); k++) {
-		int box[OSD_LAUNCHER_ROWS + 2][4], bands;
+		int box[OSD_LAUNCHER_ROWS + 3][4], bands;
 
 		osd_clear(&c);
 		bands = osd_launcher_bands(&c, &LAUNCHERS[k].l, box);

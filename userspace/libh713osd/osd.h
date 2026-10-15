@@ -104,9 +104,10 @@ void osd_draw_hint(struct osd_canvas *c, double x, double baseline, const char *
 
 /*
  * The launcher: a column on the left edge (the scrim, 700 units wide) with a header line, up to six rows and a hint line,
- * the mock-up's "Launcher C". It is cut into BANDS - the header, one per row, the foot - that tile the column from top
- * to bottom, so a caller can repaint only the bands that changed (a move of the selection changes two) and copy or
- * pre-distort only those. Band 0 is the header, band 1 + i row i, band n + 1 the foot.
+ * the mock-up's "Launcher C". It is cut into BANDS that tile the column, so a caller can repaint only the bands that changed
+ * (a move of the selection changes two rows' bands, 124 units high each) and copy or pre-distort only those. Band 0 is the
+ * header, band 1 + i row i, band n + 1 the foot, band n + 2 the gap between the rows at the top and those at the foot - scrim
+ * only, drawn once (empty, height 0, when there is none). The bands are not in the order of their y.
  */
 #define OSD_LAUNCHER_ROWS 6
 
@@ -120,7 +121,8 @@ struct osd_launcher {
 	} row[OSD_LAUNCHER_ROWS];	/* the rows with end = 0 first, then those with end = 1 */
 };
 
-/* the rectangles (x, y, w, h in canvas pixels) of the bands; returns their count, n + 2 (0 if n < 0) */
+/* the rectangles (x, y, w, h in canvas pixels) of the bands; returns their count, n + 3 (0 for no rows); box needs
+ * OSD_LAUNCHER_ROWS + 3 entries */
 int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l, int box[][4]);
 
 /* repaint one band: the scrim REPLACES its pixels, then its content is drawn over it. All of them, in any order,
