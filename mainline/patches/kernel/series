@@ -641,6 +641,11 @@
 #   (message and diff; From: and Origin: added). 0302 is his 0146 adapted: it adds the node his 0140 had added for the
 #   presence probe (not taken, nor 0141) with 0146's change, the node his series ends with. The defconfig turns
 #   CONFIG_VIDEO_HANTRO on as a module.
+#   0300 stays although nothing uses it while the AV1 decoder is off: 0303 needs PL10, and dropping it would leave the AV1
+#   code in the series unbuildable. Its numbers are local and not agreed upstream (PL10, and fourcc_mod_code(ALLWINNER, 2)
+#   for LSB10); with the decoder off no driver of this kernel produces or accepts either, and no image ships this kernel's
+#   headers. The VA driver carries its own copies of both values (#ifndef). Before the AV1 decoder comes back into an
+#   image, the modifier wants an upstream number.
 0300-EXPERIMENT-media-drm-p010-lsb-modifier-and-pixfmt.patch
 0301-media-verisilicon-hooks-for-a-variant-without-a-post-processor.patch
 0302-arm64-dts-h713-bind-the-av1-decoder-to-hantro.patch
