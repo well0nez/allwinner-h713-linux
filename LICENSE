@@ -1,5 +1,16 @@
 The code in this repository is licensed under the GNU General Public License,
-version 2. The documentation is licensed separately -- see LICENSE.docs.
+version 2, unless a file or directory says otherwise. The documentation is
+licensed separately -- see LICENSE.docs.
+
+The exceptions are written on the files: a file's own SPDX-License-Identifier
+line wins over this text. In particular tfa-h713/ is BSD-3-Clause, crust-h713/
+BSD-3-Clause or GPL-2.0-only, uboot-h713/ GPL-2.0+; rootfs/libva/patches/ is
+GPL-3.0-or-later (changes to a GPL-3.0-or-later driver); rootfs/libva/build-libva.sh
+and rootfs/mesa/cross-aarch64.ini.in are GPL-2.0-or-later, so that they can be
+part of that driver's Corresponding Source. The Mesa the image builds is MIT
+(its licence texts travel with it). Files of third parties that came into
+mainline/ carry the licence they came with, or none: a file without a licence
+line that is not ours is not covered by this text.
 
     Copyright (C) 2026 well0nez
     Copyright (C) 2026 Christopher Stenger (the parts marked as his in PROVENANCE.md)

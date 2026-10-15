@@ -1,4 +1,6 @@
 #!/bin/bash
+# SPDX-License-Identifier: GPL-2.0
+#
 # rootfs/mesa/build-mesa.sh - mesa for the board: the panfrost gallium driver, EGL, GLES2 and GBM,
 # no LLVM, no X11, no Wayland, cross-built with clang against the arm64 sysroot.
 #
@@ -10,7 +12,7 @@
 # plan/keystone S0). This build is 8-12 MiB. Pinned to the mesa version Debian trixie ships, so the
 # only difference to the distribution's build is the option set below.
 #
-# glvnd (media side project, package E): libEGL.so.1 and libGLESv2.so.2 are Debian's libglvnd
+# glvnd: libEGL.so.1 and libGLESv2.so.2 are Debian's libglvnd
 # dispatchers (libegl1, libgles2, in the base image); this mesa is their EGL vendor, libEGL_mesa.so.0,
 # found through the ICD file in /etc/glvnd/egl_vendor.d. That is what lets Debian's compositors and
 # Kodi (profiles, rootfs/build-rootfs.sh --profile) install and run on it: the mesa packages they
@@ -38,7 +40,9 @@ die() { printf 'error: %s\n' "$*" >&2; exit 1; }
 
 # 1. source, pinned
 TARBALL="$CACHE/mesa-$MESA_VER.tar.xz"
-[[ -f "$TARBALL" ]] || curl -fsSL -o "$TARBALL" "$MESA_URL"
+# --retry-all-errors: a connection reset (15.10.2026, archive.mesa3d.org) is not a "transient error" to curl --retry alone.
+# Into a .part file first: a cut transfer must not stand as the tarball, where the next run takes it for the real one.
+[[ -f "$TARBALL" ]] || { curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o "$TARBALL.part" "$MESA_URL" && mv "$TARBALL.part" "$TARBALL"; }
 echo "$MESA_SHA256  $TARBALL" | sha256sum -c --quiet - || die "mesa tarball: sha256 does not match"
 [[ -f "$SYSROOT/usr/include/libdrm/drm.h" ]] || die "no sysroot at $SYSROOT (release/build-all.sh step 6 makes it)"
 [[ -d "$SYSROOT/usr/include/c++" ]] || die "sysroot without C++ headers (libstdc++-14-dev) - mesa has C++ parts"
@@ -96,6 +100,23 @@ grep -q "panfrost" "$STAGE"/usr/local/lib/libgallium-*.so || die "libgallium wit
 find "$STAGE" -name 'libEGL_mesa.so.0.0.0' -exec readelf -d {} + | grep -q "libwayland-client" || die "libEGL_mesa without the Wayland platform?"
 [[ $(find "$STAGE" -name '*.so*' -type f -exec readelf -h {} + | grep -c "AArch64") -gt 0 ]] || die "not aarch64?"
 find "$STAGE" -name '*.so*' -type f -exec readelf -d {} + | grep "NEEDED" | sed 's/.*\[\(.*\)\]/\1/' | sort -u | tr '\n' ' ' | sed 's/^/    NEEDED: /'; echo
+
+# Mesa is MIT-licensed for the most part and wants its copyright and permission notice in every copy: the licence
+# texts of the source tree (licenses/: MIT, Apache-2.0, BSL-1.0, SGI-B-2.0, GPL-2.0-only, GPL-1.0-or-later) and its
+# docs/license.rst go into the tarball, with a note on where the source is.
+DOC="$STAGE/usr/local/share/doc/mesa"
+install -d "$DOC"
+cp -a "$SRC/licenses" "$DOC/licenses"
+install -m 0644 "$SRC/docs/license.rst" "$DOC/license.rst"
+{
+	echo "Mesa $MESA_VER, built for the H713 by rootfs/mesa/build-mesa.sh: the panfrost gallium driver, EGL (glvnd vendor library), GLES2, GBM,"
+	echo "the Wayland platform; no patches of ours, only the option set in the script."
+	echo "licence:    mostly MIT; docs/license.rst (license.rst here) says who holds which copyright, licenses/ has the texts"
+	echo "source:     $MESA_URL"
+	echo "            sha256 $MESA_SHA256 (the same bytes as Debian's mesa_$MESA_VER.orig.tar.xz)"
+	echo "build:      rootfs/mesa/build-mesa.sh and rootfs/mesa/cross-aarch64.ini.in of https://github.com/well0nez/allwinner-h713-linux, revision ${REPO_REV:-$(git -C "$ROOT" -c safe.directory='*' describe --tags --always 2>/dev/null || echo unknown)}"
+} > "$DOC/README"
+[[ -f "$DOC/licenses/MIT" && -s "$DOC/license.rst" ]] || die "the licence texts are not in the stage"
 
 # 6. tarball + sizes. Sorted, owner 0:0 (build-rootfs.sh chowns to 0:0 on the way in anyway) and, with
 #    SOURCE_DATE_EPOCH (release/build-all.sh), one mtime for all: the same stage gives the same tar.

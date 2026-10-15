@@ -92,7 +92,7 @@ libubootenv-tool    # fw_printenv/fw_setenv per /etc/fw_env.config (0x700000, 64
                     # h713_boot, h713_gate, h713_project are otherwise only reachable
                     # at the U-Boot prompt. Small (~100 KiB), no u-boot-tools needed.
 
-# --- GPU userspace: the glvnd dispatchers (media side project, package E, 13.10.2026) ---
+# --- GPU userspace: the glvnd dispatchers (13.10.2026) ---
 # mesa (rootfs/mesa/build-mesa.sh) is a glvnd vendor now: it no longer ships libEGL.so.1 and
 # libGLESv2.so.2, these two packages do. h713-warp links both. Behind them sits OUR mesa
 # (libEGL_mesa.so.0 in /usr/local/lib, ICD file /etc/glvnd/egl_vendor.d/50_mesa.json). libegl1 depends on
@@ -128,7 +128,7 @@ debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg - witho
 #     25.0.7 with only the Panfrost driver, EGL, GLES2 and GBM (15 MiB, no LLVM),
 #     build-rootfs.sh puts it under /usr/local (--mesa). Reason: the keystone path
 #     (working journal `keystone`).
-#     Changed 13.10.2026 (media side project, package E): libegl1 and libgles2 ARE in now, above - they are
+#     Changed 13.10.2026: libegl1 and libgles2 ARE in now, above - they are
 #     glvnd's small dispatchers, and mesa became their vendor. libgbm1, libgl1-mesa-dri (and libegl-mesa0,
 #     mesa-libgallium, libglx-mesa0) stay out as Debian's packages: rootfs/equivs/ builds dummies of the same names, so
 #     Debian's compositors and Kodi (rootfs/packages-*.txt, build-rootfs.sh --profile) install without LLVM.

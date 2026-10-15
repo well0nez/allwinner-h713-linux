@@ -21,12 +21,12 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `boards/hy200-qz713df-a1/README.md` | `doku/136`, `doku/182`, `doku/184`, `doku/185` |
 | `boards/hy300-t08/README.md` | `doku/121` |
 | `boards/hy310/README.md` | `doku/10`, `doku/121` |
-| `docs/architecture.md` | `doku/103`, `doku/163`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/177`, `doku/181`, `doku/192`, `doku/193`, `doku/82`, `doku/83`, `doku/96` |
+| `docs/architecture.md` | `doku/103`, `doku/163`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/177`, `doku/181`, `doku/192`, `doku/193`, `doku/211`, `doku/82`, `doku/83`, `doku/96` |
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/188`, `doku/190`, `doku/70`, `doku/72`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/80` |
-| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/193`, `doku/197`, `doku/198`, `doku/199`, `doku/200`, `doku/60`, `doku/61` |
+| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/193`, `doku/197`, `doku/198`, `doku/199`, `doku/200`, `doku/211`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107`, `doku/170` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/184`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/206`, `doku/nachtlog/S21-re-audif-zugang` |
@@ -57,7 +57,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-pq.md` | `doku/81`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation` |
 | `docs/tools/h713-probe.md` | `doku/120` |
 | `docs/tools/h713-tv.md` | `doku/101`, `doku/172`, `doku/174`, `doku/177`, `doku/78`, `doku/86`, `doku/88`, `doku/99` |
-| `docs/tools/h713-warp.md` | `doku/197`, `doku/200`, `doku/201`, `doku/206` |
+| `docs/tools/h713-warp.md` | `doku/197`, `doku/200`, `doku/201`, `doku/206`, `doku/211` |
 | `docs/tools/h713-wifi.md` | `doku/60` |
 | `docs/uboot/README.md` | `doku/10`, `doku/109`, `doku/163`, `doku/170`, `doku/30` |
 | `docs/uboot/commands.md` | `doku/108`, `doku/67`, `doku/70`, `doku/98` |
@@ -118,7 +118,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/tests/test_stock_gpt_crosscheck.py` | `doku/60`, `doku/61` |
 | `installer/tests/test_stock_guard.py` | `doku/121` |
 | `installer/tests/test_test_image.py` | `doku/109`, `doku/121` |
-| `release/build-all.sh` | `doku/116`, `doku/120`, `doku/121`, `doku/148`, `doku/50`, `doku/60` |
+| `release/build-all.sh` | `doku/107`, `doku/116`, `doku/120`, `doku/121`, `doku/148`, `doku/50`, `doku/60` |
 | `release/doku-index.py` | `doku/128`, `doku/128a`, `doku/nachtlog/S49-` |
 | `release/repo-skelett.sh` | `doku/116`, `doku/118`, `doku/121` |
 | `release/sperr-scan.py` | `doku/116`, `doku/121` |
@@ -156,7 +156,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`104-plan-standby-stufe2.md`](104-plan-standby-stufe2.md) | Plan |  | Plan 104 - Einschalt-Gate Stufe 2: Stock-Standby über die ARISC | 2 |
 | [`105-plan-release.md`](105-plan-release.md) | Plan |  | Plan 105 - Release: den HY310-Stand für andere nutzbar machen | 2 |
 | [`106-handoff-20260910.md`](106-handoff-20260910.md) | Handoff | 2026-09-10 | Handoff 10.09.2026 - Stand, Todos, teuer bezahltes Wissen | - |
-| [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 6 |
+| [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 7 |
 | [`108-plan-vendordaten.md`](108-plan-vendordaten.md) | Plan |  | Plan 108 - die Vendor-Artefakte vom Stock-Layout lösen | 5 |
 | [`109-plan-layout-v3.md`](109-plan-layout-v3.md) | Plan |  | Plan 109 - Layout v3: die Boot-Kette an den Anfang | 16 |
 | [`110-plan-installationsweg.md`](110-plan-installationsweg.md) | Plan |  | Plan 110 - der Installationsweg für Nutzer | 6 |
@@ -261,6 +261,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`207-hy310-auf-main-hy310main1-reihe-20261012.md`](207-hy310-auf-main-hy310main1-reihe-20261012.md) | Analyse | 2026-10-12 | 207 - HY310 auf `main`: Abbild hy310main1 gebaut und installiert, die offenen 2.x-Punkte gemessen; Handoff (12.10.2026, abends) | 1 |
 | [`208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`](208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md) | Analyse | 2026-10-12 | 208 - Die 5.x-Runde: Werkzeuge, Reste der Standby-Durchsicht, ARISC-Wahl, Panel-PR, Testabbild runde5x1 am HY310; Handoff (12.10.2026, nachts) | - |
 | [`209-runde-5x-teil-b-uebernahme-panel-20261013.md`](209-runde-5x-teil-b-uebernahme-panel-20261013.md) | Analyse | 2026-10-13 | 209 - Die 5.x-Runde, Teil B mit Marco am HY310, alles nach `main`, das Panel mit den Beamer-Begriffen; Handoff (13.10.2026, nachts) | - |
+| [`211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md`](211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md) | Protokoll | 2026-10-15 | 211 - Das Nebenprojekt Medien: Dekoder, VA-API-Treiber, mesa, Kodi und der Wayland-Server im Warp; die Messungen am HY310 (13. bis 15.10.2026) | 3 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -417,7 +418,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-51 von 268 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+51 von 269 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
