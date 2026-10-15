@@ -1,8 +1,17 @@
 # h713-kodi.service - Kodi under cage on the panel (profile desktop; media side project, package F).
 #
-# Not wanted by anything, on purpose: the panel belongs to the HDMI input (h713-tv, h713-warp) until somebody stops them and
-# starts this unit; cage becomes the DRM master of the display card for as long as it runs. The caller does the switching
-# (F8: systemctl stop h713-kodi; systemctl start h713-tv@<node> h713-warp), nothing here knows the node number.
+# Not wanted by anything, on purpose: the panel belongs to the HDMI input (h713-tv, h713-warp) until somebody starts this
+# unit; cage becomes the DRM master of the display card for as long as it runs. The panel has one owner at a time, and
+# systemd does the switching (package F-opt, O5):
+# * `systemctl start h713-kodi` stops h713-warp (Conflicts= below) and h713-tv@<node> (Conflicts= in the drop-in
+#   /etc/systemd/system/h713-tv@.service.d/50-h713-kodi.conf, which knows the template; this unit cannot name the node).
+# * Whatever starts the HDMI side while Kodi runs stops Kodi first: udev, a person, and h713-mips-restart after a
+#   standby (AU-57: it met cage as the DRM master, "SET_MASTER: Device or resource busy", and Kodi's last picture stayed).
+# * A stop asks Kodi to quit first (JSON-RPC Application.Quit, ExecStop=) and waits for cage to end with it: a SIGTERM to the
+#   whole group lets cage close the socket under a running Kodi, which then aborts ("poll() signalled error condition on
+#   Wayland socket") without saving its state (resume points). F-opt O5, 15.10.2026.
+# * However Kodi ends - its own Exit, `systemctl stop h713-kodi`, a crash or the conflict above - ExecStopPost starts
+#   h713-tv@<node> and h713-warp again (h713-kodi-switch back).
 #
 # * The VA-API wiring comes from the drop-in h713-kodi.service.d/10-h713-media-env.conf, a symlink to
 #   /usr/local/share/h713/systemd/h713-media-env.conf (AU-32, M2 Auflage 4): LIBVA_DRIVER_NAME and LIBVA_DRIVERS_PATH reach
@@ -17,6 +26,9 @@ Description=Kodi under cage on the panel (the display card's DRM master while it
 Documentation=file:/usr/local/share/h713/systemd/h713-media-env.conf
 Requires=seatd.service
 After=seatd.service
+# After= only orders the switch: the stop of the one side runs before the start of the other.
+Conflicts=h713-warp.service
+After=h713-warp.service
 
 [Service]
 Type=simple
@@ -33,5 +45,7 @@ Environment=WLR_RENDERER=gles2
 Environment=WLR_NO_HARDWARE_CURSORS=1
 ExecStartPre=/bin/mkdir -p /tmp/h713-kodi
 ExecStart=/usr/bin/cage -- /usr/bin/kodi-standalone --windowing=wayland
+ExecStop=/usr/local/sbin/h713-kodi-switch quit $MAINPID
+ExecStopPost=-/usr/local/sbin/h713-kodi-switch back
 KillSignal=SIGTERM
 TimeoutStopSec=20s
