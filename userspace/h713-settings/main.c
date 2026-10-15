@@ -159,6 +159,15 @@ static int next_key(int ms)
 /* --- the page ------------------------------------------------------------------------------------------------ */
 
 static unsigned dirty;
+static bool timing;			/* H713_SETTINGS_TIMES: one journal line per drawing, for the key-to-wall measurement (S3) */
+
+static double now_ms(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_MONOTONIC, &t);
+	return t.tv_sec * 1e3 + t.tv_nsec / 1e6;
+}
 
 static void select_row(int to)
 {
@@ -373,6 +382,7 @@ int main(int argc, char **argv)
 		}
 	}
 	clock_gettime(CLOCK_MONOTONIC, &last);
+	timing = *env("H713_SETTINGS_TIMES", "") != '\0';
 
 	rows_init();
 	for (int i = 0; area && i < nareas; i++)
@@ -388,12 +398,18 @@ int main(int argc, char **argv)
 		if (changed)
 			dirty |= D_AREAS;
 		if (dirty) {
+			double t0 = now_ms(), t1;
+
 			ui_draw(&canvas, &v, dirty, box);
+			t1 = now_ms();
 			dirty = 0;
 			if (!test && !page_show(box)) {
 				fprintf(stderr, "h713-settings: nothing can be seen any more -- closing\n");
 				break;
 			}
+			if (timing)
+				fprintf(stderr, "h713-settings: drawn %.1f ms (%dx%d px), shown %.1f ms\n", t1 - t0, box[2], box[3],
+					now_ms() - t1);
 		}
 		if (quit)
 			break;
