@@ -13,15 +13,18 @@ at once, as before. A press of
 long_s seconds (3) powers off whatever short says. A KEY_POWER whose timestamp lies within ignore_s (2 s)
 after a resume the key itself woke is that same press and is ignored. If this service dies, logind's own
 power-off is back (docs/subsystems/standby.md).
-A standby parks the display MIPS and nothing in the kernel starts it again: when the projector stays on
-after a standby (or a refused one) and sun50i-h713-mips says parked, h713-mips-restart brings the picture
-back. While it runs a short press does nothing, a long one still powers off; after 120 s it counts as hung and a
-short press counts again.
+A standby parks the display MIPS and nothing in the kernel starts it again: the picture and the mode from before
+(HDMI or Kodi) come back through systemd, for every way into the sleep - this key, the launcher, Kodi's own menu,
+`systemctl suspend`: h713-sleep-pre.service and h713-sleep-post.service run `h713-mode` around sleep.target
+(media side project, package H). While the post unit runs a short press does nothing, a long one still powers off.
+The launcher (h713-keys) hands a Power press on as a datagram "short" to the socket of H713_POWER_CTL; the 15 s of
+the countdown hold the remote's devices (EVIOCGRAB), so that Kodi does not move with the arrows and OK.
 The power-off itself is crust's on a board whose crust says it can (the arisc driver's build2 bit 24): the
 rails off, about 0.3 W, the key or the remote wakes into a fresh boot (doku/188); else the power-on gate.
 `h713-power set default standby|poweroff` (and the other keys of power.conf) changes the policy for the next
 press, no restart needed; `short`, the key's name before the countdown, still works and means `default`.
-Commands: run [--once], status, set KEY VALUE. Exit: 0, 1 power.conf not written, 2 usage.
+Commands: run [--once], status, set KEY VALUE, can-standby. Exit: 0, 1 power.conf not written (can-standby: no
+standby now), 2 usage.
 """
 
 import argparse
@@ -31,6 +34,7 @@ import glob
 import os
 import select
 import shlex
+import socket
 import struct
 import subprocess
 import sys
@@ -38,7 +42,8 @@ import time
 
 ROOT = os.environ.get("H713_POWER_ROOT", "/")
 SYSTEMCTL = shlex.split(os.environ.get("H713_SYSTEMCTL", "systemctl"))
-MIPS_RESTART = shlex.split(os.environ.get("H713_MIPS_RESTART", "/usr/local/sbin/h713-mips-restart"))
+CTL = os.environ.get("H713_POWER_CTL", "/run/h713-power.sock")   # datagrams: "short" = a short press (h713-keys)
+EVIOCGRAB = 0x40044590                       # _IOW('E', 0x90, int)
 EVENT = struct.Struct("qqHHi")               # struct input_event on a 64-bit kernel
 EV_KEY, KEY_POWER = 1, 116
 KEY_LEFT, KEY_RIGHT, KEY_BACK, KEY_OK, KEY_SELECT, KEY_ENTER = 105, 106, 158, 352, 353, 28
@@ -228,66 +233,23 @@ def mips_state():
     return ""
 
 
-restart = None                                   # the running h713-mips-restart, None when there is none
-restart_since = 0.0                              # time.monotonic() of its start
-restart_hung = False                             # its hang is logged once
-# How long a short press waits for h713-mips-restart. It takes seconds - the receiver's probe, then up to 60 s for
-# its node - and a run past this hangs in the kernel (a write to the restart file, a bind): the press counts again
-# instead of being ignored until the next boot (TODO 5.14, review U6).
-RESTART_HANG_S = 120
+def resuming():
+    """True while h713-sleep-post.service runs: the picture path and the mode are coming back after a sleep."""
+    r = subprocess.run(SYSTEMCTL + ["is-active", "h713-sleep-post.service"], capture_output=True, text=True)
+    return r.stdout.strip() == "activating"
 
 
-def picture_back():
-    """After a standby: start h713-mips-restart when the MIPS is parked (cpu_comm parks it in suspend_late).
-
-    It runs beside the key loop and takes seconds (the receiver's probe alone, then up to 60 s for its node):
-    the key stays alive meanwhile. A refused standby is asked too, the park may have come before the refusal."""
-    global restart, restart_since, restart_hung
-    if restart is not None and restart.poll() is None:
-        # one that hangs (restarting() let the key go) is never joined by a second on the same driver
-        log("h713-mips-restart from %.0f s ago still runs: no second one" % (time.monotonic() - restart_since), "<4>")
-        return
-    state = mips_state()
-    if state != "parked":
-        log("the display MIPS is %s: no restart" % (state or "not known (no sun50i-h713-mips driver)"),
-            "" if state == "running" else "<4>")
-        return
-    log("the display MIPS is parked: h713-mips-restart")
-    try:
-        restart = subprocess.Popen(MIPS_RESTART)
-        restart_since, restart_hung = time.monotonic(), False
-    except OSError as e:
-        log("h713-mips-restart cannot start (%s): no picture until it runs" % e.strerror, "<4>")
-
-
-def restarting():
-    """True while h713-mips-restart runs, for RESTART_HANG_S at most; its hang and its end are logged once."""
-    global restart, restart_hung
-    if restart is None:
-        return False
-    rc = restart.poll()
-    if rc is None:
-        took = time.monotonic() - restart_since
-        if took <= RESTART_HANG_S:
-            return True
-        if not restart_hung:
-            restart_hung = True
-            log("h713-mips-restart hangs since %.0f s: the picture is not coming back, a short press counts again"
-                % took, "<4>")
-        return False
-    restart = None
-    if rc:
-        log("h713-mips-restart ended with %d: the picture may not be back (journal: h713-mips-restart)" % rc, "<4>")
-    else:
-        log("h713-mips-restart: the picture path is back")
-    return False
+def sleep_undone():
+    """A standby that did not happen (a wake-up aborted it, or it was refused and the projector stays on) may have left
+    h713-sleep-pre's work undone: the post unit runs once more. It does nothing twice (it finds nothing remembered)."""
+    subprocess.call(SYSTEMCTL + ["start", "--no-block", "h713-sleep-post.service"])
 
 
 def act(what, conf, choice=None):
     """what: "short" (the default, or `choice` from the countdown) or "long" (power-off). True when it went
     through a standby (or a refused one): the caller drops what the keys sent meanwhile."""
-    if what == "short" and restarting():
-        log("short press ignored: the picture is still coming back (h713-mips-restart); a long press powers off")
+    if what == "short" and resuming():
+        log("short press ignored: the picture is still coming back (h713-sleep-post); a long press powers off")
         return False
     if what == "short":
         why = standby_refusal(conf) if choice is None else (
@@ -296,17 +258,16 @@ def act(what, conf, choice=None):
             log("short press: standby")
             steps = suspend_steps()
             if suspend():
-                picture_back()
                 return True
             irq = wake_abort(steps)
             if irq:
                 # not a refusal: the user (or a wake source) asked for the projector before it slept
                 log("the standby was aborted by a wake-up (IRQ %s): the projector stays on" % irq, "<4>")
-                picture_back()
+                sleep_undone()
                 return True
             if conf["refused"] == "log":
                 log("the standby was refused, the projector stays on", "<4>")
-                picture_back()
+                sleep_undone()
                 return True
             log("the standby was refused: power-off", "<4>")
         else:
@@ -338,8 +299,8 @@ class Countdown:
 
     FADE_S = 0.3
 
-    def __init__(self, conf, clock=time.monotonic, say=None):
-        self.clock, self.say = clock, say or osd
+    def __init__(self, conf, clock=time.monotonic, say=None, hold=None):
+        self.clock, self.say, self.hold = clock, say or osd, hold or (lambda on: None)
         self.only = standby_unavailable() is not None
         self.choice = "standby" if conf["default"] == "standby" and not self.only else "poweroff"
         self.t0 = self.clock()
@@ -359,6 +320,8 @@ class Countdown:
         """True when h713-osd shows it; false: nobody would see a countdown."""
         answer = self.say(self.line())
         self.sent = self.clock()
+        if answer == "ok":
+            self.hold(True)                  # the remote's keys are the countdown's: Kodi gets none of them
         return answer == "ok"
 
     def frame(self):
@@ -383,6 +346,7 @@ class Countdown:
         return None
 
     def close(self, fade):
+        self.hold(False)
         if fade:
             for a in (0.6, 0.3):
                 self.say(self.line(a))
@@ -429,6 +393,21 @@ def run(once):
     devices, buf, rescan, cd = {}, {}, 0.0, None
     for line in config()[1]:
         log(line)
+
+    def hold(on):                                # EVIOCGRAB on the devices read here; one that is held elsewhere stays as it is
+        for fd, _, _ in devices.values():
+            try:
+                fcntl.ioctl(fd, EVIOCGRAB, 1 if on else 0)
+            except OSError:
+                pass
+
+    ctl = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+    try:
+        if os.path.exists(CTL):
+            os.unlink(CTL)
+        ctl.bind(CTL)
+    except OSError as e:
+        log("%s: %s -- the launcher cannot hand the power key on" % (CTL, e.strerror), "<4>")
     while True:
         conf, _ = config()
         if time.monotonic() >= rescan:
@@ -444,8 +423,10 @@ def run(once):
                         log("%s: %s" % (p, e.strerror))
             rescan = time.monotonic() + 5
         long_ns, ignore_ns = int(float(conf["long_s"]) * 1e9), int(float(conf["ignore_s"]) * 1e9)
-        ready = select.select([d[0] for d in devices.values()], [], [], 0.1 if cd else 0.25)[0]
+        ready = select.select([d[0] for d in devices.values()] + [ctl], [], [], 0.1 if cd else 0.25)[0]
         actions = []
+        if ctl in ready and ctl.recv(64).strip() == b"short":
+            actions.append("short")              # the launcher took the press (h713-keys)
         for p, (fd, stamped, key) in list(devices.items()):
             now = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
             if fd in ready:
@@ -470,7 +451,6 @@ def run(once):
                     elif typ == EV_KEY and value == 1 and cd is not None:
                         actions.append({"act": "now", "cancel": "cancel"}.get(cd.key(code)))
             actions.append(key.tick(now, long_ns))
-        restarting()                             # reaps h713-mips-restart and logs its end
         if cd is not None:
             if "long" in actions:
                 cd.close(False)
@@ -488,8 +468,8 @@ def run(once):
             else:
                 cd.frame()
                 actions = []
-        elif "short" in actions and not restarting():
-            cd = Countdown(conf)
+        elif "short" in actions and not resuming():
+            cd = Countdown(conf, hold=hold)
             if cd.start():
                 log("short press: countdown of %d s, %s chosen%s" % (COUNTDOWN_S, cd.choice,
                     ", no standby on this image or board" if cd.only else ""))
@@ -506,9 +486,7 @@ def run(once):
                 continue
             slept = act(what, conf, choice)
             if once:
-                if restart is not None:          # --once (the tests): with the restart it started
-                    restart.wait()
-                    restarting()
+                ctl.close()
                 return 0
             if slept:
                 drop_queued(devices, buf)        # and the rest of this round's actions with it
@@ -587,12 +565,17 @@ def main(argv=None):
     sub.add_parser("run", help="decide every KEY_POWER (the unit runs this)").add_argument(
         "--once", action="store_true", help="exit after the first action")
     sub.add_parser("status", help="what a short press would do now, and why")
+    sub.add_parser("can-standby", help="exit 0 when a standby can happen now (the launcher's Standby entry asks)")
     s = sub.add_parser("set", help="change one key of power.conf, e.g. 'set default standby'")
     s.add_argument("key", help=", ".join(DEFAULTS))
     s.add_argument("value")
     a = p.parse_args(argv)
     if a.command == "run":
         return run(a.once)
+    if a.command == "can-standby":
+        why = standby_unavailable()
+        print("a standby can happen" if why is None else "no standby: %s" % why)
+        return 0 if why is None else 1
     return set_value(a.key, a.value) if a.command == "set" else status()
 
 

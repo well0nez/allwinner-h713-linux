@@ -14,10 +14,13 @@
 # * A stop asks Kodi to quit first (JSON-RPC Application.Quit, ExecStop=) and waits for cage to end with it: a SIGTERM
 #   to the whole group lets cage close the socket under a running Kodi, which then aborts without saving its state
 #   (F-opt O5).
-# * A standby stops Kodi before the sleep (Conflicts=/Before=sleep.target; AU-74, kept as F-opt measured it, M3 Nr. 9).
-#   After the wake h713-mips-restart restarts h713-tv and h713-warp as without Kodi; tv.conf's "source =" decides.
-# * The power key is h713-power's and the volume keys are h713-keys' (with h713-osd's overlay over Kodi):
-#   userdata/keymaps/h713-power.xml maps them to nothing in Kodi (AU-74, M3 Nr. 8).
+# * A standby ends Kodi before the sleep and starts it again after the wake (package H): h713-sleep-pre.service remembers that
+#   this unit ran (/run/h713-mode.resume) and stops it, h713-sleep-post.service restarts h713-tv and h713-warp (h713-mips-restart)
+#   and then this unit - for every way into the sleep, Kodi's own Suspend menu included. Before package H this unit ended
+#   itself with Conflicts=sleep.target, which lost the fact that it had been running (AU-74, M3 Nr. 9).
+# * The power key is h713-power's, the volume keys and Home are h713-keys' (with h713-osd's overlay over Kodi, Home opens the
+#   launcher): userdata/keymaps/h713-power.xml maps them to nothing in Kodi (AU-74, M3 Nr. 8, package H). While the launcher is
+#   open h713-keys holds the remote's devices, so Kodi gets no key at all.
 # * cage reads the remote and the keys itself through libinput and seatd (F9); the warp's server has no wl_seat.
 #
 # * The VA-API wiring comes from the drop-in h713-kodi.service.d/10-h713-media-env.conf, a symlink to
@@ -32,9 +35,6 @@ Requires=seatd.service
 After=seatd.service
 BindsTo=h713-warp.service
 After=h713-warp.service
-# A standby begins with stopping Kodi; Before= makes the sleep wait until Kodi has quit and the HDMI side is asked back.
-Conflicts=sleep.target
-Before=sleep.target
 
 [Service]
 Type=simple
