@@ -111,7 +111,8 @@ static int signal_fd(void)
 _Noreturn static void usage(const char *me)
 {
 	fprintf(stderr,
-		"usage: %s [-c CONF] [-s SOCKET] [-t TV_SOCKET] [-r RENDER] [-v VIDEO] run\n"
+		"usage: %s [-c CONF] [-s SOCKET] [-t TV_SOCKET] [-r RENDER] [-v VIDEO] [-w WAYLAND]\n"
+		"          [--client-rate full|half] run\n"
 		"       %s ctl [-s SOCKET] COMMAND [ARG...]      (h713-warp ctl help)\n"
 		"\n"
 		"  -c FILE     the eight corner values and the start state; default %s\n"
@@ -120,8 +121,10 @@ _Noreturn static void usage(const char *me)
 		"              the frames travel; default %s\n"
 		"  -r PATH     the render node; default %s (never a card node: h713-tv\n"
 		"              owns the display and does every commit)\n"
-		"  -v PATH     the capture device; without it the driver \"%s\" is searched for\n",
-		me, me, WARP_CONF, WARP_SOCKET, TV_SOCKET, RENDER_NODE, V4L2_NAME);
+		"  -v PATH     the capture device; without it the driver \"%s\" is searched for\n"
+		"  -w PATH     the Wayland server's socket, a client's WAYLAND_DISPLAY; default %s\n"
+		"  --client-rate full|half  a client frame on every vsync (default) or on every second\n",
+		me, me, WARP_CONF, WARP_SOCKET, TV_SOCKET, RENDER_NODE, V4L2_NAME, WAYLAND_SOCKET);
 	exit(2);
 }
 
@@ -129,14 +132,16 @@ int main(int argc, char **argv)
 {
 	struct runtime r;
 	struct control ctl;
-	const char *sock = WARP_SOCKET, *tv = TV_SOCKET, *video = NULL;
-	struct pollfd fds[5];
+	const char *sock = WARP_SOCKET, *tv = TV_SOCKET, *video = NULL, *wl = WAYLAND_SOCKET;
+	struct pollfd fds[6];
 	int sfd, arg, rc = 0;
+	double asked;			/* the last time a waiting client asked h713-tv's source (M4 A1) */
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	memset(&r, 0, sizeof(r));
 	r.conf.path = WARP_CONF;
 	r.render_node = RENDER_NODE;
+	r.client_rate = 1;
 
 	if (argc >= 2 && !strcmp(argv[1], "ctl")) {
 		int a = 2;
@@ -158,6 +163,11 @@ int main(int argc, char **argv)
 			r.render_node = argv[++arg];
 		else if (!strcmp(argv[arg], "-v") && arg + 1 < argc)
 			video = argv[++arg];
+		else if (!strcmp(argv[arg], "-w") && arg + 1 < argc)
+			wl = argv[++arg];
+		else if (!strcmp(argv[arg], "--client-rate") && arg + 1 < argc &&
+			 (!strcmp(argv[arg + 1], "full") || !strcmp(argv[arg + 1], "half")))
+			r.client_rate = !strcmp(argv[++arg], "half") ? 2 : 1;
 		else if (!strcmp(argv[arg], "run"))
 			continue;
 		else
@@ -181,6 +191,8 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN);
 	control_listen(&ctl);
 	sfd = signal_fd();
+	/* the Wayland server (package G): a client next to the ring; without it the ring works as before */
+	r.srv = server_start(wl, &r);
 	warp_apply(&r);
 	if (r.state != WARP_ON)
 		info("warp            %s: %s", r.on ? "bypass" : "off", r.why);
@@ -198,9 +210,17 @@ int main(int argc, char **argv)
 	r.check.slot = -1;
 	r.source.held = -1;
 	r.mark_corner = -1;		/* "test mask" marks no corner until one is named */
+	asked = 0;
 	for (;;) {
 		bool live = r.state == WARP_ON;
+		bool want = r.on || server_shown(r.srv);	/* something to claim the panel for */
 		int timeout = -1;
+		/* a client waits behind a ring claim: h713-tv's source is asked once a second (M4 A1, loop.c warp_apply) */
+		bool waiting = live && r.src == SRC_RING && server_shown(r.srv) && r.peer.tv_source != TV_AUTO;
+
+		server_flush(r.srv);
+		fds[5].fd = server_fd(r.srv);
+		fds[5].events = POLLIN;
 
 		/*
 		 * The capture paces the loop; the peer is polled only for its
@@ -209,13 +229,15 @@ int main(int argc, char **argv)
 		 * on a slow heartbeat -- the plane keeps showing the last
 		 * buffer in between, this only proves the path is alive.
 		 */
-		fds[2].fd = live && r.pattern == PATTERN_NONE ? r.source.fd : -1;
+		fds[2].fd = live && r.pattern == PATTERN_NONE && r.src == SRC_RING ? r.source.fd : -1;
 		fds[2].events = POLLIN | POLLPRI;
 		fds[3].fd = live ? r.peer.fd : -1;
 		fds[3].events = 0;
 		if (live && r.pattern != PATTERN_NONE)
 			timeout = PATTERN_MS;
-		else if (!live && r.on)
+		else if (!live && want)
+			timeout = RETRY_MS;
+		if (waiting && (timeout < 0 || timeout > RETRY_MS))
 			timeout = RETRY_MS;
 		if (r.check.slot >= 0)
 			timeout = 2;		/* the self-check's second draw is due */
@@ -225,7 +247,7 @@ int main(int argc, char **argv)
 		fds[4].events = POLLIN;
 		if (ctl.cfd >= 0 && (timeout < 0 || control_left(&ctl) < timeout))
 			timeout = control_left(&ctl);
-		if (poll(fds, 5, timeout) < 0) {
+		if (poll(fds, 6, timeout) < 0) {
 			if (errno == EINTR)
 				continue;
 			warn("poll: %s", strerror(errno));
@@ -250,14 +272,25 @@ int main(int argc, char **argv)
 			info("exit            signal %u received", si.ssi_signo);
 			break;
 		}
-		if (fds[3].fd >= 0 && (fds[3].revents & (POLLHUP | POLLERR | POLLNVAL)))
+		if (fds[5].fd >= 0 && fds[5].revents)
+			server_dispatch(r.srv);
+		if (fds[3].fd >= 0 && (fds[3].revents & (POLLHUP | POLLERR | POLLNVAL))) {
 			warp_disengage(&r, "h713-tv closed the connection");
-		else if (fds[2].fd >= 0 && (fds[2].revents & (POLLIN | POLLPRI)))
+			/* h713-tv gave the claim back on purpose ("ctl source"): ask again at once (ENTWURF G v3 D4) */
+			if (server_shown(r.srv))
+				warp_apply(&r);
+		} else if (fds[2].fd >= 0 && (fds[2].revents & (POLLIN | POLLPRI))) {
 			warp_pump(&r);
-		else if (live && r.pattern != PATTERN_NONE)
+		} else if (live && r.pattern != PATTERN_NONE && !fds[5].revents) {
 			warp_pump(&r);
-		else if (!live && r.on)
+		} else if (!live && want && !fds[5].revents) {
 			warp_apply(&r);
+		}
+		if (waiting && r.state == WARP_ON && r.src == SRC_RING && server_shown(r.srv) &&
+		    r.peer.tv_source != TV_AUTO && now_s() - asked >= RETRY_MS / 1e3) {
+			asked = now_s();
+			warp_apply(&r);
+		}
 		warp_check_tick(&r);
 		if ((fds[0].fd >= 0 && (fds[0].revents & POLLIN)) ||
 		    (fds[4].fd >= 0 && fds[4].revents) ||
@@ -271,6 +304,9 @@ int main(int argc, char **argv)
 	 * connection alone would do it, but saying it is better than implying it.
 	 */
 	warp_disengage(&r, "h713-warp is stopping");
+	server_stop(r.srv);
+	if (gl_is_open())
+		gl_close();
 	control_close(&ctl);
 	close(sfd);
 

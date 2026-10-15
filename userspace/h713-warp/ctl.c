@@ -190,9 +190,10 @@ static void cmd_test(struct runtime *r, struct textbuf *t, const char *what,
 	}
 	if (pattern != r->pattern) {
 		/* the pattern needs no capture and the capture no pattern: the
-		 * GPU path is rebuilt either way
+		 * GPU path is rebuilt either way - not under a Wayland client,
+		 * whose claim the pattern simply draws over (package G)
 		 */
-		if (r->state == WARP_ON)
+		if (r->state == WARP_ON && r->src == SRC_RING)
 			warp_disengage(r, "the test pattern changed");
 		r->pattern = pattern;
 		warp_apply(r);
@@ -244,6 +245,8 @@ static void cmd_help(struct textbuf *t)
 		 "  help                       this list\n"
 		 "With all eight values 0 and mode front the GPU is not started at all and\n"
 		 "h713-tv shows the capture ring as it does without this service.\n"
+		 "A Wayland client (cage: WAYLAND_DISPLAY=" WAYLAND_SOCKET ") is drawn through the\n"
+		 "GPU whenever h713-tv's \"source\" lets it (h713-tv ctl source client|auto).\n"
 		 "The answer starts with ok or error; socket %s (root, 0660)\n", WARP_SOCKET);
 }
 
@@ -332,7 +335,7 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 
 		if (a1 && !number(a1, 1, 100000, &f)) {
 			text_add(t, "error check takes a frame count 1..100000\n");
-		} else if (r->state != WARP_ON || r->pattern != PATTERN_NONE) {
+		} else if (r->state != WARP_ON || r->pattern != PATTERN_NONE || r->src != SRC_RING) {
 			text_add(t, "error check needs the warp on with the capture\n");
 		} else {
 			r->check.want = f;

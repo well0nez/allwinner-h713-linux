@@ -6,8 +6,9 @@ projective homography built from eight per-mille corner insets, ported function 
 `getKeyStoneMatrix` in the stock `system_a_libkeystone.so` and tested against that reference.
 
 Nothing about the ordinary picture path changes. With all eight values at 0 - the state a fresh image comes up
-in - the daemon does not open the render node at all, and `h713-tv` shows the capture ring exactly as it does
-without this service.
+in - the daemon does not open the render node at all (after the format query at its start), and `h713-tv` shows
+the capture ring exactly as it does without this service. A Wayland client is the second source next to the ring:
+see "A Wayland client" below.
 
 ## Who does what
 
@@ -15,6 +16,7 @@ without this service.
 |---|---|---|
 | `h713-warp` | `/dev/dri/renderD128` (panfrost), the capture buffers, the shader, the matrix | reads the HDMI capture as dma-bufs, draws one warped frame per capture frame, hands it over with a fence |
 | `h713-tv` | `/dev/dri/card1`, the DRM master, the panel | allocates the three NV12 target buffers, and commits them on the **video** plane with `IN_FENCE_FD` and `hdmi-ring` 0 |
+| a Wayland client (cage) | `renderD128` for its own drawing, evdev through libinput | connects to `/run/h713-warp/wayland`, hands its pictures over as dma-bufs; never opens a card node |
 | the kernel | the console | paints the console whenever neither of the two holds the master |
 
 There is exactly one DRM master, and it stays `h713-tv`'s: two masters on one card cannot coexist, and a
@@ -51,6 +53,56 @@ so the exit code is decided without parsing further.
 and saved at once. The clamp is the vendor's: the x of a corner is limited by the corner at the other end of
 its row and the y by the one at the other end of its column, so the picture can never be pulled past its own
 width or height. The value that gives way is the one being set, never the one already there.
+
+## A Wayland client (media side project, package G)
+
+The daemon is also a minimal Wayland server on `/run/h713-warp/wayland` (0660; `-w PATH` for another place),
+so that Kodi under cage reaches the wall through the warp - with the keystone, the overlays and h713-tv as the one
+master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/PRUEFUNG-M3.md`).
+
+- **Protocols:** `wl_compositor`, `wl_shm`, `xdg_wm_base` (one fullscreen toplevel in the panel's size, a second one
+  is asked to close at once - if it stays, it takes the panel over when the first one goes; popups are dismissed), `zwp_linux_dmabuf_v1` v4 with a format table out of EGL (every RGB
+  format and modifier the render node imports, Kodi's AR30 + AFBC `0x0800000000000062` among them - without it cage
+  copies every picture), `wl_output`, `wp_presentation` (CLOCK_MONOTONIC). No `wl_seat`: cage reads the remote
+  through libinput itself.
+- **What h713-tv shows** is `h713-tv ctl source hdmi|client|auto` (`source =` in `tv.conf` at the start, default
+  `hdmi`). The warp claims the panel with `warp claim client` once a toplevel has its first picture; the claim
+  needs no signal, and the capture stays closed. A change of `source` gives a standing claim back only when the
+  new policy forbids it (a ring claim under `client`, a client claim under `hdmi`), and the warp claims again at
+  once - the answer to a claim names the policy (`... source auto`). A claim the new policy allows stands, and the
+  `ok` of the next frame names the policy (`ok source auto`): `hdmi` <-> `auto` no longer takes the ring off the
+  panel. A client that waits behind a ring claim does not rely on that frame - a stalled ring sends none - the warp
+  asks h713-tv's `source` when the client comes and once a second while it waits. Under `auto` a client goes before the ring. Under `client` without a client the warp asks `source` alone
+  once a second instead of starting the capture for a ring claim that would be refused (M4, 15.10.2026).
+- **A buffer's life:** pending when committed (a newer commit releases an untaken one at once), taken when its
+  dma-buf is readable and the previous frame is on the panel (h713-tv's flip fence, sent with the `ok`), the frame
+  callbacks done right then, released when the render fence of the frame that read it signals, presented with the
+  flip fence's timestamp. At most one client frame per vsync; `--client-rate half` takes every second vsync.
+- **Colour:** BT.709 limited range computed inside the two keystone passes from the client's RGB; a picture smaller
+  than the panel sits in the middle (letterbox), never scaled, and gets the configure once more - cage misses the
+  first one and would stay at 1280x720 (G1, 15.10.2026). With `warp = off` the client is shown without
+  keystone. The client is drawn through the GPU even at the identity: the video plane takes NV12 only.
+- **Limits:** four connections (a fifth gets an error and is closed), eight surfaces and eight imported dma-bufs per client, a buffer
+  larger than the panel is refused, a buffer before the first configure is a protocol error; a client that goes
+  away keeps the panel for two seconds (a cage restart), then the warp gives it back. A dma-buf shorter than the
+  layout the GPU reads for its modifier fails before the import - LINEAR offset + pitch x height, u-interleaved in
+  lines of 16, AFBC a 16-byte header per superblock plus the whole body, as mesa's panfrost lays it out; M4 had a
+  20-KB buffer described as 1920x1080 AFBC fault the GPU. A `wl_shm` line shorter than 4 x width is a protocol
+  error (libwayland checks only stride >= width), and a `wl_shm` picture goes up in one call (M4, 15.10.2026).
+- **Status:** `ctl status` has two more lines, `wayland` (clients, toplevel, formats) and `client` (taken,
+  presented, discarded, busy, released, imports).
+
+Kodi sees 0 Hz under cage (wlroots' nested output has no rate) and picks the presentation protocol for its video
+sync: leave Kodi's "Sync playback to display" off (the default) - with it on, 1080p60 played at 18 fps and Kodi hung
+on stopping the video (G1).
+
+Kodi's unit (`h713-kodi.service`, profile `desktop`) sets `WAYLAND_DISPLAY=/run/h713-warp/wayland` and
+`WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and sets `h713-tv ctl source auto` at its
+start; there is no way back to run at its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the
+warp gives the panel back two seconds after cage is gone and the ring is there again (M4, 15.10.2026: a SIGKILL of the
+unit's cgroup skipped the old `ExecStopPost=... source hdmi` and left the console). Measured: the host test (`make
+test`, a client against the server with the GPU stubbed); on the device see `arbeit/medien/G-warp-wayland/BERICHT.md`
+and `M4-AUFLAGEN.md`.
 
 ## `/etc/h713/warp.conf`
 
