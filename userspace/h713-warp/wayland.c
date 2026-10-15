@@ -75,6 +75,7 @@ struct wbuf {			/* one wl_buffer: ours (dma-buf) or libwayland's (wl_shm) */
 	struct wl_listener gone;
 	struct import *imp;		/* NULL: wl_shm */
 	int fd, refs;			/* fd: the dma-buf, polled for readiness; refs: pending + in the GPU */
+	int w, h;
 	bool used;			/* committed: a release is owed when the refs are gone */
 };
 
@@ -83,7 +84,7 @@ struct wsurf {
 	struct wl_resource *res, *xdg, *role;	/* role: the xdg_toplevel or xdg_popup */
 	struct wl_resource *p_buf;		/* attached, not committed yet */
 	struct wl_listener p_buf_gone;
-	bool p_attached, configured, acked, mapped, toplevel;
+	bool p_attached, configured, acked, mapped, toplevel, sized;	/* sized: a configure went after a wrong size */
 	uint32_t serial;
 	struct wl_list p_frames, p_feedback;	/* the next commit's wl_callbacks and presentation feedback */
 };
@@ -276,6 +277,8 @@ static struct wbuf *wbuf_new(struct server *s, struct wl_resource *res, int fd, 
 	b->res = res;
 	b->fd = fd;
 	b->imp = imp;
+	b->w = imp ? imp->w : wl_shm_buffer_get_width(wl_shm_buffer_get(res));
+	b->h = imp ? imp->h : wl_shm_buffer_get_height(wl_shm_buffer_get(res));
 	b->gone.notify = wbuf_gone;
 	wl_resource_add_destroy_listener(res, &b->gone);
 	if (wc)
@@ -900,6 +903,18 @@ static void surface_commit(struct wl_client *c, struct wl_resource *res)
 	}
 	if (w->p_buf)
 		wl_list_remove(&w->p_buf_gone.link);
+	/*
+	 * cage misses the first configure: it comes while wlroots is still making its output, before cage listens for the
+	 * request (G1, 15.10.2026: configure 1920x1080, then 1280x720 buffers and Kodi at 1280x720). Weston's second
+	 * configure on the first buffer made the size right (G0b); so here: once more whenever the size is not the panel's.
+	 */
+	if (shown && b && (b->w != (int)s->pw || b->h != (int)s->ph)) {
+		if (!w->sized)
+			configure(w);
+		w->sized = true;
+	} else if (shown && b) {
+		w->sized = false;
+	}
 	if (shown && w->p_attached && b) {
 		set_pending(s, b);
 		move_all(&s->frames, &w->p_frames);

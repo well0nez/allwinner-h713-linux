@@ -307,6 +307,7 @@ int main(int argc, char **argv)
 	CHECK(wait_for(&c, &ev.presented, 2000), "presented, vsync, refresh from the flip");
 
 	ev.released = false;
+	ev.configured = false;
 	struct wl_buffer *sb = shmbuf(&c, 64, 64);
 
 	wl_buffer_add_listener(sb, &buf_l, NULL);
@@ -314,6 +315,7 @@ int main(int argc, char **argv)
 	wl_surface_commit(s);
 	wl_display_flush(c.d);
 	CHECK(server_says("frame", 2000) && wait_for(&c, &ev.released, 2000), "wl_shm 64x64 taken (letterbox) and released");
+	CHECK(wait_for(&c, &ev.configured, 1000), "a picture smaller than the panel gets the configure once more (cage, G1)");
 
 	dmabuf(&c, ev.cfg_w + 1, ev.cfg_h, false);
 	CHECK(wait_for(&c, &ev.failed, 1000), "a dma-buf larger than the panel fails");

@@ -5265,7 +5265,7 @@ static bool warp_serve(struct display *d)
 				 busy ? "ok busy\n" : "error the commit was refused\n";
 			clock_gettime(CLOCK_MONOTONIC, &c1);
 			took = (c1.tv_sec - c0.tv_sec) * 1e3 + (c1.tv_nsec - c0.tv_nsec) / 1e6;
-			if (gap > 25.0) {
+			if (gap > 25.0 && !warp.client) {	/* a client draws when it has something to show */
 				late++;
 				if (gap > late_worst)
 					late_worst = gap;
