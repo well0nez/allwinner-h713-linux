@@ -581,7 +581,7 @@ class SoundFocus(Base):
         b.keys("ok", "ok")
         self.assertIn('Autofocus now action "Focusing..."', b.dump())
         self.assertTrue(wait_for(lambda: 'Autofocus now action "Done"' in b.dump(), 5))
-        self.assertEqual(b.tool_log("autofocus"), ["run -q"])
+        self.assertEqual(b.tool_log("autofocus"), ["-q run"])
         b.keys("down", "ok")
         b.dump()
         self.assertIn("after_move = keystone+focus\n", b.read("keystone.conf"))     # it also turns the automatic on
@@ -966,6 +966,19 @@ class Look(Base):
                 b.keys("down")
             b.finish()
         self.assertGreater(seen, 20)
+
+    def test_the_last_area_pill_is_whole(self):
+        # owner, 15.10.: the pill round Wi-Fi, the last area, was cut off at the bottom (the note's clear box began inside it)
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        b = self.box().start("Wi-Fi", size="%dx%d" % (self.W, self.H))
+        for step in ("areas", "rows"):
+            page = self.snap(b, step)
+            pill = lambda x, y: page[(y * self.W + x) * 4:][:4]
+            for y in (440, 446, 449):                              # design y 880..898: the lower part of the pill (centre 858, half height 48)
+                self.assertEqual(pill(165, y), bytes((0x1c, 0x23, 0x21, 255)), "%s: y %d" % (step, y))
+            b.keys("ok")
+        b.finish()
 
     def test_the_choice_lists_and_the_hint_stay_inside_too(self):
         if not any(f and os.path.exists(f) for f in FONTS):

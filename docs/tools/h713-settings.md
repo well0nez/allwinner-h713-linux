@@ -68,7 +68,7 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | | Projection | `ctl mode` | `ctl mode front \| rear \| ceiling \| rear-ceiling` | h713-warp |
 | | Reset keystone | | `ctl keystone reset`, `ctl zoom 100` | h713-warp |
 | Sound | Volume, Mute | `h713-tv ctl volume`, `ctl mute` | `ctl volume N` (steps of 5), `ctl mute on \| off` | the sound card's own state (not measured across a reboot yet) |
-| Focus | Autofocus now | | `h713-autofocus run -q` (the panel is the autofocus's for the length of the run) | |
+| Focus | Autofocus now | | `h713-autofocus -q run` (the panel is the autofocus's for the length of the run) | |
 | | Autofocus after a move | `after_move` | `after_move = keystone+focus` (turns the automatic keystone on too) | the file |
 | | Focus by hand | | `h713-focus up \| down N` (N = `focus_steps` of `keys.conf` per press; presses during a run are counted and run next) | |
 | Input | Source | `h713-tv ctl source` | `ctl source auto \| hdmi` | `source =` in `tv.conf` |

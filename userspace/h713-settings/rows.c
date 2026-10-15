@@ -471,7 +471,7 @@ bool rows_hotkey(int key)
 
 static void autofocus_apply(struct row *r, int dir)
 {
-	const char *argv[] = { "h713-autofocus", "run", "-q", NULL };
+	const char *argv[] = { "h713-autofocus", "-q", "run", NULL };
 
 	(void)dir;
 	job_start(r, argv, "Focusing...", "Done", "No sharp point found");

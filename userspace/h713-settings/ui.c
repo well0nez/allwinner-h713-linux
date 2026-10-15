@@ -402,7 +402,8 @@ static void draw_note(const struct view *v, const struct row *sel)
 
 	if (sel && v->f != F_AREAS && sel->kind == R_CHOICE && sel->opt_note[sel->val])
 		n = sel->opt_note[sel->val];			/* the sentence for the value it stands on */
-	clear_box(80, 890, 1840, 1020, GROUND);
+	clear_box(690, 890, 1840, 1020, GROUND);	/* the note's room ... */
+	clear_box(80, 914, 690, 1020, GROUND);		/* ... and the hint's: below the last area's pill (Wi-Fi, to y 909), not into it */
 	if (n) {
 		char first[160];
 		size_t cut = strlen(n);
