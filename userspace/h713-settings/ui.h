@@ -6,7 +6,8 @@
 #include "osd.h"
 #include "settings.h"
 
-enum focus { F_AREAS, F_ROWS, F_CHOICE, F_CORNERS };
+/* F_SLIDER and F_CORNERS leave the opaque page: only one pill over the real picture, so that the effect can be seen */
+enum focus { F_AREAS, F_ROWS, F_CHOICE, F_CORNERS, F_SLIDER };
 
 struct view {
 	enum focus f;
@@ -17,10 +18,12 @@ struct view {
 	char corner_at[24];	/* F_CORNERS: the corner's two values as text */
 };
 
-#define D_ROW(i)	(1u << (i))	/* one row, by its place among the visible ones */
-#define D_AREAS		(1u << 20)
-#define D_NOTE		(1u << 21)
-#define D_ALL		(1u << 30)
+#define D_ROW(i)	(1u << (i))		/* one row, by its place among the visible ones (up to 10) */
+#define D_AREA(i)	(1u << (10 + (i)))	/* one area's pill (up to 7) */
+#define D_RIGHT		(1u << 20)		/* every row of the right pane, or the options of a choice */
+#define D_NOTE		(1u << 21)		/* the sentence under the rows and the line of keys */
+#define D_SLIDER	(1u << 22)		/* the one pill of a slider over the picture */
+#define D_ALL		(1u << 30)		/* everything, including the ground */
 
 #define MAXBOX 8
 

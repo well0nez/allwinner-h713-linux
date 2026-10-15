@@ -1,7 +1,10 @@
 # h713-settings - the settings of the box, as one page on the wall
 
 The page Android calls "Settings", in the style of the overlays: the areas on the left, the rows of the open area on the
-right, white lines on a dark translucent ground, driven by the remote. The launcher's entry "Settings" opens it
+right, white lines on an **opaque**, calm, dark ground (over a picture a translucent page cannot be read), driven by the remote.
+Everything is inside a safe margin of 5 % on each side (96 px left and right, 54 px top and bottom at 1080p; a test measures
+every page against it). While a value that is judged on the picture is adjusted - Brightness, Contrast, Colour, Tint, Sharpness,
+Zoom, the corners by hand - the page is **one pill at the foot over the real picture** (the mockup v1's S2), so that the effect can be seen. The launcher's entry "Settings" opens it
 (`/etc/h713/launcher.d/50-settings.conf`, which starts it as the transient unit `h713-settings` - its journal is kept and a second OK
 cannot start a second page), Back at the top level closes it. Everything the box can do from a shell with
 `h713-... ctl` is reachable here, and **every row is one existing command or one `key = value` of a file in `/etc/h713`**:
@@ -10,7 +13,7 @@ the mockup `arbeit/medien/H-desktop/mockups/launcher-einstellungen.html` (areas 
 
 ```
 h713-settings [--area NAME] [--idle SECONDS] [--font FILE]   the page on the wall (what the launcher runs)
-h713-settings --test [--size WxH] [--area NAME]              the page for the host: keys as lines on stdin
+h713-settings --test [--size WxH] [--area NAME]              the page for the host (a build with -DH713_TEST, testsink.c): keys as lines on stdin
 ```
 
 `--test` reads lines (`up down left right ok back home power volup voldown mute focusup focusdown`) and the commands `dump`
@@ -41,12 +44,14 @@ be held means no page: a page whose keys Kodi shares is worse than none.
 | Key | In the areas | In the rows | In a choice | Adjusting corners |
 |---|---|---|---|---|
 | Up / Down | change the area | change the row | change the option | move the corner |
-| Left / Right | (Right: into the rows) | slider and switch: change the value at once | | move the corner |
-| OK | into the rows | switch: flip; choice: open its options; action: run it; corners: start | take the option | next corner |
+| Left / Right | (Right: into the rows) | slider and switch: change the value at once; a slider judged on the picture: the first press moves it and shrinks the page to its pill | | move the corner |
+| OK | into the rows | switch: flip; choice: open its options; action: run it; corners: start; a slider judged on the picture: open its pill | take the option | next corner |
 | Back | close the page | back to the areas | cancel | done |
 
-A held Left/Right arrives as a burst and goes out as **one** command. Every value acts at once; what is kept for the
-next boot is written as the owner of the value does it (below).
+**The pill** (a slider judged on the picture): the label, the track and the number over the real picture, the keys under it;
+Left/Right change the value, Up/Down go to the next such slider of the area (Brightness, Contrast, ...), OK or Back bring the
+opaque page back. The volume is not judged on the picture: it stays on the page. A held Left/Right arrives as a burst and goes
+out as **one** command. Every value acts at once; what is kept for the next boot is written as the owner of the value does it (below).
 
 ## What each row is
 

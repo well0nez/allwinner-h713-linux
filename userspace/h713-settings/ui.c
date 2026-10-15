@@ -1,8 +1,11 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
  * The page, drawn into an ARGB canvas the way the mockup v2 shows it (S1: the areas on the left, the rows on the
- * right, all white lines on a dark translucent ground). Text is libh713osd's osd_text; the shapes are signed
- * distance fields like the library's own. A row is drawn alone when only it changed, so a key press costs one row.
+ * right, white lines), on an OPAQUE calm ground: over a picture a translucent page is unreadable (the owner, 15.10.).
+ * Everything stays inside a safe margin of 5 % on each side (96 / 54 px at 1080p). While a value that is judged on the
+ * picture is adjusted (the picture's sliders, the zoom, the corners) the page is only ONE pill at the foot over the real
+ * picture (the mockup v1's S2). Text is libh713osd's osd_text; the shapes are signed distance fields like the library's own.
+ * A row is drawn alone when only it changed, so a key press costs one row.
  */
 #define _GNU_SOURCE
 #include <math.h>
@@ -17,8 +20,13 @@ static int bx0, by0, bx1, by1;		/* what this piece touched, in panel pixels */
 static int nbox, rbox[MAXBOX][4];	/* the pieces so far, x y w h */
 
 #define BRIGHT	0xffffffu
-#define PILL	0x0e1110u
-#define BACKDROP 0x80000000u		/* the dimmed picture: black at one half */
+#define PILL	0x0e1110u		/* the overlays' pill, over the picture (72 %) */
+#define PAGEPILL 0x1c2321u		/* the lit pill on the opaque page: a little lighter than the ground */
+#define GROUND	0xff0b0e0du		/* the page's ground: opaque, dark in the tone of the pills */
+#define SAFE_X0	96			/* 5 % of 1920 and of 1080, the design's units */
+#define SAFE_X1	1824
+#define SAFE_Y0	54
+#define SAFE_Y1	1026
 
 static double clampd(double v, double lo, double hi)
 {
@@ -99,17 +107,20 @@ static void chevron(double cx, double cy, int dir, float a)
 	stroke(cx + 6 * dir, cy, cx - 6 * dir, cy + 12, 4, BRIGHT, a);
 }
 
+/* the width in the design's units (the library measures in panel pixels: at 720p they are two thirds of a design pixel) */
 static double text_w(const char *s, double px)
 {
-	return osd_text_width(s, px * U);
+	return osd_text_width(s, px * U) / U;
 }
+
+static double text_max;			/* a string may not run further than this from its left end (design px); 0: no limit */
 
 /* align 0 left of x, 1 right-aligned at x; the baseline y; size in design pixels */
 static void text(double x, double y, double size, float a, const char *s, int align)
 {
 	double w = text_w(s, size);
 
-	osd_text(cv, s, (align ? x - w : x) * U + XOFF, y * U, size * U, BRIGHT, a, 0);
+	osd_text(cv, s, (align ? x - w : x) * U + XOFF, y * U, size * U, BRIGHT, a, text_max * U);
 	touch(align ? x - w - 2 : x - 2, y - size, align ? x + 2 : x + w + 2, y + size * 0.4);
 }
 
@@ -292,9 +303,9 @@ static void draw_area(const struct view *v, int i)
 	bool sel = i == v->area, active = v->f == F_AREAS;
 	double y = area_y(i);
 
-	clear_box(80, y - 56, 584, y + 56, BACKDROP);
+	clear_box(80, y - 56, 584, y + 56, GROUND);
 	if (sel)
-		rrect(331, y, 235, 48, 48, PILL, 0.72f, BRIGHT, active ? 1.0f : 0.5f, active ? 3 : 2);
+		rrect(331, y, 235, 48, 48, PAGEPILL, 1.0f, BRIGHT, active ? 1.0f : 0.5f, active ? 3 : 2);
 	draw_icon(areas[i].icon, 156, y, 64, sel ? 1.0f : 0.42f);
 	text(214, y + 13, 34, sel ? 1.0f : 0.42f, areas[i].name, 0);
 }
@@ -306,20 +317,24 @@ static double row_y(int k)
 	return 202 + 94 * k;
 }
 
-static void draw_value(const struct row *r, double y, float a)
+/* the slider's own track and number: in a row of the page (x 1110..1650, the number at 1760) or in the pill (at x0..x0+520) */
+static void slider_value(const struct row *r, double x0, double xnum, double y, float a)
 {
+	double f = r->max > r->min ? (double)(r->val - r->min) / (r->max - r->min) : 0;
 	char t[24];
 
-	switch (r->kind) {
-	case R_SLIDER: {
-		double f = r->max > r->min ? (double)(r->val - r->min) / (r->max - r->min) : 0;
+	stroke(x0, y, x0 + 540, y, 6, BRIGHT, a * 0.5f);
+	stroke(x0, y, x0 + 540 * clampd(f, 0, 1), y, 6, BRIGHT, a);
+	snprintf(t, sizeof(t), r->tag && !strcmp(r->tag, "zoom") ? "%d %%" : "%d", r->val);
+	text(xnum, y + 12, 32, a, t, 1);
+}
 
-		stroke(1110, y, 1650, y, 6, BRIGHT, a * 0.5f);
-		stroke(1110, y, 1110 + 540 * clampd(f, 0, 1), y, 6, BRIGHT, a);
-		snprintf(t, sizeof(t), r->tag && !strcmp(r->tag, "zoom") ? "%d %%" : "%d", r->val);
-		text(1760, y + 12, 32, a, t, 1);
+static void draw_value(const struct row *r, double y, float a)
+{
+	switch (r->kind) {
+	case R_SLIDER:
+		slider_value(r, 1110, 1760, y, a);
 		break;
-	}
 	case R_SWITCH:
 		if (r->val) {
 			rrect(1710, y, 50, 22, 22, BRIGHT, a, BRIGHT, 0, 0);
@@ -355,9 +370,9 @@ static void draw_option(const struct view *v, const struct row *r, int k)
 {
 	double y = row_y(k);
 
-	clear_box(690, y - 54, 1830, y + 54, BACKDROP);	/* the pill reaches past the pitch of 94: the lit one is drawn last */
+	clear_box(690, y - 54, 1830, y + 54, GROUND);	/* the pill reaches past the pitch of 94: the lit one is drawn last */
 	if (k == v->choice)
-		rrect(1260, y, 560, 52, 52, PILL, 0.72f, BRIGHT, 1.0f, 3);
+		rrect(1260, y, 560, 52, 52, PAGEPILL, 1.0f, BRIGHT, 1.0f, 3);
 	if (k == r->val)
 		stroke(734, y, 734, y, 16, BRIGHT, k == v->choice ? 1.0f : 0.5f);
 	text(776, y + 12, 32, k == v->choice ? 1.0f : 0.42f, r->opt[k], 0);
@@ -369,9 +384,9 @@ static void draw_row(const struct view *v, struct row *r, int k)
 	float a = sel ? 1.0f : 0.42f;
 	double y = row_y(k);
 
-	clear_box(690, y - 54, 1830, y + 54, BACKDROP);
+	clear_box(690, y - 54, 1830, y + 54, GROUND);
 	if (sel)
-		rrect(1260, y, 560, 52, 52, PILL, 0.72f, BRIGHT, 1.0f, 3);
+		rrect(1260, y, 560, 52, 52, PAGEPILL, 1.0f, BRIGHT, 1.0f, 3);
 	text(752, y + 12, 32, a, r->label, 0);
 	draw_value(r, y, a);
 }
@@ -379,19 +394,62 @@ static void draw_row(const struct view *v, struct row *r, int k)
 static void draw_note(const struct view *v, const struct row *sel)
 {
 	const char *n = sel && v->f != F_AREAS ? sel->note : NULL;
-
-	if (sel && v->f != F_AREAS && sel->kind == R_CHOICE && sel->opt_note[sel->val])
-		n = sel->opt_note[sel->val];			/* the sentence for the value it stands on */
 	static const char *const foot[] = {
 		"Up/Down select    OK open    Back close",
 		"Up/Down select    Left/Right change    Back to the areas",
 		"Up/Down select    OK choose    Back cancel",
 	};
 
-	clear_box(80, 930, 1840, 1050, BACKDROP);
-	if (n)
-		text(752, 970, 26, 0.7f, n, 0);
-	text(96, 1020, 26, 0.42f, foot[v->f < F_CORNERS ? v->f : 0], 0);
+	if (sel && v->f != F_AREAS && sel->kind == R_CHOICE && sel->opt_note[sel->val])
+		n = sel->opt_note[sel->val];			/* the sentence for the value it stands on */
+	clear_box(80, 890, 1840, 1020, GROUND);
+	if (n) {
+		char first[160];
+		size_t cut = strlen(n);
+
+		/* one line from x 752 to the safe margin; a longer sentence goes on a second line, broken at a space */
+		snprintf(first, sizeof(first), "%s", n);
+		while (cut && text_w(first, 26) > SAFE_X1 - 752) {
+			while (cut && first[cut - 1] != ' ')
+				cut--;
+			if (cut)
+				first[--cut] = '\0';
+		}
+		if (cut && cut < strlen(n)) {
+			text_max = SAFE_X1 - 752;
+			text(752, 922, 26, 0.7f, first, 0);
+			text(752, 952, 26, 0.7f, n + cut + 1, 0);	/* what does not fit on the second line is cut, not drawn out of the margin */
+			text_max = 0;
+		} else {
+			text(752, 952, 26, 0.7f, n, 0);
+		}
+	}
+	text(SAFE_X0, 1000, 26, 0.42f, foot[v->f < F_CORNERS ? v->f : 0], 0);
+}
+
+/* --- over the picture: one pill at the foot --------------------------------------------------------------------- */
+
+/* a pill of the overlays' look, centred at x 960, its centre at y, half width hw, half height hh */
+static void foot_pill(double y, double hw, double hh)
+{
+	clear_box(960 - hw - 20, y - hh - 10, 960 + hw + 20, SAFE_Y1, 0);	/* the pill, and the line of keys under it */
+	rrect(960, y, hw, hh, hh, PILL, 0.72f, BRIGHT, 0, 0);
+}
+
+static void foot_line(double y, const char *s)
+{
+	text(960 - text_w(s, 24) / 2, y, 24, 0.5f, s, 0);
+}
+
+/* the slider of the selected row, as the mockup v1's S2 has it: the label, the track, the number; the keys under it */
+static void draw_slider_pill(const struct view *v)
+{
+	struct row *r = visible_row(&areas[v->area], v->row);
+
+	foot_pill(920, 508, 60);
+	text(520, 934, 34, 1.0f, r->label, 0);
+	slider_value(r, 780, 1400, 922, 1.0f);
+	foot_line(1004, "Up/Down next slider    Left/Right change    OK or Back done");
 }
 
 static void draw_corner_hint(const struct view *v)
@@ -399,17 +457,16 @@ static void draw_corner_hint(const struct view *v)
 	static const char *const name[] = { "Top left", "Top right", "Bottom left", "Bottom right" };
 	char t[64];
 
-	clear_box(240, 860, 1680, 1060, 0);
-	rrect(960, 960, 700, 76, 76, PILL, 0.72f, BRIGHT, 1.0f, 3);
+	foot_pill(930, 700, 76);
 	snprintf(t, sizeof(t), "%s corner   %s", name[v->corner & 3], v->corner_at);
-	text(960 - text_w(t, 36) / 2, 955, 36, 1.0f, t, 0);
-	text(960 - text_w("Arrows move it    OK next corner    Back done", 26) / 2, 995, 26, 0.6f,
-	     "Arrows move it    OK next corner    Back done", 0);
+	text(960 - text_w(t, 36) / 2, 925, 36, 1.0f, t, 0);
+	foot_line(965, "Arrows move it    OK next corner    Back done");
 }
 
 int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[][4])
 {
 	struct area *a = &areas[v->area];
+	bool all = dirty & D_ALL;
 	int n = visible_rows(a);
 
 	cv = c;
@@ -417,45 +474,50 @@ int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[
 	XOFF = (c->w - 1920 * U) / 2;
 	bx0 = c->w, by0 = c->h, bx1 = by1 = 0;
 	nbox = 0;
-	if (v->f == F_CORNERS) {
-		/* nothing of the page over the calibration picture: only the hint */
-		if (dirty & D_ALL)
+	if (v->f == F_CORNERS || v->f == F_SLIDER) {
+		/* nothing of the page over the picture that is judged: only the pill (the whole canvas is clear first) */
+		if (all)
 			clear_box(0, 0, 1920, 1080, 0);
-		draw_corner_hint(v);
-		seal();
+		if (all || (dirty & (D_SLIDER | D_NOTE))) {
+			if (v->f == F_CORNERS)
+				draw_corner_hint(v);
+			else
+				draw_slider_pill(v);
+			seal();
+		}
 	} else {
-		if (dirty & D_ALL)
-			clear_box(0, 0, 1920, 1080, BACKDROP);
+		if (all)
+			clear_box(0, 0, 1920, 1080, GROUND);
 		seal();
-		if (dirty & (D_ALL | D_AREAS))
-			for (int i = 0; i < nareas; i++) {
+		for (int i = 0; i < nareas; i++)
+			if (all || (dirty & D_AREA(i))) {
 				draw_area(v, i);
 				seal();
 			}
 		if (v->f == F_CHOICE) {
 			struct row *r = visible_row(a, v->row);
 
-			if (dirty & D_ALL) {
-				clear_box(690, 70, 1830, 140, BACKDROP);
+			if (all || (dirty & D_RIGHT)) {
+				clear_box(690, 70, 1830, 140, GROUND);
 				text(752, 120, 26, 0.7f, r->label, 0);	/* which row these options are for */
 				seal();
 			}
 			/* the highlighted one last: its pill reaches 5 px into the room of its neighbours */
 			for (int pass = 0; pass < 2; pass++)
 				for (int k = 0; k < r->n; k++)
-					if ((k == v->choice) == pass && (dirty & (D_ALL | D_AREAS | D_ROW(k)))) {
+					if ((k == v->choice) == pass && (all || (dirty & (D_RIGHT | D_ROW(k))))) {
 						draw_option(v, r, k);
 						seal();
 					}
 		} else {
 			for (int pass = 0; pass < 2; pass++)
 				for (int k = 0; k < n; k++)
-					if ((v->f != F_AREAS && k == v->row) == pass && (dirty & (D_ALL | D_AREAS | D_ROW(k)))) {
+					if ((v->f != F_AREAS && k == v->row) == pass && (all || (dirty & (D_RIGHT | D_ROW(k))))) {
 						draw_row(v, visible_row(a, k), k);
 						seal();
 					}
 		}
-		if (dirty & (D_ALL | D_NOTE | D_AREAS)) {
+		if (all || (dirty & D_NOTE)) {
 			draw_note(v, visible_row(a, v->row));
 			seal();
 		}

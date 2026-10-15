@@ -529,9 +529,11 @@ class Keystone(Base):
 
     def test_zoom_projection_reset(self):
         b = self.box().start("Keystone")
-        b.keys("ok", "down", "down", "down", "left", "left")        # Zoom 100 -> 90
+        b.keys("ok", "down", "down", "down", "left", "left")        # Zoom 100 -> 90: the first press takes the page away
         d = b.dump()
+        self.assertIn("focus slider", d)
         self.assertIn("Zoom slider 90 50..100", d)
+        b.keys("back")                                              # and Back brings it back, on the Zoom row
         self.assertEqual(b.warp.zoom, 90)
         self.assertIn("on", b.warp.log)                                # a screen zoom needs the warp
         b.keys("down", "ok", "down", "ok")                          # Projection > Rear
@@ -691,6 +693,7 @@ class Life(Base):
 
 # the kernel's key codes, as h713-keys reads them
 UP, DOWN, LEFT, RIGHT, OK, SELECT, BACK, HOME, POWER = 103, 108, 105, 106, 352, 353, 158, 172, 116
+GROUND, PAGEPILL = 0xff0b0e0d, 0xff1c2321             # the page's opaque ground and its lit pill, ARGB
 VOLUP, VOLDOWN, MUTE, F4, F5 = 115, 114, 113, 62, 63
 
 
@@ -701,7 +704,7 @@ class Device(Base):
         self.assertTrue(wait_for(lambda: any(l.startswith("page show") for l in b.osd.log), 5))
         self.assertEqual(b.osd.log[0], "page open")
         self.assertEqual(b.osd.log[1], "page show 0 0 %d %d" % (b.osd.W, b.osd.H))     # the whole page once
-        self.assertEqual(b.osd.pixel(3, 3) >> 24, 128)                                  # the dimmed ground is in the canvas
+        self.assertEqual(b.osd.pixel(3, 3), GROUND)                                     # the opaque ground is in the canvas
         b.press(BACK)
         self.assertEqual(b.proc.wait(timeout=5), 0)
         self.assertTrue(wait_for(lambda: b.osd.closed))                                 # the connection ends: the page is gone
@@ -875,6 +878,146 @@ class Device(Base):
         b.proc.wait(timeout=5)
 
 
+class Look(Base):
+    """What the owner asked for on 15.10.: everything inside a safe margin of 5 %, an opaque calm page, one pill over the picture
+    while a value that is judged on the picture is adjusted. The picture of every state is the canvas of --test as PAM."""
+
+    W, H = 960, 540                     # u = 1/2: the margins are 48 px left and right, 27 px top and bottom
+
+    def snap(self, b, name):
+        path = os.path.join(b.dir, name + ".pam")
+        b.keys("snap " + path)
+        b.dump()
+        with open(path, "rb") as f:
+            head = b""
+            while not head.endswith(b"ENDHDR\n"):
+                head += f.readline()
+            return f.read()
+
+    def ink(self, data, opaque):
+        """(x0, y0, x1, y1) of what is on the picture: on the opaque page every pixel that is not the ground, over the picture every
+        pixel with alpha; None when there is none"""
+        ground = struct.pack("BBBB", 11, 14, 13, 255)
+        w = self.W
+        box = None
+        for y in range(self.H):
+            row = data[y * w * 4:(y + 1) * w * 4]
+            if opaque:
+                if row == ground * w:
+                    continue
+                xs = [x for x in range(w) if row[4 * x:4 * x + 4] != ground]
+            else:
+                if row[3::4].count(0) == w:
+                    continue
+                xs = [x for x in range(w) if row[4 * x + 3]]
+            box = (xs[0], y, xs[-1], y) if box is None else (min(box[0], xs[0]), box[1], max(box[2], xs[-1]), y)
+        return box
+
+    def inside(self, box, what):
+        self.assertIsNotNone(box, what)
+        x0, y0, x1, y1 = box                                       # one pixel of anti-aliasing is allowed
+        self.assertGreaterEqual(x0, 47, what)
+        self.assertLessEqual(x1, self.W - 48, what)
+        self.assertGreaterEqual(y0, 26, what)
+        self.assertLessEqual(y1, self.H - 27, what)
+
+    def test_every_page_stays_inside_the_safe_margin(self):
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        seen = 0
+        for area in ("Picture", "Keystone", "Sound", "Focus", "Input", "Power", "Wi-Fi"):
+            b = self.box().start(area, size="%dx%d" % (self.W, self.H))
+            self.inside(self.ink(self.snap(b, "a"), True), "%s, the areas" % area)         # the areas and the rows, nothing lit
+            b.keys("ok")
+            for row in range(8):
+                self.inside(self.ink(self.snap(b, "r"), True), "%s, row %d" % (area, row))
+                seen += 1
+                if "focus rows" not in b.dump() or row == 7:
+                    break
+                b.keys("down")
+            b.finish()
+        self.assertGreater(seen, 20)
+
+    def test_the_choice_lists_and_the_hint_stay_inside_too(self):
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        b = self.box().start("Picture", size="%dx%d" % (self.W, self.H))
+        b.keys("ok", *["down"] * 5, "ok")                          # the options of Picture mode
+        self.assertIn("focus choice", b.dump())
+        self.inside(self.ink(self.snap(b, "c"), True), "the options")
+        b.keys("back", "down", "ok")                               # Aspect ratio
+        self.inside(self.ink(self.snap(b, "c2"), True), "the aspect options")
+        b.keys("back")
+        b.finish()
+        b = self.box().start("Keystone", size="%dx%d" % (self.W, self.H))
+        b.keys("ok", "down", "down", "ok")                         # the corners: only the hint over the picture
+        self.assertIn("focus corners", b.dump())
+        self.inside(self.ink(self.snap(b, "k"), False), "the corner hint")
+        b.finish()
+
+    def test_the_page_is_opaque_and_the_pill_alone_over_the_picture(self):
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        b = self.box().start("Picture", size="%dx%d" % (self.W, self.H))
+        page = self.snap(b, "p")
+        self.assertEqual(page[3::4].count(255), self.W * self.H)                  # every pixel of the page is there
+        b.keys("ok", "right")                                       # Brightness: the page shrinks to its pill
+        self.assertIn("focus slider", b.dump())
+        pill = self.snap(b, "s")
+        box = self.ink(pill, False)
+        self.inside(box, "the slider pill")
+        self.assertGreater(box[1], self.H * 0.75)                                  # at the foot ...
+        self.assertEqual(pill[3:self.W * self.H * 2:4].count(255), 0)              # ... and the upper half of the panel is free
+        self.assertEqual(sum(1 for a in pill[3::4] if a == 255) > 0, True)         # (the pill's own lines are whole)
+        b.keys("ok")                                                # OK: the opaque page is back
+        self.assertIn("focus rows", b.dump())
+        self.assertEqual(self.snap(b, "q")[3::4].count(255), self.W * self.H)
+        b.finish()
+
+    def test_a_slider_judged_on_the_picture_takes_the_page_away_and_the_volume_does_not(self):
+        b = self.box().start("Picture")
+        b.keys("ok", "right")                                       # Brightness: moved, and the page is only the pill
+        d = b.dump()
+        self.assertIn("focus slider", d)
+        self.assertIn("Brightness slider 55", d)
+        b.keys("down", "left", "left")                              # the next slider (Contrast), twice down
+        d = b.dump()
+        self.assertIn("focus slider row 1", d)
+        self.assertIn("Contrast slider 40", d)
+        b.keys("up", "right")                                       # back to Brightness: 60
+        self.assertIn("Brightness slider 60", b.dump())
+        b.keys("back")
+        self.assertIn("focus rows row 0", b.dump())
+        b.finish()
+        b = self.box().start("Sound")
+        b.keys("ok", "right")                                       # the volume is not judged on the picture: the page stays
+        d = b.dump()
+        self.assertIn("focus rows", d)
+        self.assertIn("Volume slider 95", d)
+        b.finish()
+
+    def test_ok_on_such_a_slider_opens_the_pill_without_moving_it(self):
+        b = self.box().start("Picture")
+        b.keys("ok", "ok")
+        d = b.dump()
+        self.assertIn("focus slider", d)
+        self.assertIn("Brightness slider 50", d)
+        self.assertEqual([x for x in b.tv.log if x.startswith("set ")], [])
+        b.keys("ok")
+        self.assertIn("focus rows", b.dump())
+        b.finish()
+
+    def test_the_zoom_is_such_a_slider_too(self):
+        b = self.box().start("Keystone")
+        b.keys("ok", "down", "down", "down", "left")
+        d = b.dump()
+        self.assertIn("focus slider", d)
+        self.assertIn("Zoom slider 95", d)
+        b.keys("up")                                                # no slider above it: it stays on Zoom
+        self.assertIn("focus slider row 3", b.dump())
+        b.finish()
+
+
 OSD_DIR = os.path.join(HERE, "..", "..", "h713-osd")
 OSD_BIN = os.path.join(OSD_DIR, "h713-osd")
 
@@ -921,20 +1064,23 @@ class Stack(Base):
         time.sleep(0.3)
         page = self.shown()
         a = lambda x, y: page[(y * self.W + x) * 4 + 3]
-        self.assertEqual(a(3, 3), 128)                           # the dimmed ground reaches every corner
-        self.assertEqual(a(self.W - 4, self.H - 4), 128)
-        self.assertGreater(a(int(331 / 3), int(198 / 3)), 150)   # the pill of the open area, at the mockup's place (u = 1/3)
+        self.assertEqual(a(3, 3), 255)                           # the opaque ground reaches every corner
+        self.assertEqual(a(self.W - 4, self.H - 4), 255)
+        self.assertEqual(page[(int(198 / 3) * self.W + int(450 / 3)) * 4:][:4], bytes((0x21, 0x23, 0x1c, 255)))   # the pill of the open area
         b.press(OK)                                              # into the rows: the first row is lit
         time.sleep(0.8)
         page = self.shown()
-        b.press(RIGHT)                                           # Brightness 55: its slider grows
+        b.press(RIGHT)                                           # Brightness 55: the page shrinks to the one pill over the picture
         self.assertTrue(wait_for(lambda: b.tv.c["brightness"] == 55, 5))
-        time.sleep(0.5)
-        after = self.shown()
-        self.assertNotEqual(after, page)
-        row = int(202 / 3)                                       # only the rows of the slider's row differ
-        changed = [y for y in range(self.H) if after[y * self.PITCH:(y + 1) * self.PITCH] != page[y * self.PITCH:(y + 1) * self.PITCH]]
-        self.assertTrue(changed and min(changed) >= row - 25 and max(changed) <= row + 25, (min(changed), max(changed)))
+        time.sleep(0.8)
+        pill = self.shown()
+        alpha = pill[3::4]
+        rows = [y for y in range(self.H) if any(alpha[y * self.W:(y + 1) * self.W])]
+        self.assertTrue(rows and min(rows) > self.H * 0.75, (min(rows), max(rows)))     # nothing but the pill at the foot: the picture is free
+        b.press(OK)                                              # and OK brings the page back, opaque
+        time.sleep(0.8)
+        again = self.shown()
+        self.assertEqual(again[3::4].count(255), self.W * self.H)
         b.press(HOME)
         self.assertEqual(b.proc.wait(timeout=5), 0)
         self.assertTrue(wait_for(lambda: self.osd_tv.shown is None, 5))      # the end of the page takes it from the wall
@@ -949,7 +1095,7 @@ class Stack(Base):
         time.sleep(0.3)
         page = self.shown()
         a = lambda x, y: page[(y * self.W + x) * 4 + 3]
-        self.assertEqual(a(self.W // 2, 3), 128)                 # the top edge is whole
+        self.assertEqual(a(self.W // 2, 3), 255)                 # the top edge is whole
         self.assertEqual(a(2, self.H - 4), 0)                    # the pulled-in bottom corner is not: it went through the matrix
         b.press(HOME)
         b.proc.wait(timeout=5)
@@ -982,12 +1128,12 @@ class Render(Base):
         img = self.read_pam(path)
         b.finish()
         s = 0.5                                              # 960 / 1920
-        self.assertEqual(self.px(img, 5, 5), (0, 0, 0, 128))                       # the dimmed ground
-        self.assertGreater(self.px(img, int(1260 * s), int(202 * s))[3], 150)      # the pill of the selected row
+        self.assertEqual(self.px(img, 5, 5), (11, 14, 13, 255))                    # the opaque ground
+        self.assertEqual(self.px(img, int(1000 * s), int(202 * s)), (28, 35, 33, 255))   # the lit pill of the selected row
         edge = [self.px(img, x, int(202 * s)) for x in range(int(700 * s) - 1, int(700 * s) + 3)]
         self.assertTrue(any(min(p) >= 250 for p in edge), edge)                    # its outline, white and whole
-        self.assertEqual(self.px(img, int(1000 * s), int(296 * s))[3], 128)        # no pill under the next row
-        self.assertGreater(self.px(img, int(331 * s), int(198 * s))[3], 150)       # the area pill
+        self.assertEqual(self.px(img, int(1000 * s), int(296 * s)), (11, 14, 13, 255))   # no pill under the next row
+        self.assertEqual(self.px(img, int(450 * s), int(198 * s)), (28, 35, 33, 255))    # the area pill
         # the slider: lit up to 50 % of 540 px, dim beyond
         self.assertEqual(self.px(img, int((1110 + 100) * s), int(202 * s))[:3], (255, 255, 255))
         lit = self.px(img, int((1110 + 400) * s), int(202 * s))

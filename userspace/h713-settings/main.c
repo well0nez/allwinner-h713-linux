@@ -3,12 +3,10 @@
  * h713-settings - the settings page of the box, opened from the launcher and driven by the remote (README.md).
  *
  * The loop: a key arrives, the row it is on sends one command to its tool, the row is drawn again and shown. The keys
- * and the picture reach the wall through a "sink": --test is the one for the host (keys as lines on stdin, the canvas
- * as PAM pictures on request); the device's own (package H's input and display path) is added where it is decided.
+ * come from the remote's devices (input.c) and the picture goes to h713-osd's page channel (page.c); the host's build
+ * (-DH713_TEST, testsink.c) has a sink of its own: keys as lines on stdin, the canvas as PAM pictures on request.
  */
 #define _GNU_SOURCE
-#include <errno.h>
-#include <poll.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -19,46 +17,13 @@
 
 #include "ui.h"
 
-static struct view v;
-static struct osd_canvas canvas;
+struct view v;
+struct osd_canvas canvas;
 static int row_of[MAXAREA];		/* the row each area was left on */
-static volatile sig_atomic_t quit;
+volatile sig_atomic_t quit;
 
-/* --- the sink for the host tests: stdin lines in, PAM pictures out -------------------------------------------- */
-
-static char ibuf[4096];
-static size_t ilen;
-
-static void dump(void)
-{
-	static const char *const kind[] = { "slider", "switch", "choice", "action", "info", "corners", "stepper" };
-	static const char *const focus[] = { "areas", "rows", "choice", "corners" };
-	struct area *a = &areas[v.area];
-
-	printf("area %s focus %s row %d choice %d corner %d\n", a->name, focus[v.f], v.row, v.choice, v.corner);
-	for (int i = 0; i < a->n; i++) {
-		struct row *r = &a->row[i];
-
-		printf("  %s%s %s", r->hidden ? "(hidden) " : "", r->label, kind[r->kind]);
-		if (r->kind == R_SLIDER || r->kind == R_SWITCH)
-			printf(" %d", r->val);
-		if (r->kind == R_SLIDER)
-			printf(" %d..%d", r->min, r->max);
-		if (r->kind == R_CHOICE) {
-			printf(" [");
-			for (int k = 0; k < r->n; k++)
-				printf("%s%s%s", k ? "|" : "", k == r->val ? "*" : "", r->opt[k]);
-			printf("]");
-		}
-		if (r->text[0])
-			printf(" \"%s\"", r->text);
-		printf("\n");
-	}
-	printf("--\n");		/* the end of a dump, for the test that reads it */
-	fflush(stdout);
-}
-
-static void snap(const char *path)
+/* the canvas as a PAM picture (RGB_ALPHA): the evidence of H713_SETTINGS_SNAP and the host tests' "snap" */
+void snap(const char *path)
 {
 	FILE *f = fopen(path, "wb");
 
@@ -77,73 +42,13 @@ static void snap(const char *path)
 	fclose(f);
 }
 
-static char cmdline[256];
-
-/* one line of stdin: a key, or a command of the test (dump, snap FILE, sleep MS) - the command is an event of its
- * own, so that it runs after the keys before it have been carried out */
-static int test_key(int ms)
-{
-	for (;;) {
-		char *nl = memchr(ibuf, '\n', ilen), word[256];
-		struct pollfd p = { 0, POLLIN, 0 };
-
-		if (quit)
-			return KE_QUIT;
-		if (!nl) {
-			ssize_t got;
-
-			if (poll(&p, 1, ms) <= 0)
-				return KE_NONE;
-			got = read(0, ibuf + ilen, sizeof(ibuf) - ilen - 1);
-			if (got <= 0)
-				return KE_QUIT;
-			ilen += (size_t)got;
-			continue;
-		}
-		*nl = '\0';
-		snprintf(word, sizeof(word), "%.255s", ibuf);
-		ilen -= (size_t)(nl + 1 - ibuf);
-		memmove(ibuf, nl + 1, ilen);
-		if (!strcmp(word, "up"))
-			return KE_UP;
-		if (!strcmp(word, "down"))
-			return KE_DOWN;
-		if (!strcmp(word, "left"))
-			return KE_LEFT;
-		if (!strcmp(word, "right"))
-			return KE_RIGHT;
-		if (!strcmp(word, "ok"))
-			return KE_OK;
-		if (!strcmp(word, "back"))
-			return KE_BACK;
-		if (!strcmp(word, "home"))
-			return KE_HOME;
-		if (!strcmp(word, "power"))
-			return KE_POWER;
-		if (!strcmp(word, "volup"))
-			return KE_VOL_UP;
-		if (!strcmp(word, "voldown"))
-			return KE_VOL_DOWN;
-		if (!strcmp(word, "mute"))
-			return KE_MUTE;
-		if (!strcmp(word, "focusup"))
-			return KE_FOCUS_UP;
-		if (!strcmp(word, "focusdown"))
-			return KE_FOCUS_DOWN;
-		snprintf(cmdline, sizeof(cmdline), "%s", word);
-		return KE_CMD;
-	}
-}
-
-static void command(void)
-{
-	if (!strcmp(cmdline, "dump"))
-		dump();
-	else if (!strncmp(cmdline, "snap ", 5))
-		snap(cmdline + 5);
-	else if (!strncmp(cmdline, "sleep ", 6))
-		usleep((useconds_t)atoi(cmdline + 6) * 1000);
-}
+#ifdef H713_TEST
+int test_key(int ms);			/* testsink.c: the host's sink - keys as lines on stdin, the model as text, the canvas on request */
+void test_command(void);
+#else
+#define test_key(ms) KE_QUIT		/* the board's binary has no test sink */
+#define test_command() ((void)0)
+#endif
 
 static int pending_key;
 static bool test;
@@ -182,10 +87,21 @@ static void select_row(int to)
 
 static void open_area(int i)
 {
+	dirty |= D_AREA(v.area) | D_AREA(i) | D_RIGHT | D_NOTE;	/* the two pills, the whole right pane */
 	rows_enter(i);
 	v.area = i;
 	v.row = row_of[i] < visible_rows(&areas[i]) ? row_of[i] : 0;
-	dirty |= D_AREAS;
+}
+
+/* the next slider that is judged on the picture, up or down from the visible row `from`; -1: none */
+static int over_row(int from, int dir)
+{
+	struct area *a = &areas[v.area];
+
+	for (int k = from + dir; k >= 0 && k < visible_rows(a); k += dir)
+		if (visible_row(a, k)->over)
+			return k;
+	return -1;
 }
 
 static void corner_show(void)
@@ -215,6 +131,37 @@ static void keys_corners(int k)
 	}
 }
 
+/* a held key arrives as a burst: its presses are summed here and sent to the tool as one command, not one per press */
+static int burst(int d)
+{
+	int k2;
+
+	while ((k2 = next_key(0)) == KE_LEFT || k2 == KE_RIGHT)
+		d += k2 == KE_RIGHT ? 1 : -1;
+	pending_key = k2;
+	return d;
+}
+
+/* the slider that is judged on the picture: the page shrinks to its one pill, OK or Back brings the page back */
+static void keys_slider(int k)
+{
+	struct row *r = visible_row(&areas[v.area], v.row);
+	int d, to;
+
+	if (k == KE_LEFT || k == KE_RIGHT) {
+		d = burst(k == KE_RIGHT ? 1 : -1);
+		if (d)
+			r->apply(r, d);
+		dirty |= D_SLIDER;
+	} else if ((k == KE_UP || k == KE_DOWN) && (to = over_row(v.row, k == KE_DOWN ? 1 : -1)) >= 0) {
+		v.row = row_of[v.area] = to;
+		dirty |= D_SLIDER;
+	} else if (k == KE_OK || k == KE_BACK) {
+		v.f = F_ROWS;
+		dirty |= D_ALL;
+	}
+}
+
 static void keys_rows(int k)
 {
 	struct area *a = &areas[v.area];
@@ -227,27 +174,29 @@ static void keys_rows(int k)
 		select_row(v.row + 1);
 	else if (k == KE_BACK) {
 		v.f = F_AREAS;
-		dirty |= D_AREAS;
+		dirty |= D_AREA(v.area) | D_ROW(v.row) | D_NOTE;
 	} else if ((k == KE_LEFT || k == KE_RIGHT) && (r->kind == R_SWITCH || r->kind == R_SLIDER || r->kind == R_STEPPER)) {
-		int d = k == KE_RIGHT ? 1 : -1, k2;
+		int d = r->kind == R_SWITCH ? (k == KE_RIGHT ? 1 : -1) : burst(k == KE_RIGHT ? 1 : -1);
 
-		/* a held key arrives as a burst: one command for all of it, not one per press */
-		if (r->kind != R_SWITCH) {
-			while ((k2 = next_key(0)) == KE_LEFT || k2 == KE_RIGHT)
-				d += k2 == KE_RIGHT ? 1 : -1;
-			pending_key = k2;
-		}
 		if (d)
 			r->apply(r, d);
-		dirty |= D_ROW(v.row);
+		if (r->over) {
+			v.f = F_SLIDER;		/* the first press on such a slider moves it and takes the page away */
+			dirty |= D_ALL;
+		} else {
+			dirty |= D_ROW(v.row);
+		}
 	} else if (k == KE_OK) {
-		if (r->kind == R_SWITCH || r->kind == R_ACTION) {
+		if (r->over) {
+			v.f = F_SLIDER;
+			dirty |= D_ALL;
+		} else if (r->kind == R_SWITCH || r->kind == R_ACTION) {
 			r->apply(r, 0);
-			dirty |= r->kind == R_ACTION ? D_AREAS : D_ROW(v.row);
+			dirty |= r->kind == R_ACTION ? D_RIGHT | D_NOTE : D_ROW(v.row);
 		} else if (r->kind == R_CHOICE && r->n) {
 			v.f = F_CHOICE;
 			v.choice = r->val;
-			dirty |= D_ALL;
+			dirty |= D_RIGHT | D_NOTE;
 		} else if (r->kind == R_CORNERS) {
 			corner_load();
 			v.f = F_CORNERS;
@@ -274,7 +223,7 @@ static void keys_choice(int k)
 			r->apply(r, 0);
 		}
 		v.f = F_ROWS;
-		dirty |= D_ALL;
+		dirty |= D_RIGHT | D_NOTE;
 	}
 }
 
@@ -286,7 +235,7 @@ static void keys_areas(int k)
 		open_area(v.area + 1);
 	else if ((k == KE_OK || k == KE_RIGHT) && visible_rows(&areas[v.area])) {
 		v.f = F_ROWS;
-		dirty |= D_AREAS;
+		dirty |= D_AREA(v.area) | D_ROW(v.row) | D_NOTE;
 	} else if (k == KE_BACK) {
 		quit = 1;
 	}
@@ -304,7 +253,7 @@ static void handle(int k)
 	}
 	if (k >= KE_VOL_UP) {
 		if (rows_hotkey(k))
-			dirty |= D_AREAS;
+			dirty |= D_RIGHT;
 		return;
 	}
 	switch (v.f) {
@@ -319,6 +268,9 @@ static void handle(int k)
 		break;
 	case F_CORNERS:
 		keys_corners(k);
+		break;
+	case F_SLIDER:
+		keys_slider(k);
 		break;
 	}
 }
@@ -349,8 +301,14 @@ int main(int argc, char **argv)
 	p_etc = env("H713_SETTINGS_ETC", "/etc/h713");
 	p_bin = env("H713_SETTINGS_BIN", "");
 	for (int i = 1; i < argc; i++) {
-		if (!strcmp(argv[i], "--test"))
+		if (!strcmp(argv[i], "--test")) {
+#ifdef H713_TEST
 			test = true;
+#else
+			fprintf(stderr, "h713-settings: built without the test sink\n");
+			return 2;
+#endif
+		}
 		else if (!strcmp(argv[i], "--size") && i + 1 < argc)
 			sscanf(argv[++i], "%dx%d", &w, &h);
 		else if (!strcmp(argv[i], "--font") && i + 1 < argc)
@@ -405,7 +363,7 @@ int main(int argc, char **argv)
 
 		rows_tick(&changed);
 		if (changed)
-			dirty |= D_AREAS;
+			dirty |= D_RIGHT;
 		if (dirty) {
 			double t0 = now_ms(), t1;
 			int pieces = ui_draw(&canvas, &v, dirty, box), shown = 1;
@@ -458,7 +416,7 @@ int main(int argc, char **argv)
 		if (k) {
 			clock_gettime(CLOCK_MONOTONIC, &last);
 			if (k == KE_CMD)
-				command();
+				test_command();
 			else
 				handle(k);
 		} else if (!test || idle_test) {

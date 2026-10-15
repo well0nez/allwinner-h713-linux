@@ -4,13 +4,14 @@ The page, the rows and what each one sends: [`docs/tools/h713-settings.md`](../.
 directory is the source.
 
 ```
-main.c      the keys and the page's state machine; --test is the sink for the host tests
+main.c      the keys and the page's state machine (areas, rows, a choice, the pill, the corners)
 ui.c        the page drawn into an ARGB canvas (the mockup's S1), a row alone when only it changed
 rows.c      the areas and their rows: what each reads from a tool and the one command it sends back
 backend.c   the ways to the tools: a ctl socket, a program run or started, a "key = value" file changed in place
 input.c     the remote's devices, held alone while the page is open
 page.c      h713-osd's page channel: one memfd to draw into, "page show X Y W H"
-tests/      test_settings.py: 51 host tests (two of them run the real h713-osd)
+testsink.c  the host's sink (-DH713_TEST, not in the board's binary): keys as lines on stdin, dump, snap
+tests/      test_settings.py: host tests (two of them run the real h713-osd; one measures every page against the safe margin)
 ```
 
 ## Building and testing

@@ -160,11 +160,6 @@ static bool job_start(struct row *r, const char *const *argv, const char *runnin
 	return job.pid > 0;
 }
 
-bool rows_busy(void)
-{
-	return job.pid > 0 || focus_pending;
-}
-
 /* --- Picture ------------------------------------------------------------------------------------------------- */
 
 static struct row *r_preset, *r_aspect;
@@ -385,11 +380,6 @@ void corner_load(void)
 			snprintf(key, sizeof(key), "%s_%c", corner_name[c], x ? 'y' : 'x');
 			corner_v[c][x] = conf_get(etc("warp.conf"), key, v, sizeof(v)) ? atoi(v) : 0;
 		}
-}
-
-struct row *corner_row(void)
-{
-	return r_corners;
 }
 
 bool corner_move(int c, int dx, int dy, char *shown, size_t n)
@@ -682,6 +672,7 @@ static struct row *slider(struct area *a, const char *label, const char *tag, in
 	r->step = step;
 	r->max = 100;
 	r->apply = apply;
+	r->over = apply != volume_apply;	/* the volume is not judged on the picture */
 	return r;
 }
 

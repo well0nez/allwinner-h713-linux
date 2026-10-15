@@ -36,6 +36,7 @@ struct row {
 	const char *tag;		/* slider: the control's name; action: what it runs */
 	bool hidden;			/* the hardware or the tool is not there */
 	bool more;			/* the mockup's "›": the row opens or starts something */
+	bool over;			/* a slider judged on the picture: adjusted as one pill over the real picture, not on the page */
 	void (*load)(struct row *);			/* read the state the tool holds */
 	void (*apply)(struct row *, int dir);		/* slider/switch: a step; choice/action: OK */
 };
@@ -86,11 +87,9 @@ void rows_init(void);
 void rows_enter(int area);		/* read the tools for the area that is opened */
 void rows_tick(bool *changed);		/* children that ended, the page's timers; *changed: a row needs drawing */
 void rows_flush(void);			/* what was held back for the eMMC (picture values) is written now */
-bool rows_busy(void);
 bool rows_hotkey(int key);		/* volume, mute, focus: the keys h713-keys would act on; true when the page shows a change */
 int rows_wake_ms(void);			/* how long the loop may sleep: -1 for ever */
 void corner_load(void);			/* the eight values, from warp.conf */
-struct row *corner_row(void);		/* the row "Adjust corners by hand", for the UI's corner mode */
 bool corner_move(int corner, int dx, int dy, char *shown, size_t n);	/* one nudge, answers what the corner is now */
 void corner_mask(int corner);		/* mark a corner (-1: the pattern off) */
 
