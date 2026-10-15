@@ -460,7 +460,7 @@ KEYRING_DIR="$MAINLINE/build/cache/keyring"; mkdir -p "$KEYRING_DIR"
 KEYRING="$KEYRING_DIR/debian-archive-keyring.pgp"
 if [[ ! -f "$KEYRING" ]]; then
 	DEB="$MAINLINE/build/cache/$(basename "$KEYRING_DEB_URL")"
-	[[ -f "$DEB" ]] || curl -fsSL -o "$DEB" "$KEYRING_DEB_URL"
+	[[ -f "$DEB" ]] || { curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o "$DEB.part" "$KEYRING_DEB_URL" && mv "$DEB.part" "$DEB"; }
 	echo "$KEYRING_DEB_SHA256  $DEB" | sha256sum -c --quiet - || die "keyring package: the sha256 does not match -- do not use it"
 	T=$(mktemp -d); ( cd "$T" && ar x "$DEB" && tar -xf data.tar.* "$KEYRING_IN_DEB" ) && cp "$T/$KEYRING_IN_DEB" "$KEYRING"; rm -rf "$T"
 fi
