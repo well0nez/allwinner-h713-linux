@@ -117,13 +117,14 @@ measured on the wall 11.10.2026 (`doku/193`).
 - **The console is not warped and gets no overlay.** fbcon draws on channel 2 itself and cannot be distorted;
   without a picture an overlay waits for the picture (decided 11.10.2026). h713-tv puts the console's framebuffer
   back at zpos 0 before it lets the master go, on every way the picture leaves.
-- **A desktop is a client of the warp, not a second master** (media side project, package G, path B''; this replaces
+- **A desktop is a client of the warp, not a second master** (measured 15.10.2026, `doku/211` §10; this replaces
   "a desktop takes channel 2 and the master"). h713-warp runs a small Wayland server; cage (with Kodi, later labwc)
   connects with `WLR_BACKENDS=wayland,libinput`, passes its clients' dma-bufs through and reads the remote itself.
   h713-warp draws the client's RGB buffer through the keystone into the same three NV12 targets - always through the
   GPU, the colour conversion inside the two keystone passes - and `h713-tv` commits them on the video plane as with
   the ring, paced by the flip (`OUT_FENCE_PTR`). `h713-tv ctl source hdmi|client|auto` decides what the panel
-  shows; with a client the HDMI sound is silent, the overlays and the volume keys stay. `docs/tools/h713-warp.md`,
+  shows; the design keeps the HDMI sound silent while a client is on the panel (not measured: the HDMI source of the
+  test runs sent no sound), the overlays and the volume keys stay. `docs/tools/h713-warp.md`,
   section "A Wayland client".
 
 ## What this means for software

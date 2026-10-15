@@ -203,6 +203,29 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       A3 (`h713-warp ctl trace`; **720p-Panel**, Zeit je Bild anders als am HY310), A4 verkürzt auf 15 min (GPU-Zone < 85 C, dmesg leer; anderes Gehäuse und Lüfter),
       A5 über die Register. Vorher Sicherung `/root/sicherung-takt-geu/` und den Rückweg (`/boot/h713-kernel.fit.alt`, `/lib/modules/6.18.38.alt`) bereitstellen.
       Bestanden: Eintrag nach 10. Nicht bestanden oder Hitze: nur den OPP-Satz ändern (`0269`), `0268`/`0270` bleiben.
+- [ ] 2.74 **afbd-Index als Feld [2:0] (Patch `0314`) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/211` §11: 25 Standbys
+      per RTC, in allen Bilder im Warp (297-299 in 5 s); die Bits oberhalb von `INCAP +0xa0c` [2:0] waren nach 9 der 25 gesetzt, in allen 9 kamen
+      Bilder, Warp 59,40/s wie im sauberen Zustand, `ctl check 900` 0 Abweichungen). Der Fehler (`0255` verglich das ganze Wort mit `< 3`, die Firmware
+      maskiert mit `andi 0x7`) steckt in `main` ohne `0314` und trifft den G-EU genauso: nach manchen Standbys liefert die Erfassung dem Warp kein Bild
+      mehr, bis zum Warmstart. Nachmessen: Kernel mit dem Patch auf den G-EU (Schnell-Deploy: FIT + nur `sun50i-h713-afbd.ko`, die anderen .ko müssen
+      byte-gleich sein), 20 Standbys per RTC-Wecker (Kodi entfällt, wo es das nicht gibt), dazu Wechsel/s des gezeigten Bildes (`AFBD +0x70`, `doku/200`)
+      und die Journalzeile des afbd-Treibers, wenn die oberen Bits kommen oder gehen; bestanden, wenn in jedem Zyklus Bilder kommen und in den Zyklen
+      mit gesetzten Bits ebenso (Panel des G-EU 59,71 Hz: 59,70/s erwartet). Offen auch am HY310: Bildinhalt und Latenz im gesetzten Zustand (Kamera),
+      Ursache der oberen Bits (was zählt `+0xa08`?), ob die 10-15 ms Müllwort beim Aufwachen (7 von 25) ein Bild kosten.
+- [ ] 2.75 **eMMC-Lese-Schwelle (`0313`) und Netz (`0312`) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/211` §9): neun Kodi-4K-Läufe bei
+      gleicher Last, **0 Daten-CRC-Fehler auf 30 946 MiB** gegen 1899 auf 19 049 MiB ohne die Schwelle, FIFO voll 2,89 -> 0,002 %, B1-Kurzprobe
+      300/300 bitgenau, Schreibtest gleich, `dd` neben Kodi 133-137 MB/s. Derselbe SoC und derselbe Treiber (`sun50i_h713_emmc_cfg`) am G-EU, der Fehler
+      war dort einmal gesehen (2.22). Nachmessen: Kernel mit beiden Patches; ohne Kodi eine Last, die Speicher und DMA fordert (große Dateien von der
+      eMMC lesen neben einem Speicherfresser), `dmesg` auf `data error`/`send stop`/`re-init`, `THLD` bei Lesungen `0x02000001`. Bestanden: 0 Fehlerzeilen,
+      Lesen nicht langsamer als ohne.
+- [ ] 2.76 **Legacy-PTYs aus (Defconfig) am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15.10.2026, `doku/211` §8): `# CONFIG_LEGACY_PTYS is not set` in
+      `mainline/patches/kernel/board/hy200_qz713df_a1_defconfig`; `/sys/class/tty` 587 -> 75 Einträge, Kodis CEC-Suche 6,4 -> 1,2 % eines Kerns, B1-Kurzprobe
+      300/300. Im Abbild öffnet niemand BSD-PTYs (openssh, agetty, Kodi, cage, PipeWire nehmen `/dev/ptmx`). Nachmessen am G-EU: `ls /sys/class/tty | wc -l`
+      (Soll um 75), ssh, getty auf ttyS0 und WLAN gehen.
+- [ ] 2.77 **Kodi unter cage am Wayland-Server des Warp am HY300PRO-G-EU** - am HY310 gemessen (15.10.2026, `doku/211` §10: Menü und Video 57-58 Bilder/s, cage
+      0 ns GPU-Zeit, `ctl check 900` 0 Abweichungen, Konsole nach dem Ende im Textmodus). Am G-EU nie gelaufen (anderes Panel, kein Fokusmotor, keine Kamera). Nachmessen:
+      Profil `desktop` (oder Schnell-Deploy von `h713-warp`, `h713-tv`, Kodi-Einheit, Keymap), `systemctl start h713-kodi`, Menü 60 s, Video 1080p60, Beenden,
+      `ctl check 300`, ein Standby mit Kodi; dazu der HDMI-Ton im Client-Fall mit einer Quelle, die Ton sendet (nicht gemessen). Wartet, bis der G-EU wieder am Strom hängt.
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -383,12 +406,29 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 9.2 Cedrus/GPU Testmatrix Decoder × Auflösung × Ausgabe; der KASAN-Fall steht
 - [ ] 9.3 Hardware-Video-Decode und IOMMU in **diesem** Image nachmessen (aus cstengers Baum übernommen)
 - [ ] 9.4 Verwaltungsoberfläche (WLAN, Presets, Startmodus, Updates ohne SSH) — Zuschnitt offen
-- [ ] 9.3a **B6-Fix `0308`/`0309` (medien, 14.10.2026) am HY300PRO-G-EU nachmessen** (am HY310 bestanden, `arbeit/medien/B6-mythos/BERICHT.md` §5g):
+- [ ] 9.3a **B6-Fix `0308`/`0309` (medien, 14.10.2026) am HY300PRO-G-EU nachmessen** (am HY310 bestanden, `doku/211` §4):
       hevc8-/hevc10-Fehlersätze mit Probe nach jedem Clip ohne Hänger, B1-Kurzsatz HEVC, B5-Paare (AV1 ist seit 0310 aus, kein AV1-Teil).
-      Werkzeuge `B6-mythos/b6m.sh`, Box-Skripte aus `/root/b6m/` des HY310.
+      Methode wie am HY310: sechs Sätze beschädigter Clips (H.265 8/10 Bit, VP9, VP8, MPEG-2, H.264), je zehn Clips, nach jedem Clip eine
+      Probe (guter Clip bitgenau, `running`), Zähler der IOMMU-Faults und `dmesg` vor und nach dem Satz.
 - [ ] 9.3b **AV1 wieder aufnehmen** (Marco 14.10.2026: "AV1 ist mir völlig egal, zumindest für jetzt"): `0310` entfernen, `CONFIG_VIDEO_HANTRO=m`,
       dann die Gates von C (C1-C5) und B6 nebeneinander wiederholen; offen bleibt, warum die Port-Freigabe der VE neben laufendem AV1 Bilder kostet
-      oder den SoC anhält (`arbeit/medien/B6-mythos/BERICHT.md` §5b-5f).
+      oder den SoC anhält (`doku/211` §5).
+- [ ] 9.3c **VE-Stabilität im Dauerbetrieb** (offen aus `doku/211` §4): (a) direkt nach den sechs Sätzen beschädigter Clips lief der 4K-H.265-Clip einmal in einen
+      Lesefault mit Timeout (0/300) und ein VP9-Strom im Paar verlor 2 von 600 Bildern - dasselbe Muster an derselben Stelle in zwei unabhängigen Läufen, in Einzelversuchen
+      nicht auslösbar, Ursache nicht gemessen; Vorschlag: Sätze und Regression im Wechsel fahren, die IOMMU-Register am Fault sichern. (b) H.264 plus VP8 direkt nach HEVC 10 Bit
+      plus VP9: in 3 von 8 Runden ein cedrus-Timeout, auch mit dem alten `0298`, nicht verfolgt. (c) Ein Dauerlauf über Stunden mit wechselnden Codecs unter Kodi fehlt. Für Kodi
+      kostet ein Timeout ein Bild und 2 s Pause. Dazu das `CmaFree` unter 1 MB, das bei den 4K-Clips der Dauerläufe in 17 von 129 Proben gesehen wurde und nicht geklärt ist.
+- [ ] 9.3d **4K-HEVC in Kodi nicht flüssig** (Marco 15.10.): die VE schafft dort 28,4-28,8 von 30 Bildern/s (mpv am selben Clip 29,97), MemAvailable fällt auf 210-240 MiB
+      (`doku/211` §8). Zu klären: der VE-Takt (432 MHz seit `0293`, gesenkt wegen AV1, das jetzt aus ist) und der Speicherdruck mit dem Wayland-Server daneben.
+- [ ] 9.3e **Kodi unter cage: was nur mit Marco geht** (nicht gemessen, `doku/211` §12): die echte IR- und Bluetooth-Fernbedienung (cage hält `event0` offen und legt einen Cursorpuffer an -
+      ob echte IR-Zeigerbewegung einen Software-Cursor erzwingt, ist offen); Standby mit Kodi und echter Fernbedienung (bei den Läufen mit Marco wirkte das Bild nach dem Wecken
+      etwas dunkler, und ein SLUB-Fehler stand im Log - beides nicht verfolgt); der HDMI-Ton im Client-Fall; die Ton-Synchronität unter 40 ms (nur nach Augenmaß bestätigt, braucht
+      Kamera oder Zeitlupe).
+- [ ] 9.3f **Kodi im Leerlauf** (Marco entscheidet: Kodi-Patch oder Skin): 10 % eines Kerns statt unter 5 % (Kodis Hauptthread 8,1 %, cage 2,4 %, CEC-Suche 1,2 %; `doku/211` §8).
+      Debians Kodi hat kein Estouchy. Null CEC wäre nur ohne den CEC-Bus (Kodi-Patch). Dazu: stumm über Kodi und Standby nur teils (9.0b).
+- [ ] 9.3g **medien nach `main`: IOMMU und die Reste der ersten Übergabe**. Mit dem Merge des Zweigs `medien` kommt `CONFIG_SUN50I_IOMMU=y` mit `0294` (Capture bidirektional) und `0297`
+      (Kommentar) nach `main`; wird er nicht als Ganzes übernommen, müssen diese drei mindestens einzeln hinüber (`0294` ohne `0271`-`0293` anwendbar: nicht geprüft). Danach
+      `docs/known-issues.md` (Zeile "Hardware video decode, IOMMU") gegen den Release-Kernel prüfen.
 - [ ] 9.5 Windows: Installer nie dort gelaufen; `sunxi-fel.exe` nach Rückmeldungen
 - [ ] 9.6 Zweites Augenpaar auf die Sicherheitspfade (Gate, Recovery, Installer-Verweigerungen)
 - [ ] 9.7 Recovery-Weg **von einer zweiten Person** gegangen; 20 Gate-Zyklen; HDMI-Modustabelle vollständig (aus `61` A.2)
@@ -1057,6 +1097,8 @@ HDCP-Teile prüfen (`144` 06:1x) — `check-hdcp-artifacts.sh`.
       - **12.10. abends** (HY310 auf `main` db558e3): 5 Warmstarts, je bei 151 s fünf Plattenzugriffe mit Zeitlimit (ls /boot, dmesg,
         Datei lesen, schreiben+sync, journalctl) - 5/5 sofort, 0 mmc-Fehlerzeilen (`arbeit/hy310-main-20261012/laeufe/warmstart-reihe.txt`)
       - **12.10. abends erledigt (Marco):** nicht reproduziert; wieder öffnen, wenn ein Hänger auftritt
+      - **15.10.2026 (Nachtrag):** unter Kodi-4K-Last am HY310 reproduziert (vier Stromzyklen nötig) und an der Wurzel behoben: der eMMC-Host hielt bei voller FIFO den
+        Kartentakt an (`0313` Lese-Schwelle, `0312` Netz; `doku/211` §9). Am G-EU nachzumessen: 2.75
 - [x] 2.26 **HDCP 1.4 nach einem Moduswechsel der Quelle** (`doku/170` §3): fordert der ThinkPad (i915) sofort beim Modeset an,
       bleibt er auf `Desired`; 2 s später angefordert steht `Enabled` nach 5 s. Mit der Hersteller-ARISC-Firmware und dem
       Fire-TV-Stick vergleichen (Auflösungswechsel), erst dann entscheiden, ob der Empfänger früher bereit sein muss

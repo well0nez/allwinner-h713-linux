@@ -33,7 +33,7 @@ stamp() { printf '%s %s %s %s\n' $BINUTILS $BINUTILS_SHA256 $GCC $GCC_SHA256; }
 
 fetch() {	# fetch NAME URL SHA256 -- into the cache unless it is there, then check it either way
 	if [ ! -f "$CACHE/$1" ]; then
-		curl -fsSL -o "$CACHE/$1.part" "$2" || { echo "error: cannot fetch $2" >&2; exit 1; }
+		curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o "$CACHE/$1.part" "$2" || { echo "error: cannot fetch $2" >&2; exit 1; }
 		mv "$CACHE/$1.part" "$CACHE/$1"
 	fi
 	echo "$3  $CACHE/$1" | sha256sum -c --quiet - || { echo "error: $1 does not match its pinned SHA-256 -- not used" >&2; exit 1; }

@@ -1,14 +1,15 @@
 # packages-desktop.txt - profile `desktop` (build-rootfs.sh --profile desktop), on top of packages.txt.
 #
-# Media side project (arbeit/medien), package E: a compositor and Kodi, on the mesa of rootfs/mesa
-# (Wayland platform, glvnd). Not in the base image. Same format as packages.txt. Everything here must
-# install against the dummies in rootfs/equivs/, without libllvm* and without mesa-libgallium (E1).
+# A compositor and Kodi, on the mesa of rootfs/mesa (Wayland platform, glvnd). Not in the base image. Same format
+# as packages.txt. Everything here must install against the dummies in rootfs/equivs/, without libllvm* and
+# without mesa-libgallium.
 # Kodi decodes through VA-API (libva2 comes with kodi-bin): the driver (rootfs/libva) and the environment (rootfs/overlay-va)
-# are laid by build-rootfs.sh for this profile too (AU-31); a unit that starts cage/Kodi takes the variables through the drop-in
-# /usr/local/share/h713/systemd/h713-media-env.conf (AU-32).
+# are laid by build-rootfs.sh for this profile too; a unit that starts cage/Kodi takes the variables through the drop-in
+# /usr/local/share/h713/systemd/h713-media-env.conf.
 
-seatd                        # seat management for a compositor without logind sessions (E3: seatd + cage)
-cage                         # single-window kiosk compositor: Kodi's first host (package F)
-labwc                        # stacking compositor for the desktop modes (package H)
-kodi                         # media centre; kodi-bin links libEGL/libGLESv2/libgbm (E2)
-glmark2-es2-wayland          # the E3 test: Renderer "Mali-G31 (Panfrost)" and a score
+seatd                        # seat management for a compositor without logind sessions (seatd + cage)
+cage                         # single-window kiosk compositor: Kodi's host
+labwc                        # stacking compositor for the desktop modes
+kodi                         # media centre; kodi-bin links libEGL/libGLESv2/libgbm
+glmark2-es2-wayland          # the GPU test: Renderer "Mali-G31 (Panfrost)" and a score
+fonts-quicksand              # the launcher's face (h713-osd, libh713osd text; SIL OFL 1.1, 0.4 MB); FreeType itself is linked into h713-osd (package H)

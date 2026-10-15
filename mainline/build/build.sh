@@ -235,7 +235,7 @@ prepare_kernel() {
   else
     local partial="$tarball.part"
     log "fetch linux-$KERNEL_VERSION" >&2
-    curl --fail --location --retry 3 --output "$partial" "$KERNEL_TARBALL_URL"
+    curl --fail --location --retry 4 --retry-all-errors --retry-delay 5 --output "$partial" "$KERNEL_TARBALL_URL"
     verify_kernel_tarball "$partial" || {
       rm -f "$partial"
       echo "error: downloaded linux-$KERNEL_VERSION tarball failed SHA-256 verification" >&2
@@ -385,7 +385,7 @@ prepare_aic8800() {
   else
     local partial="$tarball.part"
     log "fetch aic8800 ${AIC8800_COMMIT:0:12}" >&2
-    curl --fail --location --retry 3 --output "$partial" "$AIC8800_TARBALL_URL"
+    curl --fail --location --retry 4 --retry-all-errors --retry-delay 5 --output "$partial" "$AIC8800_TARBALL_URL"
     verify_aic8800_tarball "$partial" || {
       rm -f "$partial"
       echo "error: downloaded aic8800 tarball failed SHA-256 verification" >&2

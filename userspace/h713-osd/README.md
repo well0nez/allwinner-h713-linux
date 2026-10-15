@@ -12,6 +12,7 @@ h713-osd ctl volume 40               the volume overlay, 40 of 100
 h713-osd ctl mute on 40 | mute off 40   mute: the overlay, and the badge that stays while muted
 h713-osd ctl focus up|down [edge]    the focus; "edge": the end of the travel, the arrow turns red
 h713-osd ctl input console|hdmi      which input the picture comes from
+h713-osd ctl launcher 1;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby    the launcher (below); "launcher 2" moves, "launcher close" closes
 h713-osd ctl hide                    the overlay away now (a mute badge stays)
 h713-osd ctl status                  state, channel, matrix, style, and where the last refresh spent its time
 ```
@@ -64,10 +65,33 @@ draws the warp) would add an EGL dependency and share the GPU with the warp's 60
 happens a few times per key press; not worth it at these times - a later desktop compositor draws there anyway.
 `ctl status` shows the split of the last refresh: draw, ask, clear, pre-distort or copy, show.
 
+## The launcher
+
+`launcher SEL;NOW;[>]icon:label;...` (package H of the media side project, [docs/tools/h713-osd.md](../../docs/tools/h713-osd.md)):
+the launcher is an **opaque page** over the whole panel - a ground, the mock-up's "Launcher C" list in the column on the left (header
+and hint line, up to six rows, Standby set apart at the foot), the rest calm, everything inside the 5 % safe margin - that stays
+until it is closed. h713-keys is its controller; this daemon only draws and shows it. It is cut into **tiles** (libh713osd: the page's
+bands - the header, one per row of 124 units, the foot, the gap - each in a left part, the column, and a right part, the ground).
+A tile is drawn again in the canvas when it changes and put into a buffer when that buffer does not hold its current version
+(`gen[]`, `cgen[]`, `ver[]`, `held[][]` in `main.c`): moving the selection costs two row tiles of the column, not the page. Over a
+keystone the put is the pre-distortion, which walks every pixel it writes: the page is two million pixels, two row tiles are
+about 170 000. So the buffer that is **not shown is filled in the idle time** after a refresh (`prefill_at`, 0.12 s): the next key
+finds the page in it and puts two tiles. The volume strip, the mute badge and the power countdown are drawn into the page's
+canvas and ride in the tiles they touch (the tiles under the last strip are repainted to take it off).
+What makes the tiles meet on the panel: each tile's source has two rows and columns of its neighbours around it, so the bilinear
+sample at its edge is right; it writes only the panel pixels whose source lies in the tile itself, so two tiles never overwrite each
+other's edge with a half-transparent one; and only the pixels that count are written - the margin pixels of a run, which the
+range test turned down, belong to a neighbouring tile (the tiles meet along slanted lines through the matrix) and a zero written
+there is a hole in an opaque page (found by the move-equals-fresh test when the tiles were split left and right). When the matrix
+changes, the picture under the page turns warped or straight, h713-tv comes back or the launcher closes, the buffers are cleared
+(the page covers all of a buffer) and the tiles are put again. `H713_OSD_FONT` names the font (the image's Quicksand by default),
+`H713_OSD_CLOCK` a fixed header time and `H713_OSD_TRACE=1` a journal line per refresh and per prefill with wall-clock times (the
+tests; gate HL).
+
 ## Building and testing
 
 In the container `h713-build`: `make cross SYSROOT=...` for the board (clang, as h713-tv is built), `make host`
-and `make test` for the host tests (`tests/test_osd.py`, 11 tests, ~11 s): a fake h713-tv on a Unix socket that
+and `make test` for the host tests (`tests/test_osd.py`, 11 tests, ~11 s; `tests/test_launcher.py`, 10 tests with a font: `OSD_TEST_FONT`): a fake h713-tv on a Unix socket that
 hands memfds over instead of dma-bufs; the tests read where the overlay landed in the buffer - bottom centre,
 pre-distorted inward over a keystone, mirrored in rear mode, following a new warp.conf, the badge staying and
 coming back after h713-tv restarts, the badge drawn again when the picture under it turns warped or straight, and
