@@ -26,6 +26,15 @@
 
 static int fd[MAXDEV], nfd;
 static bool grabbed;
+static double stamp_ms;		/* the kernel's time (CLOCK_REALTIME) of the key input_key returned last: the gate HL starts here */
+
+double input_stamp(void)
+{
+	double t = stamp_ms;
+
+	stamp_ms = 0;
+	return t;
+}
 
 static bool read_line(const char *path, char *out, size_t n)
 {
@@ -169,8 +178,10 @@ int input_key(int timeout_ms)
 		if (read(fd[i], &ev, sizeof(ev)) == (ssize_t)sizeof(ev) && ev.type == EV_KEY) {
 			int k = map(ev.code, ev.value);
 
-			if (k)
+			if (k) {
+				stamp_ms = ev.time.tv_sec * 1e3 + ev.time.tv_usec / 1e3;
 				return k;
+			}
 		}
 	}
 	return KE_NONE;

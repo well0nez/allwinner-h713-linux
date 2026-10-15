@@ -424,9 +424,17 @@ int main(int argc, char **argv)
 				else if (shown)
 					unseen_since = 0;
 			}
-			if (timing)
-				fprintf(stderr, "h713-settings: drawn %.1f ms (%dx%d px), shown %.1f ms\n", t1 - t0, box[2], box[3],
-					now_ms() - t1);
+			if (timing) {
+				struct timespec rt;
+				double key = input_stamp(), done;
+
+				clock_gettime(CLOCK_REALTIME, &rt);
+				done = rt.tv_sec * 1e3 + rt.tv_nsec / 1e6;
+				fprintf(stderr, "h713-settings: drawn %.1f ms (%dx%d px), shown %.1f ms", t1 - t0, box[2], box[3], now_ms() - t1);
+				if (key > 0 && done - key < 10000)	/* the key's own stamp to h713-osd's answer: the flip is up to a vsync later */
+					fprintf(stderr, ", key to answer %.1f ms", done - key);
+				fprintf(stderr, "\n");
+			}
 			if (*snapdir) {		/* evidence: the page's canvas after every drawing, as PAM (pam2png.py) */
 				char p[300];
 

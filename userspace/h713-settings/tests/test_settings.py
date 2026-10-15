@@ -311,7 +311,8 @@ class Box:
 
     def press(self, *codes, device=0, value=1):
         for code in codes:
-            os.write(self.fifos[device][1], struct.pack("llHHi", 0, 0, 1, code, value))
+            now = time.time()                                     # the kernel stamps an event with CLOCK_REALTIME
+            os.write(self.fifos[device][1], struct.pack("llHHi", int(now), int(now % 1 * 1e6), 1, code, value))
 
     def keys(self, *keys):
         for k in keys:
@@ -844,7 +845,9 @@ class Device(Base):
         names = sorted(os.listdir(snap))
         self.assertGreaterEqual(len(names), 3)                    # the whole page, the rows after OK, the row after Right
         self.assertEqual(names[0], "0001.pam")
-        self.assertRegex(b.proc.stderr.read(), r"drawn [\d.]+ ms \(640x360 px\), shown [\d.]+ ms")
+        err = b.proc.stderr.read()
+        self.assertRegex(err, r"drawn [\d.]+ ms \(640x360 px\), shown [\d.]+ ms\n")                 # the first, whole page: no key
+        self.assertRegex(err, r"drawn [\d.]+ ms \(\d+x\d+ px\), shown [\d.]+ ms, key to answer [\d.]+ ms")
 
     def test_a_key_keeps_it_open(self):
         b = self.box().start_device("Sound", idle=2)

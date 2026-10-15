@@ -71,6 +71,7 @@ const char *etc(const char *name);	/* p_etc/name */
 int input_open(void);			/* the number of devices held; 0: none, or one that cannot be held */
 void input_close(void);
 int input_key(int timeout_ms);		/* a key as enum key, KE_NONE on timeout or for a key the page does not know */
+double input_stamp(void);		/* when the last key was pressed (kernel stamp, ms since the epoch), once; 0: no key */
 void input_power(void);			/* hand a Power press to h713-power */
 
 /* page.c: h713-osd's page channel - a canvas to draw into, and the word which part of it is new */
