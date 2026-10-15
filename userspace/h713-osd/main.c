@@ -118,6 +118,40 @@ static struct {
 	bool live[2], skew[2], wipe[2];	/* the buffer holds launcher pixels / they went through the matrix / clear them first */
 } lau;
 
+/*
+ * The page channel (package S of the media side project, h713-settings): a program draws a whole page into a canvas the
+ * size of the panel - a memfd that "page open" hands over - and says which rows are new ("page show X Y W H"). This daemon
+ * copies those rows, the panel's full width, into its canvas, puts them into the buffer h713-tv shows - straight, or through
+ * the matrix in bands like the launcher's, so that there is no seam - and shows it, then answers "ok" (or "ok waiting": no
+ * picture at the moment, the page is kept for its return). It stays the one holder of the overlay channel; the page's
+ * connection is the page's life. Popups and the mute badge are not drawn while a page is open: the page covers the panel.
+ * Rows are [y0, y1); y0 >= y1 is none.
+ */
+static struct {
+	int fd;				/* the page's connection, -1: none */
+	uint32_t *px;			/* the page's canvas, shared with the client */
+	size_t len;
+	bool open;
+	int owe;			/* answers owed: one per "page show", given after the refresh */
+	int cnew[2];			/* the rows not yet copied into the canvas */
+	int dirty[2][2];		/* per buffer: the rows not yet put there */
+	bool live[2], skew[2];		/* the buffer holds page pixels / they went through the matrix */
+	char buf[160];
+	size_t blen;
+} page = { .fd = -1 };
+
+static bool osd_waiting;		/* the last refresh was not seen: no picture, or no channel */
+
+static void rows_add(int r[2], int y0, int y1)
+{
+	if (r[0] >= r[1]) {
+		r[0] = y0, r[1] = y1;
+	} else {
+		r[0] = y0 < r[0] ? y0 : r[0];
+		r[1] = y1 > r[1] ? y1 : r[1];
+	}
+}
+
 /* --- osd.conf: place, look, scale, seconds - read again when it changes ------------------------------ */
 
 static struct osd_style style = { OSD_BOTTOM, OSD_PILL, 1.0f };
@@ -225,6 +259,8 @@ static void tv_drop(void)
 		memset(tv.box[i], 0, sizeof(tv.box[i]));
 		memset(lau.held[i], 0, sizeof(lau.held[i]));
 		lau.live[i] = lau.wipe[i] = false;
+		page.live[i] = false;
+		page.dirty[i][0] = 0, page.dirty[i][1] = page.open ? canvas.h : 0;	/* the next claim puts the whole page */
 	}
 	if (tv.fd >= 0)
 		close(tv.fd);
@@ -401,12 +437,18 @@ static bool compose(int box[2][4])
 		lau_clock();
 		lau_paint();
 	}
-	if (want.until > now_s())
-		osd_draw(&canvas, &style, &want.popup, box[0]);
-	if (want.muted)
-		osd_draw(&canvas, &style, &badge, box[1]);	/* over the overlay, where they meet */
+	if (page.open) {	/* after the clearing above: a popup's last place is the page's again */
+		for (int y = page.cnew[0]; y < page.cnew[1]; y++)
+			memcpy(canvas.px + (size_t)y * canvas.stride, page.px + (size_t)y * canvas.stride, (size_t)canvas.w * 4);
+		page.cnew[0] = page.cnew[1] = 0;
+	} else {
+		if (want.until > now_s())
+			osd_draw(&canvas, &style, &want.popup, box[0]);
+		if (want.muted)
+			osd_draw(&canvas, &style, &badge, box[1]);	/* over the overlay, where they meet */
+	}
 	memcpy(cbox, box, sizeof(cbox));
-	return (box[0][2] && box[0][3]) || (box[1][2] && box[1][3]) || lau.open;
+	return (box[0][2] && box[0][3]) || (box[1][2] && box[1][3]) || lau.open || page.open;
 }
 
 /* --- into a buffer: straight, or through the warp's matrix ------------------------------------------------ */
@@ -646,6 +688,40 @@ static void lau_wipe(int b)
 	lau.live[b] = lau.wipe[b] = false;
 }
 
+/* the page's new rows into buffer b, as a band: LAU_MARGIN rows of the neighbours around it for the sampling, only the panel
+ * pixels whose source row lies in the band written (the same reasoning as the launcher's bands, lau_put) */
+static int page_put(int b, bool skew)
+{
+	int y0 = page.dirty[b][0], y1 = page.dirty[b][1], r[4], out[4];
+
+	if (y0 >= y1)
+		return 0;
+	r[0] = 0;
+	r[1] = y0 > LAU_MARGIN ? y0 - LAU_MARGIN : 0;
+	r[2] = canvas.w;
+	r[3] = (y1 + LAU_MARGIN < canvas.h ? y1 + LAU_MARGIN : canvas.h) - r[1];
+	if (skew) {
+		double yr[2] = { y0 ? y0 - 0.5 : -1, y1 < canvas.h ? y1 - 0.5 : canvas.h };
+
+		put_warped(tv.map[b], r, yr, out);
+	} else {
+		put_straight(tv.map[b], r, out);
+	}
+	page.dirty[b][0] = page.dirty[b][1] = 0;
+	page.live[b] = true;
+	page.skew[b] = skew;
+	return out[2] * out[3];
+}
+
+/* the page's pixels out of buffer b: the whole buffer (through the matrix they are everywhere), and all of it again to put */
+static void page_wipe(int b)
+{
+	memset(tv.map[b], 0, (size_t)tv.pitch * tv.h);
+	page.live[b] = false;
+	page.dirty[b][0] = 0;
+	page.dirty[b][1] = page.open ? canvas.h : 0;
+}
+
 static void buf_sync(int fd, unsigned long long flags)
 {
 	struct dma_buf_sync s = { flags };
@@ -662,6 +738,7 @@ static void refresh(void)
 	bool warped, skew;
 	double t0;
 
+	osd_waiting = true;
 	if (!tv_claim())
 		return;
 	t0 = now_s();
@@ -682,6 +759,8 @@ static void refresh(void)
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE);
 	if (lau.live[b] && (lau.wipe[b] || !lau.open || lau.skew[b] != skew))
 		lau_wipe(b);	/* closed, a new geometry, or the picture under it turned warped or straight */
+	if (page.live[b] && (!page.open || page.skew[b] != skew))
+		page_wipe(b);	/* the page is gone, or the picture under it turned warped or straight */
 	for (int r = 0; r < 2; r++)	/* what this buffer showed before */
 		for (int y = tv.box[b][r][1]; y < tv.box[b][r][1] + tv.box[b][r][3]; y++)
 			memset((char *)tv.map[b] + (size_t)y * tv.pitch + (size_t)tv.box[b][r][0] * 4, 0,
@@ -699,6 +778,8 @@ static void refresh(void)
 	}
 	if (lau.open)
 		area += lau_put(b, skew);
+	if (page.open)
+		area += page_put(b, skew);
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE);
 	last.put = (now_s() - t0) * 1e3;
 	last.pixels = area;
@@ -709,6 +790,7 @@ static void refresh(void)
 	if (tv_say(answer, answer, sizeof(answer))) {
 		tv.shown = true;
 		tv.next ^= 1;
+		osd_waiting = strstr(answer, "waiting") != NULL;
 		if (trace)
 			info("trace: command %.4f, show answered %.4f (%.1f ms; draw %.1f, put %.1f, show %.1f)", t_cmd, real_s(),
 			     (real_s() - t_cmd) * 1e3, last.draw, last.put, (now_s() - t0) * 1e3);
@@ -742,6 +824,10 @@ static bool launcher_cmd(const char *args, char *reply, size_t n)
 		lau.open = false;
 		snprintf(reply, n, "ok\n");
 		return true;
+	}
+	if (page.open) {
+		snprintf(reply, n, "error the page is open\n");
+		return false;
 	}
 	while (k < BANDS + 1 && (t = strsep(&p, ";")))
 		f[k++] = t;
@@ -867,14 +953,14 @@ static bool handle(const char *line, char *reply, size_t n)
 		snprintf(reply, n, "ok hidden%s\n", want.muted ? " (the mute badge stays)" : "");
 		return true;
 	} else if (k == 1 && !strcmp(a, "status")) {
-		snprintf(reply, n, "ok status\noverlay         %s\nmuted           %s\nchannel         %s\nmatrix          %s\nstyle           place %s, look %s, scale %.2f, %.1f s\nlauncher        %s\nlast refresh    draw %.1f ms, ask %.1f ms, clear %.1f ms, %s %.1f ms (%d pixels), show %.1f ms\n",
+		snprintf(reply, n, "ok status\noverlay         %s\nmuted           %s\nchannel         %s\nmatrix          %s\nstyle           place %s, look %s, scale %.2f, %.1f s\nlauncher        %s\npage            %s\nlast refresh    draw %.1f ms, ask %.1f ms, clear %.1f ms, %s %.1f ms (%d pixels), show %.1f ms\n",
 			 want.until > now_s() ? "shown" : "none", want.muted ? "yes (badge)" : "no",
 			 tv.fd >= 0 ? (tv.shown ? "claimed, shown" : "claimed") : "not claimed (h713-tv not running, or no event yet)",
 			 m_identity ? "identity (straight)" :
 			 m_valid ? "from warp.conf (pre-distorted while the picture under it is warped)" : "refused",
 			 style.place == OSD_BOTTOM ? "bottom" : style.place == OSD_TOP_RIGHT ? "top-right" : "center",
 			 style.look == OSD_PILL ? "pill" : "bare", style.scale, seconds,
-			 lau.open ? "open" : "closed", last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
+			 lau.open ? "open" : "closed", page.open ? "open" : "closed", last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
 		return false;
 	} else {
 		snprintf(reply, n, "error unknown: volume N | mute on|off N | focus up|down [edge] | input console|hdmi | power TENTHS standby|off [only] [ALPHA%%] | pair | launcher ... | hide | status\n");
@@ -901,6 +987,133 @@ static int listen_on(const char *path)
 	return fd;
 }
 
+/* the page's way in: "page open" keeps its connection (the page's life) and answers with the size and one memfd */
+static bool page_open_cmd(int fd)
+{
+	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, line[96], answer[64];
+	struct iovec io = { line, 0 };
+	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1, .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
+	const char *err = NULL;
+	struct cmsghdr *cm;
+	void *map = MAP_FAILED;
+	size_t len;
+	int mem = -1;
+
+	if (page.open || lau.open)
+		err = page.open ? "error the page is open\n" : "error the launcher is open\n";
+	else if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none"))
+		err = "ok unseen\n";	/* nothing can be seen: no page, and the caller takes the keys from nobody */
+	if (!err) {
+		len = (size_t)canvas.stride * canvas.h * 4;
+		mem = memfd_create("h713-page", MFD_CLOEXEC);
+		if (mem < 0 || ftruncate(mem, (off_t)len) ||
+		    (map = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, mem, 0)) == MAP_FAILED)
+			err = "error no memory for the page\n";
+	}
+	if (!err) {
+		io.iov_len = (size_t)snprintf(line, sizeof(line), "ok %d %d %d argb8888\n", canvas.w, canvas.h, canvas.stride * 4);
+		cm = CMSG_FIRSTHDR(&msg);
+		cm->cmsg_level = SOL_SOCKET;
+		cm->cmsg_type = SCM_RIGHTS;
+		cm->cmsg_len = CMSG_LEN(sizeof(int));
+		memcpy(CMSG_DATA(cm), &mem, sizeof(int));
+		if (sendmsg(fd, &msg, MSG_NOSIGNAL) < 0)
+			err = "";
+	}
+	if (mem >= 0)
+		close(mem);
+	if (err) {
+		if (*err)
+			send(fd, err, strlen(err), MSG_NOSIGNAL);
+		if (map != MAP_FAILED)
+			munmap(map, len);
+		close(fd);
+		return false;
+	}
+	page.fd = fd;
+	page.px = map;
+	page.len = len;
+	page.open = true;
+	page.blen = 0;
+	page.owe = 0;
+	page.cnew[0] = page.cnew[1] = 0;
+	for (int b = 0; b < 2; b++)
+		page.dirty[b][0] = 0, page.dirty[b][1] = canvas.h;
+	info("page opened: %dx%d", canvas.w, canvas.h);
+	return false;
+}
+
+static void page_close(void)
+{
+	if (page.fd >= 0)
+		close(page.fd);
+	if (page.px)
+		munmap(page.px, page.len);
+	page.fd = -1;
+	page.px = NULL;
+	page.open = false;
+	page.blen = 0;
+	page.owe = 0;
+	info("page closed");
+}
+
+/* the page's lines: "page show X Y W H" - those rows are new (the answer comes after the refresh), "page hide"; true when
+ * the picture is to be drawn again */
+static bool page_read(void)
+{
+	ssize_t got = recv(page.fd, page.buf + page.blen, sizeof(page.buf) - page.blen - 1, MSG_DONTWAIT);
+	bool again = false;
+	char *nl;
+
+	if (got == 0 || (got < 0 && errno != EAGAIN && errno != EINTR)) {
+		page_close();	/* the page's program ended: it is gone from the wall */
+		return true;
+	}
+	if (got > 0)
+		page.blen += (size_t)got;
+	page.buf[page.blen] = '\0';
+	while ((nl = strchr(page.buf, '\n'))) {
+		int x, y, w, h;
+		size_t used = (size_t)(nl - page.buf) + 1;
+
+		*nl = '\0';
+		t_cmd = real_s();
+		if (sscanf(page.buf, "page show %d %d %d %d", &x, &y, &w, &h) == 4 && h > 0) {
+			int y0 = y < 0 ? 0 : y, y1 = y + h > canvas.h ? canvas.h : y + h;
+
+			rows_add(page.cnew, y0, y1);
+			rows_add(page.dirty[0], y0, y1);
+			rows_add(page.dirty[1], y0, y1);
+			page.owe++;
+			again = true;
+		} else if (!strcmp(page.buf, "page hide")) {
+			page_close();
+			return true;
+		} else {
+			send(page.fd, "error page show X Y W H | page hide\n", 36, MSG_NOSIGNAL);
+		}
+		memmove(page.buf, page.buf + used, page.blen - used + 1);
+		page.blen -= used;
+	}
+	if (page.blen >= sizeof(page.buf) - 1)
+		page.blen = 0;	/* a line that does not end: dropped */
+	return again;
+}
+
+static void page_answer(void)
+{
+	while (page.owe > 0 && page.fd >= 0) {
+		const char *r = osd_waiting ? "ok waiting\n" : "ok\n";
+
+		if (send(page.fd, r, strlen(r), MSG_NOSIGNAL) < 0) {
+			page_close();
+			break;
+		}
+		page.owe--;
+	}
+	page.owe = 0;
+}
+
 /* one connection, one line, one answer */
 static bool serve(int lfd)
 {
@@ -921,6 +1134,8 @@ static bool serve(int lfd)
 	t_cmd = real_s();
 	line[got] = '\0';
 	line[strcspn(line, "\r\n")] = '\0';
+	if (!strcmp(line, "page open"))
+		return page_open_cmd(fd);	/* the connection stays: it is the page's life */
 	again = handle(line, reply, sizeof(reply));
 	if (send(fd, reply, strlen(reply), MSG_NOSIGNAL) < 0)
 		warn("answering \"%s\": %s", line, strerror(errno));
@@ -969,7 +1184,7 @@ static double watch_at;			/* the next question; 0: none due */
 
 static bool watching(void)
 {
-	return tv.fd >= 0 && tv.shown && (want.muted || lau.open || want.until > now_s()) && m_valid && !m_identity;
+	return tv.fd >= 0 && tv.shown && (want.muted || lau.open || page.open || want.until > now_s()) && m_valid && !m_identity;
 }
 
 /* true when the picture under the overlay no longer matches the way it was drawn */
@@ -996,7 +1211,7 @@ static void arm(int tfd)
 	struct itimerspec its = { 0 };
 	double next = want.until > 0 ? want.until : 0, dt;
 
-	if (tv.fd < 0 && (want.muted || lau.open || want.until > 0)) {
+	if (tv.fd < 0 && (want.muted || lau.open || page.open || want.until > 0)) {
 		double r = tv.retry > now_s() ? tv.retry : now_s() + 1.0;
 
 		if (!next || r < next)
@@ -1029,7 +1244,7 @@ static void arm(int tfd)
 
 static int run(void)
 {
-	struct pollfd p[5];
+	struct pollfd p[6];
 	sigset_t mask;
 	char dir[256], *slash, ev[4096];
 	int lfd, tfd, ifd, sfd;
@@ -1069,7 +1284,8 @@ static int run(void)
 		p[2] = (struct pollfd){ ifd, POLLIN, 0 };
 		p[3] = (struct pollfd){ sfd, POLLIN, 0 };
 		p[4] = (struct pollfd){ tv.fd, POLLIN, 0 };	/* only a hangup is expected here */
-		if (poll(p, 5, -1) < 0 && errno != EINTR)
+		p[5] = (struct pollfd){ page.fd, POLLIN, 0 };	/* -1: ignored */
+		if (poll(p, 6, -1) < 0 && errno != EINTR)
 			break;
 		if (p[3].revents)
 			break;
@@ -1083,6 +1299,8 @@ static int run(void)
 		}
 		if (p[0].revents)
 			again |= serve(lfd);
+		if (p[5].revents && page.fd >= 0)
+			again |= page_read();
 		if (p[1].revents) {
 			uint64_t ticks;
 
@@ -1091,7 +1309,7 @@ static int run(void)
 					want.until = 0;
 					again = true;
 				}
-				if (tv.fd < 0 && (want.muted || lau.open || want.until))
+				if (tv.fd < 0 && (want.muted || lau.open || page.open || want.until))
 					again = true;	/* the claim again */
 				if (lau.open && lau_clock_changed())
 					again = true;	/* a new minute: the header is drawn again */
@@ -1119,8 +1337,11 @@ static int run(void)
 		}
 		if (again)
 			refresh();
+		page_answer();
 		arm(tfd);
 	}
+	if (page.fd >= 0)
+		page_close();
 	info("exit: the overlay off, the buffers back");
 	if (tv.fd >= 0) {
 		char answer[64];

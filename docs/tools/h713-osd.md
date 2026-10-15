@@ -36,6 +36,26 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   lighter pixels shows at every boundary (measured in the host test before it was fixed: alpha down to 60 % on one row).
   Volume, mute and the power countdown work over it. `H713_OSD_TRACE=1` adds a journal line per refresh with wall-clock times.
 
+## The page channel (package S)
+
+A program that has a whole page to show - [h713-settings](h713-settings.md) - does not claim h713-tv's overlay channel (there is
+one holder, this daemon); it asks for a canvas. The connection **stays** and is the page's life:
+
+```
+page open                 -> ok W H PITCH argb8888    plus one memfd (SCM_RIGHTS) of PITCH x H bytes, ARGB8888, straight alpha,
+                             the panel's size: the page draws into it. "ok unseen" when nothing can be seen (no signal, no
+                             h713-tv): no page, and its program takes the keys from nobody. "error the launcher is open" / "the page is open".
+page show X Y W H         -> ok | ok waiting          these rows (the panel's full width; X and W are ignored) are new
+page hide                    the page goes (so does the end of the connection)
+```
+
+The daemon copies the new rows into its canvas, puts them into the buffer h713-tv shows - straight, or through the keystone's
+matrix as a **band** (two neighbour rows for the sampling, only the panel pixels whose source row lies in the band written: no
+seam, the launcher's reasoning, measured by a test that compares a page shown in pieces with the same page shown at once) - and
+answers after `osd show`: `ok waiting` means h713-tv has no picture at the moment and keeps the page for its return (the autofocus
+has the panel, a source changes its mode). Popups and the mute badge are not drawn while a page is open; the page covers the
+panel, and a launcher does not open over it. `page` in `ctl status` says open or closed. Host tests: `tests/test_page.py`.
+
 ## /etc/h713/osd.conf
 
 Read again when it changes, no restart:
