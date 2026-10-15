@@ -125,16 +125,18 @@ static struct {
  * the matrix in bands like the launcher's, so that there is no seam - and shows it, then answers "ok" (or "ok waiting": no
  * picture at the moment, the page is kept for its return). It stays the one holder of the overlay channel; the page's
  * connection is the page's life. Popups and the mute badge are not drawn while a page is open: the page covers the panel.
- * Rows are [y0, y1); y0 >= y1 is none.
+ * Rows are kept as up to PAGE_RANGES ranges [y0, y1) (y0 >= y1: none): a row and the note at the foot are two small ranges,
+ * not the one big rectangle around both - what is put through a keystone is paid for by the pixel.
  */
+#define PAGE_RANGES 4
 static struct {
 	int fd;				/* the page's connection, -1: none */
 	uint32_t *px;			/* the page's canvas, shared with the client */
 	size_t len;
 	bool open;
 	int owe;			/* answers owed: one per "page show", given after the refresh */
-	int cnew[2];			/* the rows not yet copied into the canvas */
-	int dirty[2][2];		/* per buffer: the rows not yet put there */
+	int cnew[PAGE_RANGES][2];	/* the rows not yet copied into the canvas */
+	int dirty[2][PAGE_RANGES][2];	/* per buffer: the rows not yet put there */
 	bool live[2], skew[2];		/* the buffer holds page pixels / they went through the matrix */
 	char buf[160];
 	size_t blen;
@@ -142,14 +144,32 @@ static struct {
 
 static bool osd_waiting;		/* the last refresh was not seen: no picture, or no channel */
 
-static void rows_add(int r[2], int y0, int y1)
+/* y0..y1 into the ranges: merged with one it touches or lies within 24 rows of, else a free place, else into the last one */
+static void rows_add(int r[PAGE_RANGES][2], int y0, int y1)
 {
-	if (r[0] >= r[1]) {
-		r[0] = y0, r[1] = y1;
-	} else {
-		r[0] = y0 < r[0] ? y0 : r[0];
-		r[1] = y1 > r[1] ? y1 : r[1];
+	int free_at = -1;
+
+	for (int i = 0; i < PAGE_RANGES; i++) {
+		if (r[i][0] >= r[i][1]) {
+			free_at = free_at < 0 ? i : free_at;
+		} else if (y0 <= r[i][1] + 24 && y1 >= r[i][0] - 24) {
+			r[i][0] = y0 < r[i][0] ? y0 : r[i][0];
+			r[i][1] = y1 > r[i][1] ? y1 : r[i][1];
+			return;
+		}
 	}
+	if (free_at >= 0) {
+		r[free_at][0] = y0, r[free_at][1] = y1;
+	} else {
+		r[PAGE_RANGES - 1][0] = y0 < r[PAGE_RANGES - 1][0] ? y0 : r[PAGE_RANGES - 1][0];
+		r[PAGE_RANGES - 1][1] = y1 > r[PAGE_RANGES - 1][1] ? y1 : r[PAGE_RANGES - 1][1];
+	}
+}
+
+static void rows_set(int r[PAGE_RANGES][2], int y0, int y1)	/* exactly this: none or the whole page */
+{
+	memset(r, 0, sizeof(int) * PAGE_RANGES * 2);
+	r[0][0] = y0, r[0][1] = y1;
 }
 
 /* --- osd.conf: place, look, scale, seconds - read again when it changes ------------------------------ */
@@ -260,7 +280,7 @@ static void tv_drop(void)
 		memset(lau.held[i], 0, sizeof(lau.held[i]));
 		lau.live[i] = lau.wipe[i] = false;
 		page.live[i] = false;
-		page.dirty[i][0] = 0, page.dirty[i][1] = page.open ? canvas.h : 0;	/* the next claim puts the whole page */
+		rows_set(page.dirty[i], 0, page.open ? canvas.h : 0);	/* the next claim puts the whole page */
 	}
 	if (tv.fd >= 0)
 		close(tv.fd);
@@ -438,9 +458,10 @@ static bool compose(int box[2][4])
 		lau_paint();
 	}
 	if (page.open) {	/* after the clearing above: a popup's last place is the page's again */
-		for (int y = page.cnew[0]; y < page.cnew[1]; y++)
-			memcpy(canvas.px + (size_t)y * canvas.stride, page.px + (size_t)y * canvas.stride, (size_t)canvas.w * 4);
-		page.cnew[0] = page.cnew[1] = 0;
+		for (int i = 0; i < PAGE_RANGES; i++)
+			for (int y = page.cnew[i][0]; y < page.cnew[i][1]; y++)
+				memcpy(canvas.px + (size_t)y * canvas.stride, page.px + (size_t)y * canvas.stride, (size_t)canvas.w * 4);
+		rows_set(page.cnew, 0, 0);
 	} else {
 		if (want.until > now_s())
 			osd_draw(&canvas, &style, &want.popup, box[0]);
@@ -692,25 +713,33 @@ static void lau_wipe(int b)
  * pixels whose source row lies in the band written (the same reasoning as the launcher's bands, lau_put) */
 static int page_put(int b, bool skew)
 {
-	int y0 = page.dirty[b][0], y1 = page.dirty[b][1], r[4], out[4];
+	int area = 0;
 
-	if (y0 >= y1)
-		return 0;
-	r[0] = 0;
-	r[1] = y0 > LAU_MARGIN ? y0 - LAU_MARGIN : 0;
-	r[2] = canvas.w;
-	r[3] = (y1 + LAU_MARGIN < canvas.h ? y1 + LAU_MARGIN : canvas.h) - r[1];
-	if (skew) {
-		double yr[2] = { y0 ? y0 - 0.5 : -1, y1 < canvas.h ? y1 - 0.5 : canvas.h };
+	for (int i = 0; i < PAGE_RANGES; i++) {
+		int y0 = page.dirty[b][i][0], y1 = page.dirty[b][i][1], r[4], out[4];
 
-		put_warped(tv.map[b], r, yr, out);
-	} else {
-		put_straight(tv.map[b], r, out);
+		if (y0 >= y1)
+			continue;
+		r[0] = 0;
+		r[1] = y0 > LAU_MARGIN ? y0 - LAU_MARGIN : 0;
+		r[2] = canvas.w;
+		r[3] = (y1 + LAU_MARGIN < canvas.h ? y1 + LAU_MARGIN : canvas.h) - r[1];
+		if (skew) {
+			/* A panel pixel whose source row is s reads rows floor(s) and floor(s) + 1, so the rows y0..y1-1 reach the pixels
+			 * with s in (y0 - 1, y1): those are written, a half row more on each side than the band tiles (y0 - 0.5, y1 - 0.5).
+			 * The neighbours' pixels they read are the page's own, so what is written is what a whole put writes. */
+			double yr[2] = { y0 ? y0 - 1 : -1, y1 < canvas.h ? y1 : canvas.h };
+
+			put_warped(tv.map[b], r, yr, out);
+		} else {
+			put_straight(tv.map[b], r, out);
+		}
+		area += out[2] * out[3];
 	}
-	page.dirty[b][0] = page.dirty[b][1] = 0;
+	rows_set(page.dirty[b], 0, 0);
 	page.live[b] = true;
 	page.skew[b] = skew;
-	return out[2] * out[3];
+	return area;
 }
 
 /* the page's pixels out of buffer b: the whole buffer (through the matrix they are everywhere), and all of it again to put */
@@ -718,8 +747,7 @@ static void page_wipe(int b)
 {
 	memset(tv.map[b], 0, (size_t)tv.pitch * tv.h);
 	page.live[b] = false;
-	page.dirty[b][0] = 0;
-	page.dirty[b][1] = page.open ? canvas.h : 0;
+	rows_set(page.dirty[b], 0, page.open ? canvas.h : 0);
 }
 
 static void buf_sync(int fd, unsigned long long flags)
@@ -1036,9 +1064,9 @@ static bool page_open_cmd(int fd)
 	page.open = true;
 	page.blen = 0;
 	page.owe = 0;
-	page.cnew[0] = page.cnew[1] = 0;
+	rows_set(page.cnew, 0, 0);
 	for (int b = 0; b < 2; b++)
-		page.dirty[b][0] = 0, page.dirty[b][1] = canvas.h;
+		rows_set(page.dirty[b], 0, canvas.h);
 	info("page opened: %dx%d", canvas.w, canvas.h);
 	return false;
 }

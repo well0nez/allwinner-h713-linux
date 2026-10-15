@@ -122,6 +122,26 @@ class PageTest(PageBase):
         self.assertEqual(self.shown(), partial)       # bands put one at a time are exactly the page put at once
         self.assertNotEqual(partial, bytes(c.map))     # and it did go through the matrix
 
+    def test_a_row_and_the_note_are_not_one_big_rectangle(self):
+        """two small ranges, not their union: put through a keystone every pixel is paid for (the union alternates into the
+        other buffer at every second show)"""
+        import re
+        self.write("warp.conf", "bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = on\n")
+        self.tv.picture = "warped"
+        self.start()
+        c = self.page()
+        c.paint(0, H)
+        c.show(0, H)
+        c.show(0, H)
+        pixels = []
+        for i in range(6):
+            y0, y1 = (100, 140) if i % 2 == 0 else (320, 350)
+            c.paint(y0, y1, shift=i)
+            c.show(y0, y1 - y0)
+            pixels.append(int(re.search(r"\((\d+) pixels\)", self.ctl("status")).group(1)))
+        # the first two shows still owe the other buffer the whole page; after that each is its own small piece
+        self.assertLess(max(pixels[2:]), W * H * 0.30, pixels)  # one union of rows 100-350 would be over half the panel
+
     def test_the_end_of_the_page_takes_it_from_the_wall(self):
         self.start()
         c = self.page()
@@ -210,7 +230,8 @@ class PageTest(PageBase):
         c = self.page()
         c.paint(0, H)
         c.sock.sendall(b"page shove 1 2 3\npage show 0 0 640 0\n")
-        self.assertTrue(c.sock.recv(128).decode().startswith("error"))
+        time.sleep(0.2)
+        self.assertEqual(c.sock.recv(256).decode().count("error"), 2)        # each of the two lines is answered
         self.assertEqual(c.show(0, H), "ok\n")
         self.assertEqual(self.shown(), bytes(c.map))
 
