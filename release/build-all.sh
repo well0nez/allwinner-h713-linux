@@ -102,7 +102,9 @@ KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byte-identica
 # libglvnd-dev is also where h713-warp finds libEGL.so and libGLESv2.so now (the dispatchers, no longer in the mesa stage)
 # libva-dev: the VA-API headers megi's libva-v4l2_request driver is built against (rootfs/libva/build-libva.sh);
 # the driver is built by that script on demand, not by this one: the base image does not carry it (profile media does)
-SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev,zlib1g-dev,libwayland-dev,libwayland-egl-backend-dev,wayland-protocols,libglvnd-dev,libva-dev
+# libfreetype-dev: the text of the launcher (userspace/libh713osd/text.c); h713-osd links libfreetype.a and its png, bz2, brotli and
+# zlib archives statically, so the base image needs no FreeType package (media side project, package H)
+SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev,zlib1g-dev,libwayland-dev,libwayland-egl-backend-dev,wayland-protocols,libglvnd-dev,libva-dev,libfreetype-dev
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 

@@ -23,6 +23,18 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   no standby on this board, the ring alone. Each line keeps it one second. The answer is `ok unseen` when nothing can be
   seen (no signal, the console; no h713-tv) - h713-power then acts at once.
 - `pair` - "hold Left + Right" for 10 s after the remote was forgotten (h713-panel, TODO 2.54).
+- `launcher SEL;NOW;[>]icon:label;...` - the launcher (h713-keys, package H of the media side project): a column on the left
+  edge that stays until `launcher close`. `SEL` the chosen row, `NOW` the second half of the header (`HDMI 1080p60`; the clock is
+  h713-osd's), then the rows - icon one of `hdmi film globe desk sliders power`, a `>` in front puts a row in the group at the
+  foot (Standby), which comes last; up to six. `launcher SEL` alone moves the selection. The answer is `ok unseen` when
+  nothing can be seen (then it is not open), `error no font` without the face (`H713_OSD_FONT`, else
+  `/usr/share/fonts/truetype/quicksand/Quicksand-Medium.ttf` from the `desktop` profile's `fonts-quicksand`).
+  The column is cut into bands - the header, one per row, the foot - and only the bands that changed are drawn again and put
+  into a buffer: a move of the selection costs two bands, not the column, which matters over a keystone (the pre-distortion
+  walks every pixel it puts). Each band is put from a source with two rows of its neighbours around it, but writes only the
+  panel pixels of its own rows: otherwise the bilinear sample at the edge of a region sees nothing outside and a seam of
+  lighter pixels shows at every boundary (measured in the host test before it was fixed: alpha down to 60 % on one row).
+  Volume, mute and the power countdown work over it. `H713_OSD_TRACE=1` adds a journal line per refresh with wall-clock times.
 
 ## /etc/h713/osd.conf
 
@@ -55,4 +67,5 @@ a milder one (both measured 11.10.2026).
 - No overlay on the console (no signal): it waits for the picture - decided 11.10.2026 (the console cannot be
   distorted, and an overlay over it would freeze it).
 - No fade-out.
+- The launcher's scrim is 700 units wide, not the mock-up's 1100: the volume strip starts at 690 and must never meet it.
 - In the image since 11.10.2026 (`rootfs/install-projekt.sh` 5i, enabled); an image with it is not built and installed yet.
