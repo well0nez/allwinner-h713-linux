@@ -50,7 +50,7 @@ void text_add(struct textbuf *t, const char *fmt, ...);
 
 /* what a claim is for (package G): the capture ring, or a Wayland client of wayland.c */
 enum warp_source { SRC_RING, SRC_CLIENT };
-/* h713-tv's "source" as its last answer to a claim named it */
+/* h713-tv's "source" as its last answer named it: to a claim, to a frame after a change (M4 A1), to "source" */
 enum tv_source { TV_UNKNOWN, TV_HDMI, TV_CLIENT, TV_AUTO };
 
 struct peer {
@@ -68,6 +68,8 @@ bool peer_claim(struct peer *p, int src, char *why, size_t n);
 /* flip: the commit's flip fence when h713-tv sends one (a client claim), else -1; ours to close */
 int peer_frame(struct peer *p, int index, int fence, int *flip, char *why, size_t n);
 void peer_release(struct peer *p);
+/* h713-tv's "source" alone, on a short connection of its own; false when h713-tv did not answer */
+bool peer_source(struct peer *p);
 
 struct source {
 	const char *want;		/* -v PATH, or NULL: search by name */

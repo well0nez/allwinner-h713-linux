@@ -5,10 +5,11 @@
 # h713-warp's server (WAYLAND_DISPLAY=/run/h713-warp/wayland, WLR_BACKENDS=wayland,libinput), passes Kodi's pictures
 # through, and h713-warp draws them through the keystone onto the video plane while h713-tv stays the master and the
 # only one that commits. So the keystone, the overlays (h713-osd) and the volume keys stay as they are with HDMI.
-# * The start asks h713-tv for the client first (`h713-tv ctl source client`): h713-tv gives a ring claim back, shows
-#   the console, and accepts h713-warp's client claim once cage has its first picture. However Kodi ends,
-#   ExecStopPost asks for the HDMI input again (`source hdmi`): h713-warp gives the panel back two seconds after cage
-#   is gone, h713-tv shows the ring. h713-tv and h713-warp keep running throughout; nothing conflicts with them any more.
+# * The start sets h713-tv's source to `auto` (`h713-tv ctl source auto`): the client before the ring. The ring stays on
+#   the panel while Kodi starts, h713-warp swaps it for cage's first picture, and however Kodi ends - Quit, a crash, a
+#   SIGKILL of the whole unit - h713-warp gives the panel back two seconds after cage is gone and the ring is there
+#   again. No ExecStopPost: `auto` needs no way back (M4 A1; a SIGKILL of the cgroup skipped ExecStopPost, G6 Befund 1).
+#   tv.conf keeps `source = hdmi` as the start value. h713-tv and h713-warp keep running throughout.
 # * BindsTo=h713-warp.service: without the server cage has nothing to draw on; a stop or restart of h713-warp ends Kodi.
 # * A stop asks Kodi to quit first (JSON-RPC Application.Quit, ExecStop=) and waits for cage to end with it: a SIGTERM
 #   to the whole group lets cage close the socket under a running Kodi, which then aborts without saving its state
@@ -25,7 +26,7 @@
 #   silent while the client is on the panel (M3 Nr. 6), the bridge plays on.
 # * No V4L2_REQUEST_SCALE here (M2 Auflage 6).
 [Unit]
-Description=Kodi under cage on the panel (the display card's DRM master while it runs)
+Description=Kodi under cage on the panel (a Wayland client of h713-warp)
 Documentation=file:/usr/local/share/h713/systemd/h713-media-env.conf
 Requires=seatd.service
 After=seatd.service
@@ -49,9 +50,8 @@ Environment=WLR_BACKENDS=wayland,libinput
 Environment=WLR_RENDER_DRM_DEVICE=/dev/dri/by-path/platform-1800000.gpu-render
 Environment=WLR_RENDERER=gles2
 ExecStartPre=/bin/mkdir -p /tmp/h713-kodi
-ExecStartPre=/usr/local/sbin/h713-tv ctl source client
+ExecStartPre=/usr/local/sbin/h713-tv ctl source auto
 ExecStart=/usr/bin/cage -- /usr/bin/kodi-standalone --windowing=wayland
 ExecStop=/usr/local/sbin/h713-kodi-switch quit $MAINPID
-ExecStopPost=-/usr/local/sbin/h713-tv ctl source hdmi
 KillSignal=SIGTERM
 TimeoutStopSec=20s

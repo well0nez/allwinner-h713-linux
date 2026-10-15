@@ -185,16 +185,11 @@ static void tv_source(struct peer *p, const char *reply)
 		       !strcmp(w, "auto") ? TV_AUTO : TV_UNKNOWN;
 }
 
-bool peer_claim(struct peer *p, int src, char *why, size_t n)
+/* a connection to h713-tv's control socket in p->fd */
+static bool peer_connect(struct peer *p, char *why, size_t n)
 {
 	struct sockaddr_un addr;
-	char reply[WARP_LINE];
-	unsigned int w = 0, h = 0, pitch = 0, coff = 0;
-	/* the ring's line is the one every h713-tv knows; a client's is new (package G) */
-	const char *line = src == SRC_CLIENT ? "warp claim client\n" : "warp claim\n";
 
-	if (p->fd >= 0)
-		return true;
 	if (strlen(p->path) >= sizeof(addr.sun_path)) {
 		snprintf(why, n, "%s: socket path too long", p->path);
 		return false;
@@ -214,6 +209,40 @@ bool peer_claim(struct peer *p, int src, char *why, size_t n)
 		p->fd = -1;
 		return false;
 	}
+	return true;
+}
+
+/*
+ * "source" and nothing else (M4 A1): asked before a ring claim while the last answer said "source is client". Under
+ * that policy h713-tv refuses the ring, and building it to hear so - STREAMON, six EXPBUF, the claim, STREAMOFF - ran
+ * once a second for nothing (M4: 5 in 6 s). One line on a connection of its own, which h713-tv closes after the answer.
+ */
+bool peer_source(struct peer *p)
+{
+	struct peer q = { .path = p->path, .fd = -1 };
+	char reply[WARP_LINE], why[WARP_WHY];
+	bool ok = peer_connect(&q, why, sizeof(why)) &&
+		  exchange(&q, "source\n", -1, reply, sizeof(reply), NULL, 0, 0, CLAIM_MS, why, sizeof(why)) &&
+		  !strncmp(reply, "ok", 2);
+
+	if (q.fd >= 0)
+		close(q.fd);
+	if (ok)
+		tv_source(p, reply);
+	return ok;
+}
+
+bool peer_claim(struct peer *p, int src, char *why, size_t n)
+{
+	char reply[WARP_LINE];
+	unsigned int w = 0, h = 0, pitch = 0, coff = 0;
+	/* the ring's line is the one every h713-tv knows; a client's is new (package G) */
+	const char *line = src == SRC_CLIENT ? "warp claim client\n" : "warp claim\n";
+
+	if (p->fd >= 0)
+		return true;
+	if (!peer_connect(p, why, n))
+		return false;
 	if (!exchange(p, line, -1, reply, sizeof(reply), p->target,
 		      WARP_TARGETS, WARP_TARGETS, CLAIM_MS, why, n)) {
 		tv_source(p, reply);
@@ -274,6 +303,8 @@ int peer_frame(struct peer *p, int index, int fence, int *flip, char *why, size_
 		p->errors++;
 		return -1;
 	}
+	if (strstr(reply, " source "))	/* "source" changed, the claim stands (M4 A1) */
+		tv_source(p, reply);
 	if (strstr(reply, "busy")) {
 		p->busy++;
 		return 1;

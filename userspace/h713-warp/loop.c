@@ -147,6 +147,15 @@ bool warp_engage(struct runtime *r)
 	 * a second, green on the first frame of each return. A ring the GPU
 	 * refused is not tried again until its geometry changes.
 	 */
+	/*
+	 * h713-tv said "source client" the last time: it refuses a ring claim, so the policy is asked alone first - one
+	 * short line instead of STREAMON, six EXPBUF and STREAMOFF once a second for a refusal (M4 A1, PRUEFUNG-M4 2).
+	 */
+	if (r->peer.tv_source == TV_CLIENT && (!peer_source(&r->peer) || r->peer.tv_source == TV_CLIENT)) {
+		note(r, r->peer.tv_source == TV_CLIENT ? "h713-tv's source is client: no ring until it changes"
+						       : "h713-tv did not answer \"source\"");
+		return false;
+	}
 	if (r->pattern == PATTERN_NONE) {
 		if (!source_start(&r->source, why, sizeof(why))) {
 			note(r, why);
@@ -485,6 +494,11 @@ bool warp_pump(struct runtime *r)
 	}
 	account(r, t0);
 	r->check.last_pump = now_s();
+	/* "source auto" came while the ring stood (h713-tv said it with this frame, M4 A1): a client that waits goes first */
+	if (r->peer.tv_source == TV_AUTO && server_shown(r->srv)) {
+		warp_apply(r);
+		return r->state == WARP_ON;
+	}
 
 	return true;
 }

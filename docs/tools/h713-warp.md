@@ -67,9 +67,12 @@ master (path B'', `arbeit/medien/G-warp-wayland/ENTWURF.md` v3, review `mythos/P
   through libinput itself.
 - **What h713-tv shows** is `h713-tv ctl source hdmi|client|auto` (`source =` in `tv.conf` at the start, default
   `hdmi`). The warp claims the panel with `warp claim client` once a toplevel has its first picture; the claim
-  needs no signal, and the capture stays closed. Every change of `source` gives a standing claim back, and the
-  warp claims again at once - the answer to a claim names the policy (`... source auto`). Under `auto` a client
-  goes before the ring.
+  needs no signal, and the capture stays closed. A change of `source` gives a standing claim back only when the
+  new policy forbids it (a ring claim under `client`, a client claim under `hdmi`), and the warp claims again at
+  once - the answer to a claim names the policy (`... source auto`). A claim the new policy allows stands, and the
+  `ok` of the next frame names the policy (`ok source auto`): `hdmi` <-> `auto` no longer takes the ring off the
+  panel. Under `auto` a client goes before the ring. Under `client` without a client the warp asks `source` alone
+  once a second instead of starting the capture for a ring claim that would be refused (M4, 15.10.2026).
 - **A buffer's life:** pending when committed (a newer commit releases an untaken one at once), taken when its
   dma-buf is readable and the previous frame is on the panel (h713-tv's flip fence, sent with the `ok`), the frame
   callbacks done right then, released when the render fence of the frame that read it signals, presented with the
@@ -89,9 +92,12 @@ sync: leave Kodi's "Sync playback to display" off (the default) - with it on, 10
 on stopping the video (G1).
 
 Kodi's unit (`h713-kodi.service`, profile `desktop`) sets `WAYLAND_DISPLAY=/run/h713-warp/wayland` and
-`WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and asks `h713-tv ctl source client` at its
-start and `source hdmi` at its end. Measured: the host test (`make test`, a client against the server with the GPU
-stubbed); on the device see `arbeit/medien/G-warp-wayland/BERICHT.md`.
+`WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and sets `h713-tv ctl source auto` at its
+start; there is no way back to run at its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the
+warp gives the panel back two seconds after cage is gone and the ring is there again (M4, 15.10.2026: a SIGKILL of the
+unit's cgroup skipped the old `ExecStopPost=... source hdmi` and left the console). Measured: the host test (`make
+test`, a client against the server with the GPU stubbed); on the device see `arbeit/medien/G-warp-wayland/BERICHT.md`
+and `M4-AUFLAGEN.md`.
 
 ## `/etc/h713/warp.conf`
 

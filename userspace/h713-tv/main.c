@@ -1341,12 +1341,13 @@ struct warp {
 	bool claimed;
 	bool client;			/* it draws a Wayland client, not the ring (package G): no signal needed */
 	int flip;			/* client: our dup of the last commit's OUT_FENCE (the flip), -1 none */
+	int told;			/* the "source" h713-warp last heard (with the claim or a frame's "ok"), -1 none */
 	uint32_t handle[WARP_BUFS], fb_id[WARP_BUFS];
 	unsigned int pitch, coff;	/* NV12: the line pitch, the chroma plane's offset */
 	unsigned long commits, busy, errors;
 };
 
-static struct warp warp = { .peer = -1, .flip = -1 };
+static struct warp warp = { .peer = -1, .flip = -1, .told = -1 };
 
 static void warp_free(struct display *d)
 {
@@ -5203,6 +5204,7 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	}
 	warp.claimed = true;
 	warp.client = client;
+	warp.told = (int)ctl.source;
 	warp.peer = conn;
 	d->warped = true;
 	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u",
@@ -5216,7 +5218,7 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
  */
 static bool warp_serve(struct display *d)
 {
-	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, buf[128];
+	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, buf[128], told[48];
 	const char *answer = "error unknown (warp frame N | warp release)\n";
 	struct iovec io = { buf, sizeof(buf) - 1 };
 	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1,
@@ -5263,6 +5265,13 @@ static bool warp_serve(struct display *d)
 			gap = prev.tv_sec ? (c0.tv_sec - prev.tv_sec) * 1e3 + (c0.tv_nsec - prev.tv_nsec) / 1e6 : 0;
 			answer = warp_commit(d, n, fence, &busy, &flip) ? "ok\n" :
 				 busy ? "ok busy\n" : "error the commit was refused\n";
+			/* "source" changed while the claim stood (M4 A1): the next "ok" says so, h713-warp reads it there */
+			if (!strncmp(answer, "ok", 2) && warp.told != (int)ctl.source) {
+				snprintf(told, sizeof(told), "%.*s source %s\n", (int)strcspn(answer, "\n"), answer,
+					 source_name[ctl.source]);
+				answer = told;
+				warp.told = (int)ctl.source;
+			}
 			clock_gettime(CLOCK_MONOTONIC, &c1);
 			took = (c1.tv_sec - c0.tv_sec) * 1e3 + (c1.tv_nsec - c0.tv_nsec) / 1e6;
 			if (gap > 25.0 && !warp.client) {	/* a client draws when it has something to show */
@@ -5335,9 +5344,12 @@ static bool cmd_warp(struct reply *r, struct capture *cap, struct display *d, co
 }
 
 /*
- * "source [hdmi|client|auto]" (package G): what the panel shows. A change gives a standing warp claim back, whichever
- * it was: h713-warp asks again at once and learns the new policy from the answer (ENTWURF G v3 D4) - a ring claim under
- * "auto" would otherwise never hear that a client may come first. Not saved; "source =" in tv.conf is the start value.
+ * "source [hdmi|client|auto]" (package G): what the panel shows. A standing warp claim is given back only when the new
+ * policy forbids it (M4 A1): a ring claim under "client", a client claim under "hdmi". One it allows stands - giving it
+ * back took the panel off the ring and back for "hdmi" <-> "auto" (the wall blinked) - and h713-warp hears the new
+ * policy with the "ok" of its next frame ("ok source auto"), so a ring claim under "auto" still gives way to a client.
+ * h713-warp asks again at once after a release and learns the policy from the answer (ENTWURF G v3 D4).
+ * Not saved; "source =" in tv.conf is the start value.
  */
 static bool cmd_source(struct reply *r, struct display *d, const char *what)
 {
@@ -5348,9 +5360,13 @@ static bool cmd_source(struct reply *r, struct display *d, const char *what)
 		return false;
 	}
 	if (what && s != ctl.source) {
+		bool stands = warp.claimed && (warp.client ? s != SOURCE_HDMI : s != SOURCE_CLIENT);
+
 		ctl.source = s;
-		info("source          %s%s", source_name[s], warp.claimed ? " -- the warp's claim is given back" : "");
-		warp_release(d);
+		info("source          %s%s", source_name[s], !warp.claimed ? "" : stands ?
+		     " -- the warp's claim stands, h713-warp hears it with its next frame" : " -- the warp's claim is given back");
+		if (!stands)
+			warp_release(d);
 		reply_add(r, "ok source %s\n", source_name[s]);
 		return true;		/* the ring, the console, or the claim h713-warp sends next */
 	}
