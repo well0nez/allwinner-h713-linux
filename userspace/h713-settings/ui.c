@@ -4,6 +4,7 @@
  * right, all white lines on a dark translucent ground). Text is libh713osd's osd_text; the shapes are signed
  * distance fields like the library's own. A row is drawn alone when only it changed, so a key press costs one row.
  */
+#define _GNU_SOURCE
 #include <math.h>
 #include <stdio.h>
 #include <string.h>
@@ -128,6 +129,125 @@ struct row *visible_row(struct area *a, int k)
 	return NULL;
 }
 
+
+/* --- the symbols of the areas: the mockup's 48-unit paths (round-capped lines, 3.2 wide), drawn into a coverage mask
+ * with max() so that a joint is not drawn twice, then mixed once --------------------------------------------------- */
+
+static float mask[160 * 160];
+static int msz;				/* the mask's side in panel pixels */
+static double mk;			/* panel pixels per symbol unit */
+
+static void m_line(double x0, double y0, double x1, double y1)
+{
+	double r = 1.6 * mk, ax = x0 * mk, ay = y0 * mk, vx = x1 * mk - ax, vy = y1 * mk - ay, l2 = vx * vx + vy * vy;
+
+	for (int y = 0; y < msz; y++)
+		for (int x = 0; x < msz; x++) {
+			double t = l2 > 0 ? clampd(((x + 0.5 - ax) * vx + (y + 0.5 - ay) * vy) / l2, 0, 1) : 0;
+			float c = (float)clampd(0.5 - (hypot(x + 0.5 - ax - t * vx, y + 0.5 - ay - t * vy) - r), 0, 1);
+
+			if (c > mask[y * msz + x])
+				mask[y * msz + x] = c;
+		}
+}
+
+/* a circular arc from angle a0 to a1 (degrees, y down), as short lines */
+static void m_arc(double cx, double cy, double r, double a0, double a1)
+{
+	int n = 1 + (int)(fabs(a1 - a0) / 8);
+
+	for (int i = 0; i < n; i++) {
+		double u = (a0 + (a1 - a0) * i / n) * M_PI / 180, w = (a0 + (a1 - a0) * (i + 1) / n) * M_PI / 180;
+
+		m_line(cx + r * cos(u), cy + r * sin(u), cx + r * cos(w), cy + r * sin(w));
+	}
+}
+
+static void m_poly(const double *p, int n)
+{
+	for (int i = 0; i + 1 < n; i++)
+		m_line(p[2 * i], p[2 * i + 1], p[2 * i + 2], p[2 * i + 3]);
+}
+
+/* a rounded rectangle outline, corner radius r */
+static void m_rect(double x, double y, double w, double h, double r)
+{
+	m_line(x + r, y, x + w - r, y);
+	m_line(x + r, y + h, x + w - r, y + h);
+	m_line(x, y + r, x, y + h - r);
+	m_line(x + w, y + r, x + w, y + h - r);
+	m_arc(x + r, y + r, r, 180, 270);
+	m_arc(x + w - r, y + r, r, 270, 360);
+	m_arc(x + w - r, y + h - r, r, 0, 90);
+	m_arc(x + r, y + h - r, r, 90, 180);
+}
+
+static void draw_icon(const char *name, double cx, double cy, double size, float a)
+{
+	int x0, y0;
+
+	mk = size * U / 48;
+	msz = (int)ceil(48 * mk);
+	if (msz > 160)
+		return;
+	memset(mask, 0, sizeof(float) * msz * msz);
+	if (!strcmp(name, "pic")) {
+		static const double hill[] = { 12, 32, 21, 23, 27, 29, 31, 25, 37, 31 };
+
+		m_rect(8, 12, 32, 24, 4);
+		m_poly(hill, 5);
+		m_arc(31, 19, 2.4, 0, 360);
+	} else if (!strcmp(name, "trap")) {
+		static const double t[] = { 13, 13, 35, 13, 40, 35, 8, 35, 13, 13 };
+
+		m_poly(t, 5);
+		for (int i = 0; i < 3; i++)
+			m_line(24, 17 + 6 * i, 24, 17 + 6 * i);
+	} else if (!strcmp(name, "speaker")) {
+		static const double sp[] = { 10, 20, 17, 20, 26, 13, 26, 35, 17, 28, 10, 28, 10, 20 };
+
+		m_poly(sp, 7);
+		m_arc(26.5, 24, 6.9, -50, 50);		/* the two waves: chords (32,18)-(32,30) and (36,14)-(36,34) */
+		m_arc(24.2, 24, 12.3, -53, 53);
+	} else if (!strcmp(name, "focus")) {
+		m_poly((const double[]){ 10, 17, 10, 12 }, 2);
+		m_poly((const double[]){ 12, 10, 17, 10 }, 2);
+		m_poly((const double[]){ 31, 10, 36, 10 }, 2);
+		m_poly((const double[]){ 38, 12, 38, 17 }, 2);
+		m_poly((const double[]){ 38, 31, 38, 36 }, 2);
+		m_poly((const double[]){ 36, 38, 31, 38 }, 2);
+		m_poly((const double[]){ 17, 38, 12, 38 }, 2);
+		m_poly((const double[]){ 10, 36, 10, 31 }, 2);
+		m_arc(12, 12, 2, 180, 270);
+		m_arc(36, 12, 2, 270, 360);
+		m_arc(36, 36, 2, 0, 90);
+		m_arc(12, 36, 2, 90, 180);
+		m_arc(24, 24, 5, 0, 360);
+	} else if (!strcmp(name, "hdmi")) {
+		static const double p[] = { 9, 17, 39, 17, 39, 25, 35, 30, 13, 30, 9, 25, 9, 17 };
+
+		m_poly(p, 7);
+		m_line(17, 30, 17, 35);
+		m_line(31, 30, 31, 35);
+		m_line(15, 22, 33, 22);
+	} else if (!strcmp(name, "power")) {
+		m_line(24, 10, 24, 23);
+		m_arc(24, 24.67, 12.5, 227.2, -47.2);
+	} else if (!strcmp(name, "wifi")) {
+		m_arc(24, 34.3, 20, -134.4, -45.6);
+		m_arc(24, 35.4, 13, -134, -46);
+		m_arc(24, 36.5, 6, -131.8, -48.2);
+		m_arc(24, 37, 1.4, 0, 1);
+	}
+	x0 = (int)(cx * U + XOFF - msz / 2.0 + 0.5);
+	y0 = (int)(cy * U - msz / 2.0 + 0.5);
+	for (int y = 0; y < msz; y++)
+		for (int x = 0; x < msz; x++)
+			if (mask[y * msz + x] > 0 && x0 + x >= 0 && x0 + x < cv->w && y0 + y >= 0 && y0 + y < cv->h)
+				mix(x0 + x, y0 + y, BRIGHT, a * mask[y * msz + x]);
+	touch(cx - size / 2 - 2, cy - size / 2 - 2, cx + size / 2 + 2, cy + size / 2 + 2);
+}
+
 /* --- the areas ----------------------------------------------------------------------------------------------- */
 
 static double area_y(int i)
@@ -143,6 +263,7 @@ static void draw_area(const struct view *v, int i)
 	clear_box(80, y - 56, 584, y + 56, BACKDROP);
 	if (sel)
 		rrect(331, y, 235, 48, 48, PILL, 0.72f, BRIGHT, active ? 1.0f : 0.5f, active ? 3 : 2);
+	draw_icon(areas[i].icon, 156, y, 64, sel ? 1.0f : 0.42f);
 	text(214, y + 13, 34, sel ? 1.0f : 0.42f, areas[i].name, 0);
 }
 

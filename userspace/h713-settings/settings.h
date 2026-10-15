@@ -13,11 +13,14 @@
 #include <stddef.h>
 #include <stdint.h>
 
+#include "osd.h"
+
 enum kind { R_SLIDER, R_SWITCH, R_CHOICE, R_ACTION, R_INFO, R_CORNERS, R_STEPPER };
 
 #define MAXOPT	10
 #define MAXROW	10
 #define MAXAREA	7
+#define AREA_SOUND	2
 #define AREA_WIFI	6
 
 struct row {
@@ -45,7 +48,10 @@ struct area {
 	void (*enter)(struct area *);	/* read the tools once when the area is opened */
 };
 
-enum key { KE_NONE = 0, KE_UP, KE_DOWN, KE_LEFT, KE_RIGHT, KE_OK, KE_BACK, KE_QUIT, KE_CMD };
+enum key {
+	KE_NONE = 0, KE_UP, KE_DOWN, KE_LEFT, KE_RIGHT, KE_OK, KE_BACK, KE_QUIT, KE_CMD,
+	KE_HOME, KE_POWER, KE_VOL_UP, KE_VOL_DOWN, KE_MUTE, KE_FOCUS_UP, KE_FOCUS_DOWN,
+};
 
 /* where the tools are: environment overrides for the host tests */
 extern const char *p_tv, *p_warp, *p_etc, *p_bin;
@@ -61,6 +67,17 @@ bool conf_get(const char *file, const char *key, char *out, size_t n);
 bool conf_set(const char *file, const char *key, const char *val);
 const char *etc(const char *name);	/* p_etc/name */
 
+/* input.c: the remote's devices, held alone while the page is open */
+int input_open(void);			/* the number of devices held; 0: none, or one that cannot be held */
+void input_close(void);
+int input_key(int timeout_ms);		/* a key as enum key, KE_NONE on timeout or for a key the page does not know */
+void input_power(void);			/* hand a Power press to h713-power */
+
+/* page.c: h713-osd's page channel - a canvas to draw into, and the word which part of it is new */
+int page_open(struct osd_canvas *c, const char *path);
+bool page_show(const int box[4]);
+void page_close(void);
+
 /* rows.c */
 extern struct area areas[MAXAREA];
 extern int nareas;
@@ -69,6 +86,7 @@ void rows_enter(int area);		/* read the tools for the area that is opened */
 void rows_tick(bool *changed);		/* children that ended, the page's timers; *changed: a row needs drawing */
 void rows_flush(void);			/* what was held back for the eMMC (picture values) is written now */
 bool rows_busy(void);
+bool rows_hotkey(int key);		/* volume, mute, focus: the keys h713-keys would act on; true when the page shows a change */
 int rows_wake_ms(void);			/* how long the loop may sleep: -1 for ever */
 void corner_load(void);			/* the eight values, from warp.conf */
 struct row *corner_row(void);		/* the row "Adjust corners by hand", for the UI's corner mode */

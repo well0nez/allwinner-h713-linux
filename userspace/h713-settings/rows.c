@@ -24,6 +24,7 @@ int nareas;
 
 static char out[4096];
 static bool have_accel, have_cam, have_motor, standby_ok;
+static int active = -1;			/* the area that is open */
 
 static double now_s(void)
 {
@@ -427,6 +428,36 @@ static void sound_enter(struct area *a)
 	a->row[1].val = !strncmp(reply, "ok mute on", 10);
 }
 
+/* the keys h713-keys would act on - it sees nothing while the page holds the remote */
+bool rows_hotkey(int key)
+{
+	char v[16];
+	int step = 5, cur, vol;
+
+	if (key == KE_VOL_UP || key == KE_VOL_DOWN) {
+		if (conf_get(etc("keys.conf"), "volume_step", v, sizeof(v)))
+			step = clampi(atoi(v), 1, 20);
+		tv("volume");
+		cur = num_after(reply, "ok volume ", 50);
+		vol = clampi(cur + (key == KE_VOL_UP ? step : -step), 0, 100);
+		tv("volume %d", vol);
+		tv("mute off");		/* both lift a mute: the owner's choice of 11.10.2026 */
+	} else if (key == KE_MUTE) {
+		tv("mute");
+		tv("mute %s", strncmp(reply, "ok mute on", 10) ? "on" : "off");
+	} else if (key == KE_FOCUS_UP || key == KE_FOCUS_DOWN) {
+		if (r_focus && !r_focus->hidden)
+			r_focus->apply(r_focus, key == KE_FOCUS_UP ? 1 : -1);
+		return false;
+	} else {
+		return false;
+	}
+	if (active != AREA_SOUND)
+		return false;
+	sound_enter(&areas[AREA_SOUND]);
+	return true;
+}
+
 /* --- Focus --------------------------------------------------------------------------------------------------- */
 
 static void autofocus_apply(struct row *r, int dir)
@@ -569,8 +600,6 @@ static void wifi_enter(struct area *a)
 }
 
 /* --- the page's timers: jobs that ended, the save when the hand has rested, the Wi-Fi line ------------------ */
-
-static int active = -1;
 
 void rows_enter(int i)
 {

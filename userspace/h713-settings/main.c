@@ -14,6 +14,7 @@
 #include <stdlib.h>
 #include <string.h>
 #include <strings.h>
+#include <time.h>
 #include <unistd.h>
 
 #include "ui.h"
@@ -115,6 +116,20 @@ static int test_key(int ms)
 			return KE_OK;
 		if (!strcmp(word, "back"))
 			return KE_BACK;
+		if (!strcmp(word, "home"))
+			return KE_HOME;
+		if (!strcmp(word, "power"))
+			return KE_POWER;
+		if (!strcmp(word, "volup"))
+			return KE_VOL_UP;
+		if (!strcmp(word, "voldown"))
+			return KE_VOL_DOWN;
+		if (!strcmp(word, "mute"))
+			return KE_MUTE;
+		if (!strcmp(word, "focusup"))
+			return KE_FOCUS_UP;
+		if (!strcmp(word, "focusdown"))
+			return KE_FOCUS_DOWN;
 		snprintf(cmdline, sizeof(cmdline), "%s", word);
 		return KE_CMD;
 	}
@@ -131,13 +146,14 @@ static void command(void)
 }
 
 static int pending_key;
+static bool test;
 
 static int next_key(int ms)
 {
 	int k = pending_key;
 
 	pending_key = 0;
-	return k ? k : test_key(ms);
+	return k ? k : test ? test_key(ms) : input_key(ms);
 }
 
 /* --- the page ------------------------------------------------------------------------------------------------ */
@@ -265,6 +281,19 @@ static void keys_areas(int k)
 
 static void handle(int k)
 {
+	if (k == KE_HOME || k == KE_POWER) {
+		quit = 1;			/* Home: the page closes (the launcher is one Home away); Power: and h713-power is told */
+		if (k == KE_POWER && !test) {
+			input_close();		/* first: the remote is h713-power's again */
+			input_power();
+		}
+		return;
+	}
+	if (k >= KE_VOL_UP) {
+		if (rows_hotkey(k))
+			dirty |= D_AREAS;
+		return;
+	}
 	switch (v.f) {
 	case F_AREAS:
 		keys_areas(k);
@@ -288,6 +317,8 @@ static const char *env(const char *name, const char *def)
 	return e && *e ? e : def;
 }
 
+static bool idle_test;
+
 static void on_term(int sig)
 {
 	(void)sig;
@@ -296,9 +327,9 @@ static void on_term(int sig)
 
 int main(int argc, char **argv)
 {
-	int w = 1920, h = 1080, first = 0;
+	int w = 1920, h = 1080, first = 0, idle = atoi(env("H713_SETTINGS_IDLE", "120"));
 	const char *font = env("H713_SETTINGS_FONT", OSD_FONT), *area = NULL;
-	bool test = false;
+	struct timespec last;
 
 	p_tv = env("H713_SETTINGS_TV", "/run/h713-tv/ctl");
 	p_warp = env("H713_SETTINGS_WARP", "/run/h713-warp/ctl");
@@ -313,25 +344,35 @@ int main(int argc, char **argv)
 			font = argv[++i];
 		else if (!strcmp(argv[i], "--area") && i + 1 < argc)
 			area = argv[++i];
+		else if (!strcmp(argv[i], "--idle") && i + 1 < argc)
+			idle = atoi(argv[++i]), idle_test = true;
 		else {
-			fprintf(stderr, "usage: h713-settings --test [--size WxH] [--font FILE] [--area NAME]\n");
+			fprintf(stderr, "usage: h713-settings [--area NAME] [--idle SECONDS] [--font FILE] | --test [--size WxH]\n");
 			return 2;
 		}
-	}
-	if (!test) {
-		fprintf(stderr, "h713-settings: the device's key and display path (package H) is not wired in yet - use --test\n");
-		return 3;
 	}
 	signal(SIGTERM, on_term);
 	signal(SIGINT, on_term);
 	signal(SIGPIPE, SIG_IGN);
 	if (osd_font_open(font))
 		fprintf(stderr, "h713-settings: font %s: not opened - the page has no text\n", font);
-	canvas.px = calloc((size_t)w * h, 4);
-	canvas.w = canvas.stride = w;
-	canvas.h = h;
-	if (!canvas.px)
-		return 1;
+	if (test) {
+		canvas.px = calloc((size_t)w * h, 4);
+		canvas.w = canvas.stride = w;
+		canvas.h = h;
+		if (!canvas.px)
+			return 1;
+	} else {
+		/* on the wall first (a page nobody can see is not opened), then the remote: nobody is deaf to a page nobody sees */
+		if (page_open(&canvas, env("H713_SETTINGS_OSD", "/run/h713-osd/ctl")))
+			return 3;
+		if (!input_open()) {
+			fprintf(stderr, "h713-settings: no remote to hold -- not opened\n");
+			page_close();
+			return 4;
+		}
+	}
+	clock_gettime(CLOCK_MONOTONIC, &last);
 
 	rows_init();
 	for (int i = 0; area && i < nareas; i++)
@@ -349,19 +390,41 @@ int main(int argc, char **argv)
 		if (dirty) {
 			ui_draw(&canvas, &v, dirty, box);
 			dirty = 0;
+			if (!test && !page_show(box)) {
+				fprintf(stderr, "h713-settings: nothing can be seen any more -- closing\n");
+				break;
+			}
 		}
 		if (quit)
 			break;
-		k = next_key(rows_wake_ms());
+		k = rows_wake_ms();
+		if (idle > 0 && (k < 0 || k > 1000))
+			k = 1000;		/* looks at the clock once a second */
+		k = next_key(k);
 		if (k == KE_QUIT)
 			break;
-		if (k == KE_CMD)
-			command();
-		else if (k)
-			handle(k);
+		if (k) {
+			clock_gettime(CLOCK_MONOTONIC, &last);
+			if (k == KE_CMD)
+				command();
+			else
+				handle(k);
+		} else if (!test || idle_test) {
+			struct timespec t;
+
+			clock_gettime(CLOCK_MONOTONIC, &t);
+			if (idle > 0 && t.tv_sec - last.tv_sec >= idle) {
+				fprintf(stderr, "h713-settings: no key for %d s -- closing\n", idle);
+				break;
+			}
+		}
 	}
 	if (v.f == F_CORNERS)
 		corner_mask(-1);
 	rows_flush();
+	if (!test) {
+		input_close();
+		page_close();
+	}
 	return 0;
 }

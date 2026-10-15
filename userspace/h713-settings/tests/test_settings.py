@@ -10,6 +10,7 @@ import os
 import shutil
 import signal
 import socket
+import struct
 import subprocess
 import tempfile
 import threading
@@ -143,6 +144,54 @@ class FakeWarp(Ctl):
         return "error unknown: %s\n" % w[0]
 
 
+class FakeOsd(threading.Thread):
+    """h713-osd's page channel: "page open" answers with one memfd (the canvas) and the size, "page show X Y W H" is
+    logged with the pixels of the rectangle's first pixel row summed up, the answer can be told to say "unseen"."""
+
+    W, H = 640, 360
+
+    def __init__(self, path, answer="ok", refuse=None):
+        super().__init__(daemon=True)
+        self.path, self.log, self.answer, self.refuse = path, [], answer, refuse
+        self.canvas = os.memfd_create("page")
+        os.ftruncate(self.canvas, self.W * self.H * 4)
+        self.opened = self.closed = False
+        self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
+        self.sock.bind(path)
+        self.sock.listen(2)
+        self.start()
+
+    def run(self):
+        while True:
+            try:
+                c, _ = self.sock.accept()
+            except OSError:
+                return
+            with c:
+                while True:
+                    data = c.recv(256)
+                    if not data:
+                        self.closed = True
+                        break
+                    line = data.decode().strip()
+                    self.log.append(line)
+                    if line == "page open":
+                        if self.refuse:
+                            c.sendall(self.refuse.encode())
+                            continue
+                        self.opened = True
+                        socket.send_fds(c, [b"ok %d %d %d argb8888\n" % (self.W, self.H, self.W * 4)], [self.canvas])
+                    elif line.startswith("page show"):
+                        c.sendall(("%s\n" % self.answer).encode())
+
+    def pixel(self, x, y):
+        os.lseek(self.canvas, (y * self.W + x) * 4, os.SEEK_SET)
+        return struct.unpack("<I", os.read(self.canvas, 4))[0]
+
+    def stop(self):
+        self.sock.close()
+
+
 TOOLS = {
     "h713-features": """echo "ok features  board hy310, FEATURES: accelerometer camera focus-motor (x)"
 printf '%-16s%s\\n' camera "$CAM" accelerometer "$ACC" focus-motor "$MOTOR"
@@ -224,6 +273,36 @@ class Box:
                                      env=self.env, text=True, bufsize=1)
         return self
 
+    def start_device(self, area=None, osd_answer="ok", refuse=None, idle=None, devices=2):
+        """The program as the launcher starts it: no --test, the remote's devices as FIFOs, h713-osd's page channel."""
+        self.osd = FakeOsd(os.path.join(self.dir, "osd.sock"), osd_answer, refuse)
+        self.fifos = []
+        for i in range(devices):
+            path = os.path.join(self.dir, "event%d" % i)
+            os.mkfifo(path)
+            self.fifos.append((path, os.open(path, os.O_RDWR)))      # a writer end of our own keeps the FIFO from hanging up
+        self.env.update(H713_SETTINGS_OSD=self.osd.path, H713_SETTINGS_POWER=os.path.join(self.dir, "power.sock"),
+                        H713_SETTINGS_INPUT=",".join(p for p, _ in self.fifos))
+        self.power = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        self.power.bind(self.env["H713_SETTINGS_POWER"])
+        self.power.settimeout(3)
+        args = [BIN]
+        for font in FONTS:
+            if font and os.path.exists(font):
+                args += ["--font", font]
+                break
+        if area:
+            args += ["--area", area]
+        if idle:
+            args += ["--idle", str(idle)]
+        self.proc = subprocess.Popen(args, stdin=subprocess.DEVNULL, stdout=subprocess.PIPE, stderr=subprocess.PIPE,
+                                     env=self.env, text=True)
+        return self
+
+    def press(self, *codes, device=0, value=1):
+        for code in codes:
+            os.write(self.fifos[device][1], struct.pack("llHHi", 0, 0, 1, code, value))
+
     def keys(self, *keys):
         for k in keys:
             self.proc.stdin.write(k + "\n")
@@ -254,12 +333,17 @@ class Box:
         return err
 
     def close(self):
+        for _, w in getattr(self, "fifos", []):
+            os.close(w)
+        if hasattr(self, "osd"):
+            self.osd.stop()
+            self.power.close()
         if self.proc and self.proc.poll() is None:
             self.proc.kill()
             self.proc.wait()
         for f in (self.proc.stdin, self.proc.stdout, self.proc.stderr) if self.proc else ():
             try:
-                f.close()
+                f and f.close()
             except (OSError, ValueError):
                 pass
         self.tv.stop()
@@ -583,6 +667,127 @@ class Life(Base):
         self.assertIn("area Wi-Fi", b.dump())
         b.keys("back")
         self.assertEqual(b.proc.wait(timeout=5), 0)
+
+
+# the kernel's key codes, as h713-keys reads them
+UP, DOWN, LEFT, RIGHT, OK, SELECT, BACK, HOME, POWER = 103, 108, 105, 106, 352, 353, 158, 172, 116
+VOLUP, VOLDOWN, MUTE, F4, F5 = 115, 114, 113, 62, 63
+
+
+class Device(Base):
+    def test_opens_on_the_wall_first_then_takes_the_remote(self):
+        b = self.box().start_device("Sound")
+        self.assertTrue(wait_for(lambda: any(l.startswith("page show") for l in b.osd.log), 5))
+        self.assertEqual(b.osd.log[0], "page open")
+        self.assertEqual(b.osd.log[1], "page show 0 0 %d %d" % (b.osd.W, b.osd.H))     # the whole page once
+        self.assertEqual(b.osd.pixel(3, 3) >> 24, 128)                                  # the dimmed ground is in the canvas
+        b.press(BACK)
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertTrue(wait_for(lambda: b.osd.closed))                                 # the connection ends: the page is gone
+
+    def test_the_keys_drive_the_page(self):
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(OK, RIGHT)                                       # into the rows; Volume up one step
+        self.assertTrue(wait_for(lambda: b.tv.volume == 95, 5))
+        n = len(b.osd.log)
+        b.press(DOWN, SELECT)                                    # the Bluetooth remote's OK is KEY_SELECT: Mute on
+        self.assertTrue(wait_for(lambda: b.tv.mute, 5))
+        self.assertTrue(wait_for(lambda: len(b.osd.log) > n + 1, 5))     # and the rows were shown again, not the whole page
+        self.assertNotEqual(b.osd.log[-1], "page show 0 0 %d %d" % (b.osd.W, b.osd.H))
+        b.press(BACK, BACK)
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+
+    def test_both_devices_are_read(self):
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(OK, device=1)                                    # (two devices have no order between them: let one finish)
+        time.sleep(0.3)
+        b.press(RIGHT, device=0)
+        self.assertTrue(wait_for(lambda: b.tv.volume == 95, 5))
+        b.press(HOME)
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+
+    def test_held_arrows_repeat_but_other_keys_do_not(self):
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(OK)
+        b.press(RIGHT, value=2)                                 # a repeat of the arrow: a step
+        self.assertTrue(wait_for(lambda: b.tv.volume == 95, 5))
+        b.press(DOWN)
+        b.press(OK, value=2)                                    # a repeat of OK: nothing (Mute stays off)
+        b.press(OK, value=0)                                    # a release: nothing
+        b.press(HOME)
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertFalse(b.tv.mute)
+
+    def test_power_is_handed_to_h713_power(self):
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(POWER)
+        self.assertEqual(b.power.recv(32), b"short")
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertTrue(wait_for(lambda: b.osd.closed))
+
+    def test_volume_mute_and_focus_keys_still_work(self):
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.tv.mute = True
+        b.press(VOLUP)                                           # louder lifts a mute
+        self.assertTrue(wait_for(lambda: b.tv.volume == 95 and not b.tv.mute, 5))
+        b.press(VOLDOWN, VOLDOWN)
+        self.assertTrue(wait_for(lambda: b.tv.volume == 85, 5))
+        b.press(MUTE)
+        self.assertTrue(wait_for(lambda: b.tv.mute, 5))
+        b.press(MUTE)
+        self.assertTrue(wait_for(lambda: not b.tv.mute, 5))
+        b.press(HOME)
+        b.proc.wait(timeout=5)
+
+    def test_focus_keys_move_the_motor(self):
+        b = self.box().start_device("Focus")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(OK)                                              # into the rows (the first is Autofocus now)
+        b.press(F4)
+        self.assertTrue(wait_for(lambda: b.tool_log("focus") == ["up 20"], 5))
+        b.press(F5)
+        self.assertTrue(wait_for(lambda: b.tool_log("focus") == ["up 20", "down 20"], 5))
+        b.press(HOME)
+        b.proc.wait(timeout=5)
+
+    def test_the_page_is_not_opened_when_it_cannot_be_seen(self):
+        b = self.box().start_device("Sound", refuse="ok unseen\n")
+        self.assertEqual(b.proc.wait(timeout=5), 3)
+        self.assertIn("no page", b.proc.stderr.read())
+        b.press(OK)                                              # the remote was never taken: nothing reads this
+        self.assertFalse(b.osd.opened)
+
+    def test_closes_when_nothing_can_be_seen_any_more(self):
+        b = self.box().start_device("Sound", osd_answer="ok unseen")
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertIn("nothing can be seen", b.proc.stderr.read())
+
+    def test_no_remote_no_page(self):
+        b = self.box().start_device("Sound", devices=0)
+        self.assertEqual(b.proc.wait(timeout=5), 4)
+        self.assertTrue(wait_for(lambda: b.osd.closed))
+        self.assertIn("no remote", b.proc.stderr.read())
+
+    def test_closes_by_itself_after_a_while_without_a_key(self):
+        b = self.box().start_device("Sound", idle=2)
+        t0 = time.time()
+        self.assertEqual(b.proc.wait(timeout=8), 0)
+        self.assertGreaterEqual(time.time() - t0, 1.5)
+        self.assertIn("no key for 2 s", b.proc.stderr.read())
+
+    def test_a_key_keeps_it_open(self):
+        b = self.box().start_device("Sound", idle=2)
+        for _ in range(4):
+            time.sleep(0.8)
+            b.press(DOWN)                                        # nothing to do in the areas but it counts as a key
+        self.assertIsNone(b.proc.poll())
+        b.press(HOME)
+        b.proc.wait(timeout=5)
 
 
 class Render(Base):
