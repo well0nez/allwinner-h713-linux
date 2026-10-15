@@ -1,0 +1,62 @@
+# h713-kodi.service - Kodi under cage on the panel (profile desktop; media side project, package F).
+#
+# Not wanted by anything, on purpose: the panel belongs to the HDMI input (h713-tv, h713-warp) until somebody starts this
+# unit; cage becomes the DRM master of the display card for as long as it runs. The panel has one owner at a time, and
+# systemd does the switching (package F-opt, O5):
+# * `systemctl start h713-kodi` stops h713-warp (Conflicts= below) and h713-tv@<node> (Conflicts= in the drop-in
+#   /etc/systemd/system/h713-tv@.service.d/50-h713-kodi.conf, which knows the template; this unit cannot name the node).
+# * Whatever starts the HDMI side while Kodi runs stops Kodi first: udev, a person, and h713-mips-restart after a
+#   standby (AU-57: it met cage as the DRM master, "SET_MASTER: Device or resource busy", and Kodi's last picture stayed).
+# * A stop asks Kodi to quit first (JSON-RPC Application.Quit, ExecStop=) and waits for cage to end with it: a SIGTERM to the
+#   whole group lets cage close the socket under a running Kodi, which then aborts ("poll() signalled error condition on
+#   Wayland socket") without saving its state (resume points). F-opt O5, 15.10.2026.
+# * However Kodi ends - its own Exit, `systemctl stop h713-kodi`, a crash or the conflict above - ExecStopPost starts
+#   h713-tv@<node> and h713-warp again (h713-kodi-switch back).
+# * A standby stops Kodi before the sleep (Conflicts=/Before=sleep.target below; AU-74). Left running, cage kept Kodi's last
+#   frame on the panel through the sleep and after the wake until h713-mips-restart started h713-tv@<node> (Marco, 15.10.2026:
+#   about 10 s of a frozen Kodi picture). The stop runs the usual way: Kodi quits over JSON-RPC (2.2 s), ExecStopPost asks the
+#   HDMI side back, and h713-tv@<node> and h713-warp start about 0.1 s before the kernel's suspend entry and finish starting
+#   after the wake; h713-mips-restart (h713-power's path after a standby) restarts them as it does without Kodi. Measured at the
+#   HY310, 15.10.2026, two standbys with Kodi and one without: no Kodi picture after the wake, the HDMI picture back with the warp.
+# * The power key is h713-power's: Kodi reads the same key through libinput and would open its power menu while the projector
+#   goes to sleep; userdata/keymaps/h713-power.xml maps it to nothing (AU-74).
+#
+# * The VA-API wiring comes from the drop-in h713-kodi.service.d/10-h713-media-env.conf, a symlink to
+#   /usr/local/share/h713/systemd/h713-media-env.conf (AU-32, M2 Auflage 4): LIBVA_DRIVER_NAME and LIBVA_DRIVERS_PATH reach
+#   kodi.bin; check with /proc/<pid of kodi.bin>/environ.
+# * Sound: Debian's /usr/bin/kodi turns KODI_AE_SINK=ALSA into --audio-backend=alsa (deprecated spelling, still honoured), so
+#   Kodi never talks to PipeWire or PulseAudio even though it links both (M2 Auflage 5). The device is ALSA `default` (the DSP
+#   bridge, /etc/asound.conf), set in userdata/guisettings.xml.
+# * No V4L2_REQUEST_SCALE here (M2 Auflage 6): Kodi has no patch that reads the shrunken export size, "panel" would show black.
+# * --windowing=wayland: Kodi talks to cage and never opens the display card itself, which would take the DRM master from it.
+[Unit]
+Description=Kodi under cage on the panel (the display card's DRM master while it runs)
+Documentation=file:/usr/local/share/h713/systemd/h713-media-env.conf
+Requires=seatd.service
+After=seatd.service
+# After= only orders the switch: the stop of the one side runs before the start of the other.
+Conflicts=h713-warp.service
+After=h713-warp.service
+# A standby begins with stopping Kodi; Before= makes the sleep wait until Kodi has quit and the HDMI side is asked back.
+Conflicts=sleep.target
+Before=sleep.target
+
+[Service]
+Type=simple
+RuntimeDirectory=h713-kodi
+RuntimeDirectoryMode=0700
+Environment=XDG_RUNTIME_DIR=/run/h713-kodi
+Environment=HOME=/var/lib/h713-kodi
+Environment=KODI_TEMP=/tmp/h713-kodi
+Environment=KODI_AE_SINK=ALSA
+Environment=LIBSEAT_BACKEND=seatd
+Environment=WLR_DRM_DEVICES=/dev/dri/by-path/platform-5600000.display-card
+Environment=WLR_RENDER_DRM_DEVICE=/dev/dri/by-path/platform-1800000.gpu-render
+Environment=WLR_RENDERER=gles2
+Environment=WLR_NO_HARDWARE_CURSORS=1
+ExecStartPre=/bin/mkdir -p /tmp/h713-kodi
+ExecStart=/usr/bin/cage -- /usr/bin/kodi-standalone --windowing=wayland
+ExecStop=/usr/local/sbin/h713-kodi-switch quit $MAINPID
+ExecStopPost=-/usr/local/sbin/h713-kodi-switch back
+KillSignal=SIGTERM
+TimeoutStopSec=20s

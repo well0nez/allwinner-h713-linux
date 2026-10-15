@@ -1,0 +1,62 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 15 Oct 2026 03:17:38 +0200
+Subject: [PATCH 14/14] Back a bare 10-bit surface with NV12 when no decoder writes
+ 10 bits
+
+A bare (not yet decoded into) 10-bit surface - VA_RT_FORMAT_YUV420_10,
+or the P010 pixel format attribute - got its backing from the first
+decoder that produces P010, then PL10 (0002, the AV1 core's layout). On
+an H713 without the AV1 core (cedrus alone) none does: the VE writes
+HEVC Main10 as NV12, the upper 8 bits (0011). The allocation failed, and
+so did every vaExportSurfaceHandle() of such a surface.
+
+Kodi probes its 10-bit path exactly that way before playing anything: a
+bare 1920x1080 P010 surface, exported (DRM_PRIME_2, separate layers) and
+imported into EGL. The failed export made it log "Vaapi2 EGL interop test
+results: general yes, deepColor no" and decode HEVC Main10 in software
+(ff-hevc, 3.5 cores at 1080p30, dropped frames; F-kodi, 15.10.2026),
+while the 8-bit codecs ran on the VE.
+
+Fall back to NV12 after P010 and PL10: that is what such a surface will
+hold once cedrus has decoded into it, and the export describes it as
+NV12 (R8 + GR88), as it does after a decode. Nothing changes where a
+decoder writes P010 or PL10.
+
+License: GPL-3.0-or-later, like the code it changes (libva-v4l2_request).
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/surface.c | 17 +++++++++++++++++
+ 1 file changed, 17 insertions(+)
+
+diff --git a/src/surface.c b/src/surface.c
+index de3b71d..d9a6154 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -633,6 +633,23 @@ static VAStatus backing_alloc_default(struct v4l2r_driver *drv,
+ 	if (status != VA_STATUS_SUCCESS && pixelformat == V4L2_PIX_FMT_P010)
+ 		status = backing_alloc(drv, surface, width, height,
+ 				       V4L2_PIX_FMT_P010_LSB);
++
++	/*
++	 * And when no decoder here writes 10 bits at all (cedrus alone:
++	 * Main10 lands in NV12, the upper 8 bits, 0011), a 10-bit surface
++	 * holds NV12 once decoded, so give the bare one NV12 as well and
++	 * export it as what it is. Before, its export failed, and Kodi's
++	 * interop probe (a bare P010 surface, exported and imported into
++	 * EGL) answered "deepColor no" and kept 10-bit HEVC in software.
++	 */
++	if (status != VA_STATUS_SUCCESS && pixelformat == V4L2_PIX_FMT_P010) {
++		status = backing_alloc(drv, surface, width, height,
++				       V4L2_PIX_FMT_NV12);
++		if (status == VA_STATUS_SUCCESS)
++			v4l2r_trace("surface 0x%08x: no decoder writes P010 or "
++				    "PL10, bare 10-bit surface backed as NV12\n",
++				    surface->id);
++	}
+ 	return status;
+ }
+ 
+-- 
+2.43.0
+

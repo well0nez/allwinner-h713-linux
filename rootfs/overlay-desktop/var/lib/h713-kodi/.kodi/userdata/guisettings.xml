@@ -1,0 +1,25 @@
+<settings version="2">
+    <!-- Kodi's settings the profile desktop starts with (media side project, package F). Kodi fills in the rest from its
+         defaults and rewrites this file when it quits; anything not named here is Kodi's own default. -->
+    <!-- sound: ALSA `default` = the DSP bridge (M2 Auflage 5), no PulseAudio/PipeWire. Kodi lists that device as "@" (its name for
+         ALSA default); the string "ALSA:default" is not in its list and was replaced at the first start by the codec's own PCM,
+         which is silent while `DAC Source` = I2S (F, 14.10.2026) -->
+    <setting id="audiooutput.audiodevice">ALSA:@|Default (hy310hdmi Device sounds, mixed into HDMI)</setting>
+    <!-- JSON-RPC on TCP 127.0.0.1:9090 for scripts (the event server's switch, localhost only), no web server, no zeroconf -->
+    <setting id="services.esenabled">true</setting>
+    <setting id="services.esallinterfaces">false</setting>
+    <setting id="services.webserver">false</setting>
+    <setting id="services.zeroconf">false</setting>
+    <!-- a projector shows the picture for hours: no dimming screensaver, no display-off timer -->
+    <setting id="screensaver.mode"></setting>
+    <setting id="powermanagement.displaysoff">0</setting>
+    <!-- MPEG-2 on the VE: Kodi's default is software for MPEG-2. Measured on the HY310 (1080p30, 60 s, F, 15.10.2026): software 134 % of a core
+         (CPU 841 MHz mean, 14.7 ms GPU per frame), VAAPI 56 % (586 MHz, 11.1 ms); VAAPI ran 10 minutes without a dropped frame or a driver event -->
+    <setting id="videoplayer.usevaapimpeg2">true</setting>
+    <!-- the remote's louder/quieter reach Kodi as keys while it runs (h713-tv, which turns them into the DSP volume, is stopped then),
+         and Kodi changes its own volume with its own bar on screen: 20 steps of 5 like h713-keys (volume_step 5) instead of Kodi's
+         default 90 steps of ~1 (F-opt O5, 15.10.2026: one press moved 0 -> 1) -->
+    <setting id="audiooutput.volumesteps">20</setting>
+    <!-- without this element Kodi throws the whole file away ("settings file doesn't contain <resolutions>") and starts from its defaults -->
+    <resolutions />
+</settings>
