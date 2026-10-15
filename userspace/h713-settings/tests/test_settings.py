@@ -693,6 +693,7 @@ class Life(Base):
 
 # the kernel's key codes, as h713-keys reads them
 UP, DOWN, LEFT, RIGHT, OK, SELECT, BACK, HOME, POWER = 103, 108, 105, 106, 352, 353, 158, 172, 116
+ENTER, COMPOSE, MENU = 28, 127, 139                    # the remote's OK and Menu since 70-h713-remote.rules; KEY_MENU without it
 GROUND, PAGEPILL = 0xff0b0e0d, 0xff1c2321             # the page's opaque ground and its lit pill, ARGB
 VOLUP, VOLDOWN, MUTE, F4, F5 = 115, 114, 113, 62, 63
 
@@ -720,6 +721,21 @@ class Device(Base):
         self.assertTrue(wait_for(lambda: len(b.osd.log) > n + 1, 5))     # and the rows were shown again, not the whole page
         self.assertNotEqual(b.osd.log[-1], "page show 0 0 %d %d" % (b.osd.W, b.osd.H))
         b.press(BACK, BACK)
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+
+    def test_the_remotes_ok_as_enter_is_ok_and_menu_is_nothing(self):
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(ENTER, RIGHT)                                    # KEY_ENTER: into the rows; Volume up one step
+        self.assertTrue(wait_for(lambda: b.tv.volume == 95, 5))
+        b.press(DOWN, ENTER)                                     # and again as OK: Mute on
+        self.assertTrue(wait_for(lambda: b.tv.mute, 5))
+        n = len(b.osd.log)
+        b.press(COMPOSE, MENU)                                   # Menu: recognised, no meaning here
+        time.sleep(0.5)
+        self.assertEqual(len(b.osd.log), n)
+        self.assertIsNone(b.proc.poll())
+        b.press(HOME)
         self.assertEqual(b.proc.wait(timeout=5), 0)
 
     def test_both_devices_are_read(self):

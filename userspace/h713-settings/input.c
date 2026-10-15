@@ -118,7 +118,8 @@ void input_close(void)
 	grabbed = false;
 }
 
-/* the key names of the kernel: what h713-keys reads (docs/tools/h713-keys.md) */
+/* the key names of the kernel: what h713-keys reads (docs/tools/h713-keys.md). Menu (KEY_COMPOSE since the rule, KEY_MENU) is
+ * recognised and has no meaning on the page. */
 static int map(int code, int value)
 {
 	switch (code) {			/* the arrows go on repeating: a held key moves on */
@@ -134,8 +135,9 @@ static int map(int code, int value)
 	if (value != 1)
 		return 0;		/* the rest counts on the press, not on the repeat */
 	switch (code) {
-	case 352:			/* KEY_OK */
-	case 353:			/* KEY_SELECT: the Bluetooth remote's OK */
+	case KEY_ENTER:			/* the remote's OK since 70-h713-remote.rules: a client (cage, Kodi) gets no code above 247 */
+	case 352:			/* KEY_OK: the same key without the rule */
+	case 353:			/* KEY_SELECT: the Bluetooth remote's "Menu Pick" without it */
 		return KE_OK;
 	case KEY_BACK:
 		return KE_BACK;
