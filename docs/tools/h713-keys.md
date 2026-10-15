@@ -19,17 +19,52 @@ h713-keys run            # what the unit runs
 | `KEY_F4` / `KEY_F5` (the BLE remote's focus keys, kernel 0169; IR 0x0251/0x0250) | `h713-focus up/down` with `focus_steps`; one run at a time, presses during a run wait for the next (at most two presses' worth, so a held key keeps the motor going and it stops one run after the release), a press the other way replaces what was waiting. At the end of the travel (`h713-focus` exit 3) the overlay shows the end stop and nothing more is queued that way |
 | `input_keys` (none by default) | `h713-tv ctl off` (console) when the picture is on automatic, `h713-tv ctl auto` otherwise. The remote has no record key; which key gets this is open |
 | `KEY_POWER` | left alone: logind powers off, or [h713-power](h713-power.md) decides on an image with standby |
-| Home, Menu, Back, arrows, OK | logged once as "recognised, no action yet"; OK arrives over Bluetooth as `KEY_SELECT` (HID "Menu Pick") and is read as `KEY_OK` |
+| `KEY_HOMEPAGE` | opens the launcher (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
+| Menu, Back, arrows, OK | with the launcher closed: logged once as "recognised, no action yet" (they are Kodi's); OK arrives over Bluetooth as `KEY_SELECT` (HID "Menu Pick") and is read as `KEY_OK` |
 | `KEY_F6` (IR `0x0266`: the mouse **and** the microphone key) | logged once. Over IR both keys send this one code, the vendor's `PRJ_BRC_PAIR`: they ask for the Bluetooth pairing, and a second later the remote offers itself (measured 11.10.2026); their own functions run over Bluetooth only. Nothing acts on it: `h713-remote-pair` pairs only while no remote is bonded - a remote paired with another box since needs `h713-remote-pair forget`, then Left+Right (TODO 2.54) |
 
 Volume and mute work without an HDMI signal: `h713-tv` keeps them as long as its two sound cards are there.
+
+## The launcher (Home)
+
+Package H of the media side project. `KEY_HOMEPAGE` opens a list on the left edge over the picture - the mock-up's "Launcher C":
+a header line with the time and what runs (`20:47 - HDMI 1080p60`, `Kodi`), the entries, set apart at the foot Standby, and
+`select / OK open / BACK close`. h713-osd draws it (`launcher ...` on its socket, [h713-osd](h713-osd.md)); h713-keys is the
+controller. **Up/Down** move (no wrapping), **OK** does what the entry says and closes, **Back** and **Home** close, a
+**Power** press closes it and hands the press to [h713-power](h713-power.md) (a datagram `short`, `H713_KEYS_POWER`), volume,
+mute and focus work as always. It closes by itself after 90 s without a key.
+
+**Nothing happens twice.** While the launcher is open h713-keys holds the remote's two devices with `EVIOCGRAB`, so Kodi (which
+reads them through cage and libinput) gets no key at all; closed, it lets go and everything is as it was. The press of Home
+that opens it still reaches Kodi first, so the Kodi keymap maps `homepage` and `browser_home` to nothing
+(`rootfs/overlay-desktop/.../keymaps/h713-power.xml`). It opens only where h713-osd can show it: without a signal (the console)
+or without h713-osd it answers `ok unseen`/nothing and h713-keys does not take the keys from anybody. A remote that connects
+while it is open is held at once.
+
+**The entries are files**, `/etc/h713/launcher.d/NN-name.conf`, sorted by name (a package adds its own and touches no code):
+
+```
+label    = Kodi                  # English, what is written on the wall
+icon     = film                  # hdmi film globe desk sliders power (libh713osd)
+unit     = h713-kodi.service     # OK: systemctl start --no-block (a "mode"; h713-mode ends it before a sleep and starts it after)
+exec     = /usr/local/sbin/h713-mode hdmi    # or: a command, run detached (no shell)
+show     = /usr/local/sbin/h713-power can-standby    # optional: the entry exists only if this exits 0
+active   = /usr/bin/systemctl is-active --quiet h713-kodi.service    # optional: exits 0 while this entry is what runs
+now      = Kodi                  # the header while it is active (default: the label); {signal} = 1080p60 from h713-tv
+group    = end                   # the foot: Standby is set apart, bottom-anchored, and comes last
+fallback = yes                   # the current entry when no other `active` check succeeds (the HDMI input)
+```
+
+Up to six entries fit the picture (the mock-up's: HDMI input, Kodi, Browser, Desktop, Settings, Standby); the selection starts
+on the entry that is active. A file without label, icon and unit or exec is left out with a journal warning. `h713-keys status`
+lists what it found. `H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).
 
 ## Why it reads only the remote
 
 A keyboard on the USB port has F4, F5 and volume keys too, and someone typing in the console should not
 move the focus motor. The daemon opens only the BLE remote (ids `1d5a:c081`) and the IR receiver (input
 name `sunxi-ir`), and finds a remote that connects later at its next look, every 5 s. It does not grab the
-devices: the power key on the same nodes stays with logind or `h713-power`.
+devices except while the launcher is open: the power key on the same nodes stays with logind or `h713-power`.
 
 A held key repeats the same way over both: the IR receiver repeats after 500 ms every 125 ms (rc-core), and the
 daemon gives the Bluetooth remote those values when it opens it (`EVIOCSREP`; the journal line "listening on ...,

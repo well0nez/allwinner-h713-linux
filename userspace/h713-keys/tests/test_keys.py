@@ -17,7 +17,7 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROG = os.path.join(HERE, "..", "h713-keys")
 EVENT = struct.Struct("qqHHi")
 KEY = {"up": 115, "down": 114, "mute": 113, "f4": 62, "f5": 63, "record": 167, "power": 116, "home": 172, "search": 217,
-       "select": 353}
+       "select": 353, "nav_up": 103, "nav_down": 108, "ok": 352, "back": 158, "left": 105}
 
 
 class FakeServer(threading.Thread):
@@ -70,7 +70,8 @@ class Tv:
             self.muted = w[1] == "on"
             return "ok mute %s\n" % w[1]
         if line == "status brief":
-            return "ok status\nmode            %s\n" % ("automatic" if self.mode == "auto" else "off (console forced)")
+            return ("ok status\nmode            %s\nsignal          1920x1080p59.94, 148.4 MHz (last measured)\n"
+                    % ("automatic" if self.mode == "auto" else "off (console forced)"))
         if line in ("off", "auto"):
             self.mode = line
             return "ok %s\n" % line
@@ -96,14 +97,25 @@ class KeysTest(unittest.TestCase):
         self.device(0, name="sunxi-ir", ids=("0001", "0001"))
         self.device(1, name="h713 remote", ids=("1d5a", "c081"))
         self.device(2, name="USB keyboard", ids=("046d", "c31c"))
-        os.environ.update(H713_KEYS_ROOT=self.root, H713_KEYS_TV=self.tvs.path,
-                          H713_KEYS_OSD=self.osds.path, H713_KEYS_FOCUS=focus)
+        systemctl = os.path.join(self.root, "systemctl")
+        self.systemctl_log = os.path.join(self.root, "systemctl.log")
+        with open(systemctl, "w") as f:
+            f.write('#!/bin/sh\necho "$@" >> %s\ncase "$1" in is-active) exit $(cat %s.rc 2>/dev/null || echo 3) ;; esac\nexit 0\n'
+                    % (self.systemctl_log, systemctl))
+        os.chmod(systemctl, 0o755)
+        self.power = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)       # h713-power's, for the Power press
+        self.power.bind(os.path.join(self.root, "power.sock"))
+        self.power.settimeout(0.5)
+        os.environ.update(H713_KEYS_ROOT=self.root, H713_KEYS_TV=self.tvs.path, H713_KEYS_OSD=self.osds.path,
+                          H713_KEYS_FOCUS=focus, H713_KEYS_SYSTEMCTL=systemctl,
+                          H713_KEYS_POWER=os.path.join(self.root, "power.sock"))
         loader = importlib.machinery.SourceFileLoader("h713keys", PROG)
         spec = importlib.util.spec_from_loader("h713keys", loader)
         self.mod = importlib.util.module_from_spec(spec)
         loader.exec_module(self.mod)
 
     def tearDown(self):
+        self.power.close()
         self.tvs.stop()
         self.osds.stop()
         self.tmp.cleanup()
@@ -313,6 +325,163 @@ class KeysTest(unittest.TestCase):
         self.assertEqual(shown[1], "focus down")
         with open(self.focus_log) as f:
             self.assertEqual(f.read().split(), ["up", "3", "down", "3"])
+
+
+    # --- the launcher (package H) ----------------------------------------------------------------------------------
+
+    def launcher_d(self, **files):
+        """etc/h713/launcher.d/<name>.conf = the given text; the defaults are the three entries of package H"""
+        d = os.path.join(self.root, "etc/h713/launcher.d")
+        os.makedirs(d, exist_ok=True)
+        files = files or {
+            "10-hdmi": "label = HDMI input\nicon = hdmi\nexec = %s/mode hdmi\nnow = HDMI {signal}\nfallback = yes\n" % self.root,
+            "20-kodi": "label = Kodi\nicon = film\nunit = h713-kodi.service\nactive = %s is-active --quiet h713-kodi.service\n"
+                       % os.path.join(self.root, "systemctl"),
+            "90-standby": "label = Standby\nicon = power\nexec = %s suspend\ngroup = end\n" % os.path.join(self.root, "systemctl")}
+        for name, text in files.items():
+            with open(os.path.join(d, name + ".conf"), "w") as f:
+                f.write(text)
+
+    def grabs(self):
+        """EVIOCGRAB calls of the next run, as (device file, on). A fake device that has nothing to read counts as a
+        remote that went away (EOF), so the IR receiver gets a key of no meaning to stay in the round."""
+        self.press("search", dev=0)
+        calls = []
+        self.mod.grab = lambda fd, on: calls.append((os.path.basename(os.readlink("/proc/self/fd/%d" % fd)), on)) and None
+        return calls
+
+    def systemctl_calls(self):
+        try:
+            with open(self.systemctl_log) as f:
+                return f.read().splitlines()
+        except OSError:
+            return []
+
+    def test_home_opens_the_launcher_and_holds_the_remote(self):
+        self.launcher_d()
+        calls = self.grabs()
+        self.press("home")
+        self.run_once()
+        self.assertEqual(self.osds.lines, ["launcher 0;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby"])   # 59.94 -> 60
+        self.assertEqual(sorted(calls), [("event0", True), ("event1", True)])      # the IR receiver and the remote, no keyboard
+
+    def test_down_ok_starts_kodi_and_lets_go(self):
+        self.launcher_d()
+        calls = self.grabs()
+        for k in ("home", "nav_down", "ok"):
+            self.press(k)
+        self.run_once()
+        self.assertEqual(self.osds.lines[1:], ["launcher 1", "launcher close"])
+        self.assertEqual(sorted(c for c in calls if not c[1]), [("event0", False), ("event1", False)])
+        time.sleep(0.2)
+        self.assertEqual(self.systemctl_calls(), ["is-active --quiet h713-kodi.service", "start --no-block h713-kodi.service"])
+
+    def test_a_running_kodi_is_the_selected_entry(self):
+        self.launcher_d()
+        self.grabs()
+        self.press("home")
+        with open(os.path.join(self.root, "systemctl.rc"), "w") as f:       # is-active: 0 for everything: Kodi runs
+            f.write("0")
+        self.run_once()
+        self.assertTrue(self.osds.lines[0].startswith("launcher 1;Kodi;"), self.osds.lines)
+
+    def test_back_and_home_close_without_acting(self):
+        self.launcher_d()
+        self.grabs()
+        for k in ("home", "back", "home", "home"):
+            self.press(k)
+        self.run_once()
+        self.assertEqual([l.split(";")[0] for l in self.osds.lines], ["launcher 0", "launcher close", "launcher 0", "launcher close"])
+        self.assertEqual([c for c in self.systemctl_calls() if c.startswith("start")], [])
+
+    def test_the_launcher_leaves_volume_alone(self):
+        """volume, mute and focus work with the launcher open; Left, Menu, the other keys are nobody's"""
+        self.launcher_d()
+        self.grabs()
+        for k in ("home", "up", "left"):
+            self.press(k)
+        self.run_once()
+        self.assertEqual(self.tv.volume, 55)
+        self.assertIn("volume 55", self.osds.lines)
+        self.assertEqual(self.osds.lines.count("launcher close"), 0)
+
+    def test_power_closes_the_launcher_and_goes_on_to_h713_power(self):
+        self.launcher_d()
+        calls = self.grabs()
+        for k in ("home", "power"):
+            self.press(k)
+        self.run_once()
+        self.assertEqual(self.osds.lines[-1], "launcher close")
+        self.assertTrue(all(not c[1] for c in calls[-2:]))
+        self.assertEqual(self.power.recv(64), b"short")
+
+    def test_no_picture_no_launcher_and_no_grab(self):
+        self.launcher_d()
+        self.osds.answer = lambda line: "ok unseen\n"
+        calls = self.grabs()
+        for k in ("home", "nav_down"):
+            self.press(k)
+        self.run_once()
+        self.assertEqual(calls, [])
+        self.assertEqual(self.osds.lines, [self.osds.lines[0]])            # the second key found no launcher: not sent
+
+    def test_no_osd_daemon_no_launcher(self):
+        self.launcher_d()
+        os.unlink(self.osds.path)
+        calls = self.grabs()
+        self.press("home")
+        self.run_once()
+        self.assertEqual(calls, [])
+
+    def test_a_remote_that_cannot_be_held_is_no_launcher(self):
+        self.launcher_d()
+        calls = []
+        self.mod.grab = lambda fd, on: calls.append(on) or ("Device or resource busy" if on and len(calls) == 2 else None)
+        self.press("search", dev=0)
+        self.press("home")
+        self.run_once()
+        self.assertEqual(self.osds.lines[-1], "launcher close")             # the one that was held is let go again
+        self.assertIn(False, calls)
+
+    def test_entries_show_active_exec_and_order(self):
+        self.launcher_d(**{"30-b": "label = B\nicon = desk\nexec = %s/runb\n" % self.root,
+                           "10-a": "label = A;x\nicon = globe\nunit = a.service\nshow = %s\n" % os.path.join(self.root, "systemctl"),
+                           "20-bad": "label = no icon\nunit = c.service\n",
+                           "05-hidden": "label = Hidden\nicon = film\nunit = h.service\nshow = /nonexistent/check\n"})
+        run = os.path.join(self.root, "runb")
+        with open(run, "w") as f:
+            f.write("#!/bin/sh\necho ran > %s.out\n" % run)
+        os.chmod(run, 0o755)
+        self.grabs()
+        for k in ("home", "nav_down", "ok"):
+            self.press(k)
+        self.run_once()
+        self.assertEqual(self.osds.lines[0], "launcher 0;A,x;globe:A,x;desk:B")    # sorted by file name, a ";" cannot split a field
+        time.sleep(0.3)
+        with open(run + ".out") as f:
+            self.assertEqual(f.read().strip(), "ran")
+
+    def test_an_idle_launcher_closes(self):
+        self.launcher_d()
+        grabbed = self.grabs()
+        l = self.mod.Launcher()
+        fd = os.open(os.path.join(self.root, "dev/input/event1"), os.O_RDONLY | os.O_NONBLOCK)
+        l.open({"event1": fd})
+        self.assertTrue(l.is_open())
+        l.tick({"event1": fd})
+        self.assertTrue(l.is_open())
+        l.last -= self.mod.LAUNCHER_IDLE_S + 1
+        l.tick({"event1": fd})
+        self.assertFalse(l.is_open())
+        self.assertEqual(self.osds.lines[-1], "launcher close")
+        self.assertEqual(grabbed[-1][1], False)
+        os.close(fd)
+
+    def test_home_without_entries_does_nothing(self):
+        calls = self.grabs()
+        self.press("home")
+        self.run_once()
+        self.assertEqual((calls, self.osds.lines), ([], []))
 
 
 if __name__ == "__main__":
