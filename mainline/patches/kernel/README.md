@@ -178,6 +178,31 @@ roadmap and `docs/status.md`.
   ran at 144..348 MHz. The GPU's real ceiling goes from 348 to 600 MHz. *(cstenger's `0153`, adapted to sit on `0024e`; hardware verified on the HY310)*
 - **0270 - `mbus-av1` is bit 3.** The AV1 block's MBUS gate is bit 3 of `0x804`, not bit 4 (measured on the stock stack: AV1
   decoding turns bit 3 on, VP9 bit 1). Latent until the AV1 node exists; no effect without it. *(cstenger's `0142`, byte-identical)*
+- **0271-0296 - cstenger's cedrus series.** The VE's polyphase scaler into the capture buffer, cedrus hardening (compose
+  negotiation, strides, pitches, reference indices, per-frame controls), 10-bit sizing, field-coded MPEG-2 and VP9 on the VE.
+  On the HY310 (13.10.2026) H.264, HEVC 8 and 10 bit, VP8 and VP9 decode bit-exact against ffmpeg up to 2160p, MPEG-2 equal to
+  the VE's own output before the series. *(cstenger's `0099`, `0101`-`0125`, `0143`/`0144`, `0151`, `0154`/`0155`, byte-identical; hardware verified on the HY310)*
+- **0297 - the IOMMU comment of `0024e`** says the codecs are translated and the display is not: the shipping defconfig turns
+  `CONFIG_SUN50I_IOMMU` on, the VE is masters 0 and 1. *(ours)*
+- **0298 - a job of another codec starts from a reset engine.** VP9 runs on the H.265 engine and leaves it in a state H.265
+  cannot read its slice header from. *(ours)*
+- **0300-0304 - the AV1 decoder**: hantro's H713 variant for the Google core at `0x01c0d000`, its node and binding, and `0300`'s
+  local, unregistered numbers for its 10-bit layout (V4L2 `PL10`, `DRM_FORMAT_MOD_ALLWINNER_LSB10`). Off since `0310`.
+  *(cstenger's `0145`-`0148` and `0150`; `0302` adapted)*
+- **0305-0307 - a guard for the VE's bus reset**, which the AV1 core shares: cedrus pulses it only through the guard, the AV1
+  variant holds it while a frame is in flight. *(ours)*
+- **0308, 0309 - a damaged H.265 stream.** The VE's IOMMU ports are released once its engine has stopped (the engine stayed
+  dead until a reboot before), and an H.265 reference must be a picture decoded here. *(ours)*
+- **0310 - the AV1 decoder stays off for now** (node disabled, `CONFIG_VIDEO_HANTRO` off). *(ours, 14.10.2026)*
+- **0312, 0313 - the eMMC under 4K playback.** A failed multi-block read re-initialises the controller before the stop, and the
+  eMMC host starts a read block only when the FIFO has room for it; `0311` was a diagnostic patch and is not in the series.
+  *(ours)*
+- **0314 - afbd reads the capture index as the field [2:0]**, as the firmware does; after some standbys the bits above it are
+  set. *(ours)*
+- **0315-0319 - the review before `main`.** The VE runs at 432 MHz only while the AV1 decoder is on, else at 600 MHz
+  (`0315`); an H.265 collocated index outside the active list is refused (`0316`); `cedrus_vp9_finish()` no longer puts a
+  2 KiB frame context on the stack (`0317`); the AV1 node of `0024` that no driver binds goes (`0318`); the IOMMU comment of
+  August that said there is none goes (`0319`). *(ours)*
 
 With these patches in place `build/build.sh kernel` emits the board's DTB plus
 cstenger's two HY200 DTBs, and a bootable FIT (`build/out/h713-kernel.fit`:
@@ -194,7 +219,7 @@ only** - the shipping kernel is the defconfig alone.
 |---|---|
 | `kasan.config` | generic KASAN + `MAGIC_SYSRQ`, hunting the kernel memory corruption behind the mpv-on-panel crash (`docs/vaapi-scope.md`) |
 | `debug.config` | `DEBUG_FS` and `DYNAMIC_DEBUG` back on, the fragment `docs/kernel-patches.md` points developers at |
-| `iommu.config` | the H713 IOMMU driver switched on (patches 0041/0042); the shipping defconfig leaves it off until it has run on hardware |
+| `iommu.config` | the H713 IOMMU driver switched on (patches 0041/0042); since 13.10.2026 the shipping defconfig has it on as well (`0297`), so the fragment changes nothing there |
 | `netboot.config` | NFS root over the USB gigabit adapter, the bench path: both drivers built in |
 | `builtin-drivers.config` | the control for the KASAN experiment: the same drivers built in, without KASAN |
 

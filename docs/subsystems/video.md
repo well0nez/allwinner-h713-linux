@@ -5,10 +5,18 @@ address space instead of raw physical memory; and the Mali-G31 GPU (Panfrost) ca
 straight onto the display plane without the CPU ever touching a pixel. Together they are the difference
 between playing a 1080p file and burning every core on colour-space conversion.
 
-**The decode and IOMMU half of this file comes from cstenger's `h713-display-video-path` branch and is proven
-only there.** Those measurements predate this repository's current boot chain (layout v3, 10.09.2026, and the
-release kernel series finalised 12.09.2026) and have not been repeated since, so treat hardware video decode
-and the IOMMU as **unverified in this image** - this matches STATUS.md, not just this page.
+**Decode and the IOMMU run in this image since 13.10.2026.** cstenger's cedrus series (`0271` - `0296`, VP9 on
+the VE included) runs behind the IOMMU: `CONFIG_SUN50I_IOMMU=y`, the VE is translated as masters 0 and 1 and joins
+IOMMU group 0 at boot, the display stays physical. Measured on the HY310: H.264, HEVC 8 and 10 bit, VP8 and VP9
+decode bit-exact against ffmpeg up to 2160p, MPEG-2 equal to the VE's own output before the series (the VE's IDCT
+rounds differently from ffmpeg's); no IOMMU fault with valid streams, and a damaged stream no longer leaves the
+engine dead (`0308`). The VE runs at 600 MHz; 432 MHz only while the AV1 decoder is on (`0315`). The numbers are
+in the texts of `0298` and `0305` - `0315`. Not measured on the HY300PRO-G-EU.
+
+*Superseded (13.10.2026):* "The decode and IOMMU half of this file comes from cstenger's `h713-display-video-path`
+branch and is proven only there. Those measurements predate this repository's current boot chain (layout v3,
+10.09.2026, and the release kernel series finalised 12.09.2026) and have not been repeated since, so treat hardware
+video decode and the IOMMU as unverified in this image - this matches STATUS.md, not just this page."
 
 **The GPU is out of that group since 22.09.2026.** Panfrost was brought up, measured and put to work in this
 image that night, and the section *The GPU, verified in this image* below says with which numbers. It is in
@@ -69,7 +77,8 @@ device. What that costs is measured too: the same shader runs 33.3 fps at 864 MH
 **What was switched off around it.** `CONFIG_DRM_LIMA` bound nothing - Lima is for Utgard (Mali-400/450) and
 this is a Bifrost G31 - and is gone. `CONFIG_SUN50I_IOMMU` was `y` while the tree's own comment said not to
 enable it: the node is disabled, no node carries an `iommus` property, and Panfrost maps its buffers through the
-Mali MMU in any case, so the symbol was dead and is off now. `CONFIG_DEVFREQ_THERMAL` came in, because
+Mali MMU in any case, so the symbol was dead and is off now (*since 13.10.2026 it is on again, for the decoders -
+see the top of this page*). `CONFIG_DEVFREQ_THERMAL` came in, because
 `panfrost.ko` needs it at build time for the cooling device. On the device afterwards: no `lima` driver, an
 empty `/sys/class/iommu`, `panfrost` probed, the four frequencies listed with `simple_ondemand` - read, not
 assumed.
@@ -100,11 +109,15 @@ have reopened that.
 
 ## Limits, honestly
 
-- **No AV1.** The H713 has AV1 decode hardware - the first Allwinner SoC that does - but whether the existing
-  reverse-engineering is a working driver or a research note is not established; not scheduled.
-- The 17 patches above ship in this repository's kernel series, but the decode and IOMMU behaviour they enable
-  has not been re-tested end to end against this image's kernel, rootfs and `cpu_comm` stack. The GPU has been,
-  as far as rendering and scanout go; nothing was played through cedrus in those runs.
+- **AV1 is off.** The H713 has AV1 decode hardware - the first Allwinner SoC that does - and cstenger's driver for
+  it (hantro's H713 variant, `0300` - `0304`) decoded bit-exact on the HY310 (13.10.2026). It is off since `0310`
+  (14.10.2026): next to a decoding AV1 core the VE's recovery after a damaged H.265 stream cannot release its
+  IOMMU ports. With it on, the VE runs at 432 MHz, the AV1 core stalls above that (`0315`).
+- *Superseded (13.10.2026):* "No AV1. ... whether the existing reverse-engineering is a working driver or a
+  research note is not established; not scheduled." and "The 17 patches above ship in this repository's kernel
+  series, but the decode and IOMMU behaviour they enable has not been re-tested end to end against this image's
+  kernel, rootfs and `cpu_comm` stack. The GPU has been, as far as rendering and scanout go; nothing was played
+  through cedrus in those runs."
 
 Details: `doku/62-video.md`, `doku/64-afbd-quelle0.md`, `mainline/patches/kernel/series` §3, `doku/76-plan-ch0-de.md` (IOMMU bypass on the display node).
 For the GPU section: working journal `keystone/PLAN` (stages S0 to S2) and the device readings in
