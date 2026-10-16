@@ -744,7 +744,14 @@ control socket, in its own language, the file descriptors in `SCM_RIGHTS` on the
 plane below the luma in the same buffer;
 `warp frame N` carries the daemon's out-fence and commits buffer N with `IN_FENCE_FD`, answering
 `ok` or `ok busy` when the previous commit is still in flight (that frame is dropped);
-`warp release` gives the panel back. The connection is the lifetime - a daemon that dies leaves a
+`warp release` gives the panel back; `warp switch client|ring` turns a standing claim into the other source's
+on the same three buffers (`ok source X`, or `error ...` and the claim stays as it was): the master and the
+video plane stay up, only what the daemon draws into the buffers changes, so the wall goes from the last ring
+frame to the client's first and back. Releasing and claiming again put the unwarped ring on the plane in
+between and switched the plane off for the new claim - a white flash at every change between HDMI and a client
+(16.10.2026). A `source` that no longer allows the claim (a client's under `hdmi`, the ring's under `client`) is
+said to the daemon unasked on the connection, `note source hdmi`; it switches or releases, and 1.5 s later the
+claim is released here if it still stands. The connection is the lifetime - a daemon that dies leaves a
 hangup and the ring comes back by itself. While the warp is on, `h713-tv ctl zoom` is refused with
 `error the warp is on - use h713-warp ctl zoom`, and `h713-tv ctl off` releases the warp. `ctl status` says
 `picture warped (h713-warp draws on the video plane)`, and `ctl warp status` gives the plane, the geometry

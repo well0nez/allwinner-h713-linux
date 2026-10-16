@@ -18,6 +18,15 @@
  *                      is one frame of the wall and not an error
  *   "warp release"  -> "ok"; h713-tv frees the buffers and goes back to its
  *                      own mode (ring or console)
+ *   "warp switch client|ring" -> "ok source X"; the claim turns into the other
+ *                      source's on the same three buffers (h713-tv of
+ *                      16.10.2026): the video plane stays up, only what is
+ *                      drawn into the buffers changes
+ *
+ * and one line h713-tv says unasked, while a claim stands: "note source X" when
+ * its "source" no longer allows the claim. This daemon switches the claim or
+ * gives it back; a note can arrive alone, between two frames, or in front of
+ * (or behind) the answer to a frame, and is read wherever it comes.
  *
  * ONE connection carries the whole "on" period, and a closed connection means
  * release on both sides (A2's lifetime rule): if this daemon dies h713-tv puts
@@ -72,9 +81,50 @@ static void close_targets(struct peer *p)
 	}
 }
 
+static void tv_source(struct peer *p, const char *reply);
+
+/* "note source X": h713-tv's "source" changed under the standing claim; the main loop acts on p->noted */
+static void peer_note(struct peer *p, const char *line)
+{
+	if (strncmp(line, "note source ", 12)) {
+		warn("peer            h713-tv said \"%s\" -- not a note this daemon knows", line);
+		return;
+	}
+	tv_source(p, line);
+	p->noted = true;
+	info("peer            h713-tv: %s, the claim is switched or given back", line + 5);
+}
+
+/*
+ * The lines of one read: notes are taken out, the first other line is the answer and lands in reply. h713-tv sends
+ * each line with one send() and a line is far shorter than the buffer, so a read holds whole lines. True when the
+ * answer was among them.
+ */
+static bool split_lines(struct peer *p, char *buf, char *reply, size_t n)
+{
+	bool have = false;
+	char *line, *next;
+
+	for (line = buf; *line; line = next) {
+		next = line + strcspn(line, "\n");
+		if (*next)
+			*next++ = '\0';
+		line[strcspn(line, "\r")] = '\0';
+		if (!strncmp(line, "note ", 5))
+			peer_note(p, line);
+		else if (!have && *line) {
+			memmove(reply, line, strlen(line) + 1 < n ? strlen(line) + 1 : n);
+			reply[n - 1] = '\0';
+			have = true;
+		}
+	}
+	return have;
+}
+
 /* One line out (optionally with one fd in SCM_RIGHTS), one line back
  * (optionally with fds), the answer read with a deadline: a peer that stops
- * talking must not stop this loop.
+ * talking must not stop this loop. A note of h713-tv's in front of the answer
+ * is taken out (split_lines) and the answer waited for further.
  */
 static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 		     size_t n, int *fds, int want, int need, int ms, char *why, size_t wn)
@@ -113,49 +163,60 @@ static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 	pf.fd = p->fd;
 	pf.events = POLLIN;
 	x1 = now_s();
-	if (poll(&pf, 1, ms) <= 0) {
-		snprintf(why, wn, "%s: no answer to \"%.*s\" within %d ms", p->path,
-			 (int)strcspn(line, "\n"), line, ms);
-		return false;
-	}
-	memset(&msg, 0, sizeof(msg));
-	memset(cbuf, 0, sizeof(cbuf));
-	io.iov_base = reply;
-	io.iov_len = n - 1;
-	msg.msg_iov = &io;
-	msg.msg_iovlen = 1;
-	msg.msg_control = cbuf;
-	msg.msg_controllen = sizeof(cbuf);
-	x2 = now_s();
-	got = recvmsg(p->fd, &msg, 0);
-	x3 = now_s();
-	/* the peer took long: h713-tv was held by something (23.09.: its full
-	 * status, 50 ms of firmware-backed sysfs reads); the stale guard in
-	 * loop.c turns such a frame into a dropped one, this line names it */
-	if (x3 - x0 > 0.030)
-		info("trace           exchange at %.6f: sendmsg %.1f ms, poll %.1f ms, recvmsg %.1f ms (answer at %.6f)", x0, (x1 - x0) * 1e3, (x2 - x1) * 1e3, (x3 - x2) * 1e3, x3);
-	if (got <= 0) {
-		snprintf(why, wn, "%s: the connection closed (%s)", p->path,
-			 got ? strerror(errno) : "h713-tv hung up");
-		return false;
-	}
-	reply[got] = '\0';
-	reply[strcspn(reply, "\r\n")] = '\0';
-	for (cm = CMSG_FIRSTHDR(&msg); cm; cm = CMSG_NXTHDR(&msg, cm)) {
-		int have;
+	for (;;) {
+		char buf[WARP_LINE];
+		int left = ms - (int)((now_s() - x1) * 1e3);
 
-		if (cm->cmsg_level != SOL_SOCKET || cm->cmsg_type != SCM_RIGHTS)
-			continue;
-		have = (int)((cm->cmsg_len - CMSG_LEN(0)) / sizeof(int));
-		for (i = 0; i < have; i++) {
-			int fd;
-
-			memcpy(&fd, CMSG_DATA(cm) + i * sizeof(int), sizeof(int));
-			if (k < want)
-				fds[k++] = fd;
-			else
-				close(fd);	/* more than asked for: not ours */
+		if (left < 0 || poll(&pf, 1, left) <= 0) {
+			snprintf(why, wn, "%s: no answer to \"%.*s\" within %d ms", p->path,
+				 (int)strcspn(line, "\n"), line, ms);
+			while (k > 0)
+				close(fds[--k]);
+			return false;
 		}
+		memset(&msg, 0, sizeof(msg));
+		memset(cbuf, 0, sizeof(cbuf));
+		io.iov_base = buf;
+		io.iov_len = sizeof(buf) - 1;
+		msg.msg_iov = &io;
+		msg.msg_iovlen = 1;
+		msg.msg_control = cbuf;
+		msg.msg_controllen = sizeof(cbuf);
+		x2 = now_s();
+		got = recvmsg(p->fd, &msg, 0);
+		x3 = now_s();
+		/* the peer took long: h713-tv was held by something (23.09.: its full
+		 * status, 50 ms of firmware-backed sysfs reads); the stale guard in
+		 * loop.c turns such a frame into a dropped one, this line names it */
+		if (x3 - x0 > 0.030)
+			info("trace           exchange at %.6f: sendmsg %.1f ms, poll %.1f ms, recvmsg %.1f ms (answer at %.6f)", x0, (x1 - x0) * 1e3, (x2 - x1) * 1e3, (x3 - x2) * 1e3, x3);
+		if (got <= 0) {
+			snprintf(why, wn, "%s: the connection closed (%s)", p->path,
+				 got ? strerror(errno) : "h713-tv hung up");
+			while (k > 0)
+				close(fds[--k]);
+			return false;
+		}
+		buf[got] = '\0';
+		for (cm = CMSG_FIRSTHDR(&msg); cm; cm = CMSG_NXTHDR(&msg, cm)) {
+			int have;
+
+			if (cm->cmsg_level != SOL_SOCKET || cm->cmsg_type != SCM_RIGHTS)
+				continue;
+			have = (int)((cm->cmsg_len - CMSG_LEN(0)) / sizeof(int));
+			for (i = 0; i < have; i++) {
+				int fd;
+
+				memcpy(&fd, CMSG_DATA(cm) + i * sizeof(int), sizeof(int));
+				if (k < want)
+					fds[k++] = fd;
+				else
+					close(fd);	/* more than asked for: not ours */
+			}
+		}
+		if (split_lines(p, buf, reply, n))
+			break;
+		/* only a note: the answer is still to come */
 	}
 	if (k < need) {
 		snprintf(why, wn, "%s answered \"%s\" with %d of %d file descriptors",
@@ -207,6 +268,50 @@ static bool peer_connect(struct peer *p, char *why, size_t n)
 			 p->path, strerror(errno));
 		close(p->fd);
 		p->fd = -1;
+		return false;
+	}
+	return true;
+}
+
+/* h713-tv said something unasked between two exchanges (the main loop saw the connection readable): the notes are
+ * taken now. False when the connection is gone. */
+bool peer_notes(struct peer *p)
+{
+	char buf[WARP_LINE], rest[WARP_LINE];
+	ssize_t got;
+
+	if (p->fd < 0)
+		return false;
+	got = recv(p->fd, buf, sizeof(buf) - 1, MSG_DONTWAIT);
+	if (got == 0)
+		return false;
+	if (got < 0)
+		return errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR;
+	buf[got] = '\0';
+	if (split_lines(p, buf, rest, sizeof(rest)))
+		warn("peer            h713-tv said \"%s\" unasked -- not a note, ignored", rest);
+	return true;
+}
+
+/*
+ * "warp switch client|ring" on the standing claim: the same three buffers, the other source drawn into them, the
+ * video plane up all the time. False when h713-tv refused it (why says why; the claim is as it was) or the link
+ * broke - the caller gives the claim back then, and claims again as before.
+ */
+bool peer_switch(struct peer *p, int src, char *why, size_t n)
+{
+	char reply[WARP_LINE];
+
+	if (p->fd < 0) {
+		snprintf(why, n, "no claim to switch");
+		return false;
+	}
+	if (!exchange(p, src == SRC_CLIENT ? "warp switch client\n" : "warp switch ring\n", -1, reply, sizeof(reply),
+		      NULL, 0, 0, CLAIM_MS, why, n))
+		return false;
+	tv_source(p, reply);
+	if (strncmp(reply, "ok", 2)) {
+		snprintf(why, n, "h713-tv: %s", reply);
 		return false;
 	}
 	return true;

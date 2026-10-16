@@ -1352,10 +1352,19 @@ static bool display_hide(struct display *d)
  * releases by itself. Video plane and warp are mutually exclusive, and this
  * program decides which is up. The picture is up either way, so the audio
  * follows d->on || d->warped - a warp must never mute the source.
+ *
+ * A claim is for the ring or for a Wayland client, and "warp switch client|ring" on the same connection turns one
+ * into the other: the three buffers, the master and the video plane stay, only what h713-warp draws into the
+ * buffers changes, so the wall goes from the last frame of the one to the first of the other. Releasing and
+ * claiming again put the ring on the plane directly in between and switched the plane off for the new claim -
+ * a flash at every change between HDMI and a client (16.10.2026). A "source" that no longer allows the claim is
+ * said to h713-warp on the connection, unasked ("note source hdmi"), and h713-warp switches or releases; if it does
+ * neither within WARP_REVOKE_MS, the claim is released here as before.
  * ------------------------------------------------------------------ */
 
 #define WARP_BUFS	3
 #define TIMING_SAY_S	10	/* late warp frames and slow commits: one summary line at most this often */
+#define WARP_REVOKE_MS	1500	/* a claim the source no longer allows: h713-warp's time to switch or release */
 
 struct warp {
 	int peer;			/* the daemon's connection, -1: none */
@@ -1363,12 +1372,28 @@ struct warp {
 	bool client;			/* it draws a Wayland client, not the ring: no signal needed */
 	int flip;			/* client: our dup of the last commit's OUT_FENCE (the flip), -1 none */
 	int told;			/* the "source" h713-warp last heard (with the claim or a frame's "ok"), -1 none */
+	int revoke_fd;			/* timerfd: the claim's grace after a "note source", -1 none */
+	bool revoking;			/* ... armed */
+	struct timespec last_frame;	/* the previous "warp frame" of this claim, for the timing line; 0: none */
 	uint32_t handle[WARP_BUFS], fb_id[WARP_BUFS];
 	unsigned int pitch, coff;	/* NV12: the line pitch, the chroma plane's offset */
 	unsigned long commits, busy, errors;
 };
 
-static struct warp warp = { .peer = -1, .flip = -1, .told = -1 };
+static struct warp warp = { .peer = -1, .flip = -1, .told = -1, .revoke_fd = -1 };
+
+/* the grace for h713-warp ends: switched or released in time, or nothing more to wait for */
+static void warp_revoke_stop(void)
+{
+	struct itimerspec its;
+
+	if (!warp.revoking)
+		return;
+	memset(&its, 0, sizeof(its));
+	if (warp.revoke_fd >= 0)
+		timerfd_settime(warp.revoke_fd, 0, &its, NULL);
+	warp.revoking = false;
+}
 
 static void warp_free(struct display *d)
 {
@@ -1518,6 +1543,8 @@ static void warp_release(struct display *d)
 	if (warp.peer >= 0)
 		close(warp.peer);
 	warp.peer = -1;
+	warp_revoke_stop();
+	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
 	if (!warp.claimed)
 		return;
 	/*
@@ -5344,6 +5371,7 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	warp.client = client;
 	warp.told = (int)ctl.source;
 	warp.peer = conn;
+	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
 	d->warped = true;
 	console_keys(false);
 	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u",
@@ -5351,14 +5379,75 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	     d->width, d->height, warp.pitch, warp.coff, d->plane_id);
 }
 
+/*
+ * "warp switch client|ring" on a standing claim (see "The warp" above): the same three buffers, the master and the
+ * video plane stay, and h713-warp draws the other source into them. Allowed under the same rules as a claim of
+ * that source. True when it switched; the answer, "ok source X" or "error ...", goes into ans.
+ */
+static bool warp_switch(struct capture *cap, struct display *d, const char *what, char *ans, size_t n)
+{
+	bool client = !strcmp(what, "client");
+	struct v4l2_dv_timings t;
+	int sig;
+
+	if (!client && strcmp(what, "ring")) {
+		snprintf(ans, n, "error warp switch takes client or ring, not \"%s\"\n", what);
+		return false;
+	}
+	if (client == warp.client) {
+		snprintf(ans, n, "ok source %s -- already %s\n", source_name[ctl.source], what);
+		return false;
+	}
+	if (ctl.policy == POLICY_OFF) {
+		snprintf(ans, n, "error console forced (\"ctl off\") -- the claim stays as it is\n");
+		return false;
+	}
+	if (client ? ctl.source == SOURCE_HDMI : ctl.source == SOURCE_CLIENT) {
+		snprintf(ans, n, "error source is %s -- no switch to the %s\n", source_name[ctl.source], what);
+		return false;
+	}
+	if (client && !d->crtc_props.list)
+		props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &d->crtc_props);
+	if (client && !prop_id(&d->crtc_props, "OUT_FENCE_PTR")) {
+		snprintf(ans, n, "error CRTC %u has no OUT_FENCE_PTR -- a client cannot be paced\n", d->crtc_id);
+		return false;
+	}
+	if (!client) {
+		/* a client's claim leaves the signal unmeasured (evaluate() returns early): measured now */
+		sig = capture_signal(cap, &t);
+		cap->last_sig = sig;
+		if (sig != 2)
+			cap->last_t = t;
+		if (sig != 1) {
+			snprintf(ans, n, "error no signal to warp -- the claim stays as it is\n");
+			return false;
+		}
+	}
+	warp.client = client;
+	warp.told = (int)ctl.source;
+	warp_revoke_stop();
+	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
+	if (!client && warp.flip >= 0) {	/* the ring is paced by the capture, not by flips */
+		close(warp.flip);
+		warp.flip = -1;
+	}
+	info("warp            switched to %s on the same three buffers -- the video plane stays up (%lu commits so far)",
+	     client ? "a Wayland client (the HDMI sound silent)" : "the ring", warp.commits);
+	snprintf(ans, n, "ok source %s\n", source_name[ctl.source]);
+
+	return true;
+}
+
 /* The peer's connection: one line per message, and the daemon waits for the
  * answer before the next, so a line cannot arrive in halves. True when the
- * caller has to run evaluate() -- the warp has just ended.
+ * caller has to run evaluate() -- the warp has just ended, or switched (the
+ * sound follows what is drawn).
  */
-static bool warp_serve(struct display *d)
+static bool warp_serve(struct capture *cap, struct display *d)
 {
-	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, buf[128], told[48];
-	const char *answer = "error unknown (warp frame N | warp release)\n";
+	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, buf[128], told[96], what[16];
+	const char *answer = "error unknown (warp frame N | warp switch client|ring | warp release)\n";
+	bool switched = false;
 	struct iovec io = { buf, sizeof(buf) - 1 };
 	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1,
 			      .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
@@ -5383,7 +5472,10 @@ static bool warp_serve(struct display *d)
 		warp_release(d);
 		return true;
 	}
-	if (sscanf(buf, "warp frame %d", &n) == 1 && n >= 0 && n < WARP_BUFS)
+	if (sscanf(buf, "warp switch %15s", what) == 1) {
+		switched = warp_switch(cap, d, what, told, sizeof(told));
+		answer = told;
+	} else if (sscanf(buf, "warp frame %d", &n) == 1 && n >= 0 && n < WARP_BUFS)
 		{
 			/*
 			 * A frame that arrived late, or a commit that took long: the
@@ -5394,10 +5486,10 @@ static bool warp_serve(struct display *d)
 			 * distinct frames (a still picture, 11.10.2026, HY300PRO-G-EU):
 			 * 1.5 % of a core in journald, ~100 000 lines an hour in RAM.
 			 */
-			static struct timespec prev, said;
+			static struct timespec said;
 			static unsigned long late, slow;
 			static double late_worst, slow_worst;
-			struct timespec c0, c1;
+			struct timespec c0, c1, prev = warp.last_frame;
 			double gap, took;
 
 			clock_gettime(CLOCK_MONOTONIC, &c0);
@@ -5431,7 +5523,7 @@ static bool warp_serve(struct display *d)
 				late = slow = 0;
 				late_worst = slow_worst = 0;
 			}
-			prev = c1;
+			warp.last_frame = c1;
 		}
 	if (fence >= 0)
 		close(fence);
@@ -5455,7 +5547,7 @@ static bool warp_serve(struct display *d)
 		if (sent >= 0)
 			return false;
 	} else if (send(warp.peer, answer, strlen(answer), MSG_NOSIGNAL) >= 0) {
-		return false;
+		return switched;
 	}
 	warn("warp            answering \"%s\": %s", buf, strerror(errno));
 	warp_release(d);
@@ -5483,10 +5575,56 @@ static bool cmd_warp(struct reply *r, struct capture *cap, struct display *d, co
 }
 
 /*
- * "source [hdmi|client|auto]": what the panel shows. A standing warp claim is given back only when the new
- * policy forbids it: a ring claim under "client", a client claim under "hdmi". One it allows stands - giving it
- * back took the panel off the ring and back for "hdmi" <-> "auto" (the wall blinked) - and h713-warp hears the new
- * policy with the "ok" of its next frame ("ok source auto"), so a ring claim under "auto" still gives way to a client.
+ * The source no longer allows the standing claim: h713-warp hears it at once, unasked, on the claim's connection
+ * ("note source hdmi"), and switches the claim to what is allowed or gives it back; a client at rest sends no
+ * frame whose answer could carry it. WARP_REVOKE_MS later the claim is released here if it still stands - an
+ * h713-warp that cannot switch, or one of before 16.10.2026, which knows no notes.
+ */
+static void warp_revoke(struct display *d)
+{
+	struct itimerspec its = { .it_value = { WARP_REVOKE_MS / 1000, (WARP_REVOKE_MS % 1000) * 1000000L } };
+	char line[32];
+	int len = snprintf(line, sizeof(line), "note source %s\n", source_name[ctl.source]);
+
+	if (warp.revoke_fd < 0)
+		warp.revoke_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+	if (warp.peer < 0 || warp.revoke_fd < 0 ||
+	    send(warp.peer, line, (size_t)len, MSG_NOSIGNAL | MSG_DONTWAIT) != len ||
+	    timerfd_settime(warp.revoke_fd, 0, &its, NULL)) {
+		warn("warp            h713-warp could not be told (%s) -- the claim is given back", strerror(errno));
+		warp_release(d);
+		return;
+	}
+	warp.told = (int)ctl.source;
+	warp.revoking = true;
+}
+
+/* the grace is over: a claim the source still does not allow is released here */
+static bool warp_revoke_due(struct display *d)
+{
+	uint64_t ticks;
+	bool stands = warp.claimed && (warp.client ? ctl.source != SOURCE_HDMI : ctl.source != SOURCE_CLIENT);
+
+	if (read(warp.revoke_fd, &ticks, sizeof(ticks)) != sizeof(ticks))
+		ticks = 0;
+	if (!warp.revoking)
+		return false;
+	warp.revoking = false;
+	if (!warp.claimed || stands)
+		return false;
+	warn("warp            h713-warp neither switched nor gave the claim back within %d ms of \"source %s\" -- released here",
+	     WARP_REVOKE_MS, source_name[ctl.source]);
+	warp_release(d);
+
+	return true;
+}
+
+/*
+ * "source [hdmi|client|auto]": what the panel shows. A standing warp claim the new policy forbids - a ring claim
+ * under "client", a client claim under "hdmi" - is said to h713-warp at once (warp_revoke()), which switches it to
+ * the source that is allowed or gives it back. One it allows stands - giving it back took the panel off the ring
+ * and back for "hdmi" <-> "auto" (the wall blinked) - and h713-warp hears the new policy with the "ok" of its next
+ * frame ("ok source auto"), so a ring claim under "auto" still gives way to a client.
  * h713-warp asks again at once after a release and learns the policy from the answer.
  * Not saved; "source =" in tv.conf is the start value.
  */
@@ -5503,9 +5641,10 @@ static bool cmd_source(struct reply *r, struct display *d, const char *what)
 
 		ctl.source = s;
 		info("source          %s%s", source_name[s], !warp.claimed ? "" : stands ?
-		     " -- the warp's claim stands, h713-warp hears it with its next frame" : " -- the warp's claim is given back");
+		     " -- the warp's claim stands, h713-warp hears it with its next frame" :
+		     " -- h713-warp is told: it switches the claim or gives it back");
 		if (!stands)
-			warp_release(d);
+			warp_revoke(d);
 		reply_add(r, "ok source %s\n", source_name[s]);
 		return true;		/* the ring, the console, or the claim h713-warp sends next */
 	}
@@ -7503,7 +7642,7 @@ int main(int argc, char **argv)
 	struct audio au = { .settle_fd = -1, .tick_fd = -1 };
 	struct conf conf = { .path = CONF_FILE };
 	enum audio_policy apol;
-	struct pollfd fds[9];
+	struct pollfd fds[10];
 	const char *sock = CTL_SOCKET;
 	const char *startpreset = "standard";
 	int sfd, arg, rc = 0;
@@ -7844,8 +7983,9 @@ int main(int argc, char **argv)
 	/*
 	 * Six sources, three of which may be absent: the control socket when
 	 * its bind failed, and the two audio timers with -a none; then the
-	 * warp's and the overlay's connections, set in the loop, and a client's
-	 * flip fence while an overlay change waits for it. poll()
+	 * warp's and the overlay's connections, set in the loop, a client's
+	 * flip fence while an overlay change waits for it, and the warp's grace
+	 * after a "note source". poll()
 	 * ignores an entry with a negative fd and reports revents 0 for it, so
 	 * the table keeps its fixed indices instead of shifting.
 	 */
@@ -7872,6 +8012,9 @@ int main(int argc, char **argv)
 		/* an overlay change waiting for a client's flip */
 		fds[8].fd = osd.queued && warp.client ? warp.flip : -1;
 		fds[8].events = POLLIN;
+		/* a claim the source no longer allows: h713-warp's grace (warp_revoke()) */
+		fds[9].fd = warp.revoking ? warp.revoke_fd : -1;
+		fds[9].events = POLLIN;
 		{
 			static struct timespec last_ret;
 			struct timespec now;
@@ -7941,7 +8084,7 @@ int main(int argc, char **argv)
 		if (fds[6].fd >= 0 && fds[6].revents) {
 			bool again = false;
 
-			LOOP_TIMED("the warp's frame", again = warp_serve(&d));
+			LOOP_TIMED("the warp's frame", again = warp_serve(&cap, &d));
 			if (again)
 				LOOP_TIMED("the warp's re-evaluation", reevaluate(&cap, &d, &rt, &au));
 			else if (osd.want >= 0 && !osd.shown)	/* the warp's first frame is up: the overlay back over it */
@@ -7949,6 +8092,8 @@ int main(int argc, char **argv)
 		}
 		if (fds[7].fd >= 0 && fds[7].revents)
 			LOOP_TIMED("an overlay line", osd_serve(&d));
+		if (fds[9].fd >= 0 && (fds[9].revents & POLLIN) && warp_revoke_due(&d))
+			LOOP_TIMED("the end of the warp's grace", reevaluate(&cap, &d, &rt, &au));
 		if (fds[8].fd >= 0 && fds[8].revents)
 			LOOP_TIMED("the overlay after a client's flip", osd_settle(&d));
 		if (fds[3].revents & POLLIN) {
@@ -8002,6 +8147,8 @@ int main(int argc, char **argv)
 	props_put(&d.plane_props);
 	close(d.fd);
 	close(rt.fd);
+	if (warp.revoke_fd >= 0)
+		close(warp.revoke_fd);
 	close(sfd);
 	close(cap.fd);
 

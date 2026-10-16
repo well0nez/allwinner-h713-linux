@@ -203,6 +203,78 @@ bool warp_engage(struct runtime *r)
 	return true;
 }
 
+/* the ring is to be drawn through the GPU: a keystone, a mirrored mount or a test pattern (else h713-tv shows it) */
+static bool ring_wanted(struct runtime *r)
+{
+	int eff[WARP_KEYS];
+
+	warp_effective(&r->conf, eff);
+	return r->on && (r->pattern != PATTERN_NONE || !warp_identity(eff) ||
+			 r->conf.mode != MODE_FRONT);	/* a mirrored identity needs the GPU */
+}
+
+/*
+ * From the ring to the client, and back, on the claim that stands ("warp switch", h713-tv of 16.10.2026): the same
+ * three buffers, the video plane up all the time, the wall going from the last frame of the one to the first of
+ * the other. Giving the claim back and claiming again put the unwarped ring on the plane for a moment and switched
+ * the plane off for the new claim - a flash at every change between HDMI and a client. False when it did not
+ * happen: the claim is then as it was, and the caller gives it back and claims again, as before.
+ */
+static bool switch_to_client(struct runtime *r)
+{
+	char why[WARP_WHY];
+
+	if (!peer_switch(&r->peer, SRC_CLIENT, why, sizeof(why))) {
+		warn("warp            no switch to the client on the ring's buffers: %s", why);
+		return false;
+	}
+	gl_source_drop();
+	source_stop(&r->source);
+	r->src = SRC_CLIENT;
+	on_common(r);
+	gl_edge(r->on ? warp_edge_for(r) : 0);
+	info("warp            on: the Wayland client takes over the ring's buffers -- %s renders it %ux%u NV12 onto the video plane%s",
+	     gl_renderer(), r->peer.width, r->peer.height, r->on ? "" : " (warp = off: no keystone)");
+	server_panel(r->srv, r->peer.width, r->peer.height);
+	server_engaged(r->srv, true);
+
+	return true;
+}
+
+static bool switch_to_ring(struct runtime *r)
+{
+	char why[WARP_WHY];
+
+	if (r->pattern == PATTERN_NONE) {
+		if (!source_start(&r->source, why, sizeof(why))) {
+			warn("warp            no switch to the ring: %s", why);
+			return false;
+		}
+		if ((r->source.width == r->refused_w && r->source.height == r->refused_h &&
+		     r->source.pitch == r->refused_pitch) || !gl_source(&r->source, why, sizeof(why))) {
+			gl_source_drop();
+			source_stop(&r->source);
+			warn("warp            no switch to the ring %ux%u: %s", r->source.width, r->source.height,
+			     why[0] ? why : "the GPU refused this geometry before");
+			return false;
+		}
+	}
+	server_engaged(r->srv, false);	/* nothing more of the client is presented; it pauses */
+	if (!peer_switch(&r->peer, SRC_RING, why, sizeof(why))) {
+		warn("warp            no switch to the ring on the client's buffers: %s", why);
+		gl_source_drop();
+		source_stop(&r->source);
+		return false;
+	}
+	r->src = SRC_RING;
+	on_common(r);
+	gl_edge(warp_edge_for(r));
+	info("warp            on: the ring takes over the client's buffers -- %s renders %ux%u NV12 onto the video plane%s",
+	     gl_renderer(), r->peer.width, r->peer.height, r->pattern == PATTERN_NONE ? "" : ", test pattern");
+
+	return true;
+}
+
 void warp_disengage(struct runtime *r, const char *why)
 {
 	bool was = r->state == WARP_ON;
@@ -239,12 +311,7 @@ int warp_edge_for(struct runtime *r)
 
 void warp_apply(struct runtime *r)
 {
-	int eff[WARP_KEYS];
-	bool want, client = server_shown(r->srv);
-
-	warp_effective(&r->conf, eff);
-	want = r->on && (r->pattern != PATTERN_NONE || !warp_identity(eff) ||
-			 r->conf.mode != MODE_FRONT);	/* a mirrored identity needs the GPU */
+	bool want = ring_wanted(r), client = server_shown(r->srv);
 
 	/*
 	 * A Wayland client is drawn whenever it is shown and h713-tv lets it: always through the GPU, even
@@ -252,20 +319,35 @@ void warp_apply(struct runtime *r)
 	 * for the picture again. A ring claim gives way to a client by itself only under "source auto"; under "hdmi"
 	 * h713-tv would refuse the client, and every switch would blink the wall.
 	 */
+	/* h713-tv no longer allows the client ("note source hdmi"): the ring on the same buffers, or the panel back */
+	if (r->state == WARP_ON && r->src == SRC_CLIENT && r->peer.tv_source == TV_HDMI) {
+		if (want && switch_to_ring(r))
+			return;
+		warp_disengage(r, "h713-tv's source is hdmi: the client's claim is given back");
+	}
 	if (r->state == WARP_ON && r->src == SRC_CLIENT) {
 		gl_edge(r->on ? warp_edge_for(r) : 0);
 		server_redraw(r->srv);
 		return;
 	}
 	/*
-	 * A client is shown while the ring stands and h713-tv's last word was not "auto": ask it. A policy change
-	 * reaches the warp with the "ok" of the next ring frame - and a ring that stalls sends none (HY310, 15.10.2026 after
-	 * a standby: the ring claimed, 0 frames, Kodi waited five minutes behind it). main.c asks again once a second.
+	 * A client is shown while the ring stands and h713-tv's last word was "hdmi": ask it. A policy change
+	 * reaches the warp with the "ok" of the next ring frame, or at once as a note - and a ring that stalls sends no
+	 * frame (HY310, 15.10.2026 after a standby: the ring claimed, 0 frames, Kodi waited five minutes behind it).
+	 * main.c asks again once a second.
 	 */
-	if (r->state == WARP_ON && r->src == SRC_RING && client && r->peer.tv_source != TV_AUTO)
+	if (r->state == WARP_ON && r->src == SRC_RING && client && r->peer.tv_source != TV_AUTO &&
+	    r->peer.tv_source != TV_CLIENT)
 		peer_source(&r->peer);
-	if (r->state == WARP_ON && client && r->peer.tv_source == TV_AUTO)
-		warp_disengage(r, "a Wayland client came, and \"source auto\" puts it before the ring");
+	if (r->state == WARP_ON && r->src == SRC_RING && client &&
+	    (r->peer.tv_source == TV_AUTO || r->peer.tv_source == TV_CLIENT)) {
+		if (switch_to_client(r))
+			return;
+		warp_disengage(r, "a Wayland client came, and h713-tv's source puts it before the ring");
+	}
+	/* "note source client" and no client to show: the ring's claim goes, the console until one comes */
+	if (r->state == WARP_ON && r->src == SRC_RING && !client && r->peer.tv_source == TV_CLIENT)
+		warp_disengage(r, "h713-tv's source is client, and no client is shown");
 	if (r->state != WARP_ON && client && engage_client(r))
 		return;
 
@@ -602,11 +684,12 @@ void warp_client_shown(struct runtime *r)
 		warp_apply(r);
 }
 
-/* the client is gone for good (two seconds without a new one, wayland.c): the panel goes back, h713-tv shows
- * what "source" says, and the ring's warp claims again if it is wanted */
+/* the client is gone for good (two seconds without a new one, wayland.c): the ring's warp takes over its buffers if
+ * it is wanted and h713-tv allows it; otherwise the panel goes back, h713-tv shows what "source" says */
 void warp_client_gone(struct runtime *r)
 {
-	if (warp_client_live(r)) {
+	if (warp_client_live(r) &&
+	    !(ring_wanted(r) && r->peer.tv_source != TV_CLIENT && switch_to_ring(r))) {
 		warp_disengage(r, "the Wayland client is gone");
 		warp_apply(r);
 	}
