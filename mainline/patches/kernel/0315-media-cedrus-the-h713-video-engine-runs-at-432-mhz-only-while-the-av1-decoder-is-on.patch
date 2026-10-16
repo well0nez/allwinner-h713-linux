@@ -37,7 +37,14 @@ load the CCU reads PLL_VE at 432 MHz before and 600 MHz after:
    the known timeout next to VP8 after a codec switch, which the same
    sequence shows at 432 MHz; that pair alone was bit-exact 20 of 20.
 
-Not measured: an hour of 4K playback in Kodi, and the HY300PRO-G-EU.
+An hour of HEVC 2160p30 in Kodi at 600 MHz (a 60 s clip in a loop,
+16.10.2026): 29.75 frames/s out of the engine, no 30 s window below
+29.0, no timeout, no IOMMU fault, no eMMC error, the CPU and GPU zones
+at most 68.4 and 70.6 degrees C. A quarter of an hour of H.264 2160p30:
+28.85 frames/s (28.2 to 29.6), nothing in the log - H.264 at 2160p is at
+the engine's limit even at 600 MHz.
+
+Not measured: the HY300PRO-G-EU.
 ---
  .../staging/media/sunxi/cedrus/cedrus_hw.c    | 34 ++++++++++++++-----
  1 file changed, 26 insertions(+), 8 deletions(-)
