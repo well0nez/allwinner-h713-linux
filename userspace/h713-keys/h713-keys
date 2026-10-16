@@ -55,6 +55,7 @@ CODES = {"KEY_MUTE": 113, "KEY_VOLUMEDOWN": 114, "KEY_VOLUMEUP": 115, "KEY_F4": 
          "KEY_MICMUTE": 248, "KEY_SELECT": 353}
 NAMES = {v: k for k, v in CODES.items()}
 FOCUS_KEYS = {62: "up", 63: "down"}
+EDGE_SHOWN = {"up": "down", "down": "up"}   # run direction -> the edge picture h713-osd draws (Focus.tick)
 LATER = {139, 127, 158, 103, 108, 105, 106, 352, 61, 64}    # recognised, no action yet (Kodi's, with the launcher closed)
 # KEY_F6 is the IR code of the mouse and the microphone key (0x0266, PRJ_BRC_PAIR): over IR both only ask
 # for the Bluetooth pairing (kernel 0254). h713-remote-pair's watch pairs only while no remote is bonded.
@@ -264,8 +265,11 @@ class Focus:
             log("focus %s %d" % (self.running, self.steps))
             osd("focus", self.running)
         elif rc == 3:
-            log("focus %s %d: at the edge" % (self.running, self.steps))
-            osd("focus", self.running, "edge")
+            # The edge picture is the other direction's (Marco 16.10.2026, by eye at the wall): a run "down" to its
+            # stop showed the picture of the top edge. The keys and the arrows while driving stay as they are.
+            shown = EDGE_SHOWN[self.running]
+            log("focus %s %d: at the edge, shown as the %s edge" % (self.running, self.steps, shown))
+            osd("focus", shown, "edge")
             self.pending.pop(self.running, None)     # no further that way: the next run would only say so again
         elif rc == 7:
             log("no focus motor on this board (h713-focus exit 7) -- the focus keys do nothing")

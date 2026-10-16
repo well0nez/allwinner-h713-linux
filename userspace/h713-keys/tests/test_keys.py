@@ -205,7 +205,7 @@ class KeysTest(unittest.TestCase):
             f.write("3")
         self.press("f5")
         self.run_once()
-        self.assertIn("focus down edge", self.osds.lines)
+        self.assertIn("focus up edge", self.osds.lines)     # the edge picture is the other direction's
 
     def test_no_focus_motor_stops_asking(self):
         with open(self.focus_rc, "w") as f:
@@ -272,7 +272,7 @@ class KeysTest(unittest.TestCase):
         while focus.proc is not None:
             focus.tick()
             time.sleep(0.01)
-        self.assertEqual(shown, ["focus up edge"])
+        self.assertEqual(shown, ["focus down edge"])     # a run up ends with the other direction's edge picture
         with open(self.focus_log) as f:
             self.assertEqual(f.read().split(), ["up", "20"])    # the edge ended it, nothing ran after
 
