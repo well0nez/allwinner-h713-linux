@@ -26,8 +26,11 @@ After=dev-%i.device
 # that is the intention.
 StartLimitIntervalSec=60
 StartLimitBurst=3
-# ... and then the display MIPS is reloaded once (h713-tv-rescue.service, TODO 2.63): after a warm start the
-# MIPS can die while Linux registers its routines, and every open of the receiver is refused.
+# The display MIPS is reloaded by h713-tv-rescue.service (TODO 2.63): after a warm start the MIPS can die while Linux
+# registers its routines, and every open of the receiver is refused. OnFailure= fires at EVERY failure of this unit, not only
+# when the start limit is reached: a SIGKILL of the one running process already starts the rescue at once (HY310,
+# 16.10.2026; "Failed with result 'signal'", "Triggering OnFailure= dependencies"), and the restart after RestartSec follows.
+# The rescue restarts h713-warp too, so whatever is BindsTo= the warp (Kodi, the desktop) ends with it.
 OnFailure=h713-tv-rescue.service
 
 [Service]
