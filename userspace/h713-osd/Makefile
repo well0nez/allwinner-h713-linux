@@ -32,12 +32,12 @@ cross: h713-osd.$(TARGET)
 h713-osd.$(TARGET): $(SRC) $(HDR)
 	$(CROSS_CC) --target=$(TARGET) --sysroot=$(SYSROOT) -fuse-ld=lld $(CFLAGS) $(REPRO_CFLAGS) $(INC) \
 	    -isystem $(FT)/usr/include/freetype2 -o $@ $(SRC) -L$(FT)/usr/lib/aarch64-linux-gnu \
-	    -Wl,-Bstatic -lfreetype -lpng16 -lbz2 -lbrotlidec -lbrotlicommon -lz -Wl,-Bdynamic -lm
+	    -Wl,-Bstatic -lfreetype -lpng16 -lbz2 -lbrotlidec -lbrotlicommon -lz -Wl,-Bdynamic -lm -pthread
 
 host: h713-osd
 
 h713-osd: $(SRC) $(HDR)
-	$(HOST_CC) $(CFLAGS) $(INC) $$(pkg-config --cflags freetype2) -o $@ $(SRC) $$(pkg-config --libs freetype2) -lm
+	$(HOST_CC) $(CFLAGS) $(INC) $$(pkg-config --cflags freetype2) -o $@ $(SRC) $$(pkg-config --libs freetype2) -lm -pthread
 
 test: h713-osd
 	python3 -m unittest discover -s tests -v

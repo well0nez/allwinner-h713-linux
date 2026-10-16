@@ -77,6 +77,7 @@ licensed (FreeType License or GPL-2.0-only); this program is GPL-2.0, which take
 line of the `desktop` profile (`rootfs/packages-desktop.txt`); h713-osd opens it at run time from
 `/usr/share/fonts/truetype/quicksand/`. The OFL allows use and redistribution with the licence kept - the package carries it -
 and forbids selling the font by itself. The arrows of the launcher's hint line are drawn as shapes because the face has no U+25B2.
+The settings page (package S, `userspace/h713-settings`) draws with the same `osd_text` and the same face; nothing else is added.
 
 ## The decoders, the VA-API driver and Mesa (`rootfs/`)
 

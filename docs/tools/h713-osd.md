@@ -40,6 +40,41 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   hole shows the picture. Volume, mute and the power countdown are drawn into the page and ride in the tiles they touch.
   `H713_OSD_TRACE=1` adds a journal line per refresh and prefill with wall-clock times.
 
+## The page channel (package S)
+
+A program that has a whole page to show - [h713-settings](h713-settings.md) - does not claim h713-tv's overlay channel (there is
+one holder, this daemon); it asks for a canvas. The connection **stays** and is the page's life:
+
+```
+page open                 -> ok W H PITCH argb8888    plus one memfd (SCM_RIGHTS) of PITCH x H bytes, ARGB8888, straight alpha,
+                             the panel's size: the page draws into it. "ok unseen" when nothing can be seen (no signal, no
+                             h713-tv): no page, and its program takes the keys from nobody. "error the launcher is open" / "the page is open".
+page show X Y W H         -> ok | ok waiting          this rectangle is new (its rows, and its columns X..X+W; W of 0 or less: the full width)
+page hide                    the page goes (so does the end of the connection)
+```
+
+The daemon copies the new rows into its canvas, puts them into the buffer h713-tv shows - straight, or through the keystone's
+matrix as a **band** (two neighbour rows for the sampling, only the panel pixels whose source row lies in the band written: no
+seam, the launcher's reasoning, measured by a test that compares a page shown in pieces with the same page shown at once) - and
+answers after `osd show`: `ok waiting` means h713-tv has no picture at the moment and keeps the page for its return (the autofocus
+has the panel, a source changes its mode). Popups and the mute badge are not drawn while a page is open; the page covers the
+panel, and a launcher does not open over it. `page` in `ctl status` says open or closed. Host tests: `tests/test_page.py`.
+
+The new rows are kept as up to four ranges (one that lies within 24 rows of another joins it), so a row and the note at the foot are
+two small puts, not the rectangle around both; each is written a half row wider than it tiles, because a panel pixel reads two source
+rows. A whole page that was shown is owed to the **other** buffer too: it is put right after the answer, not at the next key.
+The ranges keep the columns too (the union of the shows that make one), so a pill in the middle of the panel is not put from edge to edge.
+
+**Pre-distortion cost** (16.10.2026, from the box: the opaque page through the owner's keystone cost 190 ms mean per key, 288 ms for an
+area switch): the source region is premultiplied once per put together with a **flat map** (per block of 8 x 8 texels the colour, if
+the block is one colour); a run of 16 panel pixels whose source texels - with the bilinear neighbours - all lie in flat blocks of one
+colour is written as that colour without a division per pixel (the ground of a page is most of it; on the settings page 90 % of the
+pixels); and the rows of the premultiply and of the put are cut among up to four threads (`H713_OSD_THREADS=1` for none, the tests;
+`H713_OSD_NOFLAT=1` for every pixel through the inverse, the tests). Every result is the pixel the plain loop made: the tests
+(`tests/test_page.py`) put the same pages with and without both and want the same buffers, bit for bit; the
+launcher's tiles use the same function, and its tests pass unchanged. Host bench of the S3 key mix, weighted mean key to answer: 18.0 ms before, 5.6 ms
+with four threads (6.7 two, 8.8 one) - `laeufe/skripte/bench-s3.py`; the board's factor to the host is about 10 (measured on the same keys).
+
 ## /etc/h713/osd.conf
 
 Read again when it changes, no restart:

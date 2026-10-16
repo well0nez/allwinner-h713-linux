@@ -25,6 +25,7 @@ class FakeTv(threading.Thread):
     def __init__(self, path, picture="ring"):
         super().__init__(daemon=True)
         self.path, self.picture, self.mute = path, picture, "off"
+        self.show_reply = b"ok\n"                # what "osd show" answers: b"ok waiting\n" when no picture is up
         self.lines, self.shown, self.conn = [], None, None
         self.bufs = []
         for i in range(2):
@@ -61,7 +62,7 @@ class FakeTv(threading.Thread):
                     c.sendall(("ok %s\n" % self.picture).encode())
                 elif line.startswith("osd show "):
                     self.shown = int(line.split()[2])
-                    c.sendall(b"ok\n")
+                    c.sendall(self.show_reply)
                 elif line == "mute":
                     c.sendall(("ok mute %s (DSP)\n" % self.mute).encode())
                 elif line == "osd hide":
