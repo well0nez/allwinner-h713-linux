@@ -104,6 +104,19 @@ blank lines). A good third of that is the control channel (§6a); the rest is th
    The kernel client's full restore (`drm_client_dev_restore`) hangs on the **last close** of the DRM device
    (`drm_lastclose`) - not on the master change; it is not needed, because 0093 puts the hardware back
    itself.
+3. **Nobody else commits the panel - and if somebody does, the next commit undoes it.** The kernel's fbdev
+   emulation has one way past the master: a switch of the VT from graphics to text mode makes
+   `drm_fb_helper_set_par()` force its own state (`FB_ACTIVATE_KD_TEXT`, the case kept for Xorg) - the
+   console's framebuffer on the primary plane at the zpos it finds, every other plane off. seatd did exactly
+   that whenever a compositor left the seat, and with an overlay shown (zpos 2) the console lay over the next
+   client's picture (16.10.2026, every change between two clients). The profile desktop runs seatd without a
+   VT (`SEATD_VTBOUND=0`), so the VT stays in text mode and a switch "to text" is no change; and every commit
+   of this program carries the primary plane as it wants it (§6h), so whatever lands there in between lasts
+   one frame. The console's **keyboard** is off (`K_OFF`) while anything but the console is on the panel -
+   picture or warp - and on again with the console: the remote and a keyboard on the desktop
+   would otherwise type into the hidden login prompt on tty1, Enter included (seatd did this while a
+   compositor had the seat). Programs that read the keys themselves read the input devices, which the VT's
+   keyboard mode does not touch.
 
 If an X server or a Wayland compositor runs on the board later, the master is taken and `h713-tv` does not
 get it (the program says so plainly then). The way there would be a DRM lease, or a start from inside the
@@ -425,7 +438,8 @@ second `h713-tv` does not start (`/run/h713-tv/lock`).
 **The console after switching back.** When the panel is handed back (signal loss, `off`, the end of the
 program) and at the start, the program unblanks the console (`TIOCL_UNBLANKSCREEN`) and switches the cursor
 on (`ESC[?25h`); on 08.09. the console otherwise stood frozen without a cursor (`fb0/blank` = 4, the cursor
-hidden by DECTCEM - the culprit was not found, `consoleblank` is 0).
+hidden by DECTCEM - the culprit was not found, `consoleblank` is 0). The console's keyboard comes back on with
+it (§3; at the start too, should an earlier run have left it off).
 
 ## 6b. Audio: the audio path follows the picture
 
@@ -758,13 +772,17 @@ pre-distorts only over the warp); `osd release` frees the buffers. The connectio
 dies leaves a hangup and the overlay goes with it.
 
 **Over the warp the change rides along.** While h713-warp draws, a show or hide is not committed on its own: it
-waits for the warp's next frame and goes into the same atomic commit (`osd_ride`). A separate commit met the warp's
+waits for the warp's next frame and goes into the same atomic commit (`osd_state_add`). Every commit of this
+program carries the primary plane as it is wanted - the overlay at zpos 2 or the console's framebuffer at zpos 0 -,
+the picture's (`display_show`) and every warp frame alike; the plane is in the commit anyway, the simple pipe's
+CRTC check adds every plane of the CRTC. A separate commit met the warp's
 non-blocking one (EBUSY), and the blocking retry once held this program's loop 45 ms; riding along, 0 busy in the
 measurements since. Without the warp (the ring) the overlay is committed at once.
 
-**The console comes back without the overlay.** At the claim this program remembers the primary plane's
-framebuffer - the console's - and puts it back at `zpos` 0 before it lets the master go, on every way the picture
-leaves: `display_hide` (signal lost, `ctl off`), `warp_release`, the exit. Measured on the HY310 (11.10.2026):
+**The console comes back without the overlay.** The first time this program commits the primary plane it
+remembers the plane's framebuffer - the console's - and puts it back at `zpos` 0 before it lets the master go, on
+every way the picture leaves: `display_hide` (signal lost, `ctl off`), `warp_release`, the exit - in the same
+commit that switches the video plane off. Measured on the HY310 (11.10.2026):
 mute overlay over the warp, `ctl off` -> console, `ctl osd` says "waiting for a picture"; `ctl auto` -> the warp
 claims again and the overlay is back by itself. Without the overlay nothing changes: no claim, no commit, the
 primary plane stays the console's.

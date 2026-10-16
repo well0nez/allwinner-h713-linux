@@ -1191,8 +1191,8 @@ static void window_blobs_free(const struct display *d, uint32_t a, uint32_t b)
 
 static void osd_drop(struct display *d);	/* the overlay off the panel: before every release of the master */
 static void osd_resume(struct display *d);	/* ... and back when the picture is */
-static bool osd_ride(drmModeAtomicReq *req, const struct display *d);	/* a queued change into the warp's commit */
-static void osd_rode(bool committed);
+static bool osd_state_add(drmModeAtomicReq *req, struct display *d, bool picture);	/* the primary plane into a commit */
+static void osd_state_committed(bool committed, bool picture);
 static void console_keys(bool on);	/* the console's keyboard: off while anything else is on the panel */
 
 static bool display_show(struct display *d)
@@ -1240,6 +1240,8 @@ static bool display_show(struct display *d)
 	 * it with h713-tv ctl set saturation 0..100; it survives plane
 	 * off/on because nothing resets the register any more.
 	 */
+	/* and the primary plane with it: the whole panel is said here, not only what changed */
+	bool primary = ok && osd_state_add(req, d, true);
 
 	if (!ok) {
 		drmModeAtomicFree(req);
@@ -1251,6 +1253,8 @@ static bool display_show(struct display *d)
 	ret = drmModeAtomicCommit(d->fd, req, 0, NULL);
 	drmModeAtomicFree(req);
 	window_blobs_free(d, sb, db);
+	if (primary)
+		osd_state_committed(!ret, true);
 
 	if (ret) {
 		warn("atomic commit refused: %s", strerror(errno));
@@ -1263,7 +1267,6 @@ static bool display_show(struct display *d)
 	}
 
 	d->on = true;
-	osd_resume(d);
 	console_keys(false);
 	info("picture         plane %u on, %ux%u out of the capture ring at %u,%u %ux%u on the panel%s",
 	     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h,
@@ -1281,10 +1284,34 @@ static bool display_show(struct display *d)
 static void console_restore(void);
 static void console_login_clean(void);
 
+/*
+ * The video plane off and the primary plane as it is to be without a picture, in one commit: the console's
+ * framebuffer at zpos 0 - no overlay over a plane that goes, channel 2 alone would show it. 0: done; -1: refused
+ * (errno); -2: a property is missing.
+ */
+static int display_plane_off(struct display *d)
+{
+	drmModeAtomicReq *req = drmModeAtomicAlloc();
+	bool ok, primary;
+	int ret;
+
+	if (!req)
+		fail("out of memory");
+	primary = osd_state_add(req, d, false);
+	if (!primary)
+		osd_drop(d);	/* the primary plane is not known: the overlay off on its own first, as before */
+	ok = add(req, d, "FB_ID", 0);
+	ok &= add(req, d, "CRTC_ID", 0);
+	ret = ok ? drmModeAtomicCommit(d->fd, req, 0, NULL) : -2;
+	drmModeAtomicFree(req);
+	if (primary && ok)
+		osd_state_committed(!ret, false);
+
+	return ret ? (ok ? -1 : -2) : 0;
+}
+
 static bool display_hide(struct display *d)
 {
-	drmModeAtomicReq *req;
-	bool ok;
 	int ret;
 
 	if (!d->on) {
@@ -1295,19 +1322,10 @@ static bool display_hide(struct display *d)
 		return true;
 	}
 
-	osd_drop(d);		/* no overlay over a plane that goes: channel 2 alone would show it */
-	req = drmModeAtomicAlloc();
-	if (!req)
-		fail("out of memory");
-
-	ok = add(req, d, "FB_ID", 0);
-	ok &= add(req, d, "CRTC_ID", 0);
-	ret = ok ? drmModeAtomicCommit(d->fd, req, 0, NULL) : -EINVAL;
-	drmModeAtomicFree(req);
-
+	ret = display_plane_off(d);
 	if (ret) {
 		warn("the plane cannot be switched off (%s) -- the picture is still up, the console is NOT back",
-		     ok ? strerror(errno) : "property missing");
+		     ret == -1 ? strerror(errno) : "property missing");
 		return false;
 	}
 
@@ -1461,12 +1479,19 @@ static bool warp_commit(struct display *d, int n, int fence, bool *busy, int *fl
 	if (ok && warp.client)
 		ok = drmModeAtomicAddProperty(req, d->crtc_id, prop_id(&d->crtc_props, "OUT_FENCE_PTR"),
 					      (uint64_t)(uintptr_t)&out) >= 0;
-	/* an overlay change waiting for this frame goes with it: one commit, no EBUSY between the two (6h) */
-	bool rides = ok && osd_ride(req, d);
+	/*
+	 * The primary plane goes with every frame, as this program wants it: the overlay or the console's framebuffer
+	 * under the video. An overlay change waiting for this frame goes with it (one commit, no EBUSY between the
+	 * two, 6h), and whatever else committed the primary plane meanwhile is undone by the next frame - the kernel's
+	 * fbdev emulation does that on a switch of the VT to text mode, past the DRM master (drm_fb_helper_set_par(),
+	 * FB_ACTIVATE_KD_TEXT), and laid the console over the picture (16.10.2026, every change between two clients).
+	 * The plane is in the commit anyway: the simple pipe's CRTC check adds every plane of the CRTC.
+	 */
+	bool rides = ok && osd_state_add(req, d, true);
 	ret = ok ? drmModeAtomicCommit(d->fd, req, flags, NULL) : -EINVAL;
 	drmModeAtomicFree(req);
 	if (rides)
-		osd_rode(!ret);
+		osd_state_committed(!ret, true);
 	if (!ret) {
 		warp.commits++;
 		*flip = out;
@@ -1495,7 +1520,14 @@ static void warp_release(struct display *d)
 	warp.peer = -1;
 	if (!warp.claimed)
 		return;
-	osd_drop(d);
+	/*
+	 * The video plane off and the console's framebuffer on the primary plane in one commit, before the
+	 * buffers go. Removing a framebuffer that is on a plane switches the plane off by itself (atomic_remove_fb),
+	 * which is how it went before - after a commit of its own for the console's framebuffer.
+	 */
+	if (display_plane_off(d))
+		warn("warp            the video plane did not go off with the release (%s) -- removing the buffers takes it off",
+		     strerror(errno));
 	warp_free(d);
 	warp.claimed = false;
 	warp.client = false;
@@ -1524,10 +1556,20 @@ static void warp_release(struct display *d)
  * picture, "osd hide" takes it away, "osd release" frees the buffers; the
  * connection is the lifetime.
  *
- * The console's own framebuffer is remembered at the claim and goes back
- * onto the plane, at zpos 0, before this program lets the master go - on
- * every way the picture leaves (display_hide, warp_release, the exit).
- * Otherwise the console would come back under an overlay, or not at all.
+ * The console's own framebuffer is learnt from the plane the first time
+ * this program commits it, and goes back onto the plane, at zpos 0, before
+ * this program lets the master go - on every way the picture leaves
+ * (display_hide, warp_release, the exit). Otherwise the console would come
+ * back under an overlay, or not at all.
+ *
+ * Every commit of this program carries the primary plane as this program
+ * wants it - the picture's (display_show), every warp frame, the overlay's
+ * own - so the panel is what this program says, whoever committed in
+ * between. The kernel's fbdev emulation does commit in between: a switch of
+ * the VT to text mode forces its own state past the DRM master
+ * (drm_fb_helper_set_par(), FB_ACTIVATE_KD_TEXT), the console's framebuffer
+ * on the primary plane at the zpos it found and every other plane off.
+ *
  * Without a picture (no signal, "off") there is nothing to lay the overlay
  * over: "show" keeps it as wanted and shows it when the picture is back
  * (an overlay over the console is the next step, P5 of the plan).
@@ -1543,7 +1585,8 @@ struct osd {
 	bool queued;			/* while the warp draws: the change goes with its next frame */
 	uint32_t plane_id;		/* the primary plane of our CRTC */
 	struct props props;
-	uint32_t console_fb;		/* the plane's framebuffer at the claim: the console's */
+	uint32_t console_fb;		/* the plane's framebuffer when it was first looked at: the console's */
+	bool console_known;
 	uint32_t handle[OSD_BUFS], fb_id[OSD_BUFS];
 	unsigned int pitch;
 	unsigned long shows, busy, errors;
@@ -1635,20 +1678,20 @@ static bool osd_alloc(struct display *d, int *fds)
 	return true;
 }
 
-/* the primary plane's eleven properties: framebuffer fb at zpos z, the whole panel */
+/* the primary plane's eleven properties: framebuffer fb at zpos z, the whole panel; fb 0 is the plane off */
 static bool osd_props(drmModeAtomicReq *req, const struct display *d, uint32_t fb, uint64_t z)
 {
 	static const char *const name[] = {
-		"FB_ID", "CRTC_ID", "SRC_X", "SRC_Y", "SRC_W", "SRC_H",
-		"CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H", "zpos",
+		"FB_ID", "CRTC_ID", "zpos", "SRC_X", "SRC_Y", "SRC_W", "SRC_H",
+		"CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H",
 	};
 	uint64_t val[11] = {
-		fb, d->crtc_id, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16,
-		0, 0, d->width, d->height, z,
+		fb, fb ? d->crtc_id : 0, z, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16,
+		0, 0, d->width, d->height,
 	};
 	unsigned int i;
 
-	for (i = 0; i < 11; i++) {
+	for (i = 0; i < (fb ? 11u : 3u); i++) {
 		uint32_t id = prop_id(&osd.props, name[i]);
 
 		if (!id || drmModeAtomicAddProperty(req, osd.plane_id, id, val[i]) < 0)
@@ -1657,24 +1700,70 @@ static bool osd_props(drmModeAtomicReq *req, const struct display *d, uint32_t f
 	return true;
 }
 
-/* While the warp draws, a change of the overlay waits for its next frame and goes in the same commit
- * (warp_commit): the warp's non-blocking commits would otherwise meet ours (EBUSY) and a blocking retry
- * held the loop 45 ms (11.10.2026). */
-static bool osd_ride(drmModeAtomicReq *req, const struct display *d)
+/*
+ * The plane and the console's framebuffer, looked up the first time they are needed - before the first commit of
+ * a picture or a warp, h713-osd or not. The framebuffer is whatever the plane holds then, unless it is one of ours:
+ * the console's (the fbdev emulation's), or 0 when the plane is off - then "the console" is the plane off, and the
+ * kernel's client paints it again once the master is gone and it is asked to (a switch to text mode, the last
+ * close).
+ */
+static bool osd_learn(struct display *d)
 {
-	if (!osd.claimed || !osd.queued)
+	drmModePlane *p;
+
+	if (!osd_find_plane(d))
 		return false;
-	return osd_props(req, d, osd.want >= 0 ? osd.fb_id[osd.want] : osd.console_fb, osd.want >= 0 ? 2 : 0);
+	if (osd.console_known)
+		return true;
+	p = drmModeGetPlane(d->fd, osd.plane_id);
+	if (!p)
+		return false;
+	if (!osd.claimed || (p->fb_id != osd.fb_id[0] && p->fb_id != osd.fb_id[1])) {
+		osd.console_fb = p->fb_id;
+		osd.console_known = true;
+		if (!p->fb_id)
+			warn("osd             the primary plane %u is off -- the console comes back only when the kernel repaints it",
+			     osd.plane_id);
+	}
+	drmModeFreePlane(p);
+
+	return osd.console_known;
 }
 
-static void osd_rode(bool committed)
+/* the buffer the primary plane is to carry, -1: the console's framebuffer under the video */
+static int osd_wanted(bool picture)
 {
+	if (!osd.claimed || osd.want < 0)
+		return -1;
+	return picture ? osd.want : -1;
+}
+
+/*
+ * The primary plane as this program wants it, into a commit that is being made anyway: every picture, every warp
+ * frame (warp_commit). picture: the commit puts a picture up or keeps one there. A change of the overlay waiting
+ * for the warp's next frame goes in the same commit (the warp's non-blocking commits would otherwise meet ours,
+ * EBUSY, and a blocking retry held the loop 45 ms, 11.10.2026).
+ */
+static bool osd_state_add(drmModeAtomicReq *req, struct display *d, bool picture)
+{
+	int w;
+
+	if (!osd_learn(d))
+		return false;
+	w = osd_wanted(picture);
+	return osd_props(req, d, w >= 0 ? osd.fb_id[w] : osd.console_fb, w >= 0 ? 2 : 0);
+}
+
+static void osd_state_committed(bool committed, bool picture)
+{
+	int w = osd_wanted(picture);
+
 	if (!committed)
-		return;		/* the frame was dropped: the change waits for the next one */
-	osd.queued = false;
-	osd.shown = osd.want >= 0;
-	if (osd.shown)
+		return;		/* the frame was dropped: a change waits for the next one */
+	if (w >= 0 && (osd.queued || !osd.shown))
 		osd.shows++;
+	osd.queued = false;
+	osd.shown = w >= 0;
 }
 
 /* One commit of the primary plane on its own (no warp, or the master is about to go): non-blocking
@@ -5434,7 +5523,6 @@ static void cmd_osd_claim(struct reply *r, struct display *d, int conn)
 	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1,
 			      .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
 	struct cmsghdr *cm;
-	drmModePlane *p;
 	int i, bad;
 
 	if (osd.claimed || conn < 0) {
@@ -5446,10 +5534,9 @@ static void cmd_osd_claim(struct reply *r, struct display *d, int conn)
 		reply_fail(r, "no primary plane with zpos and ARGB8888 on CRTC %u -- kernel 0251?", d->crtc_id);
 		return;
 	}
-	p = drmModeGetPlane(d->fd, osd.plane_id);
-	osd.console_fb = p ? p->fb_id : 0;
-	if (p)
-		drmModeFreePlane(p);
+	/* the console's framebuffer, read again: nothing of ours is on the plane before a claim */
+	osd.console_known = false;
+	osd_learn(d);
 	bad = !osd_alloc(d, fds);
 	if (bad) {
 		reply_fail(r, "the two %ux%u ARGB8888 buffers could not be made: %s", d->width,
