@@ -118,6 +118,7 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 
+#include <linux/kd.h>
 #include <linux/tiocl.h>
 #include <linux/videodev2.h>
 
@@ -1192,6 +1193,7 @@ static void osd_drop(struct display *d);	/* the overlay off the panel: before ev
 static void osd_resume(struct display *d);	/* ... and back when the picture is */
 static bool osd_ride(drmModeAtomicReq *req, const struct display *d);	/* a queued change into the warp's commit */
 static void osd_rode(bool committed);
+static void console_keys(bool on);	/* the console's keyboard: off while anything else is on the panel */
 
 static bool display_show(struct display *d)
 {
@@ -1262,6 +1264,7 @@ static bool display_show(struct display *d)
 
 	d->on = true;
 	osd_resume(d);
+	console_keys(false);
 	info("picture         plane %u on, %ux%u out of the capture ring at %u,%u %ux%u on the panel%s",
 	     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h,
 	     d->zoom == ZOOM_IN ? ", zoomed in" :
@@ -1931,6 +1934,7 @@ static void console_restore(void)
 		complained = true;
 	}
 	close(fd);
+	console_keys(true);
 
 	/*
 	 * fbcon's own record of the blank state. The unblank above paints and
@@ -1947,6 +1951,51 @@ static void console_restore(void)
 	}
 
 	console_login_clean();
+}
+
+/*
+ * The console's keyboard is off while anything but the console is on the panel - the picture, a warp - and on
+ * again with the console (console_restore()). The remote is a keyboard to the kernel (see below), and
+ * so is a keyboard on the desktop: with the console's keyboard on, every key typed into Kodi, labwc or the browser
+ * reached the hidden login prompt on tty1 as well, an Enter included, and ctrl-alt-del rebooted the box. seatd did
+ * this while a compositor had the seat (K_OFF on open, K_UNICODE on close); it no longer manages the VT, so this
+ * program, which owns the panel, owns this switch. Programs that read the keys themselves (h713-keys, libinput in
+ * cage and labwc) read the input devices, which a VT's keyboard mode does not touch. The first call (the start)
+ * puts a keyboard left off by an earlier run back on; the mode before "off" is restored, K_UNICODE if it was
+ * unknown. Best effort, said once.
+ */
+static void console_keys(bool on)
+{
+	static int state = -1;		/* -1 unknown (the start), 0 on, 1 off */
+	static int before = K_UNICODE;
+	static bool complained;
+	int fd, mode = -1;
+
+	if (state == (on ? 0 : 1))
+		return;
+	fd = open(CONSOLE_TTY, O_RDWR | O_NOCTTY | O_CLOEXEC);
+	if (fd < 0) {
+		if (!complained)
+			warn("%s: %s -- the console's keyboard is left as it is", CONSOLE_TTY, strerror(errno));
+		complained = true;
+		return;
+	}
+	if (ioctl(fd, KDGKBMODE, &mode))
+		mode = -1;
+	if (!on && mode >= 0 && mode != K_OFF)
+		before = mode;
+	if (on && state < 0 && mode != K_OFF) {
+		state = 0;		/* the start, and it is on: nothing to do */
+	} else if (ioctl(fd, KDSKBMODE, on ? before : K_OFF)) {
+		if (!complained)
+			warn("KDSKBMODE %s: %s -- the console's keyboard is left as it is", on ? "on" : "off", strerror(errno));
+		complained = true;
+	} else {
+		if (on && state < 0)
+			info("console         the keyboard was off (an earlier run) -- on again");
+		state = on ? 0 : 1;
+	}
+	close(fd);
 }
 
 /*
@@ -5207,6 +5256,7 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	warp.told = (int)ctl.source;
 	warp.peer = conn;
 	d->warped = true;
+	console_keys(false);
 	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u",
 	     client ? " for a Wayland client (no signal needed, the HDMI sound silent)" : "",
 	     d->width, d->height, warp.pitch, warp.coff, d->plane_id);
@@ -6892,6 +6942,8 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 			reply_fail(r, "the plane cannot be switched off");
 	} else if (!strcmp(cmd, "console")) {
 		console_restore();
+		if (d->on || d->warped)
+			console_keys(false);	/* the console is not on the panel: its keyboard stays off */
 		reply_add(r, "ok console unblanked, cursor on\n");
 	} else if (!strcmp(cmd, "list")) {
 		cmd_list(r, cap);

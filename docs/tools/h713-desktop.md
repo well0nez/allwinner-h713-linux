@@ -19,7 +19,9 @@ systemctl stop h713-desktop.service
 
 Kodi runs as the system user `h713-kodi`; the desktop and the browser run as **`h713-desktop`** (`usr/lib/sysusers.d/h713-desktop.conf`,
 made by systemd-sysusers at the first boot; one user for both modes, they never run together and share the Firefox profile). Groups:
-`video` (seatd's socket, h713-warp's Wayland socket, the decoders' `/dev/video*` and `/dev/media*`), `render` (the GPU's render
+`video` (seatd's socket - seatd runs without a VT here, `SEATD_VTBOUND=0` in `seatd.service.d/10-h713-no-vt.conf`: bound to a VT it
+switched tty1 back to text mode whenever a compositor ended, and the kernel then laid the console over the next client's picture -,
+h713-warp's Wayland socket, the decoders' `/dev/video*` and `/dev/media*`), `render` (the GPU's render
 node), `audio` (ALSA, the DSP bridge). The home is the units' StateDirectory `/var/lib/h713-desktop`; `/tmp` is private. The hardening is
 `h713-warp.service`'s (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `RestrictSUIDSGID`) **without**
 `MemoryDenyWriteExecute`, which Firefox's JavaScript compiler cannot live with. Only the start command needs root: `ExecStartPre=+h713-kodi-switch source`
