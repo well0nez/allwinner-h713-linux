@@ -3419,6 +3419,46 @@ static void audio_open_source(struct audio *a, struct capture *cap)
  * of times, and then it stops for good -- a bounded wait with a reason, not
  * a loop with a hope.
  */
+/*
+ * "ctl mute" outlives this program, not the boot. The listener's mute was a variable here, and this program is
+ * restarted behind the listener's back: after every standby that parked the display MIPS (h713-mips-restart), by
+ * the rescue, after a crash - and came back loud (16.10.2026: muted, standby, woken, the box played again). So the
+ * mute is kept in MUTE_FILE, on the tmpfs: a restart finds it, a cold start does not, and after switching the box
+ * on it is audible, as decided. Not in the unit's RuntimeDirectory, which systemd empties at every stop; the
+ * directory comes from tmpfiles.d (h713-tv.tmpfiles), the unit makes it writable (ReadWritePaths=). Without it the
+ * mute is this run's alone, as before, and said once.
+ */
+#define MUTE_FILE	"/run/h713-tv-state/mute"
+
+static bool mute_kept(void)
+{
+	char word[8] = "";
+	FILE *f = fopen(MUTE_FILE, "r");
+
+	if (!f)
+		return false;
+	if (!fgets(word, sizeof(word), f))
+		word[0] = '\0';
+	fclose(f);
+
+	return !strncmp(word, "on", 2);
+}
+
+static void mute_keep(bool on)
+{
+	static bool complained;
+	FILE *f = fopen(MUTE_FILE ".new", "w");
+	bool ok = f && fputs(on ? "on\n" : "off\n", f) >= 0;
+
+	if (f && fclose(f))
+		ok = false;
+	if (ok && rename(MUTE_FILE ".new", MUTE_FILE))
+		ok = false;
+	if (!ok && !complained)
+		warn("%s: %s -- the mute is not kept over a restart of this program", MUTE_FILE, strerror(errno));
+	complained |= !ok;
+}
+
 static void audio_open(struct audio *a, struct capture *cap,
 		       enum audio_policy policy)
 {
@@ -3440,6 +3480,10 @@ static void audio_open(struct audio *a, struct capture *cap,
 	if (a->settle_fd < 0 || a->tick_fd < 0)
 		fail("timerfd_create for the audio: %s", strerror(errno));
 
+	/* before the cards: audio_search() puts the mute where the listener left it */
+	a->mute = mute_kept();
+	if (a->mute)
+		info("audio           ctl mute on -- kept from the run before (%s)", MUTE_FILE);
 	audio_open_source(a, cap);
 	a->searching = true;
 	a->searched = 1;
@@ -7064,6 +7108,7 @@ static void cmd_mute(struct reply *r, struct audio *a, const char *text)
 		}
 		if (a->enabled)
 			audio_level(a);
+		mute_keep(a->mute);
 	}
 	if (!a->enabled)
 		reply_add(r, "ok mute %s -- saved, %s\n", a->mute ? "on" : "off",

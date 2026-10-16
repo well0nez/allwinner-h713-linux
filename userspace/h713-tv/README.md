@@ -486,9 +486,12 @@ device's tones (0 dB, the S16 reference; `-t`/`--hdmi-trim DB` lowers it), `HDMI
 automaton's silence. `ctl mute on` switches the DSP mute (for HDMI) and additionally the codec's switch if
 it has one - the H713 codec has no mixer stage and therefore no `DAC Playback Switch`, its
 `Line Out Playback Switch` (the LINEOUT enables in `0x02030310`) is the one that exists; order: whatever
-goes quiet goes quiet first, whatever opens up opens up last. A `ctl mute` does not outlive the program on
-the codec (the switch is reset on exit), or the next `aplay` would be silent for a reason nobody can see any
-more.
+goes quiet goes quiet first, whatever opens up opens up last. A `ctl mute` outlives a restart of the program
+within a boot - after a standby that parked the display MIPS h713-tv is restarted, and it came back loud
+(16.10.2026) - and not the boot: it is kept in `/run/h713-tv-state/mute` (a tmpfs directory from
+`h713-tv.tmpfiles`, made writable by the unit; the unit's own RuntimeDirectory is emptied at every stop) and set
+again at the start, before the cards are opened. On exit the codec's switch is reset all the same, or the next
+`aplay` would be silent for a reason nobody can see any more.
 
 **The device's own sounds** (plan [doku/102](../../doku/102-plan-audio-mischung.md), package I; kernel
 patch 0176). The DAC takes one source, and a PC keeps its HDMI audio stream open even in silence (PipeWire,
