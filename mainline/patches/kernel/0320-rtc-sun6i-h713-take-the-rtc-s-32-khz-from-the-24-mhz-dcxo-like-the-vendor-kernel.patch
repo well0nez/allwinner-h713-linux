@@ -1,0 +1,138 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: rtc: sun6i: h713: take the RTC's 32 kHz from the 24 MHz DCXO like the vendor kernel
+
+The H713 boards carry no 32 kHz crystal, and the H6 clock provider this
+RTC node has used since 0031 leaves the RTC on the internal 16 MHz RC:
+LOSC_CTRL 0x8000 (the key, the auto-switch bypass). Measured on a HY310
+under this kernel on 2026-10-16, /sys/class/rtc/rtc0/since_epoch against
+the NTP-disciplined system clock over 190 s: 1.357 s per RTC second, the
+RTC loses 26 %.
+
+Three things follow from that. The kernel's 11-minute RTC update
+(CONFIG_RTC_SYSTOHC) then moves the RTC forward by ~174 s each time, and
+the RTC core expires every alarm set less far ahead (rtc_set_time ->
+rtc_timer_do_work): a 90 s rtcwake alarm armed in the wrong 10 s is gone
+before the suspend, and the arisc driver's prepare sees "no RTC alarm"
+(this is how one acceptance run slept without a wake timer). hwclock
+and timedatectl drift up to 174 s between two updates. And the losc
+consumers in the device tree (the CCU, the pinctrl debounce, the R_CCU)
+run on 24 kHz while their drivers assume 32768 Hz.
+
+The vendor kernel (5.4.99 on a HY350, same SoC) does not calibrate the
+RC; it does not use it. Its clock tree hangs rtc32k on dcxo24M-div32k,
+the RTC block's divider from the 24 MHz crystal, with LOSC_OUT_GATING
+0x10000 and LOSC_CTRL 0x4002, and its RTC keeps time to the second
+(122 s of system time = 122 RTC seconds). Mainline models the same path
+for the H616 in ccu-sun6i-rtc.c: the gate "osc24M-32k" is bit 16 of
+LOSC_OUT_GATING, the mux "rtc-32k" is bit 1 of LOSC_CTRL. Give the H713
+its own clock data that opens the gate and selects this path when the
+node names no 32 kHz crystal, and report losc as 32768 Hz while the mux
+bit is set.
+
+Measured at runtime on the HY310 before this patch, by writing the
+registers: with the mux bit alone the RTC stands still (since_epoch did
+not move for 90 s); with gate and mux it runs at 1.000 s per RTC second
+(60 s of system time = 60 RTC seconds). Restored, the RTC counted again.
+The same values written by this driver at boot are what the patch
+deploys; its own measurement on the device follows.
+
+diff --git a/drivers/rtc/rtc-sun6i.c b/drivers/rtc/rtc-sun6i.c
+index e0cbf17b3..22f789dfd 100644
+--- a/drivers/rtc/rtc-sun6i.c
++++ b/drivers/rtc/rtc-sun6i.c
+@@ -33,12 +33,26 @@
+ #define SUN6I_LOSC_CTRL				0x0000
+ #define SUN6I_LOSC_CTRL_KEY			(0x16aa << 16)
+ #define SUN6I_LOSC_CTRL_AUTO_SWT_BYPASS		BIT(15)
++#define SUN6I_LOSC_CTRL_AUTO_SWT_EN		BIT(14)
+ #define SUN6I_LOSC_CTRL_ALM_DHMS_ACC		BIT(9)
+ #define SUN6I_LOSC_CTRL_RTC_HMS_ACC		BIT(8)
+ #define SUN6I_LOSC_CTRL_RTC_YMD_ACC		BIT(7)
+ #define SUN6I_LOSC_CTRL_EXT_LOSC_EN		BIT(4)
+ #define SUN6I_LOSC_CTRL_EXT_OSC			BIT(0)
++/*
++ * H713 (sun50iw12): the RTC's 32 kHz can come from the 24 MHz DCXO through a
++ * divider in the RTC block (the vendor kernel's "dcxo24M-div32k", mainline's
++ * "osc24M-32k" of the H616 model): its gate is bit 16 of LOSC_OUT_GATING, the
++ * rtc-32k mux is this bit of LOSC_CTRL. The vendor kernel runs with both set
++ * (0x60 = 0x10000, LOSC_CTRL 0x4002) and its RTC keeps time to the second.
++ * Measured on a HY310 on 2026-10-16: on the internal RC (this driver's H6
++ * default) the RTC loses 26 % (1.357 s per RTC second); with the mux alone
++ * it stops; with gate and mux it runs at 1.000 s per RTC second.
++ */
++#define SUN6I_LOSC_CTRL_32K_SRC_DCXO		BIT(1)
+ #define SUN6I_LOSC_CTRL_ACC_MASK		GENMASK(9, 7)
++#define SUN6I_LOSC_OUT_GATING_OSC24M_32K	BIT(16)
++#define SUN6I_LOSC_DCXO_32K_RATE		32768
+ 
+ #define SUN6I_LOSC_CLK_PRESCAL			0x0008
+ 
+@@ -137,6 +151,7 @@ struct sun6i_rtc_clk_data {
+ 	unsigned int has_out_clk : 1;
+ 	unsigned int has_losc_en : 1;
+ 	unsigned int has_auto_swt : 1;
++	unsigned int has_dcxo_32k : 1;	/* losc from the 24 MHz DCXO (H713) */
+ };
+ 
+ #define RTC_LINEAR_DAY	BIT(0)
+@@ -169,6 +184,10 @@ static unsigned long sun6i_rtc_osc_recalc_rate(struct clk_hw *hw,
+ 	if (val & SUN6I_LOSC_CTRL_EXT_OSC)
+ 		return parent_rate;
+ 
++	/* The DCXO path divides the crystal to 32768 Hz; the RC is not in it. */
++	if (rtc->data->has_dcxo_32k && (val & SUN6I_LOSC_CTRL_32K_SRC_DCXO))
++		return SUN6I_LOSC_DCXO_32K_RATE;
++
+ 	if (rtc->data->fixed_prescaler)
+ 		parent_rate /= rtc->data->fixed_prescaler;
+ 
+@@ -264,6 +283,16 @@ static void __init sun6i_rtc_clk_init(struct device_node *node,
+ 		reg |= SUN6I_LOSC_CTRL_EXT_OSC;
+ 		if (rtc->data->has_losc_en)
+ 			reg |= SUN6I_LOSC_CTRL_EXT_LOSC_EN;
++	} else if (rtc->data->has_dcxo_32k) {
++		/*
++		 * No 32 kHz crystal: take the 32 kHz from the 24 MHz DCXO as the
++		 * vendor kernel does, not from the internal RC. The divider's
++		 * gate first - selected without it, the RTC stands still.
++		 */
++		writel(readl(rtc->base + SUN6I_LOSC_OUT_GATING) |
++		       SUN6I_LOSC_OUT_GATING_OSC24M_32K,
++		       rtc->base + SUN6I_LOSC_OUT_GATING);
++		reg |= SUN6I_LOSC_CTRL_AUTO_SWT_EN | SUN6I_LOSC_CTRL_32K_SRC_DCXO;
+ 	}
+ 	writel(reg, rtc->base + SUN6I_LOSC_CTRL);
+ 
+@@ -387,10 +416,30 @@ CLK_OF_DECLARE_DRIVER(sun50i_h6_rtc_clk, "allwinner,sun50i-h6-rtc",
+  * The H713 (sun50iw12) reuses the H6 RTC clock block and is the canonical
+  * osc32k/iosc provider on that SoC, but it stores the calendar date as a
+  * linear day count like the H616/R329 (see the OF match data below), so it
+- * pairs the H6 clock provider with RTC_LINEAR_DAY.
++ * pairs the H6 clock provider with RTC_LINEAR_DAY. Its boards carry no 32 kHz
++ * crystal; the RTC's 32 kHz comes from the 24 MHz DCXO through the block's own
++ * divider, the way the vendor kernel runs it (has_dcxo_32k; gate and mux
++ * measured on a HY310: 1.000 s per RTC second). With the H6 default - the
++ * internal RC, no auto-switch - the RTC lost 26 % on that board (1.357 s per
++ * RTC second), the kernel's 11-minute RTC update then jumped it forward by
++ * ~174 s and expired every RTC alarm set less far ahead, and the losc
++ * consumers (CCU, pinctrl, R_CCU) ran on 24 kHz while assuming 32768.
+  */
++static const struct sun6i_rtc_clk_data sun50i_h713_rtc_data = {
++	.rc_osc_rate = 16000000,
++	.fixed_prescaler = 32,
++	.has_prescaler = 1,
++	.has_out_clk = 1,
++	.has_losc_en = 1,
++	.has_dcxo_32k = 1,
++};
++
++static void __init sun50i_h713_rtc_clk_init(struct device_node *node)
++{
++	sun6i_rtc_clk_init(node, &sun50i_h713_rtc_data);
++}
+ CLK_OF_DECLARE_DRIVER(sun50i_h713_rtc_clk, "allwinner,sun50i-h713-rtc",
+-		      sun50i_h6_rtc_clk_init);
++		      sun50i_h713_rtc_clk_init);
+ 
+ /*
+  * The R40 user manual is self-conflicting on whether the prescaler is
