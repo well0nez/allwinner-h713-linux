@@ -342,6 +342,51 @@ class Launcher(unittest.TestCase):
         self.assertIn((m.EVIOCGRAB, 0), grabbed)
         self.assertIn("suspend", r.calls())                          # the default of this Root is standby
 
+    def run_with_datagram(self, r, word, key_down, after=None, wait=0.8):
+        """run(once=True) in a thread, h713-osd and the key state stood in for; one datagram, then `after(fifo)`; -> (m, said, thread)"""
+        import socket
+        m = load()
+        m.ROOT, m.SYSTEMCTL, m.CTL = r.dir, [r.p("systemctl")], r.p("power.sock")
+        m.key_down = lambda fd: key_down
+        said = []
+        m.osd = lambda line: said.append(line) or "ok"
+        t = threading.Thread(target=lambda: m.run(once=True), daemon=True)
+        t.start()
+        c = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)
+        for _ in range(100):
+            try:
+                c.sendto(word, r.p("power.sock"))
+                break
+            except OSError:
+                time.sleep(0.02)
+        c.close()
+        time.sleep(wait)
+        return m, said, t
+
+    def test_down_with_power_held_starts_the_press_here_and_a_long_hold_powers_off(self):
+        """N-2: the launcher or a page took the press and let go of the devices; h713-power never saw it go down"""
+        r = Root(conf="long_s = 1\n")
+        m, said, t = self.run_with_datagram(r, b"down", True, wait=0.5)
+        self.assertEqual([l for l in said if l.startswith("power ")], [])            # no countdown: the key is still down
+        t.join(5)                                                                     # the 1 s of long_s run out: power off
+        self.assertFalse(t.is_alive())
+        self.assertIn("poweroff", r.calls())
+
+    def test_down_and_a_release_before_the_long_press_is_a_short_press(self):
+        r = Root(conf="long_s = 3\n")
+        m, said, t = self.run_with_datagram(r, b"down", True, wait=0.4)
+        with open(r.fifo, "wb") as f:                                                 # the release, 0.4 s after the press
+            f.write(struct_event(0))
+        time.sleep(0.6)
+        self.assertTrue([l for l in said if l.startswith("power ")], said)           # the countdown is on
+        self.assertNotIn("poweroff", r.calls())
+        self.assertNotIn("suspend", r.calls())
+
+    def test_down_for_a_key_that_is_up_already_is_a_short_press_at_once(self):
+        r = Root(conf="long_s = 3\n")
+        m, said, t = self.run_with_datagram(r, b"down", False, wait=0.6)
+        self.assertTrue([l for l in said if l.startswith("power ")], said)
+
     def test_a_countdown_that_nobody_sees_holds_nothing(self):
         m = load()
         held = []

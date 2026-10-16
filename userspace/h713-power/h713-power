@@ -17,8 +17,11 @@ A standby parks the display MIPS and nothing in the kernel starts it again: the 
 (HDMI or Kodi) come back through systemd, for every way into the sleep - this key, the launcher, Kodi's own menu,
 `systemctl suspend`: h713-sleep-pre.service and h713-sleep-post.service run `h713-mode` around sleep.target
 (media side project, package H). While the post unit runs a short press does nothing, a long one still powers off.
-The launcher (h713-keys) hands a Power press on as a datagram "short" to the socket of H713_POWER_CTL; the 15 s of
-the countdown hold the remote's devices (EVIOCGRAB), so that Kodi does not move with the arrows and OK.
+The launcher (h713-keys) and a page of h713-settings hand a Power press on as a datagram "down" to the socket of
+H713_POWER_CTL (they let the devices go first, so this loop did not see the press): it starts the press here on the device
+that has the key down, and the release or the 3 s decide as ever - a long hold still powers off. The datagram "short" is a
+short press at once. The 15 s of the countdown hold the remote's devices (EVIOCGRAB), so that Kodi does not move with the
+arrows and OK.
 The power-off itself is crust's on a board whose crust says it can (the arisc driver's build2 bit 24): the
 rails off, about 0.3 W, the key or the remote wakes into a fresh boot (doku/188); else the power-on gate.
 `h713-power set default standby|poweroff` (and the other keys of power.conf) changes the policy for the next
@@ -42,7 +45,7 @@ import time
 
 ROOT = os.environ.get("H713_POWER_ROOT", "/")
 SYSTEMCTL = shlex.split(os.environ.get("H713_SYSTEMCTL", "systemctl"))
-CTL = os.environ.get("H713_POWER_CTL", "/run/h713-power.sock")   # datagrams: "short" = a short press (h713-keys)
+CTL = os.environ.get("H713_POWER_CTL", "/run/h713-power.sock")   # datagrams: "down" = Power went down, "short" = a short press (h713-keys)
 EVIOCGRAB = 0x40044590                       # _IOW('E', 0x90, int)
 EVENT = struct.Struct("qqHHi")               # struct input_event on a 64-bit kernel
 EV_KEY, KEY_POWER = 1, 116
@@ -145,6 +148,17 @@ def power_key_devices(conf):
             continue
         found.append(path("dev/input", os.path.basename(d)))
     return found
+
+
+def key_down(fd):
+    """True when the device's KEY_POWER is down right now (EVIOCGKEY: the kernel's key state, also under somebody else's grab);
+    False when it is up, or when the device cannot say."""
+    buf = bytearray(KEY_POWER // 8 + 1)
+    try:
+        fcntl.ioctl(fd, (2 << 30) | (len(buf) << 16) | (ord("E") << 8) | 0x18, buf)    # _IOR('E', 0x18, len)
+    except OSError:
+        return False
+    return bool(buf[KEY_POWER // 8] >> (KEY_POWER % 8) & 1)
 
 
 class Key:
@@ -425,8 +439,19 @@ def run(once):
         long_ns, ignore_ns = int(float(conf["long_s"]) * 1e9), int(float(conf["ignore_s"]) * 1e9)
         ready = select.select([d[0] for d in devices.values()] + [ctl], [], [], 0.1 if cd else 0.25)[0]
         actions = []
-        if ctl in ready and ctl.recv(64).strip() == b"short":
+        word = ctl.recv(64).strip() if ctl in ready else b""
+        if word == b"short":
             actions.append("short")              # the launcher took the press (h713-keys)
+        elif word == b"down":
+            # The launcher or a page of h713-settings took the press and let the devices go: this loop never saw Power go down, so
+            # the 3 s of a long press could not run (N-2). Start it here on the device that has the key down; the release (or the
+            # 3 s) then decides, as for any press. A key that is up already, or a device that cannot say, is a short press.
+            t = time.clock_gettime_ns(CLOCK_BOOTTIME)
+            pressed = [key for fd, _, key in devices.values() if key_down(fd)]
+            for key in pressed:
+                key.down, key.fired = t, False
+            if not pressed:
+                actions.append("short")
         for p, (fd, stamped, key) in list(devices.items()):
             now = time.clock_gettime_ns(time.CLOCK_BOOTTIME)
             if fd in ready:

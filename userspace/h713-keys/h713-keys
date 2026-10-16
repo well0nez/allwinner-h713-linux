@@ -413,10 +413,10 @@ class Launcher:
             except OSError as err:
                 log("launcher: %s does not start (%s)" % (e["label"], err.strerror), "<4>")
         elif code == 116 and value == 1:     # the box is to go off: the countdown is h713-power's
-            self.close(devices)
+            self.close(devices)              # the devices go first; "down": h713-power never saw the press, it starts it now (N-2)
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
-                    s.sendto(b"short", POWER_SOCK)
+                    s.sendto(b"down", POWER_SOCK)
             except OSError as err:
                 log("Power: h713-power does not answer (%s) - the press is lost" % err.strerror, "<4>")
         else:

@@ -77,8 +77,9 @@ remember the running mode, HDMI or Kodi, in `/run/h713-mode.resume` and end it) 
 `h713-mode` (`userspace/h713-power/h713-mode`). h713-power only waits: while the post unit is `activating` a short press does
 nothing; after a standby that did not happen (aborted by a wake-up, or refused with `refused = log`) it starts the post unit once
 more, which does nothing twice. It also answers `can-standby` (exit 0 when a standby can happen now; the launcher's entry asks), takes
-a datagram `short` on `/run/h713-power.sock` (`H713_POWER_CTL`) as a short press (the launcher hands a Power press on that
-way), and holds the remote's devices (`EVIOCGRAB`) for the 15 s of its countdown, so that Kodi does not move with Left, Right,
+a datagram on `/run/h713-power.sock` (`H713_POWER_CTL`): `down` is a Power press that the launcher or a page of h713-settings took and let
+go of the devices for - h713-power starts it on the device that has the key down, and the release or the 3 s decide as for any press, so a
+long hold still powers off; `short` is a short press at once (and `down` for a key that is up already). It holds the remote's devices (`EVIOCGRAB`) for the 15 s of its countdown, so that Kodi does not move with Left, Right,
 OK and Back. The earlier text, kept as the record of what h713-power did before:
 
 The standby parks the display MIPS (cpu_comm, `suspend_late`), and

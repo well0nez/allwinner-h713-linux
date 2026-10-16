@@ -35,7 +35,7 @@ itself - the Bluetooth remote (`1d5a:c081`) and the IR receiver (`sunxi-ir`), as
 alone (`EVIOCGRAB`) while it is open: Kodi under cage gets nothing from the navigation. h713-keys and h713-power see nothing
 meanwhile, so the keys that matter are done here: volume (`volume_step` of `keys.conf`; louder and quieter lift a mute),
 mute and the focus keys by the same commands as the rows, and a Power press goes to h713-power as the datagram h713-keys
-sends (`/run/h713-power.sock`, `short`) after the remote is given back. Home and Back at the top close the page; so does
+sends (`/run/h713-power.sock`, `down`) after the remote is given back; h713-power then starts the press itself, so a 3 s hold still powers off. Home and Back at the top close the page; so does
 `--idle` seconds (default 120) without a key, and a signal that goes (the page cannot be seen any more). A device that cannot
 be held means no page: a page whose keys Kodi shares is worse than none.
 

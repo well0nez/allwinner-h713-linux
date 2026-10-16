@@ -496,7 +496,7 @@ class KeysTest(unittest.TestCase):
         self.run_once()
         self.assertEqual(self.osds.lines[-1], "launcher close")
         self.assertTrue(all(not c[1] for c in calls[-2:]))
-        self.assertEqual(self.power.recv(64), b"short")
+        self.assertEqual(self.power.recv(64), b"down")
 
     def test_no_picture_no_launcher_and_no_grab(self):
         self.launcher_d()

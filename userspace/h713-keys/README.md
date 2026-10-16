@@ -32,7 +32,7 @@ the files `/etc/h713/launcher.d/NN-name.conf` (`label`, `icon`, `unit` or `exec`
 `rootfs/overlay-desktop/etc/h713/launcher.d/` has the three of package H: HDMI input, Kodi, Standby; the format is in
 [docs/tools/h713-keys.md](../../docs/tools/h713-keys.md)). While it is open the remote's two devices are **grabbed**
 (`EVIOCGRAB`, taken at the release of Home: grabbed earlier, cage would hold Home down and Kodi repeat it), so Kodi, which reads them through cage, gets no key; it opens only where `h713-osd` can show it and closes by
-itself after 90 s. A Power press with it open closes it and goes on to `h713-power` (a datagram `short`).
+itself after 90 s. A Power press with it open closes it and goes on to `h713-power` (a datagram `down`: h713-power starts the press, so a 3 s hold still powers off).
 
 ## Only the remote
 
