@@ -33,7 +33,9 @@ a header line with the time and what runs (`20:47 - HDMI 1080p60`, `Kodi`), the 
 `select / OK open / BACK close`. h713-osd draws it (`launcher ...` on its socket, [h713-osd](h713-osd.md)); h713-keys is the
 controller. **Up/Down** move (no wrapping), **OK** does what the entry says and closes, **Back** and **Home** close, a
 **Power** press closes it and hands the press to [h713-power](h713-power.md) (a datagram `short`, `H713_KEYS_POWER`), volume,
-mute and focus work as always. It closes by itself after 90 s without a key.
+mute and focus work as always. It closes by itself after 90 s without a key, and at once when h713-osd no longer shows it (a restart
+under an open launcher): a move, and OK before it starts a row, must be answered `ok` by h713-osd, else the launcher is closed and the
+grab let go, and nothing is started blind.
 
 **Nothing happens twice.** While the launcher is open h713-keys holds the remote's two devices with `EVIOCGRAB`, so Kodi (which
 reads them through cage and libinput) gets no key at all; closed, it lets go and everything is as it was. The press of Home
