@@ -633,7 +633,7 @@ static void render(struct osd_canvas *c, const struct scene *sc, double u, doubl
 	PROF(2, pt);
 }
 
-/* --- the menu: the symbols, a row and a hint (the launcher of package H and its opaque page) ---------------------------- */
+/* --- the menu: the symbols, a row and a hint (the launcher and its opaque page) ---------------------------- */
 
 static const char *const ICON_NAME[OSD_ICONS] = { "hdmi", "film", "globe", "desk", "sliders", "power" };
 

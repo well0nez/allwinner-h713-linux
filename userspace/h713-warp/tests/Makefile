@@ -32,7 +32,7 @@ test_gl: test_gl.c $(WARP)/gl.c $(GEOM)/matrix.c $(WARP)/warp.h $(GEOM)/geom.h
 	$(HOST_CC) $(HOST_CPPFLAGS) $(CFLAGS) -I$(GEOM) $(LDFLAGS) -o $@ test_gl.c \
 	    $(WARP)/gl.c $(GEOM)/matrix.c $(HOST_LDLIBS) -lm
 
-# The Wayland server (package G) against a client: wayland.c with the GPU and the loop stubbed. Needs only
+# The Wayland server against a client: wayland.c with the GPU and the loop stubbed. Needs only
 # libwayland-dev and the protocol code the parent Makefile generates into ../gen ("make test" there).
 WL_CFLAGS = -I$(WARP) -I$(WARP)/gen -I$(GEOM) -I/usr/include/drm -I/usr/include/libdrm
 PROTO_C   = $(wildcard $(WARP)/gen/*-protocol.c)
@@ -44,7 +44,7 @@ test_wayland: test_wayland.c $(PROTO_C)
 	$(HOST_CC) $(CFLAGS) $(WL_CFLAGS) $(LDFLAGS) -o $@ test_wayland.c $(PROTO_C) -lwayland-client
 
 # T1a/T1b need EGL/GLES development files and a GLES driver: neither is in the build container, so they are
-# built only where pkg-config finds egl (as before package G, they were not run in the container)
+# built only where pkg-config finds egl (they are not run in the container)
 run: all
 	@./test_wayland ./server_stub
 	@if pkg-config --exists egl glesv2 2>/dev/null || [ -n "$(HOST_LDLIBS_GL)" ]; then \

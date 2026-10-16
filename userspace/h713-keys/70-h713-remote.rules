@@ -4,7 +4,7 @@
 #
 # The remote's OK arrives as KEY_OK (352, infrared) or KEY_SELECT (353, Bluetooth: HID "Menu Pick"). xkb names
 # evdev codes only up to 247, so cage's libinput hands no client a key above that: Kodi, and every later client
-# (labwc, Firefox), never saw OK (gate H2, 15.10.2026). KEY_MENU (139) arrives, but its keysym is XF86MenuKB,
+# (labwc, Firefox), never saw OK (15.10.2026). KEY_MENU (139) arrives, but its keysym is XF86MenuKB,
 # which Kodi does not know. So OK becomes KEY_ENTER (28, Return to every client) and Menu becomes KEY_COMPOSE
 # (127, the keysym Menu: the context-menu key of a PC keyboard). The kernel changes the code itself (EVIOCSKEYCODE
 # through udev's keyboard builtin, the same one that applies hwdb's KEYBOARD_KEY_), so h713-keys and h713-power

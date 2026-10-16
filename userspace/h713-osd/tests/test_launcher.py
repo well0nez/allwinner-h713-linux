@@ -1,4 +1,4 @@
-"""Host tests for the launcher in h713-osd (package H): the fake h713-tv of test_osd.py, the real daemon, a font. What is checked is
+"""Host tests for the launcher in h713-osd: the fake h713-tv of test_osd.py, the real daemon, a font. What is checked is
 read from the buffer the fake keeps: that the page is OPAQUE over the whole panel (Marco, 15.10.2026: a launcher must have a ground)
 and nothing but the ground lies in the outer 5 %, that a move of the selection repaints to exactly what a fresh draw shows (straight
 and through a keystone), that there is no seam in the opaque page after the pre-distortion, that the idle time fills the buffer that

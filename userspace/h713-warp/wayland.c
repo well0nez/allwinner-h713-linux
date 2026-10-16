@@ -1,20 +1,20 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #define _GNU_SOURCE		/* memfd_create */
 /*
- * The Wayland server (media side project, package G; ENTWURF G v3, mythos/PRUEFUNG-M3). A client - cage with Kodi
+ * The Wayland server (doku/211 section 10). A client - cage with Kodi
  * in it, WLR_BACKENDS=wayland,libinput - is a second source next to the capture ring: its buffers come in as dma-bufs,
  * the warp draws them through the keystone into h713-tv's three NV12 targets, h713-tv commits. Nothing here opens a
- * card node or holds a master; the client reads its own input through libinput, so there is no wl_seat (F9).
+ * card node or holds a master; the client reads its own input through libinput, so there is no wl_seat.
  *
- * The protocol set and nothing more (M3 2): wl_compositor/wl_surface/wl_region, wl_shm (libwayland's), xdg-shell with
- * one fullscreen toplevel, linux-dmabuf v4 with a format table out of EGL (M3 1), wl_output and wp_presentation
- * (M3 5). One thread: the event loop's fd sits in main.c's poll(), and every buffer, fence and timer of the client is
+ * The protocol set and nothing more: wl_compositor/wl_surface/wl_region, wl_shm (libwayland's), xdg-shell with
+ * one fullscreen toplevel, linux-dmabuf v4 with a format table out of EGL, wl_output and wp_presentation.
+ * One thread: the event loop's fd sits in main.c's poll(), and every buffer, fence and timer of the client is
  * a source of that loop.
  *
- * A buffer's life (v3 section 3): committed = pending (a newer commit releases a pending one at once); ready when its
+ * A buffer's life: committed = pending (a newer commit releases a pending one at once); ready when its
  * dma-buf is readable (the writer's fence is through - never wait behind a client); taken when it is ready AND the
- * previous commit is on the panel (h713-tv's flip fence, M3 4), the frame callbacks done right then; released when the
- * render fence of the frame that read it signals (M3 3); presented with the flip fence's timestamp (M3 5).
+ * previous commit is on the panel (h713-tv's flip fence), the frame callbacks done right then; released when the
+ * render fence of the frame that read it signals; presented with the flip fence's timestamp.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -41,15 +41,15 @@
 
 #include "warp.h"
 
-#define MAX_CLIENTS	4	/* connections that see the globals (v3 section 7) */
+#define MAX_CLIENTS	4	/* connections that see the globals */
 #define MAX_SURFACES	8	/* surfaces per client */
-#define MAX_IMPORTS	8	/* imported dma-bufs per client (M3 1: imports, not wl_buffer objects) */
+#define MAX_IMPORTS	8	/* imported dma-bufs per client (imports, not wl_buffer objects) */
 #define MAX_BUFFERS	32	/* wl_buffer objects per client: each holds an fd */
 #define MAX_FORMATS	128
 #define HOLD_MS		2000	/* the panel stays the client's this long after it is gone: a cage restart */
-#define BUSY_MS		4	/* "ok busy": the drawn target once more after this (v3 D6) */
+#define BUSY_MS		4	/* "ok busy": the drawn target once more after this */
 #define PERIOD_S	(1.0 / 59.42)	/* the HY310 panel (12.10.), until the flips say otherwise */
-#define AFBC_KODI	0x0800000000000062ull	/* Kodi's modifier (G0b): AFBC 32x8, split, sparse */
+#define AFBC_KODI	0x0800000000000062ull	/* Kodi's modifier: AFBC 32x8, split, sparse */
 
 #ifndef container_of
 #define container_of(p, t, m) ((t *)(void *)((char *)(p) - offsetof(t, m)))
@@ -58,7 +58,7 @@
 
 struct server;
 
-struct import {			/* one imported dma-buf, found again by its inode (cage wraps each frame anew, G0b) */
+struct import {			/* one imported dma-buf, found again by its inode (cage wraps each frame anew: measured under weston, 15.10.2026) */
 	struct wl_list link;
 	const struct wl_client *owner;	/* a key, never followed; NULL once the client is gone */
 	dev_t dev;
@@ -94,7 +94,7 @@ struct wsurf {
 struct wclient {
 	struct wl_listener gone;
 	struct server *s;
-	struct wl_event_source *kick;	/* a connection beyond MAX_CLIENTS: closed from the loop's idle (M4 A4) */
+	struct wl_event_source *kick;	/* a connection beyond MAX_CLIENTS: closed from the loop's idle */
 	bool allowed;
 	int surfaces, buffers;
 };
@@ -194,7 +194,7 @@ static void discard(struct server *s, struct wl_list *list)
 	}
 }
 
-/* the frame is on the panel: its feedback with the flip's time and the panel's period (M3 5) */
+/* the frame is on the panel: its feedback with the flip's time and the panel's period */
 static void present(struct server *s, uint64_t ns)
 {
 	struct wl_resource *fb, *t, *o;
@@ -347,7 +347,7 @@ static struct gl_image *image_for(struct server *s, struct wbuf *b)
 	return ok ? s->shm : NULL;
 }
 
-/* ---------------- taking a buffer: the client's clock (M3 3, 4, 5) ---------------- */
+/* ---------------- taking a buffer: the client's clock ---------------- */
 
 static void schedule(struct server *s)
 {
@@ -391,7 +391,7 @@ static void gpu_done(struct gpu *g)
 	g->src = NULL;
 }
 
-/* the render fence of a frame signalled: the GPU has read the client's buffer, it goes back (M3 3) */
+/* the render fence of a frame signalled: the GPU has read the client's buffer, it goes back */
 static int gpu_cb(int fd, uint32_t mask, void *data)
 {
 	struct server *s = data;
@@ -406,7 +406,7 @@ static int gpu_cb(int fd, uint32_t mask, void *data)
 
 static void try_take(struct server *s);
 
-/* the flip fence: the frame is on the panel - its time, the presentation, the next take (M3 4, 5) */
+/* the flip fence: the frame is on the panel - its time, the presentation, the next take */
 static int flip_cb(int fd, uint32_t mask, void *data)
 {
 	struct server *s = data;
@@ -421,7 +421,7 @@ static int flip_cb(int fd, uint32_t mask, void *data)
 	info.num_fences = 1;
 	info.sync_fence_info = (uint64_t)(uintptr_t)&fi;
 	if (!ioctl(fd, SYNC_IOC_FILE_INFO, &info) && info.status == 1)
-		ns = fi.timestamp_ns;		/* CLOCK_MONOTONIC, as the presentation clock says (v3 D1) */
+		ns = fi.timestamp_ns;		/* CLOCK_MONOTONIC, as the presentation clock says */
 	if (!ns)
 		ns = (uint64_t)(now_s() * 1e9);
 	t = (double)ns / 1e9;
@@ -471,7 +471,7 @@ static void take(struct server *s)
 	if (im)
 		rc = warp_client_frame(s->r, im, &render, &flip);
 	s->taken++;
-	frames_done(&s->frames);	/* "done" right after the take (M3 4): the client has a whole period */
+	frames_done(&s->frames);	/* "done" right after the take: the client has a whole period */
 	if (rc < 0 || rc == 2) {	/* not drawn, or the warp fell back: the buffer goes back */
 		discard(s, &s->feedback);
 		if (render >= 0)
@@ -503,7 +503,7 @@ static void take(struct server *s)
 	watch_flip(s, flip);
 }
 
-/* ready and the previous commit on the panel: take it (M3 4); at most one client frame a vsync, every second with half */
+/* ready and the previous commit on the panel: take it; at most one client frame a vsync, every second with half */
 static void try_take(struct server *s)
 {
 	if (!s->live || !s->pending || !s->ready || s->r->pattern != PATTERN_NONE || s->flip_fd >= 0)
@@ -531,7 +531,7 @@ static int ready_cb(int fd, uint32_t mask, void *data)
 	return 0;
 }
 
-/* the timer: "ok busy" once more (v3 D6), half rate due, callbacks of buffer-less commits */
+/* the timer: "ok busy" once more, half rate due, callbacks of buffer-less commits */
 static int tick_cb(void *data)
 {
 	struct server *s = data;
@@ -592,7 +592,7 @@ static void configure(struct wsurf *w)
 	w->configured = true;
 }
 
-/* no buffer held (M3 3) but the picture is wanted again: a configure of the same size asks cage for a new frame [Ged.] (v3 D5) */
+/* no buffer held but the picture is wanted again: a configure of the same size asks cage for a new frame */
 static void ask(struct server *s)
 {
 	if (s->top && s->top->acked) {
@@ -612,7 +612,7 @@ static int hold_cb(void *data)
 
 /*
  * the shown toplevel is gone (destroyed) or has no picture any more (a NULL buffer): two seconds for a new one. A gone
- * one hands the panel to the oldest toplevel still there (M4 A4): it was told "close", its pictures went back unseen
+ * one hands the panel to the oldest toplevel still there: it was told "close", its pictures went back unseen
  * and its frame callbacks never came while it waited - now its feedback is discarded, its callbacks come within a
  * panel period (a client that draws on the callback draws again), and the configure tells it the panel's size; its
  * next picture is taken like a first one.
@@ -734,7 +734,7 @@ static void get_toplevel(struct wl_client *c, struct wl_resource *res, uint32_t 
 		wl_array_release(&caps);
 	}
 	if (!w->s->top)
-		w->s->top = w;			/* the first toplevel wins (v3 section 7) */
+		w->s->top = w;			/* the first toplevel wins */
 	else
 		xdg_toplevel_send_close(tl);	/* every further one is asked to close at once */
 }
@@ -871,7 +871,7 @@ static void surface_frame(struct wl_client *c, struct wl_resource *res, uint32_t
 		wl_list_insert(w->p_frames.prev, wl_resource_get_link(cb));
 }
 
-/* a new pending buffer for the shown toplevel: a never-taken predecessor goes back at once (v3 section 3) */
+/* a new pending buffer for the shown toplevel: a never-taken predecessor goes back at once */
 static void set_pending(struct server *s, struct wbuf *b)
 {
 	if (s->pending == b) {		/* the same buffer again, not taken yet: only its feedback is new */
@@ -917,7 +917,7 @@ static void surface_commit(struct wl_client *c, struct wl_resource *res)
 		}
 		/*
 		 * libwayland checks only stride >= width; both formats it offers (XRGB/ARGB8888) take four bytes a pixel,
-		 * and the upload reads 4 * width a line - up to 3 * width past the pool's end (M4 A2). An error on the
+		 * and the upload reads 4 * width a line - up to 3 * width past the pool's end. An error on the
 		 * buffer, as libwayland's own for a pool that shrank.
 		 */
 		if (sb && wl_shm_buffer_get_stride(sb) < 4 * wl_shm_buffer_get_width(sb)) {
@@ -943,8 +943,8 @@ static void surface_commit(struct wl_client *c, struct wl_resource *res)
 		wl_list_remove(&w->p_buf_gone.link);
 	/*
 	 * cage misses the first configure: it comes while wlroots is still making its output, before cage listens for the
-	 * request (G1, 15.10.2026: configure 1920x1080, then 1280x720 buffers and Kodi at 1280x720). Weston's second
-	 * configure on the first buffer made the size right (G0b); so here: once more whenever the size is not the panel's.
+	 * request (measured on the HY310, 15.10.2026: configure 1920x1080, then 1280x720 buffers and Kodi at 1280x720). Weston's second
+	 * configure on the first buffer made the size right; so here: once more whenever the size is not the panel's.
 	 */
 	if (shown && b && (b->w != (int)s->pw || b->h != (int)s->ph)) {
 		if (!w->sized)
@@ -1125,8 +1125,8 @@ static void bind_presentation(struct wl_client *c, void *data, uint32_t version,
 
 	if (!res)
 		return;
-	/* CLOCK_MONOTONIC and nothing else: wlroots drops a host presentation with another clock (G0b: clock_id 4,
-	 * then destroy), and the fence timestamps are that clock (v3 D1) */
+	/* CLOCK_MONOTONIC and nothing else: wlroots drops a host presentation with another clock (measured under weston, 15.10.2026: clock_id 4,
+	 * then destroy), and the fence timestamps are that clock */
 	wp_presentation_send_clock_id(res, CLOCK_MONOTONIC);
 }
 
@@ -1228,9 +1228,10 @@ static const struct wl_buffer_interface buffer_impl = { .destroy = destroy_res }
 #define ALIGN_UP(v, a)	(((v) + (a) - 1) / (a) * (a))
 
 /*
- * The bytes the GPU reads for a buffer so described (M4 A3), as mesa 25.0.7's panfrost lays out an import
+ * The bytes the GPU reads for a buffer so described, as mesa 25.0.7's panfrost lays out an import
  * (src/panfrost/lib/pan_layout.c, pan_image_layout_init with an explicit layout); nothing there compares the result
- * with the dma-buf - M4: 20 KB described as 1920x1080 AFBC were imported, drawn, and faulted the GPU (a reset a frame).
+ * with the dma-buf - measured on the HY310, 15.10.2026, doku/211 section 10: 20 KB described as 1920x1080 AFBC were imported, drawn, and faulted
+ * the GPU (a reset a frame).
  * - LINEAR, and no modifier (mesa takes it as LINEAR): offset + pitch * h;
  * - 16x16 u-interleaved: offset + pitch * h rounded up to 16 lines (a line of tiles is 16 pitches);
  * - AFBC: a 16-byte header per superblock, the headers aligned to the body (128 bytes, tiled 4096), and the body as
@@ -1269,7 +1270,7 @@ static uint64_t bytes_needed(uint32_t fourcc, uint64_t mod, int w, int h, uint32
 	return ALIGN_UP((uint64_t)offset, 64) + head + ew * eh * bpp;
 }
 
-/* checked before anything is imported (v3 section 3): table, size, pitch, the dma-buf's length for every modifier (M4 A3) */
+/* checked before anything is imported : table, size, pitch, the dma-buf's length for every modifier */
 static void params_create(struct wl_client *c, struct wl_resource *res, uint32_t id, int32_t w, int32_t h,
 			  uint32_t fourcc, uint32_t flags)
 {
@@ -1377,7 +1378,7 @@ static void create_params(struct wl_client *c, struct wl_resource *res, uint32_t
 
 static const struct zwp_linux_dmabuf_feedback_v1_interface feedback_impl = { .destroy = destroy_res };
 
-/* the table as M3 1 asks: one tranche, no scanout flag, renderD128 as main and target device */
+/* the format table: one tranche, no scanout flag, renderD128 as main and target device */
 static void feedback_new(struct wl_client *c, struct wl_resource *res, uint32_t id)
 {
 	struct server *s = wl_resource_get_user_data(res);
@@ -1483,7 +1484,7 @@ static void client_created(struct wl_listener *l, void *data)
 		return;
 	}
 	/*
-	 * Closed, not held (M4 A4: 60 connections held 120 fds in the warp): an error on wl_display says why, and the
+	 * Closed, not held (measured 15.10.2026: 60 connections held 120 fds in the warp): an error on wl_display says why, and the
 	 * connection ends from the loop's idle - not here, inside libwayland's own creation of it.
 	 */
 	warn("wayland         a connection beyond %d is closed", MAX_CLIENTS);
@@ -1503,7 +1504,7 @@ static bool global_filter(const struct wl_client *c, const struct wl_global *g, 
 /* ---------------- the server ---------------- */
 
 /* the panel before the first claim: the connected connector's first mode (read, card1 is never opened), else
- * 1920x1080; a claim corrects it (v3 D3) */
+ * 1920x1080; a claim corrects it */
 static void panel_guess(struct server *s)
 {
 	glob_t g;
@@ -1538,7 +1539,7 @@ static void panel_guess(struct server *s)
 	globfree(&g);
 }
 
-/* the format table out of EGL (M3 1) into a sealed memfd; renderD128's device number */
+/* the format table out of EGL into a sealed memfd; renderD128's device number */
 static bool formats(struct server *s)
 {
 	char why[WARP_WHY] = "";
@@ -1735,7 +1736,7 @@ void server_engaged(struct server *s, bool on)
 	if (s->pending)
 		try_take(s);		/* or when it is ready */
 	else
-		ask(s);			/* the last picture was released (M3 3): a new one, please (v3 D5) */
+		ask(s);			/* the last picture was released: a new one, please */
 	if (s->idle_due > 0)
 		s->idle_due = now_s();
 	schedule(s);

@@ -67,7 +67,7 @@ happens a few times per key press; not worth it at these times - a later desktop
 
 ## The launcher
 
-`launcher SEL;NOW;[>]icon:label;...` (package H of the media side project, [docs/tools/h713-osd.md](../../docs/tools/h713-osd.md)):
+`launcher SEL;NOW;[>]icon:label;...` ([docs/tools/h713-osd.md](../../docs/tools/h713-osd.md)):
 the launcher is an **opaque page** over the whole panel - a ground, the mock-up's "Launcher C" list in the column on the left (header
 and hint line, up to six rows, Standby set apart at the foot), the rest calm, everything inside the 5 % safe margin - that stays
 until it is closed. h713-keys is its controller; this daemon only draws and shows it. It is cut into **tiles** (libh713osd: the page's
@@ -86,7 +86,7 @@ there is a hole in an opaque page (found by the move-equals-fresh test when the 
 changes, the picture under the page turns warped or straight, h713-tv comes back or the launcher closes, the buffers are cleared
 (the page covers all of a buffer) and the tiles are put again. `H713_OSD_FONT` names the font (the image's Quicksand by default),
 `H713_OSD_CLOCK` a fixed header time and `H713_OSD_TRACE=1` a journal line per refresh and per prefill with wall-clock times (the
-tests; gate HL).
+tests; the key-to-wall measurement of 15.10.2026, doku/212).
 
 ## Building and testing
 

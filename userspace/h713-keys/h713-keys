@@ -366,7 +366,7 @@ class Launcher:
         log("launcher open: %d entries, %s selected" % (len(entries), entries[cur]["label"]))
 
     def hold(self, devices):
-        """The grab, once Home is up: its release must reach cage too, or cage holds Home down and Kodi repeats it (H2, 15.10.2026)."""
+        """The grab, once Home is up: its release must reach cage too, or cage holds Home down and Kodi repeats it (15.10.2026)."""
         if self.entries is not None and not self.held:
             self.held = True
             if any([grab(fd, True) for fd in devices.values()]):
@@ -379,6 +379,18 @@ class Launcher:
             grab(fd, False)                  # first: Kodi and h713-power read again before the overlay is gone
         ctl(OSD_SOCK, "launcher close", quiet=True)
 
+    def osd(self, line, devices):
+        """A launcher command for h713-osd that must be answered ok. If it is not, h713-osd shows no launcher any more (it was
+        restarted under an open one: the page is gone, and "launcher N" is answered "error the launcher is not open"): the
+        launcher is closed here too, so that the grab does not hold the keys for the idle limit and OK does not start a row
+        nobody sees."""
+        answer = ctl(OSD_SOCK, line, quiet=True) or ""
+        if answer.startswith("ok"):
+            return True
+        log("launcher closed: h713-osd says %s" % (answer.strip() or "nothing (not running?)"), "<4>")
+        self.close(devices)
+        return False
+
     def key(self, code, value, devices):
         """True when the launcher takes this key (press 1 or repeat 2) - the others are the normal ones'."""
         self.last = time.monotonic()
@@ -386,10 +398,12 @@ class Launcher:
             sel = min(len(self.entries) - 1, max(0, self.sel + (1 if code == 108 else -1)))
             if sel != self.sel:
                 self.sel = sel
-                ctl(OSD_SOCK, "launcher %d" % sel, quiet=True)
+                self.osd("launcher %d" % sel, devices)
         elif code in (172, 158) and value == 1:
             self.close(devices)
         elif code == 352 and value == 1:
+            if not self.osd("launcher %d" % self.sel, devices):     # the same selection again: h713-osd still shows the page?
+                return True                                          # no: nothing is started blind, the launcher is closed
             e = self.entries[self.sel]
             self.close(devices)
             log("launcher: %s" % e["label"])
@@ -399,10 +413,10 @@ class Launcher:
             except OSError as err:
                 log("launcher: %s does not start (%s)" % (e["label"], err.strerror), "<4>")
         elif code == 116 and value == 1:     # the box is to go off: the countdown is h713-power's
-            self.close(devices)
+            self.close(devices)              # the devices go first; "down": h713-power never saw the press, it starts it now
             try:
                 with socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM) as s:
-                    s.sendto(b"short", POWER_SOCK)
+                    s.sendto(b"down", POWER_SOCK)
             except OSError as err:
                 log("Power: h713-power does not answer (%s) - the press is lost" % err.strerror, "<4>")
         else:
@@ -462,7 +476,7 @@ def run(once):
             for sec, usec, typ, code, value in EVENT.iter_unpack(data[:n]):
                 if typ != EV_KEY or (value not in (1, 2) and not (value == 0 and code == 172)):
                     continue
-                if TRACE:                    # gate HL: the kernel's stamp of the key and the time it was read, CLOCK_REALTIME
+                if TRACE:                    # the key-to-wall measurement: the kernel's stamp of the key and the time it was read, CLOCK_REALTIME
                     log("trace: %s value %d stamped %.4f read %.4f" % (NAMES.get(code, code), value, sec + usec / 1e6, time.time()))
                 code = SELECT_IS_OK.get(code, code)
                 acted = True

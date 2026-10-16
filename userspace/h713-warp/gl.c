@@ -178,8 +178,8 @@ const char *const gl_pattern_shader =
 	"  col = mix(col, 1.0, corner);\n"
 	"  gl_FragColor = vec4(vec3((16.0 + 219.0*col)/255.0), 1.0); }\n";
 
-/* The Wayland client (package G): RGB in, the panel's NV12 out, and the colour maths INSIDE the keystone passes - T3's
- * variant B, 4.16 ms a frame for an AFBC source against 7.0 for a pass of its own (AU-47). BT.709 limited range: Y =
+/* The Wayland client: RGB in, the panel's NV12 out, and the colour maths INSIDE the keystone passes - which
+ * costs 4.16 ms a frame for an AFBC source against 7.0 for a pass of its own (measured on the HY310, 14.10.2026). BT.709 limited range: Y =
  * 16/255 + (219/255) (0.2126 R + 0.7152 G + 0.0722 B), Cb/Cr = 128/255 + (224/255) (B - Y') / 1.8556 and (R - Y') /
  * 1.5748. The chroma pass draws at half size, and the linear sampler averages the 2 x 2 RGB pixels under each output
  * pixel. AR30 is read normalised like any other format; alpha is ignored (premultiplied over black). */
@@ -524,7 +524,7 @@ int gl_open(const char *node, char *why, size_t n)
 	EGLint v[2], num = 0;
 	int i;
 
-	/* once: the ring and the Wayland client share the one context (package G) */
+	/* once: the ring and the Wayland client share the one context */
 	if (gl_up)
 		return 0;
 	dpy = display_for(node);
@@ -1086,7 +1086,7 @@ int gl_fence(void)
 	return fd;
 }
 
-/* ---------------- the Wayland client (package G) ------------------------ */
+/* ---------------- the Wayland client ------------------------ */
 
 struct gl_image {
 	EGLImageKHR img;		/* a client dma-buf; EGL_NO_IMAGE_KHR for the wl_shm texture */
@@ -1096,9 +1096,9 @@ struct gl_image {
 };
 
 /*
- * The formats a client may send (M3 1): what EGL imports on the render node, not a list by hand - cage passes Kodi's
- * buffer through only when Kodi's format and modifier (AR30, AFBC 0x0800000000000062, G0b) are among the host's. RGB
- * only: the passes compute YCbCr from RGB (ENTWURF G v3 D2), and a modifier EGL may only sample as an external
+ * The formats a client may send: what EGL imports on the render node, not a list by hand - cage passes Kodi's
+ * buffer through only when Kodi's format and modifier (AR30, AFBC 0x0800000000000062) are among the host's. RGB
+ * only: the passes compute YCbCr from RGB, and a modifier EGL may only sample as an external
  * texture is left out (the shader takes a sampler2D).
  */
 static const uint32_t RGB[] = {
@@ -1184,9 +1184,9 @@ struct gl_image *gl_image_dmabuf(int fd, uint32_t fourcc, uint64_t modifier, int
 	return im;
 }
 
-static bool unpack_rows;	/* GL_EXT_unpack_subimage: a padded line goes up in one call (M4 A2) */
+static bool unpack_rows;	/* GL_EXT_unpack_subimage: a padded line goes up in one call */
 
-/* wl_shm: a texture the pixels are copied into, for test clients (G6) - the slow way, never Kodi's */
+/* wl_shm: a texture the pixels are copied into, for test clients - the slow way, never Kodi's */
 struct gl_image *gl_image_shm(void)
 {
 	const char *ext = gl_up ? (const char *)glGetString(GL_EXTENSIONS) : NULL;
@@ -1208,7 +1208,7 @@ struct gl_image *gl_image_shm(void)
 }
 
 /*
- * XRGB/ARGB8888 is B, G, R, X in memory: BGRA as GLES uploads it. Always one call (M4 A2): a line per call cost
+ * XRGB/ARGB8888 is B, G, R, X in memory: BGRA as GLES uploads it. Always one call: a line per call cost
  * 430-550 ms for a 1080-line picture against 31-157 ms in one piece, and the server stood that long. A padded line
  * goes up with GL_UNPACK_ROW_LENGTH_EXT; without the extension (or a stride that is no whole pixel) the lines are
  * packed into one piece first. The stride is at least 4 * w: wayland.c refuses less.

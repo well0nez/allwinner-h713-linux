@@ -26,7 +26,7 @@
 
 static int fd[MAXDEV], nfd;
 static bool grabbed;
-static double stamp_ms;		/* the kernel's time (CLOCK_REALTIME) of the key input_key returned last: the gate HL starts here */
+static double stamp_ms;		/* the kernel's time (CLOCK_REALTIME) of the key input_key returned last: the key-to-wall measurement starts here */
 
 double input_stamp(void)
 {
@@ -191,7 +191,9 @@ int input_key(int timeout_ms)
 	return KE_NONE;
 }
 
-/* the press the page cannot take: h713-power's countdown (the datagram h713-keys sends for a Power press with its launcher open) */
+/* the press the page cannot take: h713-power's (the datagram h713-keys sends for a Power press with its launcher open). "down": the
+ * remote is let go and h713-power did not see the press, so it starts it now on the device that has Power down - a short press
+ * on the release gives the countdown, a hold of long_s the power-off, as without the page */
 void input_power(void)
 {
 	const char *path = getenv("H713_SETTINGS_POWER");
@@ -200,7 +202,7 @@ void input_power(void)
 
 	snprintf(a.sun_path, sizeof(a.sun_path), "%s", path && *path ? path : "/run/h713-power.sock");
 	if (s >= 0) {
-		if (sendto(s, "short", 5, MSG_NOSIGNAL, (struct sockaddr *)&a, sizeof(a)) < 0)
+		if (sendto(s, "down", 4, MSG_NOSIGNAL, (struct sockaddr *)&a, sizeof(a)) < 0)
 			fprintf(stderr, "h713-settings: h713-power does not answer (%s) - the Power press is lost\n", strerror(errno));
 		close(s);
 	}

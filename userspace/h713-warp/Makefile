@@ -16,7 +16,7 @@
 #   make test           build and run the host tests of tests/: the Wayland server against a
 #                       client (no GPU, in the container), and T1a/T1b (the shaders, skipped
 #                       without EGL/GLES development files); the matrix and warp.conf tests
-#                       (T2, T3, T4) are in ../libh713geom
+#                       are in ../libh713geom
 #   make install-cross  install the CROSS-built binary (DESTDIR=...)
 #   make clean
 #
@@ -57,9 +57,9 @@ SRC = main.c $(GEOM)/config.c ctl.c peer.c capture.c gl.c $(GEOM)/matrix.c loop.
 HDR = warp.h $(GEOM)/geom.h $(PROTO_H)
 CFLAGS += -I$(GEOM) -Igen
 
-# The Wayland server (package G): the three protocols outside libwayland, as wayland-scanner makes them
-# from wayland-protocols' XML. The XML comes from the board root (wayland-protocols in the sysroot, the
-# medien side project's), the scanner from the build container (libwayland-bin, AU-12).
+# The Wayland server: the three protocols outside libwayland, as wayland-scanner makes them
+# from wayland-protocols' XML. The XML comes from the board root (wayland-protocols in the sysroot), the
+# scanner from the build container (libwayland-bin).
 WAYLAND_SCANNER ?= wayland-scanner
 WL_PROTOCOLS    ?= $(SYSROOT)/usr/share/wayland-protocols
 PROTOS  = xdg-shell linux-dmabuf-v1 presentation-time

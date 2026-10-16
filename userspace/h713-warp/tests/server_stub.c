@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #define _GNU_SOURCE
 /*
- * The Wayland server of h713-warp (wayland.c) on its own, for the host test (package G): no GPU, no h713-tv. The GL
+ * The Wayland server of h713-warp (wayland.c) on its own, for the host test: no GPU, no h713-tv. The GL
  * side and the warp's loop are stubs - an import is a record, a frame is two eventfds that are readable at once (the
  * render fence and the flip fence). It says what the loop would have been told on stdout, one word a line, for
  * test_wayland.c: "shown", "gone", "frame", "resend".
@@ -43,8 +43,8 @@ bool gl_is_open(void) { return true; }
 void gl_close(void) { }
 int gl_formats(struct gl_format *out, int max, char *why, size_t n)
 {
-	/* the HY310's EGL offers LINEAR, AFBC 32x8 and 16x16 (tiled too) and u-interleaved (G1); an Intel X-tiled stands
-	 * for a modifier wayland.c has no layout for (M4 A3: at least w * h * bpp) */
+	/* the HY310's EGL offers LINEAR, AFBC 32x8 and 16x16 (tiled too) and u-interleaved; an Intel X-tiled stands
+	 * for a modifier wayland.c has no layout for (at least w * h * bpp) */
 	static const struct gl_format f[] = {
 		{ DRM_FORMAT_XRGB8888, DRM_FORMAT_MOD_LINEAR }, { DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR },
 		{ DRM_FORMAT_ARGB2101010, 0x0800000000000062ull }, { DRM_FORMAT_ARGB2101010, 0x0800000000000341ull },
@@ -75,7 +75,7 @@ struct gl_image *gl_image_shm(void) { return image(0, 0); }
 bool gl_image_upload(struct gl_image *im, const void *px, int w, int h, int stride, char *why, size_t n)
 {
 	(void)px; (void)why; (void)n;
-	if (stride < 4 * w)		/* wayland.c must never hand a short line to the upload (M4 A2) */
+	if (stride < 4 * w)		/* wayland.c must never hand a short line to the upload */
 		say("short-stride");
 	im->w = w;
 	im->h = h;

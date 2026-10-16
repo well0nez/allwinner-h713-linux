@@ -1,7 +1,7 @@
 #!/bin/sh
 # SPDX-License-Identifier: GPL-2.0
 #
-# h713-mode - what the panel shows besides the HDMI picture, and the way through a sleep (media side project, package H).
+# h713-mode - what the panel shows besides the HDMI picture, and the way through a sleep.
 # A MODE is a unit named by a launcher entry (/etc/h713/launcher.d/*.conf, "unit = h713-kodi.service"); while none of them
 # runs the panel shows the HDMI input. There is nothing to start here: the launcher starts a mode with systemctl, and the
 # units ride on `h713-tv ctl source auto` (the client before the ring, the ring back by itself when the client is gone).

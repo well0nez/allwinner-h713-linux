@@ -96,7 +96,7 @@ static void run(int w, int h)
 	CHECK(box[0][2] >= (int)(699 * u) && box[0][2] <= (int)(701 * u) + 1, "the column is 700 units wide: %d", box[0][2]);
 	CHECK(box[9][0] == box[0][2] && box[9][0] + box[9][2] == w, "the right part starts where the column ends and runs to the edge");
 
-	/* the page: opaque, the ground colour, content inside the safe margin - for every selection, and for the three rows of package H */
+	/* the page: opaque, the ground colour, content inside the safe margin - for every selection, and for the Kodi image's three rows */
 	for (int sel = 0; sel < 6; sel++) {
 		struct osd_launcher ls = mk(sel, 6);
 
@@ -164,7 +164,7 @@ static void run(int w, int h)
 		CHECK(po == OSD_PAGE_GROUND, "no pill on row 0: %08x", po);
 	}
 
-	/* three rows (the rows of package H): HDMI and Kodi at the top, Standby alone at the foot */
+	/* three rows (the Kodi image's rows): HDMI and Kodi at the top, Standby alone at the foot */
 	l = mk(0, 3);
 	n = osd_launcher_bands(&a, &l, box);
 	CHECK(n == 12, "three rows are six bands, twelve tiles, got %d", n);

@@ -1,10 +1,10 @@
 // SPDX-License-Identifier: GPL-2.0
 /*
- * The page, drawn into an ARGB canvas the way the mockup v2 shows it (S1: the areas on the left, the rows on the
+ * The page, drawn into an ARGB canvas the way the mockup v2 shows it (the areas on the left, the rows on the
  * right, white lines), on an OPAQUE calm ground: over a picture a translucent page is unreadable (the owner, 15.10.).
  * Everything stays inside a safe margin of 5 % on each side (96 / 54 px at 1080p). While a value that is judged on the
  * picture is adjusted (the picture's sliders, the zoom, the corners) the page is only ONE pill at the foot over the real
- * picture (the mockup v1's S2). Text is libh713osd's osd_text; the shapes are signed distance fields like the library's own.
+ * picture (the mockup v1). Text is libh713osd's osd_text; the shapes are signed distance fields like the library's own.
  * A row is drawn alone when only it changed, so a key press costs one row.
  */
 #define _GNU_SOURCE
@@ -528,7 +528,7 @@ static void foot_line(double y, const char *s)
 	text(960 - text_w(s, 24) / 2, y, 24, 0.5f, s, 0);
 }
 
-/* the slider of the selected row, as the mockup v1's S2 has it: the label, the track, the number; the keys under it */
+/* the slider of the selected row, as the mockup v1 has it: the label, the track, the number; the keys under it */
 static void draw_slider_pill(const struct view *v)
 {
 	struct row *r = visible_row(&areas[v->area], v->row);

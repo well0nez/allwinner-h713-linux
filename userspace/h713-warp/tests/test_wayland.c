@@ -1,14 +1,14 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #define _GNU_SOURCE
 /*
- * Host test of h713-warp's Wayland server (package G; ENTWURF G v3): a client against server_stub (wayland.c with the
- * GPU and the warp's loop stubbed), in the build container, no device. What it checks is what cage and Kodi rely on
- * and what the review M3 asked for: the protocol set (no wl_seat, no subcompositor), CLOCK_MONOTONIC, a dma-buf
+ * Host test of h713-warp's Wayland server: a client against server_stub (wayland.c with the
+ * GPU and the warp's loop stubbed), in the build container, no device. What it checks is what cage and Kodi rely on:
+ * the protocol set (no wl_seat, no subcompositor), CLOCK_MONOTONIC, a dma-buf
  * feedback with Kodi's AR30/AFBC and renderD128 as the device, the panel as the output's mode and the toplevel's
  * size, the life of a buffer (taken, frame done, released, presented), wl_shm, the refusals (too large, a buffer
- * before the configure, a second toplevel, a fifth connection) and the two seconds after the client is gone; since
- * the review M4: a wl_shm line shorter than 4 x width (A2), a dma-buf shorter than its layout for every modifier (A3),
- * a waiting toplevel that takes the panel over and a fifth connection that is closed (A4).
+ * before the configure, a second toplevel, a fifth connection) and the two seconds after the client is gone; a wl_shm
+ * line shorter than 4 x width, a dma-buf shorter than its layout for every modifier, a waiting toplevel that takes the
+ * panel over and a fifth connection that is closed.
  *
  *   test_wayland ./server_stub     exit 0: all passed
  */
@@ -336,7 +336,7 @@ static bool buffer_error(const char *path, int w, int h, int stride, uint32_t co
 }
 
 /* h713-warp -g GROUP: the named group owns the socket at 0660, so that a client that is not root (Kodi's cage) can connect;
- * a group that does not exist leaves the socket as it was and the server runs (U-2). Needs a second group of the user to
+ * a group that does not exist leaves the socket as it was and the server runs. Needs a second group of the user to
  * be able to tell the two apart. */
 static void group_test(const char *stub, const char *dir)
 {
@@ -414,14 +414,14 @@ int main(int argc, char **argv)
 	CHECK(server_says("up", 3000), "the server is up on %s", path);
 	CHECK(connect_to(&c, path), "a client connects (absolute WAYLAND_DISPLAY)");
 	CHECK(c.comp && c.shm && c.wm && c.dmabuf && c.pres && c.out, "globals: compositor, shm, xdg_wm_base, linux-dmabuf v4, presentation, output");
-	CHECK(!c.forbidden, "no wl_seat, wl_subcompositor, wp_viewporter (M3 2)");
+	CHECK(!c.forbidden, "no wl_seat, wl_subcompositor, wp_viewporter");
 
 	wp_presentation_add_listener(c.pres, &pres_l, NULL);
 	zwp_linux_dmabuf_feedback_v1_add_listener(zwp_linux_dmabuf_v1_get_default_feedback(c.dmabuf), &fb_l, NULL);
 	wl_output_add_listener(c.out, &out_l, NULL);
 	xdg_wm_base_add_listener(c.wm, &wm_l, NULL);
 	wl_display_roundtrip(c.d);
-	CHECK(ev.clock == CLOCK_MONOTONIC, "presentation clock %u = CLOCK_MONOTONIC (v3 D1)", ev.clock);
+	CHECK(ev.clock == CLOCK_MONOTONIC, "presentation clock %u = CLOCK_MONOTONIC", ev.clock);
 	CHECK(ev.fb_done && ev.table && ev.table_hits == 1 && ev.tranche == 6, "feedback: table with AR30 + AFBC, one tranche of %u", ev.tranche);
 	CHECK(ev.device, "feedback: main and target device = the render node's dev_t");
 	CHECK(ev.out_done && ev.w > 0 && ev.h > 0 && ev.refresh > 59000 && ev.refresh < 60000, "output %dx%d @ %d mHz", ev.w, ev.h, ev.refresh);
@@ -447,7 +447,7 @@ int main(int argc, char **argv)
 	CHECK(server_says("shown", 2000), "the first picture claims the panel");
 	CHECK(server_says("frame", 2000), "the buffer is taken (ready: the dma-buf is readable)");
 	CHECK(wait_for(&c, &ev.done, 2000), "frame callback done");
-	CHECK(wait_for(&c, &ev.released, 2000), "buffer released at the render fence (M3 3)");
+	CHECK(wait_for(&c, &ev.released, 2000), "buffer released at the render fence");
 	CHECK(wait_for(&c, &ev.presented, 2000), "presented, vsync, refresh from the flip");
 
 	ev.released = false;
@@ -459,20 +459,20 @@ int main(int argc, char **argv)
 	wl_surface_commit(s);
 	wl_display_flush(c.d);
 	CHECK(server_says("frame", 2000) && wait_for(&c, &ev.released, 2000), "wl_shm 64x64 taken (letterbox) and released");
-	CHECK(wait_for(&c, &ev.configured, 1000), "a picture smaller than the panel gets the configure once more (cage, G1)");
+	CHECK(wait_for(&c, &ev.configured, 1000), "a picture smaller than the panel gets the configure once more (cage)");
 
-	/* M4 A2: a padded line is fine, a line shorter than 4 x width is a protocol error before anything reads it */
+	/* a padded line is fine, a line shorter than 4 x width is a protocol error before anything reads it */
 	ev.released = false;
 	sb = shmbuf_stride(&c, 100, 50, 100 * 4 + 64);
 	wl_buffer_add_listener(sb, &buf_l, NULL);
 	wl_surface_attach(s, sb, 0, 0);
 	wl_surface_commit(s);
 	wl_display_flush(c.d);
-	CHECK(server_says("frame", 2000) && wait_for(&c, &ev.released, 2000), "wl_shm 100x50, stride 464 (padded): taken and released (A2)");
+	CHECK(server_says("frame", 2000) && wait_for(&c, &ev.released, 2000), "wl_shm 100x50, stride 464 (padded): taken and released");
 	CHECK(buffer_error(path, 1920, 1080, 1920, WL_SHM_ERROR_INVALID_STRIDE),
-	      "wl_shm 1920x1080, stride 1920 (= width, libwayland lets it pass): error invalid_stride on the buffer (A2)");
+	      "wl_shm 1920x1080, stride 1920 (= width, libwayland lets it pass): error invalid_stride on the buffer");
 	CHECK(buffer_error(path, 64, 64, 64 * 4 - 4, WL_SHM_ERROR_INVALID_STRIDE),
-	      "wl_shm 64x64, stride 252 (one pixel short): error invalid_stride (A2)");
+	      "wl_shm 64x64, stride 252 (one pixel short): error invalid_stride");
 	CHECK(!server_says("short-stride", 300), "no short line reached the upload");
 	wl_display_roundtrip(c.d);
 
@@ -480,7 +480,7 @@ int main(int argc, char **argv)
 	CHECK(wait_for(&c, &ev.failed, 1000), "a dma-buf larger than the panel fails");
 
 	/*
-	 * M4 A3: the dma-buf at least as long as the GPU reads, for every modifier. The byte counts are mesa 25.0.7's
+	 * The dma-buf at least as long as the GPU reads, for every modifier. The byte counts are mesa 25.0.7's
 	 * panfrost layout, worked out by hand (pan_layout.c): AFBC 32x8 1920x1080 = 60 x 136 superblocks (1088 lines,
 	 * render blocks of 16) x 16 B header = 130 560 (a multiple of 128) + body 1920 x 1088 x 4 = 8 355 840.
 	 */
@@ -507,10 +507,10 @@ int main(int argc, char **argv)
 			int at = dmabuf_sized(&c, k[j].w, k[j].h, k[j].fourcc, k[j].mod, k[j].pitch, k[j].need);
 			int under = dmabuf_sized(&c, k[j].w, k[j].h, k[j].fourcc, k[j].mod, k[j].pitch, k[j].need - 1);
 
-			CHECK(at == 1 && under == 0, "%s: %zu bytes created, one less failed (A3)", k[j].what, k[j].need);
+			CHECK(at == 1 && under == 0, "%s: %zu bytes created, one less failed", k[j].what, k[j].need);
 		}
 		CHECK(dmabuf_sized(&c, 1920, 1080, DRM_FORMAT_ARGB2101010, 0x0800000000000062ull, 7680, 20480) == 0,
-		      "20 KB described as 1920x1080 AFBC (M4's GPU fault) failed (A3)");
+		      "20 KB described as 1920x1080 AFBC (the GPU fault of 15.10.2026) failed");
 		CHECK(wl_display_get_error(c.d) == 0, "the client lives on after the refusals");
 	}
 
@@ -541,19 +541,19 @@ int main(int argc, char **argv)
 		char byte;
 
 		CHECK(seen == 3 && more[3].d && wl_display_get_error(more[3].d) == EPROTO,
-		      "connections 2-4 see the globals, the fifth gets an error (%d of 4 saw them, A4)", seen);
+		      "connections 2-4 see the globals, the fifth gets an error (%d of 4 saw them)", seen);
 		/* closed with the client's last request unread: a hangup, and recv says EOF or ECONNRESET */
 		int pr = hp.fd >= 0 ? poll(&hp, 1, 1000) : -1;
 		ssize_t rr = pr > 0 ? recv(hp.fd, &byte, 1, MSG_DONTWAIT) : -2;
 
 		CHECK((hp.revents & POLLHUP) && (rr == 0 || (rr < 0 && errno == ECONNRESET)),
-		      "... and the server closed it, not held it (A4: revents 0x%x)", hp.revents);
+		      "... and the server closed it, not held it (revents 0x%x)", hp.revents);
 	}
 	for (i = 0; i < 4; i++)
 		if (more[i].d)
 			wl_display_disconnect(more[i].d);
 
-	/* M4 A4: a toplevel that waited (told "close", no frame callbacks) takes the panel over when the shown one goes */
+	/* a toplevel that waited (told "close", no frame callbacks) takes the panel over when the shown one goes */
 	{
 		struct conn f;
 		struct wl_surface *fs;
@@ -586,18 +586,18 @@ int main(int argc, char **argv)
 		for (ms = 1000; (fev.w != ev.w || !fev.done) && ms > 0 && wl_display_roundtrip(f.d) >= 0; ms -= 10)
 			usleep(10000);
 		CHECK(fev.w == ev.w && fev.h == ev.h && fev.fullscreen,
-		      "the shown toplevel went: the waiting one gets the panel's configure %dx%d fullscreen (A4)", fev.w, fev.h);
-		CHECK(fev.done, "... and the frame callback it waited for (A4)");
+		      "the shown toplevel went: the waiting one gets the panel's configure %dx%d fullscreen", fev.w, fev.h);
+		CHECK(fev.done, "... and the frame callback it waited for");
 		fev.done = false;
 		fb = dmabuf(&f, fev.w, fev.h, true);
 		wl_surface_attach(fs, fb, 0, 0);
 		wl_callback_add_listener(wl_surface_frame(fs), &f_cb_l, NULL);
 		wl_surface_commit(fs);
 		wl_display_flush(f.d);
-		CHECK(server_says("frame", 1500), "its first picture is taken - within the two seconds, no new claim (A4)");
+		CHECK(server_says("frame", 1500), "its first picture is taken - within the two seconds, no new claim");
 		for (ms = 1000; !fev.done && ms > 0 && wl_display_roundtrip(f.d) >= 0; ms -= 10)
 			usleep(10000);
-		CHECK(fev.done, "... and its frame callback comes (A4)");
+		CHECK(fev.done, "... and its frame callback comes");
 		xdg_toplevel_destroy(ftl);
 		wl_display_roundtrip(f.d);
 		CHECK(!server_says("gone", 1500), "the panel is held after the toplevel went (cage restart)");

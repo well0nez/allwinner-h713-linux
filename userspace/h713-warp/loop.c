@@ -84,7 +84,7 @@ static void note(struct runtime *r, const char *why)
 	snprintf(r->why, sizeof(r->why), "%s", why);
 }
 
-/* The render node closes when nothing needs it: no claim, and no client buffer imported (package G). The bypass
+/* The render node closes when nothing needs it: no claim, and no client buffer imported. The bypass
  * without a client keeps the shipped behaviour: the node is not even open. */
 void warp_gl_idle(struct runtime *r)
 {
@@ -104,7 +104,7 @@ static void on_common(struct runtime *r)
 	r->why[0] = '\0';
 }
 
-/* The panel for the Wayland client (package G, ENTWURF v3 section 5): no capture - the claim needs no signal and the
+/* The panel for the Wayland client : no capture - the claim needs no signal and the
  * capture ring stays closed (-11.9 MiB, G-M) - only the render node and h713-tv's three targets. */
 static bool engage_client(struct runtime *r)
 {
@@ -149,7 +149,7 @@ bool warp_engage(struct runtime *r)
 	 */
 	/*
 	 * h713-tv said "source client" the last time: it refuses a ring claim, so the policy is asked alone first - one
-	 * short line instead of STREAMON, six EXPBUF and STREAMOFF once a second for a refusal (M4 A1, PRUEFUNG-M4 2).
+	 * short line instead of STREAMON, six EXPBUF and STREAMOFF once a second for a refusal.
 	 */
 	if (r->peer.tv_source == TV_CLIENT && (!peer_source(&r->peer) || r->peer.tv_source == TV_CLIENT)) {
 		note(r, r->peer.tv_source == TV_CLIENT ? "h713-tv's source is client: no ring until it changes"
@@ -247,8 +247,8 @@ void warp_apply(struct runtime *r)
 			 r->conf.mode != MODE_FRONT);	/* a mirrored identity needs the GPU */
 
 	/*
-	 * A Wayland client (package G) is drawn whenever it is shown and h713-tv lets it: always through the GPU, even
-	 * at the identity (there is no other way onto the panel for it, M3 11). A keystone or pattern change only asks
+	 * A Wayland client is drawn whenever it is shown and h713-tv lets it: always through the GPU, even
+	 * at the identity (there is no other way onto the panel for it). A keystone or pattern change only asks
 	 * for the picture again. A ring claim gives way to a client by itself only under "source auto"; under "hdmi"
 	 * h713-tv would refuse the client, and every switch would blink the wall.
 	 */
@@ -258,7 +258,7 @@ void warp_apply(struct runtime *r)
 		return;
 	}
 	/*
-	 * A client is shown while the ring stands and h713-tv's last word was not "auto": ask it (M4 A1). A policy change
+	 * A client is shown while the ring stands and h713-tv's last word was not "auto": ask it. A policy change
 	 * reaches the warp with the "ok" of the next ring frame - and a ring that stalls sends none (HY310, 15.10.2026 after
 	 * a standby: the ring claimed, 0 frames, Kodi waited five minutes behind it). main.c asks again once a second.
 	 */
@@ -501,7 +501,7 @@ bool warp_pump(struct runtime *r)
 	}
 	account(r, t0);
 	r->check.last_pump = now_s();
-	/* "source auto" came while the ring stood (h713-tv said it with this frame, M4 A1): a client that waits goes first */
+	/* "source auto" came while the ring stood (h713-tv said it with this frame): a client that waits goes first */
 	if (r->peer.tv_source == TV_AUTO && server_shown(r->srv)) {
 		warp_apply(r);
 		return r->state == WARP_ON;
@@ -516,8 +516,8 @@ bool warp_client_live(const struct runtime *r)
 }
 
 /*
- * The client's quad: the keystone as for the ring (with "warp = off" none, ENTWURF v3 D8), and a picture smaller
- * than the panel in the middle at its own size (letterbox, M3 11) - the unit quad scaled first, so K * S.
+ * The client's quad: the keystone as for the ring (with "warp = off" none), and a picture smaller
+ * than the panel in the middle at its own size (letterbox) - the unit quad scaled first, so K * S.
  */
 static void client_matrix(const struct runtime *r, const struct gl_image *im, float out[16])
 {
@@ -549,7 +549,7 @@ static int client_answer(struct runtime *r, int rc, double t0, const char *why)
 }
 
 /* One client frame (wayland.c takes the buffer): draw, the render fence to h713-tv and a dup of it back to the
- * server - the buffer is released when it signals (M3 3) - and h713-tv's flip fence, the client's clock (M3 4/5). */
+ * server - the buffer is released when it signals - and h713-tv's flip fence, the client's clock. */
 int warp_client_frame(struct runtime *r, const struct gl_image *im, int *render, int *flip)
 {
 	char why[WARP_WHY];

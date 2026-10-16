@@ -2,7 +2,7 @@
 # h713-mips-restart (which starts h713-tv and h713-warp) and then the mode unit that h713-sleep-pre ended (Kodi). Until it
 # is done `systemctl is-active` says "activating" and h713-power ignores a short press. After=suspend.target: that target is
 # reached when the sleep is over. A standby that did not happen (aborted, refused) may not reach it: h713-power then runs
-# this unit once more by hand - it does nothing twice. Media side project, package H.
+# this unit once more by hand - it does nothing twice.
 [Unit]
 Description=H713: after a sleep the picture path and the mode from before come back (h713-mode sleep-post)
 After=suspend.target

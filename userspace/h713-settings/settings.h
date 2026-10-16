@@ -1,6 +1,6 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * h713-settings - the box's settings as one page on the wall, driven by the remote (media side project, package S).
+ * h713-settings - the box's settings as one page on the wall, driven by the remote.
  *
  * The model: areas (Picture, Keystone, ...) hold rows; a row is a slider, a switch, a choice, an action or a line of
  * text. Every row is one existing command of this project - h713-tv ctl, h713-warp ctl, h713-power set, a key of a

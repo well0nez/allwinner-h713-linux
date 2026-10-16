@@ -778,7 +778,7 @@ class Device(Base):
         b = self.box().start_device("Sound")
         wait_for(lambda: len(b.osd.log) > 1)
         b.press(POWER)
-        self.assertEqual(b.power.recv(32), b"short")
+        self.assertEqual(b.power.recv(32), b"down")
         self.assertEqual(b.proc.wait(timeout=5), 0)
         self.assertTrue(wait_for(lambda: b.osd.closed))
 

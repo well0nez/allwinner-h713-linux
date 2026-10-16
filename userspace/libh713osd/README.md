@@ -41,7 +41,7 @@ firmware shows its volume), `OSD_TOP_RIGHT`, `OSD_CENTER` (the same strip in the
 
 ## The menu and the launcher
 
-Package H of the media side project (`arbeit/medien`, the launcher of the Kodi image) and package S (settings) draw menus
+The launcher of the Kodi image and the settings page draw menus
 in the overlays' look, so the library has the pieces, in "1080-line units" (the mock-up's numbers, scaled by canvas
 height / 1080):
 
@@ -56,10 +56,10 @@ The page is **opaque** (Marco, 15.10.2026: "launcher and settings must have a gr
 translucent list over a picture is unreadable over some pictures. The ground and the lit pill (`OSD_PAGE_PILL` 0x1c2321) are the
 colours of `h713-settings`' `ui.c`, so that launcher and settings are one line. Everything but the ground stays inside a **safe
 margin of 5 %** on each side (`OSD_SAFE_PERCENT`: 96 px left and right, 54 px top and bottom at 1080p, 64 and 36 at 720p); `test-menu`
-measures it at 1080p, 720p and 540p for every selection, with six rows and with the three of package H - together with the page
+measures it at 1080p, 720p and 540p for every selection, with six rows and with the Kodi image's three - together with the page
 being opaque everywhere, the tiles covering the canvas exactly once, the lit pill's exact colour, and the invariant h713-osd's
 incremental redraw lives on: a tile repainted alone is bit for bit what a full draw gives, a move of the selection changes two tiles
-and no other. `osd-mockup` draws the page in the states of package H as `launcher-*.pam`. (The first design, a gradient over the
+and no other. `osd-mockup` draws the page in the states of the launcher as `launcher-*.pam`. (The first design, a gradient over the
 running picture, is in the history of this file's commit: `0ad4e98`.)
 
 ## Text
@@ -97,4 +97,4 @@ against the board root, as `h713-warp` is built (not tried yet).
 
 Which place (the owner chooses on the mock-ups); whether the display's channel 2 wants premultiplied
 alpha (measured in 2.48 - the library writes straight alpha). The time to draw one item on the board is not
-measured; text: the cost of a label on the board is not measured either (media side project, package H).
+measured; text: the cost of a label on the board is not measured either.

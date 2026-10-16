@@ -72,8 +72,8 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *s, const struct osd_
 /*
  * The menu (osd.c): the pieces of the launcher - Strichsymbole, a row and a hint line - drawn in the look of the overlays
  * (pill, white lines, bright and dim) on the launcher's opaque page. Geometry is in "1080-line units": the
- * mock-up's numbers, scaled by canvas height / 1080, so 720p and 1080p get the same layout. Package H's launcher and
- * package S's settings are built from these; text needs osd_font_open() first (below).
+ * mock-up's numbers, scaled by canvas height / 1080, so 720p and 1080p get the same layout. The launcher and
+ * the settings page are built from these; text needs osd_font_open() first (below).
  */
 enum osd_icon { OSD_ICON_HDMI, OSD_ICON_FILM, OSD_ICON_GLOBE, OSD_ICON_DESK, OSD_ICON_SLIDERS, OSD_ICON_POWER, OSD_ICONS };
 

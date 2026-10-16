@@ -134,7 +134,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `userspace/h713-cam/README.md` | `doku/94` |
 | `userspace/h713-focus/_entwurf-agent/README-agent.md` | `doku/113`, `doku/60` |
 | `userspace/h713-focus/_entwurf-agent/h713_focus/geraet.py` | `doku/60` |
-| `userspace/h713-keys/README.md` | `doku/195` |
+| `userspace/h713-keys/README.md` | `doku/195`, `doku/212` |
+| `userspace/h713-osd/README.md` | `doku/212` |
 | `userspace/h713-pq/README.md` | `doku/78`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14`, `doku/nachtlog/S14-re-picture-mode` |
 | `userspace/h713-pq/h713_pq/model.py` | `doku/76`, `doku/77`, `doku/81`, `doku/85`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/I0-helligkeit-nachgemessen`, `doku/nachtlog/K5-board-verifikation`, `doku/nachtlog/S14`, `doku/nachtlog/S14-re-picture-mode` |
 | `userspace/h713-pq/h713_pq/output.py` | `doku/81` |
@@ -143,6 +144,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `userspace/h713-tv/main.c` | `doku/101`, `doku/102`, `doku/128`, `doku/197`, `doku/198`, `doku/200`, `doku/60`, `doku/76`, `doku/78`, `doku/81`, `doku/82`, `doku/83`, `doku/86`, `doku/87`, `doku/88`, `doku/96`, `doku/nachtlog/A-abnahme-board`, `doku/nachtlog/B2-quellenwechsel`, `doku/nachtlog/G`, `doku/nachtlog/H-abnahme-board`, `doku/nachtlog/I3`, `doku/nachtlog/K4-hotplug`, `doku/nachtlog/S11`, `doku/nachtlog/S12`, `doku/nachtlog/S14` |
 | `userspace/h713-warp/capture.c` | `doku/86` |
 | `userspace/h713-warp/main.c` | `doku/200` |
+| `userspace/h713-warp/wayland.c` | `doku/211` |
 | `userspace/libh713osd/README.md` | `doku/192` |
 
 ## 2 Alle Eintraege
@@ -264,8 +266,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`207-hy310-auf-main-hy310main1-reihe-20261012.md`](207-hy310-auf-main-hy310main1-reihe-20261012.md) | Analyse | 2026-10-12 | 207 - HY310 auf `main`: Abbild hy310main1 gebaut und installiert, die offenen 2.x-Punkte gemessen; Handoff (12.10.2026, abends) | 1 |
 | [`208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`](208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md) | Analyse | 2026-10-12 | 208 - Die 5.x-Runde: Werkzeuge, Reste der Standby-Durchsicht, ARISC-Wahl, Panel-PR, Testabbild runde5x1 am HY310; Handoff (12.10.2026, nachts) | - |
 | [`209-runde-5x-teil-b-uebernahme-panel-20261013.md`](209-runde-5x-teil-b-uebernahme-panel-20261013.md) | Analyse | 2026-10-13 | 209 - Die 5.x-Runde, Teil B mit Marco am HY310, alles nach `main`, das Panel mit den Beamer-Begriffen; Handoff (13.10.2026, nachts) | - |
-| [`211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md`](211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md) | Protokoll | 2026-10-15 | 211 - Das Nebenprojekt Medien: Dekoder, VA-API-Treiber, mesa, Kodi und der Wayland-Server im Warp; die Messungen am HY310 (13. bis 15.10.2026) | 3 |
-| [`212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md`](212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md) | Protokoll | 2026-10-16 | 212 - Das Nebenprojekt Medien, zweiter Teil: Launcher, Einstellungsseite, Desktop und Browser, Kodi als Nutzer, die VE mit 600 MHz, der VA-Treiber `0015` bis `0017`, der Endbau (15. und 16.10.2026) | 9 |
+| [`211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md`](211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md) | Protokoll | 2026-10-15 | 211 - Das Nebenprojekt Medien: Dekoder, VA-API-Treiber, mesa, Kodi und der Wayland-Server im Warp; die Messungen am HY310 (13. bis 15.10.2026) | 4 |
+| [`212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md`](212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md) | Protokoll | 2026-10-16 | 212 - Das Nebenprojekt Medien, zweiter Teil: Launcher, Einstellungsseite, Desktop und Browser, Kodi als Nutzer, die VE mit 600 MHz, der VA-Treiber `0015` bis `0017`, der Endbau (15. und 16.10.2026) | 11 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |

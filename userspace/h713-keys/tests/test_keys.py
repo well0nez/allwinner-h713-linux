@@ -329,7 +329,7 @@ class KeysTest(unittest.TestCase):
             self.assertEqual(f.read().split(), ["up", "3", "down", "3"])
 
 
-    # --- the launcher (package H) ----------------------------------------------------------------------------------
+    # --- the launcher ----------------------------------------------------------------------------------
 
     def keys(self, *names):
         """presses in order; a Home is followed by its release, as a real remote sends it (the grab waits for it)"""
@@ -339,7 +339,7 @@ class KeysTest(unittest.TestCase):
                 self.press("home", value=0)
 
     def launcher_d(self, **files):
-        """etc/h713/launcher.d/<name>.conf = the given text; the defaults are the three entries of package H"""
+        """etc/h713/launcher.d/<name>.conf = the given text; the defaults are the three entries"""
         d = os.path.join(self.root, "etc/h713/launcher.d")
         os.makedirs(d, exist_ok=True)
         files = files or {
@@ -375,7 +375,7 @@ class KeysTest(unittest.TestCase):
         self.assertEqual(sorted(calls), [("event0", True), ("event1", True)])      # the IR receiver and the remote, no keyboard
 
     def test_the_grab_waits_for_the_release_of_home(self):
-        """H2, 15.10.2026: a grab while Home is down lost its release for cage, cage held Home down and Kodi repeated it at 30 Hz"""
+        """15.10.2026: a grab while Home is down lost its release for cage, cage held Home down and Kodi repeated it at 30 Hz"""
         self.launcher_d()
         calls = self.grabs()
         fds = {"event0": os.open(os.path.join(self.root, "dev/input/event0"), os.O_RDONLY | os.O_NONBLOCK),
@@ -398,10 +398,37 @@ class KeysTest(unittest.TestCase):
         calls = self.grabs()
         self.keys("home", "nav_down", "ok")
         self.run_once()
-        self.assertEqual(self.osds.lines[1:], ["launcher 1", "launcher close"])
+        # OK sends the selection once more before it starts the row: h713-osd must still show the page
+        self.assertEqual(self.osds.lines[1:], ["launcher 1", "launcher 1", "launcher close"])
         self.assertEqual(sorted(c for c in calls if not c[1]), [("event0", False), ("event1", False)])
         time.sleep(0.2)
         self.assertEqual(self.systemctl_calls(), ["is-active --quiet h713-kodi.service", "start --no-block h713-kodi.service"])
+
+    def osd_restarted(self):
+        """h713-osd restarted under the open launcher: the page is gone, a command for it finds no launcher"""
+        self.osds.answer = lambda line: "ok\n" if ";" in line or line == "launcher close" else "error the launcher is not open\n"
+
+    def test_a_restarted_osd_closes_the_launcher_at_the_next_move(self):
+        self.launcher_d()
+        calls = self.grabs()
+        self.osd_restarted()
+        self.keys("home", "nav_down", "nav_down")
+        self.run_once()
+        self.assertEqual([l.split(";")[0] for l in self.osds.lines], ["launcher 0", "launcher 1", "launcher close"])   # the second Down is not the launcher's
+        self.assertEqual(sorted(c for c in calls if c[1]), [("event0", True), ("event1", True)])
+        self.assertEqual(sorted(c for c in calls if not c[1]), [("event0", False), ("event1", False)])      # held, then let go at once
+        self.assertEqual(self.systemctl_calls(), ["is-active --quiet h713-kodi.service"])
+
+    def test_ok_starts_nothing_when_osd_no_longer_shows_the_launcher(self):
+        self.launcher_d()
+        calls = self.grabs()
+        self.osd_restarted()
+        self.keys("home", "ok")
+        self.run_once()
+        time.sleep(0.2)
+        self.assertEqual([l.split(";")[0] for l in self.osds.lines], ["launcher 0", "launcher 0", "launcher close"])
+        self.assertNotIn("start --no-block h713-kodi.service", self.systemctl_calls())
+        self.assertEqual(sorted(c for c in calls if not c[1]), [("event0", False), ("event1", False)])
 
     def test_enter_is_ok_in_the_launcher(self):
         """70-h713-remote.rules turns the remote's OK into KEY_ENTER: the launcher takes it as OK"""
@@ -469,7 +496,7 @@ class KeysTest(unittest.TestCase):
         self.run_once()
         self.assertEqual(self.osds.lines[-1], "launcher close")
         self.assertTrue(all(not c[1] for c in calls[-2:]))
-        self.assertEqual(self.power.recv(64), b"short")
+        self.assertEqual(self.power.recv(64), b"down")
 
     def test_no_picture_no_launcher_and_no_grab(self):
         self.launcher_d()

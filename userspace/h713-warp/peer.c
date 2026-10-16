@@ -169,7 +169,7 @@ static bool exchange(struct peer *p, const char *line, int send_fd, char *reply,
 	return true;
 }
 
-/* h713-tv names its "source" with every answer to a claim (package G): "... source auto", "error source is hdmi ..." */
+/* h713-tv names its "source" with every answer to a claim: "... source auto", "error source is hdmi ..." */
 static void tv_source(struct peer *p, const char *reply)
 {
 	const char *s = strstr(reply, "source ");
@@ -213,9 +213,9 @@ static bool peer_connect(struct peer *p, char *why, size_t n)
 }
 
 /*
- * "source" and nothing else (M4 A1): asked before a ring claim while the last answer said "source is client". Under
+ * "source" and nothing else: asked before a ring claim while the last answer said "source is client". Under
  * that policy h713-tv refuses the ring, and building it to hear so - STREAMON, six EXPBUF, the claim, STREAMOFF - ran
- * once a second for nothing (M4: 5 in 6 s). One line on a connection of its own, which h713-tv closes after the answer.
+ * once a second for nothing (measured 15.10.2026: 5 in 6 s). One line on a connection of its own, which h713-tv closes after the answer.
  */
 bool peer_source(struct peer *p)
 {
@@ -236,7 +236,7 @@ bool peer_claim(struct peer *p, int src, char *why, size_t n)
 {
 	char reply[WARP_LINE];
 	unsigned int w = 0, h = 0, pitch = 0, coff = 0;
-	/* the ring's line is the one every h713-tv knows; a client's is new (package G) */
+	/* the ring's line is the one every h713-tv knows; a client's is new */
 	const char *line = src == SRC_CLIENT ? "warp claim client\n" : "warp claim\n";
 
 	if (p->fd >= 0)
@@ -303,7 +303,7 @@ int peer_frame(struct peer *p, int index, int fence, int *flip, char *why, size_
 		p->errors++;
 		return -1;
 	}
-	if (strstr(reply, " source "))	/* "source" changed, the claim stands (M4 A1) */
+	if (strstr(reply, " source "))	/* "source" changed, the claim stands */
 		tv_source(p, reply);
 	if (strstr(reply, "busy")) {
 		p->busy++;
