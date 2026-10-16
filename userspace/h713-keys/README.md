@@ -8,7 +8,7 @@ over IR (the `sunxi-ir` receiver with the keymap `rc-h713-fd02`, kernel 0254):
 |---|---|
 | louder / quieter | `h713-tv ctl volume N`, `volume_step` per press (default 5 of 0..100); both lift a mute first |
 | mute | toggles `h713-tv ctl mute on/off` |
-| focus up / down (`KEY_F4` / `KEY_F5`) | `h713-focus up/down N`, `focus_steps` per press (default 20, about 0.3 s of travel); one run at a time, presses during a run wait for the next (at most two), a held key keeps it going; at the end of the travel the overlay says so (`focus up edge`) and nothing more is queued that way |
+| focus up / down (`KEY_F4` / `KEY_F5`) | `h713-focus up/down N`, `focus_steps` per press (default 20, about 0.3 s of travel); one run at a time, presses during a run wait for the next (at most two), a held key keeps it going; at the end of the travel the overlay says so and nothing more is queued that way; the edge picture is the other direction's (a run up ends with `focus down edge`, a run down with `focus up edge`: Marco's eye at the wall, 16.10.2026) |
 | `input_keys` (none by default) | switches `h713-tv` between the HDMI picture (`auto`) and the console (`off`) - the way back after someone forced the console; which key does it is still open, the remote has no record key |
 | power | nothing here: logind, or `h713-power` on an image with standby, powers off |
 | Home | opens the **launcher** (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
