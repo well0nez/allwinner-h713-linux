@@ -56,7 +56,8 @@ page hide                    the page goes (so does the end of the connection)
 The daemon copies the new rows into its canvas, puts them into the buffer h713-tv shows - straight, or through the keystone's
 matrix as a **band** (two neighbour rows for the sampling, only the panel pixels whose source row lies in the band written: no
 seam, the launcher's reasoning, measured by a test that compares a page shown in pieces with the same page shown at once) - and
-answers after `osd show`: `ok waiting` means h713-tv has no picture at the moment and keeps the page for its return (the autofocus
+answers after `osd show`: without an HDMI signal a page is shown over black (`osd show N cover`, pre-distorted with warp.conf's keystone
+when that warps), and the launcher opens there too. `ok waiting` means h713-tv has no picture at the moment and keeps the page for its return (the autofocus
 has the panel, a source changes its mode). Popups and the mute badge are not drawn while a page is open; the page covers the
 panel, and a launcher does not open over it. `page` in `ctl status` says open or closed. Host tests: `tests/test_page.py`.
 

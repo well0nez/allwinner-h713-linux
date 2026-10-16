@@ -42,7 +42,7 @@ HDMI input until the launcher starts one of them.
 |---|---|
 | `h713-kodi.service` | cage with Kodi in it, drawn by `h713-warp` as a Wayland client, as the system user `h713-kodi` (not root) ([rootfs README](../rootfs/README.md), [h713-warp](tools/h713-warp.md)) |
 | `h713-desktop.service`, `h713-browser.service` | labwc with a terminal, and Firefox in a labwc of its own, as the system user `h713-desktop`; they exclude each other and Kodi (`Conflicts=`) ([h713-desktop](tools/h713-desktop.md)) |
-| `seatd` | seat management for cage and labwc |
+| `seatd` | seat management for cage and labwc, without a VT (`SEATD_VTBOUND=0`: the panel is h713-tv's, the console's keyboard too) |
 | `polkitd` | with `/etc/polkit-1/rules.d/50-h713-kodi.rules`: lets the user `h713-kodi` suspend, power off and reboot through logind - Kodi's own power menu - and nothing else |
 | `pipewire.service`, `pipewire.socket`, `wireplumber.service`, `filter-chain.service` (user units) | **masked** in `/etc/systemd/user/` (profile `media`): nothing starts PipeWire by itself; a player that wants it starts it by hand |
 | `h713-settings` | not a service: the settings page, a program the launcher's entry starts ([h713-settings](tools/h713-settings.md)); the binary is in every image, the entry in the profile `desktop` |

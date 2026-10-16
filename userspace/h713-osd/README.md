@@ -100,8 +100,11 @@ no questions to h713-tv without a keystone. The environment variables `H713_OSD_
 
 ## Limits
 
-- No overlay without a picture yet: on the console (no signal, `h713-tv ctl off`) "osd show" waits; the overlay
-  over the console is the next step (TODO 2.46, P5).
+- A popup without a picture waits: on the console (no signal, `h713-tv ctl off`) "osd show" answers `ok waiting`
+  and the popup comes with the picture. An opaque page - the launcher, a settings page - does not wait: it goes as
+  "osd show N cover" and h713-tv shows it over black, pre-distorted with warp.conf's keystone when that says
+  `warp = on` (it stands where the warped picture would). Until 16.10.2026 the launcher did not open without a
+  signal at all.
 - No fade: an overlay goes after `seconds` at once.
 - The badge and the overlay never overlap in any place; the pre-distortion relies on it.
 - Not measured: the warp's frame rate while overlays change quickly (P6), the colours on the wall against the

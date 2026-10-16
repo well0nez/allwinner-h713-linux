@@ -6,3 +6,4 @@ tests/*.o
 gen/
 tests/test_wayland
 tests/server_stub
+tests/test_peer

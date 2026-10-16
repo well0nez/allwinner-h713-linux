@@ -153,14 +153,59 @@ class LauncherTest(OsdBase):
         self.assertEqual(self.shown(), page, "the page after the strip is the page before it")
         self.assertEqual(self.tv.bbox(), (0, 0, W - 1, H - 1))
 
-    def test_no_picture_no_launcher(self):
+    def test_no_picture_the_launcher_over_black(self):
+        """without a signal the launcher opens all the same (16.10.2026 it did not): an opaque page needs no picture under it,
+        h713-tv is asked to show it over black ("cover"), straight while warp.conf does not warp"""
         self.tv.picture = "none"
         self.start()
         out = self.launcher(line(1))
-        self.assertTrue(out.startswith("ok unseen"), out)
+        self.assertEqual(out, "ok\n")
+        self.assertIn("launcher        open", self.ctl("status"))
+        self.assertTrue([l for l in self.tv.lines if re.fullmatch(r"osd show [01] cover", l)], self.tv.lines)
+        self.assertEqual(self.tv.bbox(), (0, 0, W - 1, H - 1))                 # the whole panel, opaque
+        self.launcher("2")                                                      # a move works: the launcher is open
+        self.launcher("close")
+        self.assertIsNone(self.tv.shown)
+        self.assertEqual(self.tv.lines[-1], "osd hide")
+
+    def test_no_picture_a_popup_is_no_cover(self):
+        """only an opaque page asks for "cover": a popup over nothing still waits for the picture"""
+        self.tv.picture = "none"
+        self.start()
+        self.ctl("volume", "40")
+        time.sleep(0.2)
+        shows = [l for l in self.tv.lines if l.startswith("osd show ")]
+        self.assertTrue(shows, self.tv.lines)
+        self.assertFalse([l for l in shows if l.endswith("cover")], shows)
+
+    def test_no_picture_the_page_follows_the_keystone(self):
+        """over black the launcher stands where the warped picture would: pre-distorted with warp.conf's keystone when that warps,
+        straight when it says "warp = off"."""
+        self.write("warp.conf", "bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = on\n")
+        self.tv.picture = "warped"
+        self.start()
+        self.launcher(line(1))
+        warped = self.shown()
+        self.launcher("close")
+        self.tv.picture = "none"
+        self.launcher(line(1))
+        self.assertEqual(self.shown(), warped, "over black as over the warped picture")
+        self.assertNotEqual(self.tv.bbox(), (0, 0, W - 1, H - 1))              # the keystone's slanted sides
+        self.launcher("close")
+        self.write("warp.conf.new", "bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = off\n")
+        os.rename(os.path.join(self.tmp.name, "warp.conf.new"), os.path.join(self.tmp.name, "warp.conf"))
+        time.sleep(0.3)
+        self.launcher(line(1))
+        self.assertEqual(self.tv.bbox(), (0, 0, W - 1, H - 1))                 # "warp = off": straight
+
+    def test_no_tv_no_launcher(self):
+        """"ok unseen" now means only that h713-tv is not there to show anything"""
+        self.tv.stop()
+        self.start()
+        r = subprocess.run([BIN, "ctl", "launcher", line(1)], env=self.env, capture_output=True, text=True, timeout=5)
+        self.assertTrue(r.stdout.startswith("ok unseen"), r.stdout)
         self.assertIn("launcher        closed", self.ctl("status"))
-        r = subprocess.run([BIN, "ctl", "launcher", "2"], env=self.env, capture_output=True, text=True, timeout=5)
-        self.assertTrue(r.stdout.startswith("error"), r.stdout)   # a move needs an open launcher
+        self.tv.stop = lambda: None                                             # stopped already: tearDown must not unlink twice
 
     def test_bad_lines(self):
         self.start()

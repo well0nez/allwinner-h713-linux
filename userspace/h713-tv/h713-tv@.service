@@ -54,6 +54,12 @@ RuntimeDirectoryMode=0755
 StateDirectory=h713-tv
 StateDirectoryMode=0755
 
+# "ctl mute" is kept in /run/h713-tv-state/mute over a restart of the program (after a standby, by the rescue), not
+# over a boot. The directory comes from tmpfiles.d (h713-tv.tmpfiles), because the RuntimeDirectory above is
+# emptied at every stop; under ProtectSystem=strict it is writable only through this line. "-": without the
+# directory the unit starts as before and the mute is the run's alone.
+ReadWritePaths=-/run/h713-tv-state
+
 # SIGTERM is the regular way out: the program switches the plane off and hands
 # the console back before it ends. So `systemctl stop` leaves no still frame
 # standing on the wall. SIGHUP evaluates the state again (`systemctl reload`)

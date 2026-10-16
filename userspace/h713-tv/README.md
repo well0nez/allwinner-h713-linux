@@ -104,6 +104,19 @@ blank lines). A good third of that is the control channel (§6a); the rest is th
    The kernel client's full restore (`drm_client_dev_restore`) hangs on the **last close** of the DRM device
    (`drm_lastclose`) - not on the master change; it is not needed, because 0093 puts the hardware back
    itself.
+3. **Nobody else commits the panel - and if somebody does, the next commit undoes it.** The kernel's fbdev
+   emulation has one way past the master: a switch of the VT from graphics to text mode makes
+   `drm_fb_helper_set_par()` force its own state (`FB_ACTIVATE_KD_TEXT`, the case kept for Xorg) - the
+   console's framebuffer on the primary plane at the zpos it finds, every other plane off. seatd did exactly
+   that whenever a compositor left the seat, and with an overlay shown (zpos 2) the console lay over the next
+   client's picture (16.10.2026, every change between two clients). The profile desktop runs seatd without a
+   VT (`SEATD_VTBOUND=0`), so the VT stays in text mode and a switch "to text" is no change; and every commit
+   of this program carries the primary plane as it wants it (§6h), so whatever lands there in between lasts
+   one frame. The console's **keyboard** is off (`K_OFF`) while anything but the console is on the panel -
+   picture, warp, an opaque page - and on again with the console: the remote and a keyboard on the desktop
+   would otherwise type into the hidden login prompt on tty1, Enter included (seatd did this while a
+   compositor had the seat). Programs that read the keys themselves read the input devices, which the VT's
+   keyboard mode does not touch.
 
 If an X server or a Wayland compositor runs on the board later, the master is taken and `h713-tv` does not
 get it (the program says so plainly then). The way there would be a DRM lease, or a start from inside the
@@ -425,7 +438,8 @@ second `h713-tv` does not start (`/run/h713-tv/lock`).
 **The console after switching back.** When the panel is handed back (signal loss, `off`, the end of the
 program) and at the start, the program unblanks the console (`TIOCL_UNBLANKSCREEN`) and switches the cursor
 on (`ESC[?25h`); on 08.09. the console otherwise stood frozen without a cursor (`fb0/blank` = 4, the cursor
-hidden by DECTCEM - the culprit was not found, `consoleblank` is 0).
+hidden by DECTCEM - the culprit was not found, `consoleblank` is 0). The console's keyboard comes back on with
+it (§3; at the start too, should an earlier run have left it off).
 
 ## 6b. Audio: the audio path follows the picture
 
@@ -472,9 +486,12 @@ device's tones (0 dB, the S16 reference; `-t`/`--hdmi-trim DB` lowers it), `HDMI
 automaton's silence. `ctl mute on` switches the DSP mute (for HDMI) and additionally the codec's switch if
 it has one - the H713 codec has no mixer stage and therefore no `DAC Playback Switch`, its
 `Line Out Playback Switch` (the LINEOUT enables in `0x02030310`) is the one that exists; order: whatever
-goes quiet goes quiet first, whatever opens up opens up last. A `ctl mute` does not outlive the program on
-the codec (the switch is reset on exit), or the next `aplay` would be silent for a reason nobody can see any
-more.
+goes quiet goes quiet first, whatever opens up opens up last. A `ctl mute` outlives a restart of the program
+within a boot - after a standby that parked the display MIPS h713-tv is restarted, and it came back loud
+(16.10.2026) - and not the boot: it is kept in `/run/h713-tv-state/mute` (a tmpfs directory from
+`h713-tv.tmpfiles`, made writable by the unit; the unit's own RuntimeDirectory is emptied at every stop) and set
+again at the start, before the cards are opened. On exit the codec's switch is reset all the same, or the next
+`aplay` would be silent for a reason nobody can see any more.
 
 **The device's own sounds** (plan [doku/102](../../doku/102-plan-audio-mischung.md), package I; kernel
 patch 0176). The DAC takes one source, and a PC keeps its HDMI audio stream open even in silence (PipeWire,
@@ -730,7 +747,14 @@ control socket, in its own language, the file descriptors in `SCM_RIGHTS` on the
 plane below the luma in the same buffer;
 `warp frame N` carries the daemon's out-fence and commits buffer N with `IN_FENCE_FD`, answering
 `ok` or `ok busy` when the previous commit is still in flight (that frame is dropped);
-`warp release` gives the panel back. The connection is the lifetime - a daemon that dies leaves a
+`warp release` gives the panel back; `warp switch client|ring` turns a standing claim into the other source's
+on the same three buffers (`ok source X`, or `error ...` and the claim stays as it was): the master and the
+video plane stay up, only what the daemon draws into the buffers changes, so the wall goes from the last ring
+frame to the client's first and back. Releasing and claiming again put the unwarped ring on the plane in
+between and switched the plane off for the new claim - a white flash at every change between HDMI and a client
+(16.10.2026). A `source` that no longer allows the claim (a client's under `hdmi`, the ring's under `client`) is
+said to the daemon unasked on the connection, `note source hdmi`; it switches or releases, and 1.5 s later the
+claim is released here if it still stands. The connection is the lifetime - a daemon that dies leaves a
 hangup and the ring comes back by itself. While the warp is on, `h713-tv ctl zoom` is refused with
 `error the warp is on - use h713-warp ctl zoom`, and `h713-tv ctl off` releases the warp. `ctl status` says
 `picture warped (h713-warp draws on the video plane)`, and `ctl warp status` gives the plane, the geometry
@@ -752,25 +776,31 @@ warp's pattern, on its own control socket, the file descriptors in `SCM_RIGHTS`:
 `osd claim` answers `ok WIDTH HEIGHT PITCH argb8888` and two ARGB8888 dumb buffers of the mode (8.3 MB each at
 1080p), which the peer maps and draws into (with `DMA_BUF_IOCTL_SYNC` around the writes);
 `osd show N` lays buffer N over the picture - `ok`, or `ok waiting` when there is no picture: the overlay stays
-wanted and comes back by itself with the picture (ring or warp);
+wanted and comes back by itself with the picture (ring or warp); `osd show N cover` is an opaque page (the
+launcher, the settings) that needs no picture under it - without one it is shown over black (`ok cover`): the
+master is taken for it and given back, with the console, when the page goes;
 `osd hide` takes it away; `osd picture` answers what lies under the overlay - `warped`, `ring` or `none` (h713-osd
 pre-distorts only over the warp); `osd release` frees the buffers. The connection is the lifetime: a peer that
 dies leaves a hangup and the overlay goes with it.
 
 **Over the warp the change rides along.** While h713-warp draws, a show or hide is not committed on its own: it
-waits for the warp's next frame and goes into the same atomic commit (`osd_ride`). A separate commit met the warp's
+waits for the warp's next frame and goes into the same atomic commit (`osd_state_add`). Every commit of this
+program carries the primary plane as it is wanted - the overlay at zpos 2 or the console's framebuffer at zpos 0 -,
+the picture's (`display_show`) and every warp frame alike; the plane is in the commit anyway, the simple pipe's
+CRTC check adds every plane of the CRTC. A separate commit met the warp's
 non-blocking one (EBUSY), and the blocking retry once held this program's loop 45 ms; riding along, 0 busy in the
 measurements since. Without the warp (the ring) the overlay is committed at once.
 
-**The console comes back without the overlay.** At the claim this program remembers the primary plane's
-framebuffer - the console's - and puts it back at `zpos` 0 before it lets the master go, on every way the picture
-leaves: `display_hide` (signal lost, `ctl off`), `warp_release`, the exit. Measured on the HY310 (11.10.2026):
+**The console comes back without the overlay.** The first time this program commits the primary plane it
+remembers the plane's framebuffer - the console's - and puts it back at `zpos` 0 before it lets the master go, on
+every way the picture leaves: `display_hide` (signal lost, `ctl off`), `warp_release`, the exit - in the same
+commit that switches the video plane off. Measured on the HY310 (11.10.2026):
 mute overlay over the warp, `ctl off` -> console, `ctl osd` says "waiting for a picture"; `ctl auto` -> the warp
 claims again and the overlay is back by itself. Without the overlay nothing changes: no claim, no commit, the
 primary plane stays the console's.
 
 `userspace/libh713osd/osd-show` puts one overlay on the panel through this channel (a test tool, not in the
-image). An overlay over the console - no signal - is the next step (TODO 2.46, P5 of the plan).
+image). A popup over the console - no signal - waits for the picture; an opaque page does not (`cover`).
 
 ## 6f. HDCP: seeing the negotiation without a photo
 

@@ -69,9 +69,14 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
 - **What h713-tv shows** is `h713-tv ctl source hdmi|client|auto` (`source =` in `tv.conf` at the start, default
   `hdmi`; the image of the profile `desktop` sets `auto`, because h713-tv does not keep a source across its own
   restart). The warp claims the panel with `warp claim client` once a toplevel has its first picture; the claim
-  needs no signal, and the capture stays closed. A change of `source` gives a standing claim back only when the
-  new policy forbids it (a ring claim under `client`, a client claim under `hdmi`), and the warp claims again at
-  once - the answer to a claim names the policy (`... source auto`). A claim the new policy allows stands, and the
+  needs no signal, and the capture stays closed. Between the ring and a client the claim is not given back: the
+  warp switches it (`warp switch client|ring` to h713-tv) and draws the other source into the same three buffers,
+  the video plane up all the time - so a change between HDMI and a client goes from the last frame of the one to
+  the first of the other (giving the claim back and claiming again flashed white, 16.10.2026). This happens when a
+  client comes under `auto`, when the client is gone and the ring is to be warped, and when h713-tv's `source`
+  forbids the claim that stands: h713-tv says so unasked on the connection (`note source hdmi`), the warp switches
+  to the ring - or gives the claim back when the ring needs no GPU, has no signal, or the switch is refused; then it
+  claims again at once as before. The answer to a claim names the policy (`... source auto`). A claim the new policy allows stands, and the
   `ok` of the next frame names the policy (`ok source auto`): `hdmi` <-> `auto` no longer takes the ring off the
   panel. A client that waits behind a ring claim does not rely on that frame - a stalled ring sends none - the warp
   asks h713-tv's `source` when the client comes and once a second while it waits. Under `auto` a client goes before the ring. Under `client` without a client the warp asks `source` alone

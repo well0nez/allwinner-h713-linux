@@ -1,0 +1,7 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-tv's state that outlives a restart of the program but not the boot: "ctl mute" (MUTE_FILE in main.c).
+# h713-tv is restarted after every standby that parked the display MIPS, by the rescue and after a crash, and a
+# mute kept only in the program came back loud. Not in the unit's RuntimeDirectory, which systemd empties at every
+# stop; on the tmpfs, so a cold start is audible again. Installed as /etc/tmpfiles.d/h713-tv.conf.
+d /run/h713-tv-state 0755 root root -

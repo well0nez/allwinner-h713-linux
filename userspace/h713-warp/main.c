@@ -226,8 +226,9 @@ int main(int argc, char **argv)
 		fds[5].events = POLLIN;
 
 		/*
-		 * The capture paces the loop; the peer is polled only for its
-		 * hangup, which is h713-tv going away (A2's lifetime rule).
+		 * The capture paces the loop; the peer is polled for its
+		 * hangup, which is h713-tv going away (A2's lifetime rule), and
+		 * for a note it says unasked between two frames ("note source").
 		 * A test pattern has no capture to wait for, so it is redrawn
 		 * on a slow heartbeat -- the plane keeps showing the last
 		 * buffer in between, this only proves the path is alive.
@@ -235,7 +236,7 @@ int main(int argc, char **argv)
 		fds[2].fd = live && r.pattern == PATTERN_NONE && r.src == SRC_RING ? r.source.fd : -1;
 		fds[2].events = POLLIN | POLLPRI;
 		fds[3].fd = live ? r.peer.fd : -1;
-		fds[3].events = 0;
+		fds[3].events = POLLIN;
 		if (live && r.pattern != PATTERN_NONE)
 			timeout = PATTERN_MS;
 		else if (!live && want)
@@ -283,6 +284,9 @@ int main(int argc, char **argv)
 			if (r.state != WARP_ON || r.src != SRC_RING)
 				fds[2].revents = 0;
 		}
+		if (fds[3].fd >= 0 && (fds[3].revents & POLLIN) && !(fds[3].revents & (POLLHUP | POLLERR | POLLNVAL)) &&
+		    !peer_notes(&r.peer))
+			fds[3].revents |= POLLHUP;	/* read nothing but the end */
 		if (fds[3].fd >= 0 && (fds[3].revents & (POLLHUP | POLLERR | POLLNVAL))) {
 			warp_disengage(&r, "h713-tv closed the connection");
 			/* h713-tv gave the claim back on purpose ("ctl source"): ask again at once */
@@ -299,6 +303,12 @@ int main(int argc, char **argv)
 		    r.peer.tv_source != TV_AUTO && now_s() - asked >= RETRY_MS / 1e3) {
 			asked = now_s();
 			warp_apply(&r);
+		}
+		/* h713-tv's "source" no longer allows the claim (a note, read in an exchange or above): switch it or give it back */
+		if (r.peer.noted) {
+			r.peer.noted = false;
+			if (r.state == WARP_ON)
+				warp_apply(&r);
 		}
 		warp_check_tick(&r);
 		if ((fds[0].fd >= 0 && (fds[0].revents & POLLIN)) ||

@@ -115,7 +115,7 @@ class PageTest(PageBase):
         both = [os.pread(fd, PITCH * H, 0) for fd in self.tv.bufs]
         self.assertEqual(both[0], bytes(c.map))
         self.assertEqual(both[1], bytes(c.map))
-        self.assertEqual(self.tv.lines.count("osd show 0") + self.tv.lines.count("osd show 1"), 2)
+        self.assertEqual(len([l for l in self.tv.lines if l.startswith("osd show ")]), 2)
 
     def test_a_partial_show_is_what_a_fresh_page_shows(self):
         self.start()
@@ -306,13 +306,17 @@ class PageTest(PageBase):
         self.assertNotEqual(warped, straight)
         self.assertEqual(straight, bytes(c.map))
 
-    def test_no_picture_no_page(self):
+    def test_no_picture_the_page_over_black(self):
+        """without a signal a page (the settings) opens all the same and is shown over black ("osd show N cover")"""
         self.tv.picture = "none"
         self.start()
         c = self.page()
-        self.assertEqual(c.answer, "ok unseen\n")
-        self.assertIsNone(c.fd)
-        self.assertIn("page            closed", self.ctl("status"))
+        self.assertTrue(c.answer.startswith("ok "), c.answer)
+        self.assertIsNotNone(c.fd)
+        self.assertIn("page            open", self.ctl("status"))
+        c.paint(0, H)
+        self.assertTrue(c.show(0, H).startswith("ok"))
+        self.assertTrue([l for l in self.tv.lines if l.endswith(" cover")], self.tv.lines)
 
     def test_waiting_is_said(self):
         self.start()

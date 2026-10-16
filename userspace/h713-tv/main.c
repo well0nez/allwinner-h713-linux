@@ -118,6 +118,7 @@
 #include <sys/un.h>
 #include <sys/wait.h>
 
+#include <linux/kd.h>
 #include <linux/tiocl.h>
 #include <linux/videodev2.h>
 
@@ -1190,8 +1191,11 @@ static void window_blobs_free(const struct display *d, uint32_t a, uint32_t b)
 
 static void osd_drop(struct display *d);	/* the overlay off the panel: before every release of the master */
 static void osd_resume(struct display *d);	/* ... and back when the picture is */
-static bool osd_ride(drmModeAtomicReq *req, const struct display *d);	/* a queued change into the warp's commit */
-static void osd_rode(bool committed);
+static bool osd_state_add(drmModeAtomicReq *req, struct display *d, bool picture);	/* the primary plane into a commit */
+static void osd_state_committed(bool committed, bool picture);
+static int osd_wanted(bool picture);	/* the buffer the primary plane is to carry, -1: the console's */
+static bool osd_on_panel(void);		/* one of our buffers is on the primary plane */
+static void console_keys(bool on);	/* the console's keyboard: off while anything else is on the panel */
 
 static bool display_show(struct display *d)
 {
@@ -1238,6 +1242,8 @@ static bool display_show(struct display *d)
 	 * it with h713-tv ctl set saturation 0..100; it survives plane
 	 * off/on because nothing resets the register any more.
 	 */
+	/* and the primary plane with it: the whole panel is said here, not only what changed */
+	bool primary = ok && osd_state_add(req, d, true);
 
 	if (!ok) {
 		drmModeAtomicFree(req);
@@ -1249,6 +1255,8 @@ static bool display_show(struct display *d)
 	ret = drmModeAtomicCommit(d->fd, req, 0, NULL);
 	drmModeAtomicFree(req);
 	window_blobs_free(d, sb, db);
+	if (primary)
+		osd_state_committed(!ret, true);
 
 	if (ret) {
 		warn("atomic commit refused: %s", strerror(errno));
@@ -1261,7 +1269,7 @@ static bool display_show(struct display *d)
 	}
 
 	d->on = true;
-	osd_resume(d);
+	console_keys(false);
 	info("picture         plane %u on, %ux%u out of the capture ring at %u,%u %ux%u on the panel%s",
 	     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h,
 	     d->zoom == ZOOM_IN ? ", zoomed in" :
@@ -1278,37 +1286,63 @@ static bool display_show(struct display *d)
 static void console_restore(void);
 static void console_login_clean(void);
 
+/*
+ * The video plane off and the primary plane as it is to be without a picture, in one commit: the console's
+ * framebuffer at zpos 0 - no overlay over a plane that goes, channel 2 alone would show it - or an opaque page that
+ * stays. 0: done; -1: refused (errno); -2: a property is missing.
+ */
+static int display_plane_off(struct display *d)
+{
+	drmModeAtomicReq *req = drmModeAtomicAlloc();
+	bool ok, primary;
+	int ret;
+
+	if (!req)
+		fail("out of memory");
+	primary = osd_state_add(req, d, false);
+	if (!primary)
+		osd_drop(d);	/* the primary plane is not known: the overlay off on its own first, as before */
+	ok = add(req, d, "FB_ID", 0);
+	ok &= add(req, d, "CRTC_ID", 0);
+	ret = ok ? drmModeAtomicCommit(d->fd, req, 0, NULL) : -2;
+	drmModeAtomicFree(req);
+	if (primary && ok)
+		osd_state_committed(!ret, false);
+
+	return ret ? (ok ? -1 : -2) : 0;
+}
+
 static bool display_hide(struct display *d)
 {
-	drmModeAtomicReq *req;
-	bool ok;
 	int ret;
 
 	if (!d->on) {
 		if (!d->warped) {	/* the warp holds the master (A3) */
+			if (osd_wanted(false) >= 0) {	/* an opaque page stays, over black */
+				osd_resume(d);
+				return true;
+			}
 			osd_drop(d);
-			display_release_master(d);
+			if (d->master) {
+				display_release_master(d);
+				console_restore();
+			}
 		}
 		return true;
 	}
 
-	osd_drop(d);		/* no overlay over a plane that goes: channel 2 alone would show it */
-	req = drmModeAtomicAlloc();
-	if (!req)
-		fail("out of memory");
-
-	ok = add(req, d, "FB_ID", 0);
-	ok &= add(req, d, "CRTC_ID", 0);
-	ret = ok ? drmModeAtomicCommit(d->fd, req, 0, NULL) : -EINVAL;
-	drmModeAtomicFree(req);
-
+	ret = display_plane_off(d);
 	if (ret) {
 		warn("the plane cannot be switched off (%s) -- the picture is still up, the console is NOT back",
-		     ok ? strerror(errno) : "property missing");
+		     ret == -1 ? strerror(errno) : "property missing");
 		return false;
 	}
 
 	d->on = false;
+	if (osd_on_panel()) {
+		info("picture         plane off -- the opaque page stays, over black");
+		return true;
+	}
 	display_release_master(d);
 	console_restore();
 	info("console         plane off, RGB channel and selector back, console unblanked");
@@ -1331,10 +1365,19 @@ static bool display_hide(struct display *d)
  * releases by itself. Video plane and warp are mutually exclusive, and this
  * program decides which is up. The picture is up either way, so the audio
  * follows d->on || d->warped - a warp must never mute the source.
+ *
+ * A claim is for the ring or for a Wayland client, and "warp switch client|ring" on the same connection turns one
+ * into the other: the three buffers, the master and the video plane stay, only what h713-warp draws into the
+ * buffers changes, so the wall goes from the last frame of the one to the first of the other. Releasing and
+ * claiming again put the ring on the plane directly in between and switched the plane off for the new claim -
+ * a flash at every change between HDMI and a client (16.10.2026). A "source" that no longer allows the claim is
+ * said to h713-warp on the connection, unasked ("note source hdmi"), and h713-warp switches or releases; if it does
+ * neither within WARP_REVOKE_MS, the claim is released here as before.
  * ------------------------------------------------------------------ */
 
 #define WARP_BUFS	3
 #define TIMING_SAY_S	10	/* late warp frames and slow commits: one summary line at most this often */
+#define WARP_REVOKE_MS	1500	/* a claim the source no longer allows: h713-warp's time to switch or release */
 
 struct warp {
 	int peer;			/* the daemon's connection, -1: none */
@@ -1342,12 +1385,28 @@ struct warp {
 	bool client;			/* it draws a Wayland client, not the ring: no signal needed */
 	int flip;			/* client: our dup of the last commit's OUT_FENCE (the flip), -1 none */
 	int told;			/* the "source" h713-warp last heard (with the claim or a frame's "ok"), -1 none */
+	int revoke_fd;			/* timerfd: the claim's grace after a "note source", -1 none */
+	bool revoking;			/* ... armed */
+	struct timespec last_frame;	/* the previous "warp frame" of this claim, for the timing line; 0: none */
 	uint32_t handle[WARP_BUFS], fb_id[WARP_BUFS];
 	unsigned int pitch, coff;	/* NV12: the line pitch, the chroma plane's offset */
 	unsigned long commits, busy, errors;
 };
 
-static struct warp warp = { .peer = -1, .flip = -1, .told = -1 };
+static struct warp warp = { .peer = -1, .flip = -1, .told = -1, .revoke_fd = -1 };
+
+/* the grace for h713-warp ends: switched or released in time, or nothing more to wait for */
+static void warp_revoke_stop(void)
+{
+	struct itimerspec its;
+
+	if (!warp.revoking)
+		return;
+	memset(&its, 0, sizeof(its));
+	if (warp.revoke_fd >= 0)
+		timerfd_settime(warp.revoke_fd, 0, &its, NULL);
+	warp.revoking = false;
+}
 
 static void warp_free(struct display *d)
 {
@@ -1458,12 +1517,19 @@ static bool warp_commit(struct display *d, int n, int fence, bool *busy, int *fl
 	if (ok && warp.client)
 		ok = drmModeAtomicAddProperty(req, d->crtc_id, prop_id(&d->crtc_props, "OUT_FENCE_PTR"),
 					      (uint64_t)(uintptr_t)&out) >= 0;
-	/* an overlay change waiting for this frame goes with it: one commit, no EBUSY between the two (6h) */
-	bool rides = ok && osd_ride(req, d);
+	/*
+	 * The primary plane goes with every frame, as this program wants it: the overlay or the console's framebuffer
+	 * under the video. An overlay change waiting for this frame goes with it (one commit, no EBUSY between the
+	 * two, 6h), and whatever else committed the primary plane meanwhile is undone by the next frame - the kernel's
+	 * fbdev emulation does that on a switch of the VT to text mode, past the DRM master (drm_fb_helper_set_par(),
+	 * FB_ACTIVATE_KD_TEXT), and laid the console over the picture (16.10.2026, every change between two clients).
+	 * The plane is in the commit anyway: the simple pipe's CRTC check adds every plane of the CRTC.
+	 */
+	bool rides = ok && osd_state_add(req, d, true);
 	ret = ok ? drmModeAtomicCommit(d->fd, req, flags, NULL) : -EINVAL;
 	drmModeAtomicFree(req);
 	if (rides)
-		osd_rode(!ret);
+		osd_state_committed(!ret, true);
 	if (!ret) {
 		warp.commits++;
 		*flip = out;
@@ -1490,9 +1556,18 @@ static void warp_release(struct display *d)
 	if (warp.peer >= 0)
 		close(warp.peer);
 	warp.peer = -1;
+	warp_revoke_stop();
+	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
 	if (!warp.claimed)
 		return;
-	osd_drop(d);
+	/*
+	 * The video plane off and the console (or an opaque page) on the primary plane in one commit, before the
+	 * buffers go. Removing a framebuffer that is on a plane switches the plane off by itself (atomic_remove_fb),
+	 * which is how it went before - after a commit of its own for the console's framebuffer.
+	 */
+	if (display_plane_off(d))
+		warn("warp            the video plane did not go off with the release (%s) -- removing the buffers takes it off",
+		     strerror(errno));
 	warp_free(d);
 	warp.claimed = false;
 	warp.client = false;
@@ -1500,10 +1575,12 @@ static void warp_release(struct display *d)
 		close(warp.flip);
 	warp.flip = -1;
 	d->warped = false;
-	display_release_master(d);
-	console_restore();
-	info("warp            released: %lu commits, %lu busy, %lu refused -- the panel is ours again",
-	     warp.commits, warp.busy, warp.errors);
+	if (!osd_on_panel()) {
+		display_release_master(d);
+		console_restore();
+	}
+	info("warp            released: %lu commits, %lu busy, %lu refused -- the panel is ours again%s",
+	     warp.commits, warp.busy, warp.errors, osd_on_panel() ? ", the opaque page stays over black" : "");
 	warp.commits = warp.busy = warp.errors = 0;
 }
 
@@ -1521,13 +1598,25 @@ static void warp_release(struct display *d)
  * picture, "osd hide" takes it away, "osd release" frees the buffers; the
  * connection is the lifetime.
  *
- * The console's own framebuffer is remembered at the claim and goes back
- * onto the plane, at zpos 0, before this program lets the master go - on
- * every way the picture leaves (display_hide, warp_release, the exit).
- * Otherwise the console would come back under an overlay, or not at all.
- * Without a picture (no signal, "off") there is nothing to lay the overlay
- * over: "show" keeps it as wanted and shows it when the picture is back
- * (an overlay over the console is the next step, P5 of the plan).
+ * The console's own framebuffer is learnt from the plane the first time
+ * this program commits it, and goes back onto the plane, at zpos 0, before
+ * this program lets the master go - on every way the picture leaves
+ * (display_hide, warp_release, the exit). Otherwise the console would come
+ * back under an overlay, or not at all.
+ *
+ * Every commit of this program carries the primary plane as this program
+ * wants it - the picture's (display_show), every warp frame, the overlay's
+ * own - so the panel is what this program says, whoever committed in
+ * between. The kernel's fbdev emulation does commit in between: a switch of
+ * the VT to text mode forces its own state past the DRM master
+ * (drm_fb_helper_set_par(), FB_ACTIVATE_KD_TEXT), the console's framebuffer
+ * on the primary plane at the zpos it found and every other plane off.
+ *
+ * Without a picture (no signal, "off") a popup has nothing to lay itself
+ * over: "show" keeps it as wanted and shows it when the picture is back. An
+ * opaque page ("osd show N cover": the launcher, the settings) needs nothing
+ * under it and is shown over black: the master is taken for it and given
+ * back, with the console, when the page goes.
  * ------------------------------------------------------------------ */
 
 #define OSD_BUFS	2
@@ -1537,10 +1626,12 @@ struct osd {
 	bool claimed;
 	bool shown;			/* our buffer is on the plane at zpos 2 */
 	int want;			/* the buffer h713-osd wants shown, -1: none */
+	bool cover;			/* ... and it is an opaque page: shown without a picture too */
 	bool queued;			/* while the warp draws: the change goes with its next frame */
 	uint32_t plane_id;		/* the primary plane of our CRTC */
 	struct props props;
-	uint32_t console_fb;		/* the plane's framebuffer at the claim: the console's */
+	uint32_t console_fb;		/* the plane's framebuffer when it was first looked at: the console's */
+	bool console_known;
 	uint32_t handle[OSD_BUFS], fb_id[OSD_BUFS];
 	unsigned int pitch;
 	unsigned long shows, busy, errors;
@@ -1632,20 +1723,20 @@ static bool osd_alloc(struct display *d, int *fds)
 	return true;
 }
 
-/* the primary plane's eleven properties: framebuffer fb at zpos z, the whole panel */
+/* the primary plane's eleven properties: framebuffer fb at zpos z, the whole panel; fb 0 is the plane off */
 static bool osd_props(drmModeAtomicReq *req, const struct display *d, uint32_t fb, uint64_t z)
 {
 	static const char *const name[] = {
-		"FB_ID", "CRTC_ID", "SRC_X", "SRC_Y", "SRC_W", "SRC_H",
-		"CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H", "zpos",
+		"FB_ID", "CRTC_ID", "zpos", "SRC_X", "SRC_Y", "SRC_W", "SRC_H",
+		"CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H",
 	};
 	uint64_t val[11] = {
-		fb, d->crtc_id, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16,
-		0, 0, d->width, d->height, z,
+		fb, fb ? d->crtc_id : 0, z, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16,
+		0, 0, d->width, d->height,
 	};
 	unsigned int i;
 
-	for (i = 0; i < 11; i++) {
+	for (i = 0; i < (fb ? 11u : 3u); i++) {
 		uint32_t id = prop_id(&osd.props, name[i]);
 
 		if (!id || drmModeAtomicAddProperty(req, osd.plane_id, id, val[i]) < 0)
@@ -1654,24 +1745,75 @@ static bool osd_props(drmModeAtomicReq *req, const struct display *d, uint32_t f
 	return true;
 }
 
-/* While the warp draws, a change of the overlay waits for its next frame and goes in the same commit
- * (warp_commit): the warp's non-blocking commits would otherwise meet ours (EBUSY) and a blocking retry
- * held the loop 45 ms (11.10.2026). */
-static bool osd_ride(drmModeAtomicReq *req, const struct display *d)
+/*
+ * The plane and the console's framebuffer, looked up the first time they are needed - before the first commit of
+ * a picture or a warp, h713-osd or not. The framebuffer is whatever the plane holds then, unless it is one of ours:
+ * the console's (the fbdev emulation's), or 0 when the plane is off - then "the console" is the plane off, and the
+ * kernel's client paints it again once the master is gone and it is asked to (a switch to text mode, the last
+ * close).
+ */
+static bool osd_learn(struct display *d)
 {
-	if (!osd.claimed || !osd.queued)
+	drmModePlane *p;
+
+	if (!osd_find_plane(d))
 		return false;
-	return osd_props(req, d, osd.want >= 0 ? osd.fb_id[osd.want] : osd.console_fb, osd.want >= 0 ? 2 : 0);
+	if (osd.console_known)
+		return true;
+	p = drmModeGetPlane(d->fd, osd.plane_id);
+	if (!p)
+		return false;
+	if (!osd.claimed || (p->fb_id != osd.fb_id[0] && p->fb_id != osd.fb_id[1])) {
+		osd.console_fb = p->fb_id;
+		osd.console_known = true;
+		if (!p->fb_id)
+			warn("osd             the primary plane %u is off -- the console comes back only when the kernel repaints it",
+			     osd.plane_id);
+	}
+	drmModeFreePlane(p);
+
+	return osd.console_known;
 }
 
-static void osd_rode(bool committed)
+/* the buffer the primary plane is to carry, -1: the console's framebuffer under the video */
+static int osd_wanted(bool picture)
 {
+	if (!osd.claimed || osd.want < 0)
+		return -1;
+	return picture || osd.cover ? osd.want : -1;
+}
+
+static bool osd_on_panel(void)
+{
+	return osd.claimed && osd.shown;
+}
+
+/*
+ * The primary plane as this program wants it, into a commit that is being made anyway: every picture, every warp
+ * frame (warp_commit). picture: the commit puts a picture up or keeps one there. A change of the overlay waiting
+ * for the warp's next frame goes in the same commit (the warp's non-blocking commits would otherwise meet ours,
+ * EBUSY, and a blocking retry held the loop 45 ms, 11.10.2026).
+ */
+static bool osd_state_add(drmModeAtomicReq *req, struct display *d, bool picture)
+{
+	int w;
+
+	if (!osd_learn(d))
+		return false;
+	w = osd_wanted(picture);
+	return osd_props(req, d, w >= 0 ? osd.fb_id[w] : osd.console_fb, w >= 0 ? 2 : 0);
+}
+
+static void osd_state_committed(bool committed, bool picture)
+{
+	int w = osd_wanted(picture);
+
 	if (!committed)
-		return;		/* the frame was dropped: the change waits for the next one */
-	osd.queued = false;
-	osd.shown = osd.want >= 0;
-	if (osd.shown)
+		return;		/* the frame was dropped: a change waits for the next one */
+	if (w >= 0 && (osd.queued || !osd.shown))
 		osd.shows++;
+	osd.queued = false;
+	osd.shown = w >= 0;
 }
 
 /* One commit of the primary plane on its own (no warp, or the master is about to go): non-blocking
@@ -1727,10 +1869,31 @@ static bool osd_alone(const struct display *d)
 	return poll(pf + 1, 1, 0) == 0;	/* and no frame is waiting to be committed */
 }
 
-/* the wanted buffer over the picture, if there is a picture to lay it over */
+/*
+ * The wanted buffer over the picture, if there is a picture to lay it over; an opaque page also without one, over
+ * black: the master is taken for it (the video plane is off then, and channel 2 alone shows the page).
+ */
 static void osd_resume(struct display *d)
 {
-	if (!osd.claimed || osd.want < 0 || !(d->on || d->warped) || !d->master)
+	bool picture = d->on || d->warped;
+
+	if (osd_wanted(picture) < 0)
+		return;
+	if (!picture) {
+		if (!display_take_master(d))
+			return;
+		if (osd_learn(d) && osd_commit(d, osd.fb_id[osd.want], 2)) {
+			if (!osd.shown)
+				info("osd             an opaque page over black -- there is no picture under it");
+			osd.shown = true;
+			osd.shows++;
+			console_keys(false);
+		} else if (!osd.shown) {
+			display_release_master(d);
+		}
+		return;
+	}
+	if (!d->master)
 		return;
 	if (d->warped && !osd_alone(d)) {	/* with the warp's next frame */
 		osd.queued = true;
@@ -1741,6 +1904,16 @@ static void osd_resume(struct display *d)
 		osd.shown = true;
 		osd.shows++;
 	}
+}
+
+/* the opaque page went and there is no picture: the master and the console back, as display_hide() gives them */
+static void osd_uncover(struct display *d)
+{
+	if (d->on || d->warped || osd.shown || !d->master)
+		return;
+	display_release_master(d);
+	console_restore();
+	info("console         the opaque page is gone and there is no picture -- the console is back");
 }
 
 /* the flip a queued change waited for is on the panel (client only): the change goes now, on its own */
@@ -1762,9 +1935,11 @@ static void osd_release(struct display *d)
 	if (!osd.claimed)
 		return;
 	osd.want = -1;
+	osd.cover = false;
 	osd_drop(d);
 	osd_free(d);
 	osd.claimed = false;
+	osd_uncover(d);
 	info("osd             released: %lu shown, %lu busy, %lu refused", osd.shows, osd.busy,
 	     osd.errors);
 	osd.shows = osd.busy = osd.errors = 0;
@@ -1773,8 +1948,8 @@ static void osd_release(struct display *d)
 /* The peer's connection, one line per message as with the warp. */
 static void osd_serve(struct display *d)
 {
-	char buf[64];
-	const char *answer = "error unknown (osd show N | osd hide | osd picture | osd release)\n";
+	char buf[64], word[16] = "";
+	const char *answer = "error unknown (osd show N [cover] | osd hide | osd picture | osd release)\n";
 	ssize_t got;
 	int n = -1;
 
@@ -1791,9 +1966,16 @@ static void osd_serve(struct display *d)
 		osd_release(d);
 		return;
 	}
-	if (sscanf(buf, "osd show %d", &n) == 1 && n >= 0 && n < OSD_BUFS) {
+	if (sscanf(buf, "osd show %d %15s", &n, word) >= 1 && n >= 0 && n < OSD_BUFS) {
 		osd.want = n;
-		if (!(d->on || d->warped)) {
+		osd.cover = !strcmp(word, "cover");	/* an opaque page: it needs no picture under it */
+		if (!(d->on || d->warped) && osd.cover) {
+			osd_resume(d);
+			answer = osd.shown ? "ok cover -- over black, there is no picture under it\n"
+					   : "error the commit was refused\n";
+		} else if (!(d->on || d->warped)) {
+			osd_drop(d);		/* an opaque page before it goes: a popup does not stand over black */
+			osd_uncover(d);
 			answer = "ok waiting -- no picture to lay it over, it comes with the picture\n";
 		} else if (d->warped) {
 			osd_resume(d);		/* queued: the warp's next frame carries it */
@@ -1805,12 +1987,14 @@ static void osd_serve(struct display *d)
 		}
 	} else if (!strcmp(buf, "osd hide")) {
 		osd.want = -1;
+		osd.cover = false;
 		if (d->warped && osd.shown && !osd_alone(d)) {
 			osd.queued = true;	/* the console's framebuffer back with the next frame */
 			answer = "ok\n";
 		} else {
 			osd_drop(d);
 			answer = osd.shown ? "error the console framebuffer could not go back\n" : "ok\n";
+			osd_uncover(d);
 		}
 	} else if (!strcmp(buf, "osd picture")) {
 		/* what lies under the overlay: h713-osd pre-distorts only over the warp */
@@ -1931,6 +2115,7 @@ static void console_restore(void)
 		complained = true;
 	}
 	close(fd);
+	console_keys(true);
 
 	/*
 	 * fbcon's own record of the blank state. The unblank above paints and
@@ -1947,6 +2132,51 @@ static void console_restore(void)
 	}
 
 	console_login_clean();
+}
+
+/*
+ * The console's keyboard is off while anything but the console is on the panel - the picture, a warp, an opaque
+ * page - and on again with the console (console_restore()). The remote is a keyboard to the kernel (see below), and
+ * so is a keyboard on the desktop: with the console's keyboard on, every key typed into Kodi, labwc or the browser
+ * reached the hidden login prompt on tty1 as well, an Enter included, and ctrl-alt-del rebooted the box. seatd did
+ * this while a compositor had the seat (K_OFF on open, K_UNICODE on close); it no longer manages the VT, so this
+ * program, which owns the panel, owns this switch. Programs that read the keys themselves (h713-keys, libinput in
+ * cage and labwc) read the input devices, which a VT's keyboard mode does not touch. The first call (the start)
+ * puts a keyboard left off by an earlier run back on; the mode before "off" is restored, K_UNICODE if it was
+ * unknown. Best effort, said once.
+ */
+static void console_keys(bool on)
+{
+	static int state = -1;		/* -1 unknown (the start), 0 on, 1 off */
+	static int before = K_UNICODE;
+	static bool complained;
+	int fd, mode = -1;
+
+	if (state == (on ? 0 : 1))
+		return;
+	fd = open(CONSOLE_TTY, O_RDWR | O_NOCTTY | O_CLOEXEC);
+	if (fd < 0) {
+		if (!complained)
+			warn("%s: %s -- the console's keyboard is left as it is", CONSOLE_TTY, strerror(errno));
+		complained = true;
+		return;
+	}
+	if (ioctl(fd, KDGKBMODE, &mode))
+		mode = -1;
+	if (!on && mode >= 0 && mode != K_OFF)
+		before = mode;
+	if (on && state < 0 && mode != K_OFF) {
+		state = 0;		/* the start, and it is on: nothing to do */
+	} else if (ioctl(fd, KDSKBMODE, on ? before : K_OFF)) {
+		if (!complained)
+			warn("KDSKBMODE %s: %s -- the console's keyboard is left as it is", on ? "on" : "off", strerror(errno));
+		complained = true;
+	} else {
+		if (on && state < 0)
+			info("console         the keyboard was off (an earlier run) -- on again");
+		state = on ? 0 : 1;
+	}
+	close(fd);
 }
 
 /*
@@ -3254,6 +3484,46 @@ static void audio_open_source(struct audio *a, struct capture *cap)
  * of times, and then it stops for good -- a bounded wait with a reason, not
  * a loop with a hope.
  */
+/*
+ * "ctl mute" outlives this program, not the boot. The listener's mute was a variable here, and this program is
+ * restarted behind the listener's back: after every standby that parked the display MIPS (h713-mips-restart), by
+ * the rescue, after a crash - and came back loud (16.10.2026: muted, standby, woken, the box played again). So the
+ * mute is kept in MUTE_FILE, on the tmpfs: a restart finds it, a cold start does not, and after switching the box
+ * on it is audible, as decided. Not in the unit's RuntimeDirectory, which systemd empties at every stop; the
+ * directory comes from tmpfiles.d (h713-tv.tmpfiles), the unit makes it writable (ReadWritePaths=). Without it the
+ * mute is this run's alone, as before, and said once.
+ */
+#define MUTE_FILE	"/run/h713-tv-state/mute"
+
+static bool mute_kept(void)
+{
+	char word[8] = "";
+	FILE *f = fopen(MUTE_FILE, "r");
+
+	if (!f)
+		return false;
+	if (!fgets(word, sizeof(word), f))
+		word[0] = '\0';
+	fclose(f);
+
+	return !strncmp(word, "on", 2);
+}
+
+static void mute_keep(bool on)
+{
+	static bool complained;
+	FILE *f = fopen(MUTE_FILE ".new", "w");
+	bool ok = f && fputs(on ? "on\n" : "off\n", f) >= 0;
+
+	if (f && fclose(f))
+		ok = false;
+	if (ok && rename(MUTE_FILE ".new", MUTE_FILE))
+		ok = false;
+	if (!ok && !complained)
+		warn("%s: %s -- the mute is not kept over a restart of this program", MUTE_FILE, strerror(errno));
+	complained |= !ok;
+}
+
 static void audio_open(struct audio *a, struct capture *cap,
 		       enum audio_policy policy)
 {
@@ -3275,6 +3545,10 @@ static void audio_open(struct audio *a, struct capture *cap,
 	if (a->settle_fd < 0 || a->tick_fd < 0)
 		fail("timerfd_create for the audio: %s", strerror(errno));
 
+	/* before the cards: audio_search() puts the mute where the listener left it */
+	a->mute = mute_kept();
+	if (a->mute)
+		info("audio           ctl mute on -- kept from the run before (%s)", MUTE_FILE);
 	audio_open_source(a, cap);
 	a->searching = true;
 	a->searched = 1;
@@ -5206,20 +5480,83 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	warp.client = client;
 	warp.told = (int)ctl.source;
 	warp.peer = conn;
+	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
 	d->warped = true;
+	console_keys(false);
 	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u",
 	     client ? " for a Wayland client (no signal needed, the HDMI sound silent)" : "",
 	     d->width, d->height, warp.pitch, warp.coff, d->plane_id);
 }
 
+/*
+ * "warp switch client|ring" on a standing claim (see "The warp" above): the same three buffers, the master and the
+ * video plane stay, and h713-warp draws the other source into them. Allowed under the same rules as a claim of
+ * that source. True when it switched; the answer, "ok source X" or "error ...", goes into ans.
+ */
+static bool warp_switch(struct capture *cap, struct display *d, const char *what, char *ans, size_t n)
+{
+	bool client = !strcmp(what, "client");
+	struct v4l2_dv_timings t;
+	int sig;
+
+	if (!client && strcmp(what, "ring")) {
+		snprintf(ans, n, "error warp switch takes client or ring, not \"%s\"\n", what);
+		return false;
+	}
+	if (client == warp.client) {
+		snprintf(ans, n, "ok source %s -- already %s\n", source_name[ctl.source], what);
+		return false;
+	}
+	if (ctl.policy == POLICY_OFF) {
+		snprintf(ans, n, "error console forced (\"ctl off\") -- the claim stays as it is\n");
+		return false;
+	}
+	if (client ? ctl.source == SOURCE_HDMI : ctl.source == SOURCE_CLIENT) {
+		snprintf(ans, n, "error source is %s -- no switch to the %s\n", source_name[ctl.source], what);
+		return false;
+	}
+	if (client && !d->crtc_props.list)
+		props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &d->crtc_props);
+	if (client && !prop_id(&d->crtc_props, "OUT_FENCE_PTR")) {
+		snprintf(ans, n, "error CRTC %u has no OUT_FENCE_PTR -- a client cannot be paced\n", d->crtc_id);
+		return false;
+	}
+	if (!client) {
+		/* a client's claim leaves the signal unmeasured (evaluate() returns early): measured now */
+		sig = capture_signal(cap, &t);
+		cap->last_sig = sig;
+		if (sig != 2)
+			cap->last_t = t;
+		if (sig != 1) {
+			snprintf(ans, n, "error no signal to warp -- the claim stays as it is\n");
+			return false;
+		}
+	}
+	warp.client = client;
+	warp.told = (int)ctl.source;
+	warp_revoke_stop();
+	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
+	if (!client && warp.flip >= 0) {	/* the ring is paced by the capture, not by flips */
+		close(warp.flip);
+		warp.flip = -1;
+	}
+	info("warp            switched to %s on the same three buffers -- the video plane stays up (%lu commits so far)",
+	     client ? "a Wayland client (the HDMI sound silent)" : "the ring", warp.commits);
+	snprintf(ans, n, "ok source %s\n", source_name[ctl.source]);
+
+	return true;
+}
+
 /* The peer's connection: one line per message, and the daemon waits for the
  * answer before the next, so a line cannot arrive in halves. True when the
- * caller has to run evaluate() -- the warp has just ended.
+ * caller has to run evaluate() -- the warp has just ended, or switched (the
+ * sound follows what is drawn).
  */
-static bool warp_serve(struct display *d)
+static bool warp_serve(struct capture *cap, struct display *d)
 {
-	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, buf[128], told[48];
-	const char *answer = "error unknown (warp frame N | warp release)\n";
+	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, buf[128], told[96], what[16];
+	const char *answer = "error unknown (warp frame N | warp switch client|ring | warp release)\n";
+	bool switched = false;
 	struct iovec io = { buf, sizeof(buf) - 1 };
 	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1,
 			      .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
@@ -5244,7 +5581,10 @@ static bool warp_serve(struct display *d)
 		warp_release(d);
 		return true;
 	}
-	if (sscanf(buf, "warp frame %d", &n) == 1 && n >= 0 && n < WARP_BUFS)
+	if (sscanf(buf, "warp switch %15s", what) == 1) {
+		switched = warp_switch(cap, d, what, told, sizeof(told));
+		answer = told;
+	} else if (sscanf(buf, "warp frame %d", &n) == 1 && n >= 0 && n < WARP_BUFS)
 		{
 			/*
 			 * A frame that arrived late, or a commit that took long: the
@@ -5255,10 +5595,10 @@ static bool warp_serve(struct display *d)
 			 * distinct frames (a still picture, 11.10.2026, HY300PRO-G-EU):
 			 * 1.5 % of a core in journald, ~100 000 lines an hour in RAM.
 			 */
-			static struct timespec prev, said;
+			static struct timespec said;
 			static unsigned long late, slow;
 			static double late_worst, slow_worst;
-			struct timespec c0, c1;
+			struct timespec c0, c1, prev = warp.last_frame;
 			double gap, took;
 
 			clock_gettime(CLOCK_MONOTONIC, &c0);
@@ -5292,7 +5632,7 @@ static bool warp_serve(struct display *d)
 				late = slow = 0;
 				late_worst = slow_worst = 0;
 			}
-			prev = c1;
+			warp.last_frame = c1;
 		}
 	if (fence >= 0)
 		close(fence);
@@ -5316,7 +5656,7 @@ static bool warp_serve(struct display *d)
 		if (sent >= 0)
 			return false;
 	} else if (send(warp.peer, answer, strlen(answer), MSG_NOSIGNAL) >= 0) {
-		return false;
+		return switched;
 	}
 	warn("warp            answering \"%s\": %s", buf, strerror(errno));
 	warp_release(d);
@@ -5344,10 +5684,56 @@ static bool cmd_warp(struct reply *r, struct capture *cap, struct display *d, co
 }
 
 /*
- * "source [hdmi|client|auto]": what the panel shows. A standing warp claim is given back only when the new
- * policy forbids it: a ring claim under "client", a client claim under "hdmi". One it allows stands - giving it
- * back took the panel off the ring and back for "hdmi" <-> "auto" (the wall blinked) - and h713-warp hears the new
- * policy with the "ok" of its next frame ("ok source auto"), so a ring claim under "auto" still gives way to a client.
+ * The source no longer allows the standing claim: h713-warp hears it at once, unasked, on the claim's connection
+ * ("note source hdmi"), and switches the claim to what is allowed or gives it back; a client at rest sends no
+ * frame whose answer could carry it. WARP_REVOKE_MS later the claim is released here if it still stands - an
+ * h713-warp that cannot switch, or one of before 16.10.2026, which knows no notes.
+ */
+static void warp_revoke(struct display *d)
+{
+	struct itimerspec its = { .it_value = { WARP_REVOKE_MS / 1000, (WARP_REVOKE_MS % 1000) * 1000000L } };
+	char line[32];
+	int len = snprintf(line, sizeof(line), "note source %s\n", source_name[ctl.source]);
+
+	if (warp.revoke_fd < 0)
+		warp.revoke_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+	if (warp.peer < 0 || warp.revoke_fd < 0 ||
+	    send(warp.peer, line, (size_t)len, MSG_NOSIGNAL | MSG_DONTWAIT) != len ||
+	    timerfd_settime(warp.revoke_fd, 0, &its, NULL)) {
+		warn("warp            h713-warp could not be told (%s) -- the claim is given back", strerror(errno));
+		warp_release(d);
+		return;
+	}
+	warp.told = (int)ctl.source;
+	warp.revoking = true;
+}
+
+/* the grace is over: a claim the source still does not allow is released here */
+static bool warp_revoke_due(struct display *d)
+{
+	uint64_t ticks;
+	bool stands = warp.claimed && (warp.client ? ctl.source != SOURCE_HDMI : ctl.source != SOURCE_CLIENT);
+
+	if (read(warp.revoke_fd, &ticks, sizeof(ticks)) != sizeof(ticks))
+		ticks = 0;
+	if (!warp.revoking)
+		return false;
+	warp.revoking = false;
+	if (!warp.claimed || stands)
+		return false;
+	warn("warp            h713-warp neither switched nor gave the claim back within %d ms of \"source %s\" -- released here",
+	     WARP_REVOKE_MS, source_name[ctl.source]);
+	warp_release(d);
+
+	return true;
+}
+
+/*
+ * "source [hdmi|client|auto]": what the panel shows. A standing warp claim the new policy forbids - a ring claim
+ * under "client", a client claim under "hdmi" - is said to h713-warp at once (warp_revoke()), which switches it to
+ * the source that is allowed or gives it back. One it allows stands - giving it back took the panel off the ring
+ * and back for "hdmi" <-> "auto" (the wall blinked) - and h713-warp hears the new policy with the "ok" of its next
+ * frame ("ok source auto"), so a ring claim under "auto" still gives way to a client.
  * h713-warp asks again at once after a release and learns the policy from the answer.
  * Not saved; "source =" in tv.conf is the start value.
  */
@@ -5364,9 +5750,10 @@ static bool cmd_source(struct reply *r, struct display *d, const char *what)
 
 		ctl.source = s;
 		info("source          %s%s", source_name[s], !warp.claimed ? "" : stands ?
-		     " -- the warp's claim stands, h713-warp hears it with its next frame" : " -- the warp's claim is given back");
+		     " -- the warp's claim stands, h713-warp hears it with its next frame" :
+		     " -- h713-warp is told: it switches the claim or gives it back");
 		if (!stands)
-			warp_release(d);
+			warp_revoke(d);
 		reply_add(r, "ok source %s\n", source_name[s]);
 		return true;		/* the ring, the console, or the claim h713-warp sends next */
 	}
@@ -5384,7 +5771,6 @@ static void cmd_osd_claim(struct reply *r, struct display *d, int conn)
 	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1,
 			      .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
 	struct cmsghdr *cm;
-	drmModePlane *p;
 	int i, bad;
 
 	if (osd.claimed || conn < 0) {
@@ -5396,10 +5782,9 @@ static void cmd_osd_claim(struct reply *r, struct display *d, int conn)
 		reply_fail(r, "no primary plane with zpos and ARGB8888 on CRTC %u -- kernel 0251?", d->crtc_id);
 		return;
 	}
-	p = drmModeGetPlane(d->fd, osd.plane_id);
-	osd.console_fb = p ? p->fb_id : 0;
-	if (p)
-		drmModeFreePlane(p);
+	/* the console's framebuffer, read again: nothing of ours is on the plane before a claim */
+	osd.console_known = false;
+	osd_learn(d);
 	bad = !osd_alloc(d, fds);
 	if (bad) {
 		reply_fail(r, "the two %ux%u ARGB8888 buffers could not be made: %s", d->width,
@@ -6788,6 +7173,7 @@ static void cmd_mute(struct reply *r, struct audio *a, const char *text)
 		}
 		if (a->enabled)
 			audio_level(a);
+		mute_keep(a->mute);
 	}
 	if (!a->enabled)
 		reply_add(r, "ok mute %s -- saved, %s\n", a->mute ? "on" : "off",
@@ -6892,6 +7278,8 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 			reply_fail(r, "the plane cannot be switched off");
 	} else if (!strcmp(cmd, "console")) {
 		console_restore();
+		if (d->on || d->warped || osd_on_panel())
+			console_keys(false);	/* the console is not on the panel: its keyboard stays off */
 		reply_add(r, "ok console unblanked, cursor on\n");
 	} else if (!strcmp(cmd, "list")) {
 		cmd_list(r, cap);
@@ -7364,7 +7752,7 @@ int main(int argc, char **argv)
 	struct audio au = { .settle_fd = -1, .tick_fd = -1 };
 	struct conf conf = { .path = CONF_FILE };
 	enum audio_policy apol;
-	struct pollfd fds[9];
+	struct pollfd fds[10];
 	const char *sock = CTL_SOCKET;
 	const char *startpreset = "standard";
 	int sfd, arg, rc = 0;
@@ -7705,8 +8093,9 @@ int main(int argc, char **argv)
 	/*
 	 * Six sources, three of which may be absent: the control socket when
 	 * its bind failed, and the two audio timers with -a none; then the
-	 * warp's and the overlay's connections, set in the loop, and a client's
-	 * flip fence while an overlay change waits for it. poll()
+	 * warp's and the overlay's connections, set in the loop, a client's
+	 * flip fence while an overlay change waits for it, and the warp's grace
+	 * after a "note source". poll()
 	 * ignores an entry with a negative fd and reports revents 0 for it, so
 	 * the table keeps its fixed indices instead of shifting.
 	 */
@@ -7733,6 +8122,9 @@ int main(int argc, char **argv)
 		/* an overlay change waiting for a client's flip */
 		fds[8].fd = osd.queued && warp.client ? warp.flip : -1;
 		fds[8].events = POLLIN;
+		/* a claim the source no longer allows: h713-warp's grace (warp_revoke()) */
+		fds[9].fd = warp.revoking ? warp.revoke_fd : -1;
+		fds[9].events = POLLIN;
 		{
 			static struct timespec last_ret;
 			struct timespec now;
@@ -7802,7 +8194,7 @@ int main(int argc, char **argv)
 		if (fds[6].fd >= 0 && fds[6].revents) {
 			bool again = false;
 
-			LOOP_TIMED("the warp's frame", again = warp_serve(&d));
+			LOOP_TIMED("the warp's frame", again = warp_serve(&cap, &d));
 			if (again)
 				LOOP_TIMED("the warp's re-evaluation", reevaluate(&cap, &d, &rt, &au));
 			else if (osd.want >= 0 && !osd.shown)	/* the warp's first frame is up: the overlay back over it */
@@ -7810,6 +8202,8 @@ int main(int argc, char **argv)
 		}
 		if (fds[7].fd >= 0 && fds[7].revents)
 			LOOP_TIMED("an overlay line", osd_serve(&d));
+		if (fds[9].fd >= 0 && (fds[9].revents & POLLIN) && warp_revoke_due(&d))
+			LOOP_TIMED("the end of the warp's grace", reevaluate(&cap, &d, &rt, &au));
 		if (fds[8].fd >= 0 && fds[8].revents)
 			LOOP_TIMED("the overlay after a client's flip", osd_settle(&d));
 		if (fds[3].revents & POLLIN) {
@@ -7853,6 +8247,7 @@ int main(int argc, char **argv)
 	retry_stop(&rt);
 	audio_close(&au);
 	warp_release(&d);
+	osd_release(&d);	/* an opaque page over black goes too: the console, and its keyboard, are back */
 	if (!display_hide(&d))
 		rc = 1;
 	control_close(&ctl);
@@ -7863,6 +8258,8 @@ int main(int argc, char **argv)
 	props_put(&d.plane_props);
 	close(d.fd);
 	close(rt.fd);
+	if (warp.revoke_fd >= 0)
+		close(warp.revoke_fd);
 	close(sfd);
 	close(cap.fd);
 

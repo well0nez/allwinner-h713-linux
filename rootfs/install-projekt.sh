@@ -205,7 +205,7 @@ check_sources() {
 	fi
 
 	local f
-	for f in h713-tv@.service 99-h713-tv.rules gamma-standard.bin; do
+	for f in h713-tv@.service 99-h713-tv.rules gamma-standard.bin h713-tv.tmpfiles; do
 		[[ -r "$H713_TV_SRC/$f" ]] || { warn "missing: $H713_TV_SRC/$f"; errors=1; }
 	done
 
@@ -327,6 +327,7 @@ if ((DRY_RUN)); then
        h713-tv@.service   -> /etc/systemd/system/          0644
        99-h713-tv.rules   -> /etc/udev/rules.d/            0644
        gamma-standard.bin  -> /usr/local/share/h713-tv/    0644
+       h713-tv.tmpfiles    -> /etc/tmpfiles.d/h713-tv.conf 0644
        README.md           -> /usr/local/share/doc/h713-tv/
        (no systemctl enable: the unit has no [Install] section, it is started
         by the udev rule through SYSTEMD_WANTS)
@@ -418,12 +419,14 @@ install -D -m 0755 "$H713_TV_BIN"                     "$TREE/usr/local/sbin/h713
 install -D -m 0644 "$H713_TV_SRC/h713-tv@.service"   "$TREE/etc/systemd/system/h713-tv@.service"
 install -D -m 0644 "$H713_TV_SRC/99-h713-tv.rules"   "$TREE/etc/udev/rules.d/99-h713-tv.rules"
 install -D -m 0644 "$H713_TV_SRC/gamma-standard.bin"  "$TREE/usr/local/share/h713-tv/gamma-standard.bin"
+# the directory "ctl mute" is kept in over a restart of h713-tv (not over a boot)
+install -D -m 0644 "$H713_TV_SRC/h713-tv.tmpfiles"    "$TREE/etc/tmpfiles.d/h713-tv.conf"
 [[ -r "$H713_TV_SRC/README.md" ]] && \
 	install -D -m 0644 "$H713_TV_SRC/README.md" "$TREE/usr/local/share/doc/h713-tv/README.md"
 # An old h713-tv.service (non-template) would be a doppelganger -- the same
 # move as in the Makefile target install-data.
 rm -f "$TREE/etc/systemd/system/h713-tv.service"
-info "/usr/local/sbin/h713-tv ($(stat -c %s "$TREE/usr/local/sbin/h713-tv") B), unit, udev rule, gamma-standard.bin"
+info "/usr/local/sbin/h713-tv ($(stat -c %s "$TREE/usr/local/sbin/h713-tv") B), unit, udev rule, gamma-standard.bin, tmpfiles"
 # No enable: h713-tv@.service deliberately has no [Install] section. The hdmirx
 # probe runs asynchronously (EDID/HPD over ten seconds), a start "at boot"
 # would be a race. The udev rule starts the instance as soon as /dev/videoN

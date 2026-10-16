@@ -57,6 +57,7 @@ struct peer {
 	const char *path;
 	int fd;				/* -1: no connection */
 	int tv_source;			/* enum tv_source */
+	bool noted;			/* h713-tv said "note source X" since the main loop last looked */
 	int target[WARP_TARGETS];	/* dma-buf fds of the panel buffers */
 	unsigned int width, height, pitch;
 	unsigned int coff;		/* NV12: the chroma plane's offset in each buffer */
@@ -70,6 +71,10 @@ int peer_frame(struct peer *p, int index, int fence, int *flip, char *why, size_
 void peer_release(struct peer *p);
 /* h713-tv's "source" alone, on a short connection of its own; false when h713-tv did not answer */
 bool peer_source(struct peer *p);
+/* the standing claim becomes the other source's on the same buffers; false: refused or the link broke */
+bool peer_switch(struct peer *p, int src, char *why, size_t n);
+/* notes h713-tv said unasked, read when the connection is readable between exchanges; false: it is gone */
+bool peer_notes(struct peer *p);
 
 struct source {
 	const char *want;		/* -v PATH, or NULL: search by name */
