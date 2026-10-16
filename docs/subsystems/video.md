@@ -7,9 +7,10 @@ between playing a 1080p file and burning every core on colour-space conversion.
 
 **Decode and the IOMMU run in this image since 13.10.2026.** cstenger's cedrus series (`0271` - `0296`, VP9 on
 the VE included) runs behind the IOMMU: `CONFIG_SUN50I_IOMMU=y`, the VE is translated as masters 0 and 1 and joins
-IOMMU group 0 at boot, the display stays physical. Measured on the HY310: H.264, HEVC 8 and 10 bit, VP8 and VP9
-decode bit-exact against ffmpeg up to 2160p, MPEG-2 equal to the VE's own output before the series (the VE's IDCT
-rounds differently from ffmpeg's); no IOMMU fault with valid streams, and a damaged stream no longer leaves the
+IOMMU group 0 at boot, the display stays physical. Measured on the HY310, bit-exact against ffmpeg: H.264 and HEVC
+8 bit up to 2160p, HEVC 10 bit in its upper 8 bits up to 2160p (the client gets 8-bit NV12, not 10 bit), VP8 up to
+1080p and VP9 up to 1080p60 (larger clips of either were not measured); MPEG-2 equal to the VE's own output before
+the series (the VE's IDCT rounds differently from ffmpeg's); no IOMMU fault with valid streams, and a damaged stream no longer leaves the
 engine dead (`0308`). The VE runs at 600 MHz, 432 MHz only while the AV1 decoder is on (`0315`): at 600 MHz H.264
 2160p30 decodes at 30 frames/s in mpv (26.6 at 432 MHz). The numbers are
 in the texts of `0298` and `0305` - `0315` and in `doku/212` §5 (one hour of 4K HEVC in Kodi at 29.75 engine frames/s). Not measured on the HY300PRO-G-EU.

@@ -30,8 +30,9 @@ load the CCU reads PLL_VE at 432 MHz before and 600 MHz after:
    skipped frames 174 -> 70. HEVC 2160p30 stays at 28.6 frames/s: between
    the loop's restarts it runs at 30.0 at either rate, so that clip loses
    its frames to the restart and not to the engine;
- - bit-exact at 600 MHz: the 33 clips of the decoder suite (H.264, HEVC
-   8 and 10 bit, VP8 and VP9 up to 2160p, MPEG-2 against the engine's own
+ - bit-exact at 600 MHz: the 33 clips of the decoder suite (H.264 and
+   HEVC 8 bit up to 2160p, HEVC 10 bit in its upper 8 bits up to 2160p,
+   VP8 up to 1080p, VP9 up to 1080p60, MPEG-2 against the engine's own
    earlier output), 112 of 112 clip runs in 55 minutes of decoding them
    in a loop, and two codecs at once in 19 of 20 runs - the twentieth is
    the known timeout next to VP8 after a codec switch, which the same

@@ -180,8 +180,8 @@ roadmap and `docs/status.md`.
   decoding turns bit 3 on, VP9 bit 1). Latent until the AV1 node exists; no effect without it. *(cstenger's `0142`, byte-identical)*
 - **0271-0296 - cstenger's cedrus series.** The VE's polyphase scaler into the capture buffer, cedrus hardening (compose
   negotiation, strides, pitches, reference indices, per-frame controls), 10-bit sizing, field-coded MPEG-2 and VP9 on the VE.
-  On the HY310 (13.10.2026) H.264, HEVC 8 and 10 bit, VP8 and VP9 decode bit-exact against ffmpeg up to 2160p, MPEG-2 equal to
-  the VE's own output before the series. *(cstenger's `0099`, `0101`-`0125`, `0143`/`0144`, `0151`, `0154`/`0155`, byte-identical; hardware verified on the HY310)*
+  On the HY310 (13.10.2026) bit-exact against ffmpeg: H.264 and HEVC 8 bit up to 2160p, HEVC 10 bit in its upper 8 bits up to
+  2160p (the client gets 8-bit NV12), VP8 up to 1080p, VP9 up to 1080p60; MPEG-2 equal to the VE's own output before the series. *(cstenger's `0099`, `0101`-`0125`, `0143`/`0144`, `0151`, `0154`/`0155`, byte-identical; hardware verified on the HY310)*
 - **0297 - the IOMMU comment of `0024e`** says the codecs are translated and the display is not: the shipping defconfig turns
   `CONFIG_SUN50I_IOMMU` on, the VE is masters 0 and 1. *(ours)*
 - **0298 - a job of another codec starts from a reset engine.** VP9 runs on the H.265 engine and leaves it in a state H.265
