@@ -111,7 +111,7 @@ static int signal_fd(void)
 _Noreturn static void usage(const char *me)
 {
 	fprintf(stderr,
-		"usage: %s [-c CONF] [-s SOCKET] [-t TV_SOCKET] [-r RENDER] [-v VIDEO] [-w WAYLAND]\n"
+		"usage: %s [-c CONF] [-s SOCKET] [-t TV_SOCKET] [-r RENDER] [-v VIDEO] [-w WAYLAND] [-g GROUP]\n"
 		"          [--client-rate full|half] run\n"
 		"       %s ctl [-s SOCKET] COMMAND [ARG...]      (h713-warp ctl help)\n"
 		"\n"
@@ -123,6 +123,7 @@ _Noreturn static void usage(const char *me)
 		"              owns the display and does every commit)\n"
 		"  -v PATH     the capture device; without it the driver \"%s\" is searched for\n"
 		"  -w PATH     the Wayland server's socket, a client's WAYLAND_DISPLAY; default %s\n"
+		"  -g GROUP    the group of that socket (0660), for a client that is not root; default root only\n"
 		"  --client-rate full|half  a client frame on every vsync (default) or on every second\n",
 		me, me, WARP_CONF, WARP_SOCKET, TV_SOCKET, RENDER_NODE, V4L2_NAME, WAYLAND_SOCKET);
 	exit(2);
@@ -165,6 +166,8 @@ int main(int argc, char **argv)
 			video = argv[++arg];
 		else if (!strcmp(argv[arg], "-w") && arg + 1 < argc)
 			wl = argv[++arg];
+		else if (!strcmp(argv[arg], "-g") && arg + 1 < argc)
+			r.wl_group = argv[++arg];
 		else if (!strcmp(argv[arg], "--client-rate") && arg + 1 < argc &&
 			 (!strcmp(argv[arg + 1], "full") || !strcmp(argv[arg + 1], "half")))
 			r.client_rate = !strcmp(argv[++arg], "half") ? 2 : 1;
@@ -272,8 +275,14 @@ int main(int argc, char **argv)
 			info("exit            signal %u received", si.ssi_signo);
 			break;
 		}
-		if (fds[5].fd >= 0 && fds[5].revents)
+		if (fds[5].fd >= 0 && fds[5].revents) {
 			server_dispatch(r.srv);
+			/* The dispatch may have handed the panel from the ring to a client (its first picture): the capture
+			 * event polled above belongs to a ring that is gone, and source_stop() left its fd open - a pump now
+			 * would dequeue from a stopped queue, or restart the capture under the client's claim. */
+			if (r.state != WARP_ON || r.src != SRC_RING)
+				fds[2].revents = 0;
+		}
 		if (fds[3].fd >= 0 && (fds[3].revents & (POLLHUP | POLLERR | POLLNVAL))) {
 			warp_disengage(&r, "h713-tv closed the connection");
 			/* h713-tv gave the claim back on purpose ("ctl source"): ask again at once (ENTWURF G v3 D4) */

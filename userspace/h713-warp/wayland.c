@@ -19,6 +19,7 @@
 #include <errno.h>
 #include <fcntl.h>
 #include <glob.h>
+#include <grp.h>
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
@@ -1574,7 +1575,7 @@ static bool formats(struct server *s)
 	return true;
 }
 
-static int listen_on(const char *path)
+static int listen_on(const char *path, const char *group)
 {
 	struct sockaddr_un a;
 	int fd = socket(AF_UNIX, SOCK_STREAM | SOCK_CLOEXEC | SOCK_NONBLOCK, 0);
@@ -1591,6 +1592,14 @@ static int listen_on(const char *path)
 	if (bind(fd, (struct sockaddr *)&a, sizeof(a)) || chmod(path, 0660) || listen(fd, 4)) {
 		close(fd);
 		return -1;
+	}
+	/* a client that is not root (Kodi's cage) gets in through the group; without one the socket stays root's */
+	if (group) {
+		struct group *g = getgrnam(group);
+
+		if (!g || chown(path, (uid_t)-1, g->gr_gid))
+			warn("wayland         %s: group \"%s\": %s -- the socket stays root's", path, group,
+			     g ? strerror(errno) : "no such group");
 	}
 	return fd;
 }
@@ -1619,7 +1628,7 @@ struct server *server_start(const char *path, struct runtime *r)
 	wl_list_init(&s->idle);
 	wl_list_init(&s->flipped);
 	panel_guess(s);
-	fd = listen_on(path);
+	fd = listen_on(path, r->wl_group);
 	if (fd < 0 || wl_display_add_socket_fd(s->dpy, fd)) {
 		warn("wayland         %s: %s -- no Wayland server, the ring works as before", path, strerror(errno));
 		if (fd >= 0)

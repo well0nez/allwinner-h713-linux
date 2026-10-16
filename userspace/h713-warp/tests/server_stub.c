@@ -6,7 +6,7 @@
  * render fence and the flip fence). It says what the loop would have been told on stdout, one word a line, for
  * test_wayland.c: "shown", "gone", "frame", "resend".
  *
- *   server_stub SOCKET     runs until stdin closes
+ *   server_stub SOCKET [GROUP]     runs until stdin closes; GROUP is the socket's group (h713-warp -g)
  */
 #include <poll.h>
 #include <stdio.h>
@@ -133,10 +133,11 @@ int main(int argc, char **argv)
 	struct runtime r;
 	struct pollfd pf[2];
 
-	if (argc != 2)
+	if (argc != 2 && argc != 3)
 		return 2;
 	memset(&r, 0, sizeof(r));
 	r.render_node = "/dev/null";
+	r.wl_group = argc == 3 ? argv[2] : NULL;
 	r.client_rate = 1;
 	srv = server_start(argv[1], &r);
 	if (!srv)

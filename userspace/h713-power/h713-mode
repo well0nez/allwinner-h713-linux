@@ -10,7 +10,7 @@
 #   h713-mode hdmi        the HDMI picture back at once - `h713-tv ctl source hdmi` takes the panel from the mode's client (measured at the
 #                         HY310: the ring is back 0.27 s later, Kodi still quitting) - then end every mode unit (Kodi quits cleanly in ~2.5 s).
 #                         Without the first step the ring came back only ~2 s after cage was gone: 4.9-5.6 s from OK, over the gate's 5 s.
-#                         It also leaves the source on `hdmi`, the start value, where `auto` (set by the unit's start) stayed until h713-tv restarted
+#                         It also leaves the source on `hdmi`, where `auto` (set by the unit's start) would stay; the next start of a mode unit sets `auto` again
 #   h713-mode sleep-pre   before a sleep: write the running mode units to /run/h713-mode.resume (the one place the mode
 #                         before a sleep is remembered) and end them
 #   h713-mode sleep-post  after a sleep: bring the picture path back when the display MIPS is parked (h713-mips-restart

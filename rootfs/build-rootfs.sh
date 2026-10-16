@@ -799,6 +799,15 @@ for alt in regulatory.db regulatory.db.p7s; do
 done
 info "regulatory.db -> upstream-signed (the kernel knows only sforshee/wens)"
 
+# 4k. Profile desktop: its mode units (Kodi, the desktop) are Wayland clients of h713-warp's server, which h713-tv shows only
+# under `source auto` - and h713-tv does not keep a source across its own restart (a restart with Kodi running put the panel
+# back on the ring and Kodi out of sight). So this image starts h713-tv on auto; the last line of tv.conf wins.
+if has_profile desktop; then
+	printf '\n# profile desktop (rootfs/build-rootfs.sh): a client of h713-warp stays on the panel across a restart of h713-tv\nsource = auto\n' \
+		>> "$TREE/etc/h713/tv.conf"
+	info "tv.conf: source = auto (profile desktop)"
+fi
+
 # --- 5. project parts ------------------------------------------------------
 if ((SKIP_PROJECT)); then
 	say "5/6 project parts skipped (--skip-project)"
@@ -956,6 +965,15 @@ if ((! SKIP_PROJECT)); then
 	t "h713-features linked"      test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-features.service"
 	t "h713-cpufreq linked"       test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-cpufreq.service"
 	t "keystone udev start"       test -f "$TREE/etc/udev/rules.d/99-h713-keystone.rules"
+	# Profile desktop: Kodi does not run as root (h713-kodi.service), its user comes from sysusers.d at the first boot, h713-warp
+	# hands its Wayland socket to the group the compositor is in, and h713-tv comes up on `auto`
+	if has_profile desktop; then
+		t "desktop: tv.conf starts on source auto"     grep -qx 'source = auto' "$TREE/etc/h713/tv.conf"
+		t "desktop: sysusers.d entry for h713-kodi"    grep -q '^u h713-kodi ' "$TREE/usr/lib/sysusers.d/h713-kodi.conf"
+		t "desktop: Kodi runs as h713-kodi"            grep -qx 'User=h713-kodi' "$TREE/etc/systemd/system/h713-kodi.service"
+		t "desktop: the Kodi unit is hardened"         grep -qx 'NoNewPrivileges=yes' "$TREE/etc/systemd/system/h713-kodi.service"
+		t "desktop: the Wayland socket has a group"    grep -q '^ExecStart=.* -g video ' "$TREE/etc/systemd/system/h713-warp.service"
+	fi
 	if [[ -n "$BOARD" ]]; then
 		t "features of $BOARD"    grep -qx "board = $BOARD" "$TREE/etc/h713/features"
 	else
