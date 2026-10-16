@@ -10,6 +10,9 @@
     <setting id="services.esallinterfaces">false</setting>
     <setting id="services.webserver">false</setting>
     <setting id="services.zeroconf">false</setting>
+    <!-- no WS-Discovery (it lists SMB hosts while browsing the Windows network; a share is still added by name or address): its listener
+         thread is joined after a poll of up to 1 s, which is 0.9 s of the 3 s Kodi needs to end (measured on the HY310, 2.8-3.1 s -> 1.9-2.3 s) -->
+    <setting id="services.wsdiscovery">false</setting>
     <!-- a projector shows the picture for hours: no dimming screensaver, no display-off timer -->
     <setting id="screensaver.mode"></setting>
     <setting id="powermanagement.displaysoff">0</setting>
