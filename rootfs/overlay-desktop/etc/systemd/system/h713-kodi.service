@@ -34,9 +34,10 @@
 #   h713-warp's Wayland socket, the decoders' /dev/video* and /dev/media*), render (renderD128), audio (ALSA, the DSP bridge).
 #   HOME is the StateDirectory, chowned to the user at the first start; /tmp is private. The hardening is h713-warp.service's
 #   without MemoryDenyWriteExecute (Kodi runs Python add-ons). The source command is the one thing that needs root (h713-tv's
-#   socket is root's): "+" runs it outside the user and the sandbox. Kodi's own Suspend, Shutdown and Reboot entries are gone
-#   (System.CanSuspend is false): logind answers a caller that is not root "access denied" (its D-Bus policy, and no polkit
-#   here). Standby and power off are h713-power's - the power key and the launcher's Standby entry - not Kodi's.
+#   socket is root's): "+" runs it outside the user and the sandbox. Kodi's own Suspend, Shut down and Restart entries call
+#   logind, which lets a caller that is not root do that only when polkit says yes: polkitd is in the profile and
+#   /etc/polkit-1/rules.d/50-h713-kodi.rules says yes to this user for those three actions and nothing else. The power key
+#   (h713-power) and the launcher's Standby entry stay the other ways in.
 #
 # * The VA-API wiring comes from the drop-in h713-kodi.service.d/10-h713-media-env.conf, a symlink to
 #   /usr/local/share/h713/systemd/h713-media-env.conf.

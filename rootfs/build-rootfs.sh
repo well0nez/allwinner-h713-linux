@@ -998,6 +998,12 @@ if ((! SKIP_PROJECT)); then
 		t "desktop: Kodi runs as h713-kodi"            grep -qx 'User=h713-kodi' "$TREE/etc/systemd/system/h713-kodi.service"
 		t "desktop: the Kodi unit is hardened"         grep -qx 'NoNewPrivileges=yes' "$TREE/etc/systemd/system/h713-kodi.service"
 		t "desktop: the Wayland socket has a group"    grep -q '^ExecStart=.* -g video ' "$TREE/etc/systemd/system/h713-warp.service"
+		# Kodi's own power menu: polkitd and one narrow rule (that user, the three logind actions and their -multiple-sessions variants)
+		t "desktop: polkitd installed"                 grep -q '^Package: polkitd$' "$TREE/var/lib/dpkg/status"
+		_RULE="$TREE/etc/polkit-1/rules.d/50-h713-kodi.rules"
+		t "desktop: polkit rule is for h713-kodi"      grep -q 'subject.user == "h713-kodi"' "$_RULE"
+		t "desktop: polkit rule names six logind actions" test "$(grep -c '^        "org.freedesktop.login1.' "$_RULE")" = 6
+		t "desktop: polkit rule names nothing else"    bash -c '! grep -o "org\.freedesktop\.[A-Za-z0-9._-]*" "$1" | grep -qvxE "org\.freedesktop\.login1\.(suspend|power-off|reboot)(-multiple-sessions)?"' _ "$_RULE"
 	fi
 	if [[ -n "$BOARD" ]]; then
 		t "features of $BOARD"    grep -qx "board = $BOARD" "$TREE/etc/h713/features"

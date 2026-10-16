@@ -16,3 +16,4 @@ firefox-esr                  # the browser (package H2): maximized in a labwc of
 kodi                         # media centre; kodi-bin links libEGL/libGLESv2/libgbm
 glmark2-es2-wayland          # the GPU test: Renderer "Mali-G31 (Panfrost)" and a score
 fonts-quicksand              # the launcher's face (h713-osd, libh713osd text; SIL OFL 1.1, 0.4 MB); FreeType itself is linked into h713-osd (package H)
+polkitd                      # logind lets Kodi (the user h713-kodi, not root) suspend, power off and reboot only when polkit says yes: the rule rootfs/overlay-desktop/etc/polkit-1/rules.d/50-h713-kodi.rules
