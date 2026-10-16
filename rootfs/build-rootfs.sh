@@ -931,6 +931,31 @@ if has_profile media; then
 		t "media: user unit $_u masked"          test "$(readlink "$TREE/etc/systemd/user/$_u")" = /dev/null
 	done
 fi
+# Profile desktop only (media side project, packages F, G, H2): the three client modes are units nobody wants (the panel shows the HDMI
+# input until the launcher starts one), they exclude each other, and every launcher entry names a unit that exists.
+if has_profile desktop; then
+	for _m in kodi desktop browser; do
+		t "desktop: h713-$_m.service has no [Install]" bash -c '! grep -q "^\[Install\]" "$1"' _ "$TREE/etc/systemd/system/h713-$_m.service"
+		t "desktop: h713-$_m.service takes the VA-API drop-in" test -L "$TREE/etc/systemd/system/h713-$_m.service.d/10-h713-media-env.conf"
+		t "desktop: h713-$_m.service sets source auto" grep -qE '^ExecStartPre=\+?(/usr/local/sbin/h713-tv ctl source auto|/usr/local/sbin/h713-kodi-switch source)$' "$TREE/etc/systemd/system/h713-$_m.service"
+	done
+	t "desktop: the desktop and the browser conflict with Kodi" bash -c 'for u in desktop browser; do grep -q "^Conflicts=h713-kodi.service" "$1/etc/systemd/system/h713-$u.service" || exit 1; done' _ "$TREE"
+	t "desktop: labwc configuration"       test -f "$TREE/etc/h713/labwc/rc.xml" -a -f "$TREE/etc/h713/labwc/menu.xml" -a -f "$TREE/etc/h713/labwc/autostart" -a -f "$TREE/etc/h713/labwc/environment" -a -f "$TREE/etc/xdg/foot/foot.ini" -a -f "$TREE/etc/h713/labwc-browser/rc.xml"
+	t "desktop: labwc configuration is well-formed XML" python3 -c 'import sys, xml.dom.minidom as m; [m.parse(f) for f in sys.argv[1:]]' "$TREE/etc/h713/labwc/rc.xml" "$TREE/etc/h713/labwc/menu.xml" "$TREE/etc/h713/labwc-browser/rc.xml"
+	t "desktop: labwc keeps no default keybinds (amixer on the volume keys)" bash -c 'for f in labwc labwc-browser; do ! grep -q "<default" <(sed -n "/<keyboard>/,/<\/keyboard>/p" "$1/etc/h713/$f/rc.xml") || exit 1; done' _ "$TREE"
+	t "desktop: both labwc configurations bind Home, F4 and F5 to nothing (the focus keys stay focus keys)" bash -c 'for f in labwc labwc-browser; do for k in XF86_HomePage F4 F5; do grep -q "key=\"$k\"><action name=\"Execute\" command=\"true\"" "$1/etc/h713/$f/rc.xml" || exit 1; done; done' _ "$TREE"
+	t "desktop: h713-browser.service runs Firefox as labwc's session client" grep -q '^ExecStart=/usr/bin/labwc -C /etc/h713/labwc-browser -S ' "$TREE/etc/systemd/system/h713-browser.service"
+	t "desktop: no mode unit ends itself at the sleep target (package H's h713-mode does)" bash -c '! grep -q "^Conflicts=.*sleep.target" "$1"/etc/systemd/system/h713-{desktop,browser}.service' _ "$TREE"
+	t "desktop: Firefox plays through ALSA, which is the DSP bridge (no PipeWire daemon, no pipewire-alsa default)" bash -c 'grep -q "media.cubeb.backend\", \"alsa\"" "$1/var/lib/h713-desktop/firefox/user.js" && ! test -e "$1/etc/alsa/conf.d/99-pipewire-default.conf"' _ "$TREE"
+	t "desktop: sysusers.d entry for h713-desktop"  grep -q '^u h713-desktop ' "$TREE/usr/lib/sysusers.d/h713-desktop.conf"
+	t "desktop: the desktop and the browser run as h713-desktop, hardened, without MemoryDenyWriteExecute (Firefox compiles JavaScript)" bash -c 'for u in desktop browser; do f="$1/etc/systemd/system/h713-$u.service"; grep -qx "User=h713-desktop" "$f" && grep -qx "NoNewPrivileges=yes" "$f" && grep -qx "ProtectSystem=strict" "$f" && ! grep -q "^MemoryDenyWriteExecute" "$f" || exit 1; done' _ "$TREE"
+	t "desktop: the desktop's menu ends labwc itself (a user cannot stop a unit)" grep -q '<item label="HDMI input"><action name="Exit" />' "$TREE/etc/h713/labwc/menu.xml"
+	t "desktop: Firefox's decoder process keeps its sandbox (MOZ_DISABLE_RDD_SANDBOX is only a commented line; foreign web content)" bash -c '! grep -q "^Environment=MOZ_DISABLE_RDD_SANDBOX" "$1"/etc/systemd/system/h713-{browser,desktop}.service' _ "$TREE"
+	t "desktop: foot names its shell (the account h713-desktop has none; the window would close at once)" grep -qx 'shell=/bin/bash' "$TREE/etc/xdg/foot/foot.ini"
+	t "desktop: Firefox profile lifts the VA-API blocklist" grep -q 'media.hardware-video-decoding.force-enabled", true' "$TREE/var/lib/h713-desktop/firefox/user.js"
+	t "desktop: launcher entries that name a unit name an existing one" bash -c 'for f in "$1"/etc/h713/launcher.d/*.conf; do u=$(sed -n "s/^unit *= *//p" "$f"); [ -z "$u" ] || test -f "$1/etc/systemd/system/$u" || exit 1; done' _ "$TREE"
+	for _pk in cage labwc foot firefox-esr; do t "desktop: $_pk installed" grep -q "^Package: $_pk\$" "$TREE/var/lib/dpkg/status"; done
+fi
 t "h713-arisc (TODO 5.20)"    test -x "$TREE/usr/local/sbin/h713-arisc"
 # Standby only where the image offers it (docs/subsystems/standby.md): else no suspend at all, which
 # would fall back to s2idle; with it suspend to RAM through crust and h713-power on the key.
