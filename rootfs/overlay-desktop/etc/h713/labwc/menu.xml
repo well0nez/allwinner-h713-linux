@@ -1,0 +1,21 @@
+<?xml version="1.0" encoding="UTF-8"?>
+<!-- /etc/h713/labwc/menu.xml - the desktop's menu (a click on the empty desktop, or the remote's Menu key). The window menu is labwc's
+     own. "HDMI input" ends labwc, so the unit ends (a program of the user cannot stop a unit): the ring comes back two
+     seconds after labwc is gone (h713-tv source auto). -->
+<openbox_menu>
+
+<menu id="client-menu">
+  <item label="Minimize"><action name="Iconify" /></item>
+  <item label="Maximize"><action name="ToggleMaximize" /></item>
+  <item label="Fullscreen"><action name="ToggleFullscreen" /></item>
+  <item label="Close"><action name="Close" /></item>
+</menu>
+
+<menu id="root-menu">
+  <item label="Terminal"><action name="Execute" command="foot" /></item>
+  <item label="Web browser"><action name="Execute" command="firefox-esr --no-remote --profile /var/lib/h713-desktop/firefox" /></item>
+  <separator />
+  <item label="HDMI input"><action name="Exit" /></item>
+</menu>
+
+</openbox_menu>

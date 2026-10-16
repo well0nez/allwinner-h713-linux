@@ -1,0 +1,2 @@
+# /etc/h713/labwc/environment - read by labwc before the autostart (variable=value). A pointer that can be found on a 1080p wall.
+XCURSOR_SIZE=48
