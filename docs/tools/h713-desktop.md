@@ -42,7 +42,7 @@ these units carry no `Conflicts=sleep.target`.
 ## The desktop
 
 labwc reads `/etc/h713/labwc/` only: `rc.xml`, `menu.xml`, `autostart`, `environment` (the pointer size). The autostart
-opens a terminal (foot, text size 14 from `/etc/xdg/foot/foot.ini`); there is no panel and no background program. A click
+opens a terminal (foot, text size 24 from `/etc/xdg/foot/foot.ini`: a 32 px letter, like Firefox's text at its factor 2, and labwc's title bars and menu in a 20 pt font - the wall is seen from three metres, 16.10.2026); there is no panel and no background program. A click
 on the empty desktop (the remote's OK in its mouse mode is a left click) opens the menu: Terminal, Web browser (Firefox in
 a window, the same profile as the browser mode), HDMI input (ends labwc, so the unit ends). The remote's Menu key opens the same menu.
 The pointer is drawn by labwc itself (`WLR_NO_HARDWARE_CURSORS=1`; the warp's server has no seat to show a hardware
@@ -59,7 +59,9 @@ nothing, which `labwc-browser/rc.xml` does. The price is a second GPU
 pass over the window; the control arm with cage is `laeufe/box/h2.sh h4 cage` of the package.
 The profile is `/var/lib/h713-desktop/firefox` (shared with the desktop's Firefox window), its `user.js` sets the few things that matter here: the VA-API blocklist
 off (`media.hardware-video-decoding.force-enabled`), fewer content processes (the box has 1 GiB), no first-run pages, no
-update checks. Decoding is software by default: Firefox loads foreign web content, so its decoder process stays in its sandbox, and inside it the VA-API driver
+update checks, **a TV interface's size** (`layout.css.devPixelsPerPx` 2.0, a string: at 1920x1080 the page is laid out as for 960x540 CSS pixels, a 16 px text is a 32 px letter; the
+text was "hardly readable" at 1.0, Marco 16.10.2026; whether 2.0 is the right factor for his wall is for the camera and the eye, the pref is one line) and the start-up work nobody sees off
+(Pocket and sponsored tiles, telemetry, Normandy, region and connectivity lookups, the spare content process; **candidates, their effect on the 9 to 13 s to the first picture is not measured**). Decoding is software by default: Firefox loads foreign web content, so its decoder process stays in its sandbox, and inside it the VA-API driver
 of `rootfs/libva` (drop-in as Kodi's: `LIBVA_DRIVER_NAME`, `LIBVA_DRIVERS_PATH`) cannot be used. The hardware path is a commented line in the unit
 (`#Environment=MOZ_DISABLE_RDD_SANDBOX=1`): with it the decoder process runs without its sandbox, as the unprivileged user `h713-desktop` under the
 unit's hardening. Firefox has no pref that opens the decoder sandbox to the device nodes (its path whitelists are the content process's).

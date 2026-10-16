@@ -4,11 +4,12 @@
      Plain on purpose: the projector is seen from three metres, the remote is a few keys and a mouse mode, the keyboard is an extra. -->
 <labwc_config>
 
-  <!-- square corners, a larger font (a 1080p wall seen from a distance), new windows start in the middle -->
+  <!-- square corners, a larger font (a 1080p wall seen from three metres, like foot's and Firefox's: the title bars and the menu follow
+       the font), new windows start in the middle -->
   <theme>
     <name></name>
     <cornerRadius>0</cornerRadius>
-    <font name="sans" size="14" />
+    <font name="sans" size="20" />
   </theme>
   <placement>
     <policy>center</policy>
