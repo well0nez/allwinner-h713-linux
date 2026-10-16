@@ -695,8 +695,11 @@
 #   (the one warning of the kernel build).
 #   0318: the AV1 node of 0024 at 0x01c0d000 goes (no driver, the VE's resets, a duplicate unit address next to 0302's node).
 #   0319: the IOMMU comment of August in the dtsi that said there is no IOMMU goes.
+#   0320: the H713 RTC takes its 32 kHz from the 24 MHz DCXO (LOSC_OUT_GATING bit 16 + LOSC_CTRL 0x4002, as the vendor kernel) instead
+#         of the internal RC, which lost 26 % (1.357 s per RTC second) and let the 11-minute RTC update expire every rtcwake alarm under 174 s.
 0315-media-cedrus-the-h713-video-engine-runs-at-432-mhz-only-while-the-av1-decoder-is-on.patch
 0316-media-cedrus-h265-the-collocated-picture-must-be-in-the-active-reference-list.patch
 0317-media-cedrus-vp9-keep-only-the-tx-and-skip-probabilities-across-load-probs.patch
 0318-arm64-dts-h713-drop-the-av1-node-of-0024-that-no-driver-binds.patch
 0319-arm64-dts-h713-drop-the-iommu-comment-of-august-that-says-there-is-none.patch
+0320-rtc-sun6i-h713-take-the-rtc-s-32-khz-from-the-24-mhz-dcxo-like-the-vendor-kernel.patch
