@@ -551,7 +551,9 @@ else
 	say "7/11 rootfs ($DEBIAN_SUITE/arm64${PROFILES:+, profile $PROFILES}, mmdebstrap in the container as root)"
 	CRUST_ARGS=; [[ -f "$OUT/scp.bin" ]] && CRUST_ARGS="--crust $(c "$OUT")/scp.bin"
 	((WANT_STANDBY)) && CRUST_ARGS="$CRUST_ARGS --standby"
-	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${PROFILES:+--profile $PROFILES} ${LIBVA_TAR:+--libva $(c "$LIBVA_TAR")} ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	# --no-ext4: only the tar goes on (step 8 makes the image's own ext4 out of it). build-rootfs.sh's bench ext4 is
+	# --image-size 1G and unread here; it broke the build when the profile tree grew past 1 GiB (16.10.2026, 1152 MiB).
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") --no-ext4 ${PROFILES:+--profile $PROFILES} ${LIBVA_TAR:+--libva $(c "$LIBVA_TAR")} ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
