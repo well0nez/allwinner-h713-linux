@@ -530,7 +530,10 @@ info "h713-warp $(stat -c %s "$WARP") bytes, $(file -b "$WARP" 2>/dev/null | cut
 LIBVA_TAR=
 if ((WANT_LIBVA)); then
 	say "6d/11 libva-v4l2_request cross-built (VA-API driver on cedrus; rootfs/libva/build-libva.sh)"
-	in_container "cd $WORK && rootfs/libva/build-libva.sh" > "$OUT/libva-cross.log" 2>&1 || { tail -20 "$OUT/libva-cross.log"; die "libva build failed (log: $OUT/libva-cross.log, $OUT/libva-build.log)"; }
+	# the revision for the tarball's SOURCE note comes from here, the host: in the container a git worktree's .git points to a
+	# path that is not mounted, and build-libva.sh would write "revision unknown"
+	LIBVA_REV=$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo unknown)
+	in_container "cd $WORK && REPO_REV=$(printf %q "$LIBVA_REV") rootfs/libva/build-libva.sh" > "$OUT/libva-cross.log" 2>&1 || { tail -20 "$OUT/libva-cross.log"; die "libva build failed (log: $OUT/libva-cross.log, $OUT/libva-build.log)"; }
 	LIBVA_TAR="$OUT/libva-v4l2-request-1.2.tar"; [[ -f "$LIBVA_TAR" ]] || die "no $LIBVA_TAR"
 	LIBVA_COMMIT=$(sed -n 's/^LIBVA_COMMIT=\([0-9a-f]*\).*/\1/p' "$ROOT/rootfs/libva/build-libva.sh")
 	LIBVA_PATCHES=$(grep -cv '^#\|^$' "$ROOT/rootfs/libva/patches/series")
