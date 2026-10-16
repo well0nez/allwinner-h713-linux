@@ -63,6 +63,7 @@ PROJECT_ROOT=$(project_root "$HERE") || { echo "no project root (mainline/build/
 SUITE=trixie
 ARCH=arm64
 MIRROR=http://deb.debian.org/debian
+SECURITY_MIRROR=http://security.debian.org/debian-security   # a profile image bootstraps from it too (see bootstrap_sources)
 OUT_DIR="$HERE/out"
 IMAGE_SIZE=1G
 MAKE_EXT4=1
@@ -141,7 +142,9 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
                         --crust; without it the image never suspends
   --profile NAME[,NAME] packages-NAME.txt on top of packages.txt: 'media' (ffmpeg, mpv, GStreamer, PipeWire, and the
                         VA-API driver for the hardware decoders) and/or 'desktop' (cage, labwc, Kodi, seatd).
-                        A profile NAME with an overlay-NAME/ directory lays it over overlay/. Without
+                        A profile NAME with an overlay-NAME/ directory lays it over overlay/. A profile
+                        image also bootstraps from the suite's -updates and -security (a browser must have
+                        the fixes the tests ran on); the base image from the suite alone. Without
                         --profile the base image, unchanged.
                         The same --out names are written; keep profile builds in their own --out.
   --skip-project        the Debian base system + overlay/ only
@@ -491,8 +494,20 @@ mmdebstrap_argv() {
 		'--dpkgopt=path-include=/usr/share/locale/locale.alias' \
 		"--include=$(read_packages | paste -sd,)${EQUIVS_INC:+,$EQUIVS_INC}" \
 		"$SUITE" \
-		'<output>.tar' \
-		"deb $MIRROR $SUITE main"
+		'<output>.tar'
+	bootstrap_sources
+}
+
+# The apt sources the bootstrap installs from, one deb line each. The base image: the suite alone, as ever. A profile
+# image (media, desktop) carries a browser and a media centre and takes the updates and the security fixes of the suite
+# in, the way a box that ran apt would: on 15.10.2026 the HY310 had Firefox ESR 153.5 and GStreamer 1.26.2-1+deb13u2 from
+# trixie-security/-updates, a bootstrap from `trixie main` alone gave 140.15 and +deb13u1 - the browser the tests had run
+# on was not the browser in the image. The pinned archive keyring signs all three. The image's own sources file
+# (overlay/etc/apt/sources.list.d/debian.sources) names the same suites.
+bootstrap_sources() {
+	printf '%s\n' "deb $MIRROR $SUITE main"
+	[[ -n "$PROFILES" ]] || return 0
+	printf '%s\n' "deb $MIRROR $SUITE-updates main" "deb $SECURITY_MIRROR $SUITE-security main"
 }
 
 dry_run() {
@@ -501,6 +516,7 @@ dry_run() {
 	info "project tree:  $PROJECT_ROOT"
 	info "output would be: $OUT_DIR"
 	info "suite/arch:    $SUITE/$ARCH over $MIRROR"
+	info "sources:       $(bootstrap_sources | sed 's/^deb //; s/ main$//' | paste -sd';' | sed 's/;/; /g')"
 	info "ext4 image:    $( ((MAKE_EXT4)) && echo "yes, $IMAGE_SIZE (grows via x-systemd.growfs)" || echo no )"
 	echo
 
@@ -1051,6 +1067,7 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "suite=$SUITE"
 	echo "arch=$ARCH"
 	echo "mirror=$MIRROR"
+	echo "bootstrap_sources=$(bootstrap_sources | sed 's/^deb [^ ]* //; s/ main$//' | paste -sd,)"
 	echo "keyring=$KEYRING"
 	echo "built=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 	echo "source_date_epoch=${SOURCE_DATE_EPOCH:-unset}"

@@ -651,7 +651,8 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	else
 		echo "libva:    none (the base image carries no VA-API driver)"
 	fi
-	echo "rootfs packages: dpkg status $(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./var/lib/dpkg/status | sha256sum | cut -c1-16) -- the tar repeats only while $DEBIAN_MIRROR $DEBIAN_SUITE is at this state"
+	echo "sources:  Debian $(sed -n 's/^bootstrap_sources=//p' "$ROOTFS/out/hy310-rootfs.manifest") ($(sed -n 's/^mirror=//p' "$ROOTFS/out/hy310-rootfs.manifest"), security: security.debian.org/debian-security) -- a profile image bootstraps from the suite, its -updates and its -security, the base image from the suite alone"
+	echo "rootfs packages: dpkg status $(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./var/lib/dpkg/status | sha256sum | cut -c1-16) -- the tar repeats only while those Debian suites are at this state"
 	echo "U-Boot:   $(strings -n 8 "$OUT/uboot-proper-release.bin" | grep -m1 '^U-Boot 20')"
 	echo "building blocks (sha256, 16 characters):"
 	for f in spl-release.bin uboot-proper-release.bin hy310-env-release.bin u-boot-installer.bin h713-kernel.fit modules/aic8800_bsp.ko modules/aic8800_fdrv.ko; do
