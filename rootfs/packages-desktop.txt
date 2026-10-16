@@ -11,6 +11,9 @@ seatd                        # seat management for a compositor without logind s
 cage                         # single-window kiosk compositor: Kodi's host
 labwc                        # stacking compositor for the desktop and the browser modes: a Wayland client of h713-warp like cage, with menu and windows
 foot                         # terminal of the desktop: Wayland native, 0.8 MiB; pulls ncurses-term and libfcft
+fonts-noto-core              # on the HY310 since Kodi was installed there with apt (a Recommends): every test of Kodi, the desktop and the browser ran with it, so the image carries it (decision of 16.10.2026, VERGLEICH-END P-2)
+fonts-noto-mono              # the same reason
+fonts-roboto-unhinted        # the same reason
 fonts-dejavu-core            # the one font family the desktop, foot and Firefox need (already there through Kodi's dependencies, named here on purpose)
 firefox-esr                  # the browser: maximized in a labwc of its own for the launcher entry, in a window on the desktop; VA-API through rootfs/libva
 kodi                         # media centre; kodi-bin links libEGL/libGLESv2/libgbm
