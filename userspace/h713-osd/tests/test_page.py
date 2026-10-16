@@ -46,6 +46,24 @@ class Client:
         self.sock.sendall(b"page show 0 %d %d %d\n" % (y, W, h))
         return self.sock.recv(64).decode()
 
+    def show_cols(self, x, y, w, h):
+        self.sock.sendall(b"page show %d %d %d %d\n" % (x, y, w, h))
+        return self.sock.recv(64).decode()
+
+    def draw_page(self):
+        """a page like h713-settings': a ground, flat, with a lit pill, a bar, and text-like noise of every coverage"""
+        ground, pill, white = bytes((13, 14, 11, 255)), bytes((33, 35, 28, 255)), bytes((255, 255, 255, 255))
+        rows = [bytearray(ground * W) for _ in range(H)]
+        for y in range(H // 4, H // 4 + 30):                       # the pill
+            rows[y][133 * 4:500 * 4] = pill * (500 - 133)
+        for y in range(H - 40, H - 33):                            # a bar over the ground
+            rows[y][33 * 4:300 * 4] = white * (300 - 33)
+        for y in range(H // 4 + 7, H // 4 + 20):                   # noise: every alpha, over the pill
+            for x in range(200, 260):
+                a = (x * 7 + y * 13) % 256
+                rows[y][x * 4:x * 4 + 4] = white if a > 200 else bytes((a, a, a, 255))
+        self.map[:] = b"".join(bytes(r) for r in rows)
+
     def close(self):
         self.sock.close()
 
@@ -134,6 +152,81 @@ class PageTest(PageBase):
         fresh.show(0, H)
         self.assertEqual(self.shown(), partial)       # bands put one at a time are exactly the page put at once
         self.assertNotEqual(partial, bytes(c.map))     # and it did go through the matrix
+
+    def test_a_show_with_columns_puts_only_those_columns(self):
+        """16.10.2026: a show names its columns too - a pill in the middle of the panel is not put from edge to edge. Straight, so that
+        the panel's pixels are the page's: what is outside the columns (and their two neighbours) stays what it was"""
+        self.start()
+        c = self.page()
+        c.paint(0, H)
+        c.show(0, H)
+        time.sleep(0.3)
+        old = self.shown()
+        c.paint(50, 90, shift=11)                              # the page changed across the whole width ...
+        self.assertEqual(c.show_cols(100, 50, 200, 40), "ok\n")  # ... but only these columns were announced
+        now = self.shown()
+        row = lambda img, y: img[y * PITCH:(y + 1) * PITCH]
+        self.assertEqual(row(now, 60)[:90 * 4], row(old, 60)[:90 * 4])                      # left of them: as it was
+        self.assertEqual(row(now, 60)[310 * 4:], row(old, 60)[310 * 4:])                    # right of them: as it was
+        self.assertEqual(row(now, 60)[100 * 4:300 * 4], bytes(c.map)[60 * PITCH + 100 * 4:60 * PITCH + 300 * 4])   # inside: the new page
+        self.assertEqual(c.show_cols(0, 50, 0, 40), "ok\n")    # a width of 0 is the whole width
+        self.assertEqual(self.shown(), bytes(c.map))
+
+    def test_a_partial_show_with_columns_is_what_a_fresh_page_shows(self):
+        for keystone in (False, True):
+            if keystone:
+                self.tearDown()                                   # a fresh daemon that starts with the keystone
+                self.setUp()
+                self.write("warp.conf", "tl_x = 59\ntl_y = 4\ntr_x = 47\ntr_y = 41\nbl_y = 70\nbr_x = 11\nbr_y = 28\nwarp = on\n")
+                self.tv.picture = "warped"
+            self.start()
+            c = self.page()
+            c.draw_page()
+            c.show(0, H)
+            for x0, x1, y0, y1, shift in ((33, 133, 33, 47, 3), (233, 433, 7, 20, 7), (0, 30, 100, 120, 1), (600, 640, 0, 10, 9),
+                                          (167, 333, 83, 113, 4)):
+                for y in range(y0, y1):
+                    c.map[y * PITCH + x0 * 4:y * PITCH + x1 * 4] = b"".join(pixel(x + shift, y, 255) for x in range(x0, x1))
+                self.assertEqual(c.show_cols(x0, y0, x1 - x0, y1 - y0), "ok\n")
+                time.sleep(0.05)
+            partial = self.shown()
+            c.close()
+            time.sleep(0.3)
+            fresh = self.page()
+            fresh.map[:] = bytes(c.map)
+            fresh.show(0, H)
+            self.assertEqual(self.shown(), partial, "keystone %s" % keystone)
+            fresh.close()
+            time.sleep(0.3)
+
+    def test_flat_runs_and_threads_are_the_same_pixels_as_every_pixel_alone(self):
+        """16.10.2026: through the owner's keystone a run of ground is written without a division per pixel and the rows are cut
+        among threads; the page that comes out is the page put one pixel at a time on one thread"""
+        shots = {}
+        for i, (name, extra) in enumerate((("default", {}), ("every pixel", {"H713_OSD_NOFLAT": "1"}), ("one thread", {"H713_OSD_THREADS": "1"}),
+                                           ("both", {"H713_OSD_NOFLAT": "1", "H713_OSD_THREADS": "1"}))):
+            if i:
+                self.tearDown()                                   # a fresh daemon with its own environment
+                self.setUp()
+            self.env.update(extra)
+            self.write("warp.conf", "tl_x = 59\ntl_y = 4\ntr_x = 47\ntr_y = 41\nbl_y = 70\nbr_x = 11\nbr_y = 28\nwarp = on\n")
+            self.tv.picture = "warped"
+            self.start()
+            c = self.page()
+            c.draw_page()
+            c.show(0, H)
+            time.sleep(0.3)
+            first = self.shown()
+            for y0, y1 in ((250, 290), (H - 45, H - 25)):       # a band that is mostly ground, and the bar
+                for y in range(y0, y1):
+                    c.map[y * PITCH + 100 * 4:y * PITCH + 500 * 4] = b"".join(pixel(x, y, 255) for x in range(100, 500))
+                c.show_cols(100, y0, 400, y1 - y0)
+            shots[name] = (first, self.shown())
+        base = shots["default"]
+        self.assertNotEqual(base[0], base[1])
+        for name, shot in shots.items():
+            self.assertEqual(shot[0], base[0], name + ": the whole page")
+            self.assertEqual(shot[1], base[1], name + ": after the bands")
 
     def test_a_row_and_the_note_are_not_one_big_rectangle(self):
         """two small ranges, not their union: put through a keystone every pixel is paid for (the union alternates into the

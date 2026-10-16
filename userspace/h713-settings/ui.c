@@ -10,6 +10,7 @@
 #define _GNU_SOURCE
 #include <math.h>
 #include <stdio.h>
+#include <stdlib.h>
 #include <string.h>
 
 #include "ui.h"
@@ -44,10 +45,22 @@ static void touch(double x0, double y0, double x1, double y1)
 /* straight alpha, mixed over what the canvas holds */
 static void mix(int x, int y, unsigned rgb, float a)
 {
-	uint32_t *p = cv->px + (size_t)y * cv->stride + x, v = *p;
-	float da = (v >> 24) / 255.0f, oa = a + da * (1 - a), r, g, b;
+	uint32_t *p = cv->px + (size_t)y * cv->stride + x, v;
+	float da, oa, r, g, b;
 
-	if (a <= 0 || oa <= 0)
+	if (a <= 0)
+		return;
+	if (a == 1.0f) {		/* whole coverage: the colour itself, what the lines below come to (oa = 1, the old colour weighs 0) */
+		*p = 0xff000000u | rgb;
+		return;
+	}
+	v = *p;
+	if (!(v >> 24)) {		/* over nothing: the colour with the coverage as its alpha (the division below gives the colour back, to the digit) */
+		*p = (uint32_t)(a * 255 + 0.5f) << 24 | rgb;
+		return;
+	}
+	da = (v >> 24) / 255.0f, oa = a + da * (1 - a);
+	if (oa <= 0)
 		return;
 	r = (((rgb >> 16) & 255) * a + ((v >> 16) & 255) * da * (1 - a)) / oa;
 	g = (((rgb >> 8) & 255) * a + ((v >> 8) & 255) * da * (1 - a)) / oa;
@@ -71,16 +84,39 @@ static void rrect(double cx, double cy, double hw, double hh, double r, unsigned
 {
 	double x = cx * U + XOFF, y = cy * U, w = hw * U, h = hh * U, rr = r * U, l = lw * U;
 
-	for (int py = (int)fmax(0, y - h - 2); py < (int)fmin(cv->h, y + h + 2); py++)
-		for (int px = (int)fmax(0, x - w - 2); px < (int)fmin(cv->w, x + w + 2); px++) {
-			double dx = fabs(px + 0.5 - x) - w + rr, dy = fabs(py + 0.5 - y) - h + rr;
-			double d = sqrt(fmax(dx, 0) * fmax(dx, 0) + fmax(dy, 0) * fmax(dy, 0)) + fmin(fmax(dx, dy), 0) - rr;
+	/* deep inside (in the straight part, further from the edge than the outline reaches and the fade) the coverage is 1 and the outline's
+	 * 0: a row's span of such pixels is the fill colour at once, without the distance. One pixel of safety on each side. */
+	double deep = fmin(0, rr - l - 0.5), ex = w - rr + deep;
 
-			if (af > 0)
+	for (int py = (int)fmax(0, y - h - 2); py < (int)fmin(cv->h, y + h + 2); py++) {
+		int xa = (int)fmax(0, x - w - 2), xb = (int)fmin(cv->w, x + w + 2), sa = xb, sb = xb;
+
+		if (af > 0 && ex > 0 && fabs(py + 0.5 - y) - h + rr <= deep) {
+			sa = (int)ceil(x - ex - 0.5) + 1, sb = (int)floor(x + ex - 0.5) - 1;
+			sa = sa < xa ? xa : sa, sb = sb > xb ? xb : sb;
+			if (sb <= sa)
+				sa = sb = xb;
+		}
+		for (int px = xa; px < xb; px++) {
+			double dx, dy, d;
+
+			if (px == sa) {
+				for (int q = sa; q < sb; q++)
+					mix(q, py, fill, af);
+				px = sb - 1;
+				continue;
+			}
+			dx = fabs(px + 0.5 - x) - w + rr, dy = fabs(py + 0.5 - y) - h + rr;
+			/* in the straight part (both <= 0) the square root is of 0: the same distance without it */
+			d = dx > 0 || dy > 0 ? sqrt(fmax(dx, 0) * fmax(dx, 0) + fmax(dy, 0) * fmax(dy, 0)) + fmin(fmax(dx, dy), 0) - rr
+					     : fmax(dx, dy) - rr;
+
+			if (af > 0 && d < 0.5)
 				mix(px, py, fill, af * (float)clampd(0.5 - d, 0, 1));
-			if (lw > 0)
+			if (lw > 0 && d > -l - 0.5 && d < 0.5)	/* outside this band the outline's coverage is 0 */
 				mix(px, py, line, al * (float)clampd(0.5 - (fabs(d + l / 2) - l / 2), 0, 1));
 		}
+	}
 	touch(cx - hw - 2, cy - hh - 2, cx + hw + 2, cy + hh + 2);
 }
 
@@ -184,8 +220,14 @@ static void m_line(double x0, double y0, double x1, double y1)
 {
 	double r = 1.6 * mk, ax = x0 * mk, ay = y0 * mk, vx = x1 * mk - ax, vy = y1 * mk - ay, l2 = vx * vx + vy * vy;
 
-	for (int y = 0; y < msz; y++)
-		for (int x = 0; x < msz; x++) {
+	/* only the pixels within the line's reach (its box and the radius, one pixel of AA): the others are 0 and stay as they are */
+	int xlo = (int)floor(fmin(ax, ax + vx) - r - 1), xhi = (int)ceil(fmax(ax, ax + vx) + r + 1);
+	int ylo = (int)floor(fmin(ay, ay + vy) - r - 1), yhi = (int)ceil(fmax(ay, ay + vy) + r + 1);
+
+	xlo = xlo < 0 ? 0 : xlo, ylo = ylo < 0 ? 0 : ylo;
+	xhi = xhi > msz ? msz : xhi, yhi = yhi > msz ? msz : yhi;
+	for (int y = ylo; y < yhi; y++)
+		for (int x = xlo; x < xhi; x++) {
 			double t = l2 > 0 ? clampd(((x + 0.5 - ax) * vx + (y + 0.5 - ay) * vy) / l2, 0, 1) : 0;
 			float c = (float)clampd(0.5 - (hypot(x + 0.5 - ax - t * vx, y + 0.5 - ay - t * vy) - r), 0, 1);
 
@@ -225,15 +267,16 @@ static void m_rect(double x, double y, double w, double h, double r)
 	m_arc(x + r, y + h - r, r, 90, 180);
 }
 
-static void draw_icon(const char *name, double cx, double cy, double size, float a)
-{
-	int x0, y0;
+/* the masks made so far: a symbol at a size is the same shape every time (the areas' pills are drawn at every move) */
+#define ICONS 16
+static struct {
+	char name[12];
+	int msz;
+	float *mask;
+} icon_cache[ICONS];
 
-	mk = size * U / 48;
-	msz = (int)ceil(48 * mk);
-	if (msz > 160)
-		return;
-	memset(mask, 0, sizeof(float) * msz * msz);
+static void build_icon(const char *name)
+{
 	if (!strcmp(name, "pic")) {
 		static const double hill[] = { 12, 32, 21, 23, 27, 29, 31, 25, 37, 31 };
 
@@ -282,12 +325,42 @@ static void draw_icon(const char *name, double cx, double cy, double size, float
 		m_arc(24, 36.5, 6, -131.8, -48.2);
 		m_arc(24, 37, 1.4, 0, 1);
 	}
+}
+
+static void draw_icon(const char *name, double cx, double cy, double size, float a)
+{
+	const float *m = NULL;
+	int x0, y0;
+
+	mk = size * U / 48;
+	msz = (int)ceil(48 * mk);
+	if (msz > 160)
+		return;
+	for (int i = 0; i < ICONS && icon_cache[i].mask; i++)
+		if (icon_cache[i].msz == msz && !strcmp(icon_cache[i].name, name))
+			m = icon_cache[i].mask;
+	if (!m) {
+		memset(mask, 0, sizeof(float) * msz * msz);
+		build_icon(name);
+		for (int i = 0; i < ICONS; i++)
+			if (!icon_cache[i].mask) {
+				float *c = malloc(sizeof(float) * msz * msz);
+
+				if (c) {
+					memcpy(c, mask, sizeof(float) * msz * msz);
+					snprintf(icon_cache[i].name, sizeof(icon_cache[i].name), "%s", name);
+					icon_cache[i].msz = msz, icon_cache[i].mask = c;
+				}
+				break;
+			}
+		m = mask;
+	}
 	x0 = (int)(cx * U + XOFF - msz / 2.0 + 0.5);
 	y0 = (int)(cy * U - msz / 2.0 + 0.5);
 	for (int y = 0; y < msz; y++)
 		for (int x = 0; x < msz; x++)
-			if (mask[y * msz + x] > 0 && x0 + x >= 0 && x0 + x < cv->w && y0 + y >= 0 && y0 + y < cv->h)
-				mix(x0 + x, y0 + y, BRIGHT, a * mask[y * msz + x]);
+			if (m[y * msz + x] > 0 && x0 + x >= 0 && x0 + x < cv->w && y0 + y >= 0 && y0 + y < cv->h)
+				mix(x0 + x, y0 + y, BRIGHT, a * m[y * msz + x]);
 	touch(cx - size / 2 - 2, cy - size / 2 - 2, cx + size / 2 + 2, cy + size / 2 + 2);
 }
 

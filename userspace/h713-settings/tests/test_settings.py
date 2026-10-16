@@ -985,6 +985,38 @@ class Look(Base):
             b.finish()
         self.assertGreater(seen, 20)
 
+    def test_every_drawing_reports_all_it_changed(self):
+        # 16.10.2026: h713-osd puts the columns of a "page show" only; a pixel changed outside the reported pieces is stale on the wall.
+        # The program counts them itself in --test mode (it compares the canvas before and after each drawing).
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        walk = ["ok"] + ["down", "right", "left", "ok", "back"] * 3 + ["down", "right", "right", "left", "left", "ok", "up", "back", "back",
+                                                                           "down", "ok", "down", "down", "ok", "down", "ok", "back", "up"]
+        for area in ("Picture", "Keystone", "Sound", "Focus", "Input", "Power", "Wi-Fi"):
+            b = self.box().start(area, size="%dx%d" % (self.W, self.H))
+            for key in walk + ["down", "up", "ok", "down", "up", "ok"]:
+                if key == "back" and "focus areas" in b.dump().splitlines()[0]:
+                    continue                                       # Back in the areas closes the page: not here
+                b.keys(key)
+            dump = b.dump().splitlines()
+            self.assertIn("outside 0", dump, "%s: %s" % (area, dump[:1]))
+            b.finish()
+
+    def test_a_redrawn_page_is_the_same_picture(self):
+        # the symbols and the glyphs are drawn from tables after the first time: the second time is the first time again
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        for area in ("Picture", "Keystone", "Focus"):                     # (the others show what a reading changes by itself: a signal, a volume)
+            b = self.box().start(area, size="%dx%d" % (self.W, self.H))
+            first = self.snap(b, "first")
+            b.keys("down", "down", "up", "up")                     # the areas' pills and the right pane are drawn again
+            self.assertEqual(self.snap(b, "again"), first, area)
+            b.keys("ok", "down", "up")
+            rows = self.snap(b, "rows")
+            b.keys("down", "down", "up", "up")
+            self.assertEqual(self.snap(b, "rows again"), rows, area)
+            b.finish()
+
     def test_the_last_area_pill_is_whole(self):
         # owner, 15.10.: the pill round Wi-Fi, the last area, was cut off at the bottom (the note's clear box began inside it)
         if not any(f and os.path.exists(f) for f in FONTS):

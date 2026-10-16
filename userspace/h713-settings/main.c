@@ -43,6 +43,7 @@ void snap(const char *path)
 }
 
 #ifdef H713_TEST
+long test_outside;			/* pixels a drawing changed outside the pieces it reported: h713-osd puts only those, so each is a stale pixel on the wall */
 int test_key(int ms);			/* testsink.c: the host's sink - keys as lines on stdin, the model as text, the canvas on request */
 void test_command(void);
 #else
@@ -366,7 +367,28 @@ int main(int argc, char **argv)
 			dirty |= D_RIGHT;
 		if (dirty) {
 			double t0 = now_ms(), t1;
+#ifdef H713_TEST
+			uint32_t *before = test ? malloc((size_t)canvas.w * canvas.h * 4) : NULL;
+
+			if (before)
+				memcpy(before, canvas.px, (size_t)canvas.w * canvas.h * 4);
+#endif
 			int pieces = ui_draw(&canvas, &v, dirty, box), shown = 1;
+#ifdef H713_TEST
+			if (before) {
+				for (int y = 0; y < canvas.h; y++)
+					for (int x = 0; x < canvas.w; x++) {
+						bool in = false;
+
+						if (before[(size_t)y * canvas.w + x] == canvas.px[(size_t)y * canvas.stride + x])
+							continue;
+						for (int i = 0; i < pieces; i++)
+							in |= x >= box[i][0] && x < box[i][0] + box[i][2] && y >= box[i][1] && y < box[i][1] + box[i][3];
+						test_outside += !in;
+					}
+				free(before);
+			}
+#endif
 
 			t1 = now_ms();
 			dirty = 0;

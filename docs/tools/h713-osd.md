@@ -49,7 +49,7 @@ one holder, this daemon); it asks for a canvas. The connection **stays** and is 
 page open                 -> ok W H PITCH argb8888    plus one memfd (SCM_RIGHTS) of PITCH x H bytes, ARGB8888, straight alpha,
                              the panel's size: the page draws into it. "ok unseen" when nothing can be seen (no signal, no
                              h713-tv): no page, and its program takes the keys from nobody. "error the launcher is open" / "the page is open".
-page show X Y W H         -> ok | ok waiting          these rows (the panel's full width; X and W are ignored) are new
+page show X Y W H         -> ok | ok waiting          this rectangle is new (its rows, and its columns X..X+W; W of 0 or less: the full width)
 page hide                    the page goes (so does the end of the connection)
 ```
 
@@ -63,7 +63,17 @@ panel, and a launcher does not open over it. `page` in `ctl status` says open or
 The new rows are kept as up to four ranges (one that lies within 24 rows of another joins it), so a row and the note at the foot are
 two small puts, not the rectangle around both; each is written a half row wider than it tiles, because a panel pixel reads two source
 rows. A whole page that was shown is owed to the **other** buffer too: it is put right after the answer, not at the next key.
-Measured on the host (`arbeit/medien/S-einstellungen/laeufe/bench-opak-host.txt`): the whole panel through a keystone ~65 ms, a row ~11 ms.
+The ranges keep the columns too (the union of the shows that make one), so a pill in the middle of the panel is not put from edge to edge.
+
+**Pre-distortion cost** (16.10.2026, from the box: the opaque page through the owner's keystone cost 190 ms mean per key, 288 ms for an
+area switch): the source region is premultiplied once per put together with a **flat map** (per block of 8 x 8 texels the colour, if
+the block is one colour); a run of 16 panel pixels whose source texels - with the bilinear neighbours - all lie in flat blocks of one
+colour is written as that colour without a division per pixel (the ground of a page is most of it; on the settings page 90 % of the
+pixels); and the rows of the premultiply and of the put are cut among up to four threads (`H713_OSD_THREADS=1` for none, the tests;
+`H713_OSD_NOFLAT=1` for every pixel through the inverse, the tests). Every result is the pixel the plain loop made: the tests
+(`tests/test_page.py`) put the same pages with and without both and want the same buffers, bit for bit; the
+launcher's tiles use the same function, and its tests pass unchanged. Host bench of the S3 key mix, weighted mean key to answer: 18.0 ms before, 5.6 ms
+with four threads (6.7 two, 8.8 one) - `laeufe/skripte/bench-s3.py`; the board's factor to the host is about 10 (measured on the same keys).
 
 ## /etc/h713/osd.conf
 

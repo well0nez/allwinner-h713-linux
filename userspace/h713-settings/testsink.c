@@ -15,6 +15,8 @@
 
 #include "ui.h"
 
+extern long test_outside;			/* main.c: pixels changed outside the reported pieces */
+
 extern struct view v;
 extern struct osd_canvas canvas;
 extern volatile sig_atomic_t quit;
@@ -48,6 +50,7 @@ static void dump(void)
 			printf(" \"%s\"", r->text);
 		printf("\n");
 	}
+	printf("outside %ld\n", test_outside);
 	printf("--\n");
 	fflush(stdout);
 }
