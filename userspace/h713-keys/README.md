@@ -26,10 +26,10 @@ h713-keys run            # what the unit runs
 
 ## The launcher (Home)
 
-Package H of the media side project: Home opens a page with a ground over the whole panel and the list on the left, drawn by `h713-osd` (its `launcher`
+Home opens a page with a ground over the whole panel and the list on the left, drawn by `h713-osd` (its `launcher`
 command), Up and Down move, OK does what the entry says, Back and Home close, volume, mute and focus work as always. The entries are
 the files `/etc/h713/launcher.d/NN-name.conf` (`label`, `icon`, `unit` or `exec`, `show`, `active`, `now`, `group`, `fallback`;
-`rootfs/overlay-desktop/etc/h713/launcher.d/` has the three of package H: HDMI input, Kodi, Standby; the format is in
+`rootfs/overlay-desktop/etc/h713/launcher.d/` has the three: HDMI input, Kodi, Standby; the format is in
 [docs/tools/h713-keys.md](../../docs/tools/h713-keys.md)). While it is open the remote's two devices are **grabbed**
 (`EVIOCGRAB`, taken at the release of Home: grabbed earlier, cage would hold Home down and Kodi repeat it), so Kodi, which reads them through cage, gets no key; it opens only where `h713-osd` can show it and closes by
 itself after 90 s. A Power press with it open closes it and goes on to `h713-power` (a datagram `down`: h713-power starts the press, so a 3 s hold still powers off).
@@ -62,7 +62,7 @@ a key's code is read on the device, no `evtest` needed.
 fake `h713-tv` and `h713-osd` sockets, a fake `h713-focus` and `systemctl`, a datagram socket for h713-power; the launcher's
 tests replace `grab` (a plain file cannot be grabbed). The environment variables `H713_KEYS_ROOT`, `H713_KEYS_TV`,
 `H713_KEYS_OSD`, `H713_KEYS_FOCUS`, `H713_KEYS_SYSTEMCTL` and `H713_KEYS_POWER` point the script at them;
-`H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).
+`H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (measured 15.10.2026: Home to the page 52.7 ms with HDMI, 81.8 ms with Kodi, doku/212).
 
 ## State
 

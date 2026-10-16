@@ -191,7 +191,7 @@ static void cmd_test(struct runtime *r, struct textbuf *t, const char *what,
 	if (pattern != r->pattern) {
 		/* the pattern needs no capture and the capture no pattern: the
 		 * GPU path is rebuilt either way - not under a Wayland client,
-		 * whose claim the pattern simply draws over (package G)
+		 * whose claim the pattern simply draws over
 		 */
 		if (r->state == WARP_ON && r->src == SRC_RING)
 			warp_disengage(r, "the test pattern changed");

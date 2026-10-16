@@ -15,8 +15,8 @@ after a resume the key itself woke is that same press and is ignored. If this se
 power-off is back (docs/subsystems/standby.md).
 A standby parks the display MIPS and nothing in the kernel starts it again: the picture and the mode from before
 (HDMI or Kodi) come back through systemd, for every way into the sleep - this key, the launcher, Kodi's own menu,
-`systemctl suspend`: h713-sleep-pre.service and h713-sleep-post.service run `h713-mode` around sleep.target
-(media side project, package H). While the post unit runs a short press does nothing, a long one still powers off.
+`systemctl suspend`: h713-sleep-pre.service and h713-sleep-post.service run `h713-mode` around sleep.target.
+While the post unit runs a short press does nothing, a long one still powers off.
 The launcher (h713-keys) and a page of h713-settings hand a Power press on as a datagram "down" to the socket of
 H713_POWER_CTL (they let the devices go first, so this loop did not see the press): it starts the press here on the device
 that has the key down, and the release or the 3 s decide as ever - a long hold still powers off. The datagram "short" is a
@@ -444,7 +444,7 @@ def run(once):
             actions.append("short")              # the launcher took the press (h713-keys)
         elif word == b"down":
             # The launcher or a page of h713-settings took the press and let the devices go: this loop never saw Power go down, so
-            # the 3 s of a long press could not run (N-2). Start it here on the device that has the key down; the release (or the
+            # the 3 s of a long press could not run. Start it here on the device that has the key down; the release (or the
             # 3 s) then decides, as for any press. A key that is up already, or a device that cannot say, is a short press.
             t = time.clock_gettime_ns(CLOCK_BOOTTIME)
             pressed = [key for fd, _, key in devices.values() if key_down(fd)]

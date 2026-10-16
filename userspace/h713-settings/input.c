@@ -26,7 +26,7 @@
 
 static int fd[MAXDEV], nfd;
 static bool grabbed;
-static double stamp_ms;		/* the kernel's time (CLOCK_REALTIME) of the key input_key returned last: the gate HL starts here */
+static double stamp_ms;		/* the kernel's time (CLOCK_REALTIME) of the key input_key returned last: the key-to-wall measurement starts here */
 
 double input_stamp(void)
 {

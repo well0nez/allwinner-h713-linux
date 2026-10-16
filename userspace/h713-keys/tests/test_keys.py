@@ -329,7 +329,7 @@ class KeysTest(unittest.TestCase):
             self.assertEqual(f.read().split(), ["up", "3", "down", "3"])
 
 
-    # --- the launcher (package H) ----------------------------------------------------------------------------------
+    # --- the launcher ----------------------------------------------------------------------------------
 
     def keys(self, *names):
         """presses in order; a Home is followed by its release, as a real remote sends it (the grab waits for it)"""
@@ -339,7 +339,7 @@ class KeysTest(unittest.TestCase):
                 self.press("home", value=0)
 
     def launcher_d(self, **files):
-        """etc/h713/launcher.d/<name>.conf = the given text; the defaults are the three entries of package H"""
+        """etc/h713/launcher.d/<name>.conf = the given text; the defaults are the three entries"""
         d = os.path.join(self.root, "etc/h713/launcher.d")
         os.makedirs(d, exist_ok=True)
         files = files or {
@@ -375,7 +375,7 @@ class KeysTest(unittest.TestCase):
         self.assertEqual(sorted(calls), [("event0", True), ("event1", True)])      # the IR receiver and the remote, no keyboard
 
     def test_the_grab_waits_for_the_release_of_home(self):
-        """H2, 15.10.2026: a grab while Home is down lost its release for cage, cage held Home down and Kodi repeated it at 30 Hz"""
+        """15.10.2026: a grab while Home is down lost its release for cage, cage held Home down and Kodi repeated it at 30 Hz"""
         self.launcher_d()
         calls = self.grabs()
         fds = {"event0": os.open(os.path.join(self.root, "dev/input/event0"), os.O_RDONLY | os.O_NONBLOCK),
@@ -398,7 +398,7 @@ class KeysTest(unittest.TestCase):
         calls = self.grabs()
         self.keys("home", "nav_down", "ok")
         self.run_once()
-        # OK sends the selection once more before it starts the row: h713-osd must still show the page (N-1)
+        # OK sends the selection once more before it starts the row: h713-osd must still show the page
         self.assertEqual(self.osds.lines[1:], ["launcher 1", "launcher 1", "launcher close"])
         self.assertEqual(sorted(c for c in calls if not c[1]), [("event0", False), ("event1", False)])
         time.sleep(0.2)

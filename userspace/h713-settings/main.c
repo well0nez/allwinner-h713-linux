@@ -69,7 +69,7 @@ static int patience = 10;		/* seconds the page waits for the picture to come bac
 static double unseen_since;		/* since when h713-osd has only been keeping the page (ms); 0: it is on the wall */
 static const char *snapdir = "";	/* H713_SETTINGS_SNAP: a directory; each drawing is kept in it */
 static int snapn;
-static bool timing;			/* H713_SETTINGS_TIMES: one journal line per drawing, for the key-to-wall measurement (S3) */
+static bool timing;			/* H713_SETTINGS_TIMES: one journal line per drawing, for the key-to-wall measurement */
 
 static double now_ms(void)
 {

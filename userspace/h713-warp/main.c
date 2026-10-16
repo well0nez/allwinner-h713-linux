@@ -136,7 +136,7 @@ int main(int argc, char **argv)
 	const char *sock = WARP_SOCKET, *tv = TV_SOCKET, *video = NULL, *wl = WAYLAND_SOCKET;
 	struct pollfd fds[6];
 	int sfd, arg, rc = 0;
-	double asked;			/* the last time a waiting client asked h713-tv's source (M4 A1) */
+	double asked;			/* the last time a waiting client asked h713-tv's source */
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	memset(&r, 0, sizeof(r));
@@ -194,7 +194,7 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN);
 	control_listen(&ctl);
 	sfd = signal_fd();
-	/* the Wayland server (package G): a client next to the ring; without it the ring works as before */
+	/* the Wayland server: a client next to the ring; without it the ring works as before */
 	r.srv = server_start(wl, &r);
 	warp_apply(&r);
 	if (r.state != WARP_ON)
@@ -218,7 +218,7 @@ int main(int argc, char **argv)
 		bool live = r.state == WARP_ON;
 		bool want = r.on || server_shown(r.srv);	/* something to claim the panel for */
 		int timeout = -1;
-		/* a client waits behind a ring claim: h713-tv's source is asked once a second (M4 A1, loop.c warp_apply) */
+		/* a client waits behind a ring claim: h713-tv's source is asked once a second (loop.c warp_apply) */
 		bool waiting = live && r.src == SRC_RING && server_shown(r.srv) && r.peer.tv_source != TV_AUTO;
 
 		server_flush(r.srv);
@@ -285,7 +285,7 @@ int main(int argc, char **argv)
 		}
 		if (fds[3].fd >= 0 && (fds[3].revents & (POLLHUP | POLLERR | POLLNVAL))) {
 			warp_disengage(&r, "h713-tv closed the connection");
-			/* h713-tv gave the claim back on purpose ("ctl source"): ask again at once (ENTWURF G v3 D4) */
+			/* h713-tv gave the claim back on purpose ("ctl source"): ask again at once */
 			if (server_shown(r.srv))
 				warp_apply(&r);
 		} else if (fds[2].fd >= 0 && (fds[2].revents & (POLLIN | POLLPRI))) {

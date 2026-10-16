@@ -41,7 +41,7 @@
 
 /* the paths, each with an environment override for the host tests */
 static const char *osd_socket, *tv_socket, *warp_conf, *osd_conf, *fake_clock;
-static bool trace;			/* H713_OSD_TRACE=1: one journal line per refresh with wall-clock times (package H, gate HL) */
+static bool trace;			/* H713_OSD_TRACE=1: one journal line per refresh with wall-clock times */
 static double t_cmd;			/* CLOCK_REALTIME when the last command reached the socket */
 
 static const char *env(const char *name, const char *def)
@@ -104,7 +104,7 @@ static struct {
 } want = { .popup = { .alpha = 1.0f } };
 
 /*
- * The launcher (package H of the media side project): an OPAQUE page over the whole panel - a ground, the list on the left, the rest calm
+ * The launcher: an OPAQUE page over the whole panel - a ground, the list on the left, the rest calm
  * (Marco, 15.10.2026: "it must have a ground, it is not an overlay over the picture") - that stays until it is closed. It is cut into
  * tiles (libh713osd: the bands of the page - the header, one per row, the foot, the gap - each in a left part, the column, and a right
  * part, the ground alone). A tile is repainted in the canvas when it changes and put into a buffer when that buffer does not hold its
@@ -127,7 +127,7 @@ static struct {
 } lau;
 
 /*
- * The page channel (package S of the media side project, h713-settings): a program draws a whole page into a canvas the
+ * The page channel (h713-settings): a program draws a whole page into a canvas the
  * size of the panel - a memfd that "page open" hands over - and says which rows are new ("page show X Y W H"). This daemon
  * copies those rows, the panel's full width, into its canvas, puts them into the buffer h713-tv shows - straight, or through
  * the matrix in bands like the launcher's, so that there is no seam - and shows it, then answers "ok" (or "ok waiting": no

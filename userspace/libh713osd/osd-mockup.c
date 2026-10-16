@@ -61,7 +61,7 @@ static int write_pam(const char *path, const struct osd_canvas *c)
 	return fclose(f);
 }
 
-/* the launcher's pictures: the mock-up's six rows with Kodi chosen, and the rows that are there in package H */
+/* the launcher's pictures: the mock-up's six rows with Kodi chosen, and the rows that are there in the Kodi image */
 static const struct {
 	const char *name;
 	struct osd_launcher l;

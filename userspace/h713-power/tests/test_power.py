@@ -244,8 +244,8 @@ class KeysOfTheStandby(unittest.TestCase):
 
 
 class AfterTheStandby(unittest.TestCase):
-    """A standby parks the display MIPS; the picture and the mode come back through h713-sleep-post.service (systemd,
-    package H), not through this tool: it only waits for the unit and starts it again after a standby that did not happen."""
+    """A standby parks the display MIPS; the picture and the mode come back through h713-sleep-post.service (systemd),
+    not through this tool: it only waits for the unit and starts it again after a standby that did not happen."""
 
     SHORT = ((1, 0.3), (0, 0.2))
 
@@ -364,7 +364,7 @@ class Launcher(unittest.TestCase):
         return m, said, t
 
     def test_down_with_power_held_starts_the_press_here_and_a_long_hold_powers_off(self):
-        """N-2: the launcher or a page took the press and let go of the devices; h713-power never saw it go down"""
+        """The launcher or a page took the press and let go of the devices; h713-power never saw it go down"""
         r = Root(conf="long_s = 1\n")
         m, said, t = self.run_with_datagram(r, b"down", True, wait=0.5)
         self.assertEqual([l for l in said if l.startswith("power ")], [])            # no countdown: the key is still down

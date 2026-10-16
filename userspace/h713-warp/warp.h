@@ -27,7 +27,7 @@
 #define TV_SOCKET	"/run/h713-tv/ctl"
 #define RENDER_NODE	"/dev/dri/renderD128"
 #define V4L2_NAME	"sun50i-h713-hdmirx"
-#define WAYLAND_SOCKET	"/run/h713-warp/wayland"	/* the Wayland server (package G): WAYLAND_DISPLAY */
+#define WAYLAND_SOCKET	"/run/h713-warp/wayland"	/* the Wayland server: WAYLAND_DISPLAY */
 
 #define WARP_TARGETS	3	/* triple buffering on the panel side (M9) */
 #define WARP_SLOTS	3	/* capture ring slots (M5) */
@@ -48,9 +48,9 @@ struct textbuf {
 __attribute__((format(printf, 2, 3)))
 void text_add(struct textbuf *t, const char *fmt, ...);
 
-/* what a claim is for (package G): the capture ring, or a Wayland client of wayland.c */
+/* what a claim is for: the capture ring, or a Wayland client of wayland.c */
 enum warp_source { SRC_RING, SRC_CLIENT };
-/* h713-tv's "source" as its last answer named it: to a claim, to a frame after a change (M4 A1), to "source" */
+/* h713-tv's "source" as its last answer named it: to a claim, to a frame after a change, to "source" */
 enum tv_source { TV_UNKNOWN, TV_HDMI, TV_CLIENT, TV_AUTO };
 
 struct peer {
@@ -115,7 +115,7 @@ int gl_fence(void);			/* an out-fence fd, or -1 */
 bool gl_is_open(void);
 void gl_targets_drop(void);		/* the three panel buffers' images, before their claim is given back */
 
-/* the Wayland client's pictures (package G): RGB in, BT.709 limited range out, in the two passes */
+/* the Wayland client's pictures: RGB in, BT.709 limited range out, in the two passes */
 struct gl_format {
 	uint32_t fourcc;
 	uint64_t modifier;
@@ -160,7 +160,7 @@ extern const char *const gl_chroma_shader;	/* CbCr in, CbCr out */
 extern const char *const gl_edge_shader;	/* the soft border's ring, blended */
 void gl_edge_ring(const int e[2], float v[40]);	/* its ten vertices (x, y, u, v) */
 extern const char *const gl_pattern_shader;
-extern const char *const gl_rgb_luma_shader;	/* RGB in, Y out (variant B, T3) */
+extern const char *const gl_rgb_luma_shader;	/* RGB in, Y out (the colour maths inside the keystone passes) */
 extern const char *const gl_rgb_chroma_shader;	/* RGB in, CbCr out */
 
 /* ---------------- what the daemon is doing (loop.c) -------------------- */
@@ -233,7 +233,7 @@ void warp_client_shown(struct runtime *r);	/* a toplevel has its first picture: 
 void warp_client_gone(struct runtime *r);	/* ... it is gone for good: give the panel back */
 void warp_gl_idle(struct runtime *r);		/* close the render node if nothing needs it */
 
-/* ---------------- the Wayland server (wayland.c), package G ------------ */
+/* ---------------- the Wayland server (wayland.c) ------------ */
 struct server *server_start(const char *path, struct runtime *r);
 void server_stop(struct server *s);
 int server_fd(const struct server *s);		/* the event loop's fd for poll(), -1 none */
