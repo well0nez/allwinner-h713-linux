@@ -113,7 +113,7 @@ blank lines). A good third of that is the control channel (§6a); the rest is th
    VT (`SEATD_VTBOUND=0`), so the VT stays in text mode and a switch "to text" is no change; and every commit
    of this program carries the primary plane as it wants it (§6h), so whatever lands there in between lasts
    one frame. The console's **keyboard** is off (`K_OFF`) while anything but the console is on the panel -
-   picture or warp - and on again with the console: the remote and a keyboard on the desktop
+   picture, warp, an opaque page - and on again with the console: the remote and a keyboard on the desktop
    would otherwise type into the hidden login prompt on tty1, Enter included (seatd did this while a
    compositor had the seat). Programs that read the keys themselves read the input devices, which the VT's
    keyboard mode does not touch.
@@ -776,7 +776,9 @@ warp's pattern, on its own control socket, the file descriptors in `SCM_RIGHTS`:
 `osd claim` answers `ok WIDTH HEIGHT PITCH argb8888` and two ARGB8888 dumb buffers of the mode (8.3 MB each at
 1080p), which the peer maps and draws into (with `DMA_BUF_IOCTL_SYNC` around the writes);
 `osd show N` lays buffer N over the picture - `ok`, or `ok waiting` when there is no picture: the overlay stays
-wanted and comes back by itself with the picture (ring or warp);
+wanted and comes back by itself with the picture (ring or warp); `osd show N cover` is an opaque page (the
+launcher, the settings) that needs no picture under it - without one it is shown over black (`ok cover`): the
+master is taken for it and given back, with the console, when the page goes;
 `osd hide` takes it away; `osd picture` answers what lies under the overlay - `warped`, `ring` or `none` (h713-osd
 pre-distorts only over the warp); `osd release` frees the buffers. The connection is the lifetime: a peer that
 dies leaves a hangup and the overlay goes with it.
@@ -798,7 +800,7 @@ claims again and the overlay is back by itself. Without the overlay nothing chan
 primary plane stays the console's.
 
 `userspace/libh713osd/osd-show` puts one overlay on the panel through this channel (a test tool, not in the
-image). An overlay over the console - no signal - is the next step (TODO 2.46, P5 of the plan).
+image). A popup over the console - no signal - waits for the picture; an opaque page does not (`cover`).
 
 ## 6f. HDCP: seeing the negotiation without a photo
 

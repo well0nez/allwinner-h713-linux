@@ -260,6 +260,25 @@ static void geom_load(void)
 	}
 }
 
+/*
+ * How an overlay is drawn for what lies under it ("osd picture"): pre-distorted over the warped picture, straight
+ * over the ring. An opaque page (the launcher, a settings page) needs no picture under it: without one h713-tv shows
+ * it over black ("osd show N cover"), and it is drawn for the wall as the warped picture would stand there - with
+ * the keystone of warp.conf when that says "warp = on". 16.10.2026: without an HDMI signal the launcher did not open
+ * at all.
+ */
+static bool covering(void)
+{
+	return lau.open || page.open;
+}
+
+static bool skew_for(const char *picture)
+{
+	bool warped = !strcmp(picture, "ok warped") || (covering() && geom.start_on && !strcmp(picture, "ok none"));
+
+	return warped && m_valid && !m_identity;
+}
+
 /* --- h713-tv: the two buffers ------------------------------------------------------------------------ */
 
 static struct {
@@ -1045,7 +1064,7 @@ static void refresh(void)
 {
 	char answer[128];
 	int box[2][4], out[2][4] = { { 0 } }, b, area = 0;
-	bool warped, skew;
+	bool skew;
 	double t0;
 
 	osd_waiting = true;
@@ -1059,10 +1078,11 @@ static void refresh(void)
 	}
 	last.draw = (now_s() - t0) * 1e3;
 	t0 = now_s();
-	warped = tv_say("osd picture\n", answer, sizeof(answer)) && !strcmp(answer, "ok warped");
+	if (!tv_say("osd picture\n", answer, sizeof(answer)))
+		answer[0] = '\0';
 	if (tv.fd < 0)
 		return;
-	skew = warped && m_valid && !m_identity;
+	skew = skew_for(answer);
 	b = tv.next;
 	last.ask = (now_s() - t0) * 1e3;	/* the question to h713-tv: its loop may be in a warp frame */
 	t0 = now_s();
@@ -1096,7 +1116,7 @@ static void refresh(void)
 	last.skew = skew;
 	t0 = now_s();
 	memcpy(tv.box[b], out, sizeof(out));
-	snprintf(answer, sizeof(answer), "osd show %d\n", b);
+	snprintf(answer, sizeof(answer), covering() ? "osd show %d cover\n" : "osd show %d\n", b);
 	if (tv_say(answer, answer, sizeof(answer))) {
 		tv.shown = true;
 		tv.next ^= 1;
@@ -1121,13 +1141,14 @@ static void refresh(void)
 /*
  * "launcher SEL;NOW;[>]icon:label;..." opens the launcher (or defines it anew): SEL the chosen row, NOW the header's
  * second half ("HDMI 1080p60"), then the rows - a ">" in front puts a row in the group at the foot, which comes last.
- * "launcher SEL" moves the selection, "launcher close" closes it. "ok unseen" when nothing can be seen (no signal:
- * the console; no h713-tv): then it is not open and the caller does not take the keys from anybody.
+ * "launcher SEL" moves the selection, "launcher close" closes it. "ok unseen" when nothing can be seen (no h713-tv):
+ * then it is not open and the caller does not take the keys from anybody. Without a signal the page is shown over
+ * black (covering()).
  * H713_OSD_FONT is the font file (libh713osd's default is the image's Quicksand).
  */
 static bool launcher_cmd(const char *args, char *reply, size_t n)
 {
-	char buf[LINE], answer[64], *f[BANDS + 1], *p = buf, *t;
+	char buf[LINE], *f[BANDS + 1], *p = buf, *t;
 	int k = 0, sel, rows = 0;
 	bool end = false;
 
@@ -1196,7 +1217,7 @@ static bool launcher_cmd(const char *args, char *reply, size_t n)
 	lau.l.head = lau.head;
 	snprintf(lau.now, sizeof(lau.now), "%s", f[1]);
 	lau.head[0] = '\0';
-	if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none")) {
+	if (!tv_claim()) {
 		lau.open = false;
 		snprintf(reply, n, "ok unseen\n");
 		return false;
@@ -1305,7 +1326,7 @@ static int listen_on(const char *path)
 /* the page's way in: "page open" keeps its connection (the page's life) and answers with the size and one memfd */
 static bool page_open_cmd(int fd)
 {
-	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, line[96], answer[64];
+	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, line[96];
 	struct iovec io = { line, 0 };
 	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1, .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
 	const char *err = NULL;
@@ -1316,8 +1337,8 @@ static bool page_open_cmd(int fd)
 
 	if (page.open || lau.open)
 		err = page.open ? "error the page is open\n" : "error the launcher is open\n";
-	else if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none"))
-		err = "ok unseen\n";	/* nothing can be seen: no page, and the caller takes the keys from nobody */
+	else if (!tv_claim())
+		err = "ok unseen\n";	/* nothing can be seen (no h713-tv): no page, and the caller takes the keys from nobody */
 	if (!err) {
 		len = (size_t)canvas.stride * canvas.h * 4;
 		mem = memfd_create("h713-page", MFD_CLOEXEC);
@@ -1513,9 +1534,9 @@ static bool picture_changed(void)
 	bool skew;
 
 	watch_at = 0;
-	if (!tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none"))
+	if (!tv_say("osd picture\n", answer, sizeof(answer)) || (!strcmp(answer, "ok none") && !covering()))
 		return false;		/* gone (claimed again at the next event), or no picture: nothing is seen */
-	skew = !strcmp(answer, "ok warped");
+	skew = skew_for(answer);
 	if (skew == last.skew)
 		return false;
 	info("the picture under the overlay is %s now -- drawn again", skew ? "warped" : "straight");

@@ -1193,6 +1193,8 @@ static void osd_drop(struct display *d);	/* the overlay off the panel: before ev
 static void osd_resume(struct display *d);	/* ... and back when the picture is */
 static bool osd_state_add(drmModeAtomicReq *req, struct display *d, bool picture);	/* the primary plane into a commit */
 static void osd_state_committed(bool committed, bool picture);
+static int osd_wanted(bool picture);	/* the buffer the primary plane is to carry, -1: the console's */
+static bool osd_on_panel(void);		/* one of our buffers is on the primary plane */
 static void console_keys(bool on);	/* the console's keyboard: off while anything else is on the panel */
 
 static bool display_show(struct display *d)
@@ -1286,8 +1288,8 @@ static void console_login_clean(void);
 
 /*
  * The video plane off and the primary plane as it is to be without a picture, in one commit: the console's
- * framebuffer at zpos 0 - no overlay over a plane that goes, channel 2 alone would show it. 0: done; -1: refused
- * (errno); -2: a property is missing.
+ * framebuffer at zpos 0 - no overlay over a plane that goes, channel 2 alone would show it - or an opaque page that
+ * stays. 0: done; -1: refused (errno); -2: a property is missing.
  */
 static int display_plane_off(struct display *d)
 {
@@ -1316,8 +1318,15 @@ static bool display_hide(struct display *d)
 
 	if (!d->on) {
 		if (!d->warped) {	/* the warp holds the master (A3) */
+			if (osd_wanted(false) >= 0) {	/* an opaque page stays, over black */
+				osd_resume(d);
+				return true;
+			}
 			osd_drop(d);
-			display_release_master(d);
+			if (d->master) {
+				display_release_master(d);
+				console_restore();
+			}
 		}
 		return true;
 	}
@@ -1330,6 +1339,10 @@ static bool display_hide(struct display *d)
 	}
 
 	d->on = false;
+	if (osd_on_panel()) {
+		info("picture         plane off -- the opaque page stays, over black");
+		return true;
+	}
 	display_release_master(d);
 	console_restore();
 	info("console         plane off, RGB channel and selector back, console unblanked");
@@ -1548,7 +1561,7 @@ static void warp_release(struct display *d)
 	if (!warp.claimed)
 		return;
 	/*
-	 * The video plane off and the console's framebuffer on the primary plane in one commit, before the
+	 * The video plane off and the console (or an opaque page) on the primary plane in one commit, before the
 	 * buffers go. Removing a framebuffer that is on a plane switches the plane off by itself (atomic_remove_fb),
 	 * which is how it went before - after a commit of its own for the console's framebuffer.
 	 */
@@ -1562,10 +1575,12 @@ static void warp_release(struct display *d)
 		close(warp.flip);
 	warp.flip = -1;
 	d->warped = false;
-	display_release_master(d);
-	console_restore();
-	info("warp            released: %lu commits, %lu busy, %lu refused -- the panel is ours again",
-	     warp.commits, warp.busy, warp.errors);
+	if (!osd_on_panel()) {
+		display_release_master(d);
+		console_restore();
+	}
+	info("warp            released: %lu commits, %lu busy, %lu refused -- the panel is ours again%s",
+	     warp.commits, warp.busy, warp.errors, osd_on_panel() ? ", the opaque page stays over black" : "");
 	warp.commits = warp.busy = warp.errors = 0;
 }
 
@@ -1597,9 +1612,11 @@ static void warp_release(struct display *d)
  * (drm_fb_helper_set_par(), FB_ACTIVATE_KD_TEXT), the console's framebuffer
  * on the primary plane at the zpos it found and every other plane off.
  *
- * Without a picture (no signal, "off") there is nothing to lay the overlay
- * over: "show" keeps it as wanted and shows it when the picture is back
- * (an overlay over the console is the next step, P5 of the plan).
+ * Without a picture (no signal, "off") a popup has nothing to lay itself
+ * over: "show" keeps it as wanted and shows it when the picture is back. An
+ * opaque page ("osd show N cover": the launcher, the settings) needs nothing
+ * under it and is shown over black: the master is taken for it and given
+ * back, with the console, when the page goes.
  * ------------------------------------------------------------------ */
 
 #define OSD_BUFS	2
@@ -1609,6 +1626,7 @@ struct osd {
 	bool claimed;
 	bool shown;			/* our buffer is on the plane at zpos 2 */
 	int want;			/* the buffer h713-osd wants shown, -1: none */
+	bool cover;			/* ... and it is an opaque page: shown without a picture too */
 	bool queued;			/* while the warp draws: the change goes with its next frame */
 	uint32_t plane_id;		/* the primary plane of our CRTC */
 	struct props props;
@@ -1762,7 +1780,12 @@ static int osd_wanted(bool picture)
 {
 	if (!osd.claimed || osd.want < 0)
 		return -1;
-	return picture ? osd.want : -1;
+	return picture || osd.cover ? osd.want : -1;
+}
+
+static bool osd_on_panel(void)
+{
+	return osd.claimed && osd.shown;
 }
 
 /*
@@ -1846,10 +1869,31 @@ static bool osd_alone(const struct display *d)
 	return poll(pf + 1, 1, 0) == 0;	/* and no frame is waiting to be committed */
 }
 
-/* the wanted buffer over the picture, if there is a picture to lay it over */
+/*
+ * The wanted buffer over the picture, if there is a picture to lay it over; an opaque page also without one, over
+ * black: the master is taken for it (the video plane is off then, and channel 2 alone shows the page).
+ */
 static void osd_resume(struct display *d)
 {
-	if (!osd.claimed || osd.want < 0 || !(d->on || d->warped) || !d->master)
+	bool picture = d->on || d->warped;
+
+	if (osd_wanted(picture) < 0)
+		return;
+	if (!picture) {
+		if (!display_take_master(d))
+			return;
+		if (osd_learn(d) && osd_commit(d, osd.fb_id[osd.want], 2)) {
+			if (!osd.shown)
+				info("osd             an opaque page over black -- there is no picture under it");
+			osd.shown = true;
+			osd.shows++;
+			console_keys(false);
+		} else if (!osd.shown) {
+			display_release_master(d);
+		}
+		return;
+	}
+	if (!d->master)
 		return;
 	if (d->warped && !osd_alone(d)) {	/* with the warp's next frame */
 		osd.queued = true;
@@ -1860,6 +1904,16 @@ static void osd_resume(struct display *d)
 		osd.shown = true;
 		osd.shows++;
 	}
+}
+
+/* the opaque page went and there is no picture: the master and the console back, as display_hide() gives them */
+static void osd_uncover(struct display *d)
+{
+	if (d->on || d->warped || osd.shown || !d->master)
+		return;
+	display_release_master(d);
+	console_restore();
+	info("console         the opaque page is gone and there is no picture -- the console is back");
 }
 
 /* the flip a queued change waited for is on the panel (client only): the change goes now, on its own */
@@ -1881,9 +1935,11 @@ static void osd_release(struct display *d)
 	if (!osd.claimed)
 		return;
 	osd.want = -1;
+	osd.cover = false;
 	osd_drop(d);
 	osd_free(d);
 	osd.claimed = false;
+	osd_uncover(d);
 	info("osd             released: %lu shown, %lu busy, %lu refused", osd.shows, osd.busy,
 	     osd.errors);
 	osd.shows = osd.busy = osd.errors = 0;
@@ -1892,8 +1948,8 @@ static void osd_release(struct display *d)
 /* The peer's connection, one line per message as with the warp. */
 static void osd_serve(struct display *d)
 {
-	char buf[64];
-	const char *answer = "error unknown (osd show N | osd hide | osd picture | osd release)\n";
+	char buf[64], word[16] = "";
+	const char *answer = "error unknown (osd show N [cover] | osd hide | osd picture | osd release)\n";
 	ssize_t got;
 	int n = -1;
 
@@ -1910,9 +1966,16 @@ static void osd_serve(struct display *d)
 		osd_release(d);
 		return;
 	}
-	if (sscanf(buf, "osd show %d", &n) == 1 && n >= 0 && n < OSD_BUFS) {
+	if (sscanf(buf, "osd show %d %15s", &n, word) >= 1 && n >= 0 && n < OSD_BUFS) {
 		osd.want = n;
-		if (!(d->on || d->warped)) {
+		osd.cover = !strcmp(word, "cover");	/* an opaque page: it needs no picture under it */
+		if (!(d->on || d->warped) && osd.cover) {
+			osd_resume(d);
+			answer = osd.shown ? "ok cover -- over black, there is no picture under it\n"
+					   : "error the commit was refused\n";
+		} else if (!(d->on || d->warped)) {
+			osd_drop(d);		/* an opaque page before it goes: a popup does not stand over black */
+			osd_uncover(d);
 			answer = "ok waiting -- no picture to lay it over, it comes with the picture\n";
 		} else if (d->warped) {
 			osd_resume(d);		/* queued: the warp's next frame carries it */
@@ -1924,12 +1987,14 @@ static void osd_serve(struct display *d)
 		}
 	} else if (!strcmp(buf, "osd hide")) {
 		osd.want = -1;
+		osd.cover = false;
 		if (d->warped && osd.shown && !osd_alone(d)) {
 			osd.queued = true;	/* the console's framebuffer back with the next frame */
 			answer = "ok\n";
 		} else {
 			osd_drop(d);
 			answer = osd.shown ? "error the console framebuffer could not go back\n" : "ok\n";
+			osd_uncover(d);
 		}
 	} else if (!strcmp(buf, "osd picture")) {
 		/* what lies under the overlay: h713-osd pre-distorts only over the warp */
@@ -2070,8 +2135,8 @@ static void console_restore(void)
 }
 
 /*
- * The console's keyboard is off while anything but the console is on the panel - the picture, a warp - and on
- * again with the console (console_restore()). The remote is a keyboard to the kernel (see below), and
+ * The console's keyboard is off while anything but the console is on the panel - the picture, a warp, an opaque
+ * page - and on again with the console (console_restore()). The remote is a keyboard to the kernel (see below), and
  * so is a keyboard on the desktop: with the console's keyboard on, every key typed into Kodi, labwc or the browser
  * reached the hidden login prompt on tty1 as well, an Enter included, and ctrl-alt-del rebooted the box. seatd did
  * this while a compositor had the seat (K_OFF on open, K_UNICODE on close); it no longer manages the VT, so this
@@ -7213,7 +7278,7 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 			reply_fail(r, "the plane cannot be switched off");
 	} else if (!strcmp(cmd, "console")) {
 		console_restore();
-		if (d->on || d->warped)
+		if (d->on || d->warped || osd_on_panel())
 			console_keys(false);	/* the console is not on the panel: its keyboard stays off */
 		reply_add(r, "ok console unblanked, cursor on\n");
 	} else if (!strcmp(cmd, "list")) {
@@ -8182,6 +8247,7 @@ int main(int argc, char **argv)
 	retry_stop(&rt);
 	audio_close(&au);
 	warp_release(&d);
+	osd_release(&d);	/* an opaque page over black goes too: the console, and its keyboard, are back */
 	if (!display_hide(&d))
 		rc = 1;
 	control_close(&ctl);
