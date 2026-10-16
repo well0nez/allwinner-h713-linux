@@ -6,6 +6,8 @@
   <windowRules>
     <windowRule identifier="*" serverDecoration="no">
       <action name="Maximize" />
+      <!-- the launcher's "Starting Browser..." waits for this file (launcher.d/25-browser.conf, `wait`): the first Firefox picture on the wall -->
+      <action name="Execute" command="touch /run/h713-browser/mapped" />
     </windowRule>
   </windowRules>
 

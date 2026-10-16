@@ -67,7 +67,17 @@ active   = /usr/bin/systemctl is-active --quiet h713-kodi.service    # optional:
 now      = Kodi                  # the header while it is active (default: the label); {signal} = 1080p60 from h713-tv
 group    = end                   # the foot: Standby is set apart, bottom-anchored, and comes last
 fallback = yes                   # the current entry when no other `active` check succeeds (the HDMI input)
+wait     = /usr/local/sbin/h713-kodi-switch ready    # optional, with `unit`: see below
 ```
+
+**`wait`: the page stays while a client starts** (acceptance of 16.10.2026: Kodi needs 4 s, Firefox 9 to 13 s to a first picture, and the wall was black or the
+old client until then). An entry with `unit` and `wait` does not close the launcher at the OK: it starts the unit, redefines the page with the header
+"Starting Browser..." (`launcher SEL;NOW;rows` again, the same command that opened it), and asks every 0.5 s whether the unit is up (`active`) and the `wait` command exits 0;
+then the page goes and the client is on the wall. At most 30 s (`START_WAIT_S`), then it goes anyway with a journal line. While it waits, Up, Down and OK are swallowed (a second OK would
+start the unit again); Back and Home close the page (the unit goes on starting), Power does what it always does, volume and mute work. The commands in the
+image: Kodi `h713-kodi-switch ready` (its JSON-RPC answers once the home screen is up), Browser and Desktop `test -e /run/h713-browser/mapped` and `/run/h713-desktop/mapped`, files that the unit's
+labwc touches when a window is first mapped (a `windowRule` with an `Execute` action in `labwc-browser/rc.xml` and `labwc/rc.xml`; the unit's runtime directory goes with the unit, so a
+stale file cannot say "ready"). An entry without `wait` closes the page at the OK, as before.
 
 Up to six entries fit the picture (the mock-up's: HDMI input, Kodi, Browser, Desktop, Settings, Standby); the selection starts
 on the entry that is active. A file without label, icon and unit or exec is left out with a journal warning. `H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).

@@ -67,6 +67,7 @@ TRACE = os.environ.get("H713_KEYS_TRACE") == "1"
 LAUNCHER_IDLE_S = 90                        # an open launcher closes after this long without a key
 BOOT_FLAG = "run/h713-keys.booted"          # in /run: gone with every boot, stays through a standby and a restart of this service
 BOOT_WAIT_S = 180                           # how long after the start the launcher is tried: h713-osd and the picture come late
+START_WAIT_S = 30                           # how long a launcher entry with a `wait` command may take to show its first picture
 SHOWN = {}                                  # command -> (time, answer) of check()
 REPEAT = (500, 125)                         # ms: rc-core's, what the IR receiver repeats with (read 11.10., G-EU)
 LIMITS = {"volume_step": 20, "focus_steps": 100}      # the largest value keys.conf may set
@@ -333,7 +334,7 @@ def launcher_entries():
         e = {}
         for line in read(f).splitlines():
             k, _, v = (x.strip() for x in line.split("#", 1)[0].partition("="))
-            if k in ("label", "icon", "unit", "exec", "show", "active", "now", "group", "fallback") and v:
+            if k in ("label", "icon", "unit", "exec", "show", "active", "now", "group", "fallback", "wait") and v:
                 e[k] = v.replace(";", ",")
         if e.get("label") and e.get("icon") and (e.get("unit") or e.get("exec")):
             entries.append(e)
@@ -351,7 +352,7 @@ class Launcher:
     """Home: the launcher page. Open = h713-osd shows it and the remote's devices are grabbed."""
 
     def __init__(self):
-        self.entries, self.sel, self.last, self.held = None, 0, 0.0, False
+        self.entries, self.sel, self.last, self.held, self.starting, self.rows = None, 0, 0.0, False, None, ""
 
     def open(self, devices, quiet=False):
         entries = launcher_entries()
@@ -362,7 +363,7 @@ class Launcher:
         if cur is None:
             cur = next((i for i, e in enumerate(entries) if e.get("fallback")), 0)
         now = entries[cur].get("now", entries[cur]["label"]).replace("{signal}", signal_text())
-        rows = ";".join("%s%s:%s" % (">" if e.get("group") == "end" else "", e["icon"], e["label"]) for e in entries)
+        rows = self.rows = ";".join("%s%s:%s" % (">" if e.get("group") == "end" else "", e["icon"], e["label"]) for e in entries)
         answer = ctl(OSD_SOCK, "launcher %d;%s;%s" % (cur, now, rows), quiet=True) or ""
         if not answer.startswith("ok") or answer.startswith("ok unseen"):
             return quiet or log("Home: no launcher - h713-osd says %s" % (answer.strip() or "nothing (not running?)"))
@@ -378,7 +379,7 @@ class Launcher:
                 log("launcher closed: the remote's devices cannot be held", "<4>")
 
     def close(self, devices):
-        self.entries, self.held = None, False
+        self.entries, self.held, self.starting = None, False, None
         for fd in devices.values():
             grab(fd, False)                  # first: Kodi and h713-power read again before the overlay is gone
         ctl(OSD_SOCK, "launcher close", quiet=True)
@@ -398,6 +399,8 @@ class Launcher:
     def key(self, code, value, devices):
         """True when the launcher takes this key (press 1 or repeat 2) - the others are the normal ones'."""
         self.last = time.monotonic()
+        if self.starting and code in (103, 108, 352):
+            return True                      # an entry is starting: a second OK would start it again, a move shows nothing new
         if code in (103, 108):               # up, down: move, no wrapping
             sel = min(len(self.entries) - 1, max(0, self.sel + (1 if code == 108 else -1)))
             if sel != self.sel:
@@ -409,13 +412,20 @@ class Launcher:
             if not self.osd("launcher %d" % self.sel, devices):     # the same selection again: h713-osd still shows the page?
                 return True                                          # no: nothing is started blind, the launcher is closed
             e = self.entries[self.sel]
-            self.close(devices)
+            waits = bool(e.get("wait") and e.get("unit"))        # the page stays, "Starting X...", until the entry's first picture
+            if not waits:
+                self.close(devices)
             log("launcher: %s" % e["label"])
             try:
                 subprocess.Popen(SYSTEMCTL + ["start", "--no-block", e["unit"]] if e.get("unit") else shlex.split(e["exec"]),
                                  stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
             except OSError as err:
                 log("launcher: %s does not start (%s)" % (e["label"], err.strerror), "<4>")
+                if waits:
+                    self.close(devices)
+                    waits = False
+            if waits and self.osd("launcher %d;Starting %s...;%s" % (self.sel, e["label"], self.rows), devices):
+                self.starting = {"entry": e, "until": time.monotonic() + START_WAIT_S, "next": time.monotonic() + 0.5}
         elif code == 116 and value == 1:     # the box is to go off: the countdown is h713-power's
             self.close(devices)              # the devices go first; "down": h713-power never saw the press, it starts it now
             try:
@@ -428,7 +438,13 @@ class Launcher:
         return True
 
     def tick(self, devices):
-        if self.entries is not None and time.monotonic() - self.last > LAUNCHER_IDLE_S:
+        now, s = time.monotonic(), self.starting
+        if s and now >= s["next"]:           # the entry has its first picture when its unit is up and its `wait` command says so
+            s["next"] = now + 0.5
+            if now > s["until"] or (check(s["entry"].get("active")) and check(s["entry"]["wait"])):
+                log("launcher: %s %s" % (s["entry"]["label"], "has its picture" if now <= s["until"] else "shows nothing after %d s" % START_WAIT_S))
+                self.close(devices)
+        elif self.entries is not None and now - self.last > LAUNCHER_IDLE_S:
             log("launcher closed: no key for %d s" % LAUNCHER_IDLE_S)
             self.close(devices)
 

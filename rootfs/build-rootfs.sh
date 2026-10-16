@@ -970,6 +970,8 @@ if has_profile desktop; then
 	t "desktop: foot names its shell (the account h713-desktop has none; the window would close at once)" grep -qx 'shell=/bin/bash' "$TREE/etc/xdg/foot/foot.ini"
 	t "desktop: Firefox profile lifts the VA-API blocklist" grep -q 'media.hardware-video-decoding.force-enabled", true' "$TREE/var/lib/h713-desktop/firefox/user.js"
 	t "desktop: launcher entries that name a unit name an existing one" bash -c 'for f in "$1"/etc/h713/launcher.d/*.conf; do u=$(sed -n "s/^unit *= *//p" "$f"); [ -z "$u" ] || test -f "$1/etc/systemd/system/$u" || exit 1; done' _ "$TREE"
+	t "desktop: launcher entries with a wait command: the command is in the image" bash -c 'for f in "$1"/etc/h713/launcher.d/*.conf; do w=$(sed -n "s/^wait *= *//p" "$f" | cut -d" " -f1); [ -z "$w" ] || test -x "$1$w" || exit 1; done' _ "$TREE"
+	t "desktop: the browser's and the desktop's wait files are the ones their labwc touches at the first window" bash -c 'for m in browser desktop; do d=labwc; [ $m = browser ] && d=labwc-browser; grep -q "^wait *= */usr/bin/test -e /run/h713-$m/mapped\$" "$1/etc/h713/launcher.d/"*-$m.conf && grep -q "command=\"touch /run/h713-$m/mapped\"" "$1/etc/h713/$d/rc.xml" || exit 1; done' _ "$TREE"
 	for _pk in cage labwc foot firefox-esr; do t "desktop: $_pk installed" grep -q "^Package: $_pk\$" "$TREE/var/lib/dpkg/status"; done
 fi
 t "h713-arisc (TODO 5.20)"    test -x "$TREE/usr/local/sbin/h713-arisc"

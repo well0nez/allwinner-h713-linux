@@ -539,6 +539,74 @@ class KeysTest(unittest.TestCase):
         launcher.tick({})
         self.assertIsNone(launcher.entries)
 
+    def script(self, name, rc=0):
+        """an executable whose exit status is the number in <name>.rc: a stand-in for an entry's `active` and `wait` commands"""
+        path = os.path.join(self.root, name)
+        with open(path, "w") as f:
+            f.write("#!/bin/sh\nexit $(cat %s.rc)\n" % path)
+        os.chmod(path, 0o755)
+        self.set_rc(name, rc)
+        return path
+
+    def set_rc(self, name, rc):
+        with open(os.path.join(self.root, name + ".rc"), "w") as f:
+            f.write(str(rc))
+
+    def waiting_launcher(self):
+        """HDMI input and a Browser entry that waits for its first picture; the launcher open, Browser chosen"""
+        act, ready = self.script("active", 1), self.script("ready", 1)
+        self.launcher_d(**{
+            "10-hdmi": "label = HDMI input\nicon = hdmi\nexec = %s/mode hdmi\nnow = HDMI {signal}\nfallback = yes\n" % self.root,
+            "25-browser": "label = Browser\nicon = globe\nunit = h713-browser.service\nactive = %s\nwait = %s\n" % (act, ready)})
+        launcher = self.mod.Launcher()
+        launcher.open({})
+        launcher.key(108, 1, {})
+        return launcher
+
+    def test_an_entry_with_wait_keeps_the_page_until_its_first_picture(self):
+        launcher = self.waiting_launcher()
+        self.assertTrue(launcher.key(352, 1, {}))
+        self.assertEqual(self.osds.lines[-1], "launcher 1;Starting Browser...;hdmi:HDMI input;globe:Browser")   # the header says what is going on
+        time.sleep(0.2)                                              # (systemctl is started, not waited for)
+        self.assertIn("start --no-block h713-browser.service", self.systemctl_calls())
+        self.assertIsNotNone(launcher.entries)                       # the page stays: nothing but the ground until Firefox has a window
+        self.assertTrue(launcher.key(352, 1, {}))                    # a second OK and a move are swallowed ...
+        self.assertTrue(launcher.key(108, 1, {}))
+        time.sleep(0.2)
+        self.assertEqual(self.systemctl_calls().count("start --no-block h713-browser.service"), 1)
+        self.assertFalse(launcher.key(115, 1, {}))                   # ... the volume is still the normal one's
+        launcher.starting["next"] = 0.0
+        launcher.tick({})                                            # the unit is not up (active: 1)
+        self.set_rc("active", 0)
+        launcher.starting["next"] = 0.0
+        launcher.tick({})                                            # up, but the wait command says no picture yet
+        self.assertIsNotNone(launcher.entries)
+        self.set_rc("ready", 0)
+        launcher.starting["next"] = 0.0
+        launcher.tick({})
+        self.assertIsNone(launcher.entries)                          # the picture is there: the page goes, the client shows
+        self.assertEqual(self.osds.lines[-1], "launcher close")
+
+    def test_an_entry_that_shows_nothing_is_let_go_after_the_wait(self):
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        launcher = self.waiting_launcher()
+        launcher.key(352, 1, {})
+        launcher.starting["next"], launcher.starting["until"] = 0.0, 0.0
+        launcher.tick({})
+        self.assertIsNone(launcher.entries)
+        self.assertIn("launcher: Browser shows nothing after 30 s", out)
+
+    def test_back_closes_a_starting_page_and_an_entry_without_wait_closes_at_once(self):
+        launcher = self.waiting_launcher()
+        launcher.key(352, 1, {})
+        self.assertTrue(launcher.key(158, 1, {}))
+        self.assertEqual((launcher.entries, launcher.starting), (None, None))     # the unit goes on starting; only the page is gone
+        launcher = self.mod.Launcher()
+        launcher.open({})
+        launcher.key(352, 1, {})                                                  # HDMI input: no wait
+        self.assertIsNone(launcher.entries)
+
     def test_a_running_kodi_is_the_selected_entry(self):
         self.launcher_d()
         self.grabs()

@@ -13,6 +13,12 @@
   <placement>
     <policy>center</policy>
   </placement>
+  <!-- the launcher's "Starting Desktop..." waits for this file (launcher.d/30-desktop.conf, `wait`): the first window on the wall -->
+  <windowRules>
+    <windowRule identifier="*">
+      <action name="Execute" command="touch /run/h713-desktop/mapped" />
+    </windowRule>
+  </windowRules>
 
   <!-- No <default /> here, on purpose: labwc's own keybinds run `amixer` on the volume keys, a second volume next to h713-keys
        (which owns volume, mute and focus on this board). What is bound here is what a USB keyboard or the remote needs; the keys that
