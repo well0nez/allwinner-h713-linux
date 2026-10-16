@@ -800,8 +800,8 @@ done
 info "regulatory.db -> upstream-signed (the kernel knows only sforshee/wens)"
 
 # 4k. Profile desktop: its mode units (Kodi, the desktop) are Wayland clients of h713-warp's server, which h713-tv shows only
-# under `source auto` - and h713-tv does not keep a source across its own restart (a restart or a crash with Kodi running
-# put the panel back on the ring and Kodi out of sight). So this image starts h713-tv on auto; the last line of tv.conf wins.
+# under `source auto` - and h713-tv does not keep a source across its own restart (a restart with Kodi running put the panel
+# back on the ring and Kodi out of sight). So this image starts h713-tv on auto; the last line of tv.conf wins.
 if has_profile desktop; then
 	printf '\n# profile desktop (rootfs/build-rootfs.sh): a client of h713-warp stays on the panel across a restart of h713-tv\nsource = auto\n' \
 		>> "$TREE/etc/h713/tv.conf"
