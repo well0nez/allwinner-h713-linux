@@ -523,15 +523,30 @@ static void source_apply(struct row *r, int dir)
 	choice_read(r, tv, "source", "ok source ");
 }
 
+static void onstart_apply(struct row *r, int dir)
+{
+	char v[24];
+
+	(void)dir;
+	conf_set(etc("keys.conf"), "on_start", r->arg[r->val]);	/* h713-keys reads it at the next start */
+	if (conf_get(etc("keys.conf"), "on_start", v, sizeof(v)) && opt_find(r, v) >= 0)
+		r->val = opt_find(r, v);	/* what the file holds, not what was asked */
+}
+
 static void input_enter(struct area *a)
 {
-	struct row *s = &a->row[0], *now = &a->row[1];
-	char cur[24] = "hdmi";
+	struct row *s = &a->row[0], *st = &a->row[1], *now = &a->row[2];
+	char cur[24] = "hdmi", v[24] = "";
 
 	if (!s->n) {
 		add_opt(s, "auto", "Automatic");
 		add_opt(s, "hdmi", "HDMI only");
+		add_opt(st, "launcher", "Launcher");
+		add_opt(st, "hdmi", "HDMI input");
 	}
+	conf_get(etc("keys.conf"), "on_start", v, sizeof(v));	/* not in the file: the launcher, h713-keys' default */
+	st->val = opt_find(st, v) < 0 ? 0 : opt_find(st, v);
+	st->hidden = access(etc("launcher.d"), F_OK) != 0;	/* no launcher in this image */
 	s->hidden = now->hidden = !tv("source");
 	sscanf(reply, "ok source %23s", cur);
 	s->val = opt_find(s, cur) < 0 ? 0 : opt_find(s, cur);
@@ -743,6 +758,10 @@ void rows_init(void)
 	r->apply = source_apply, r->more = true;
 	r->opt_note[0] = "Automatic: Kodi is on the wall while it runs, the HDMI picture whenever it is not.";
 	r->opt_note[1] = "HDMI only: nothing but the HDMI picture. Starting Kodi switches back to Automatic.";
+	r = new_row(a, "On start", R_CHOICE);
+	r->apply = onstart_apply, r->more = true;
+	r->opt_note[0] = "Launcher: when the projector has started, the launcher is on the wall, like the home screen of a phone.";
+	r->opt_note[1] = "HDMI input: the HDMI picture, as soon as there is one.";
 	info(a, "On the wall now");
 
 	a = &areas[nareas++];
