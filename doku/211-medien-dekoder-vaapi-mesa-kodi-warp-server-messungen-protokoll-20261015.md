@@ -1,5 +1,11 @@
 # 211 - Das Nebenprojekt Medien: Dekoder, VA-API-Treiber, mesa, Kodi und der Wayland-Server im Warp; die Messungen am HY310 (13. bis 15.10.2026)
 
+> *Überholt in Teilen (16.10.2026), neuer Stand in [`doku/212`](212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md):*
+> *§3 "VE-Takt 432 MHz bestanden" - seit `0315` läuft die VE mit 600 MHz, solange der AV1-Knoten aus ist (212 §5);*
+> *§8 "VE 28,8 Bilder/s", "4K nicht flüssig" - die Rate war großenteils der Neustart des 10-s-Testclips in der Schleife, nicht die VE (212 §5);*
+> *§6 letzte Tabellenzeile "Box: die Pakete des Profils `media` 113,3 MiB" - das sind nur die 77 Pakete, die D auf eine schon bestückte Box legte; das Profil kostet im Baum +446 MiB (Host-`du`: 284,8 auf 730,9 MiB, davon `plugins-bad` +197,8 MiB);*
+> *§7 "media +272 MiB, desktop +411 MiB, beide +478 MiB" - Stand vor `plugins-bad`; der Baum des Profils `media,desktop` ist mit Firefox, labwc und polkit 1152 MiB groß (212 §7).*
+
 **Kurz:** Zusammenfassung aller Messungen des Nebenprojekts, das den HY310 zum Mediengerät macht (Hardware-Dekodierung, Kodi,
 Desktop-Modi). Dieser Eintrag ist der Beleg, auf den `docs/` für diese Aussagen zeigt; die Rohlogs liegen im lokalen
 Arbeitsordner des Nebenprojekts und sind nicht veröffentlicht, die Zahlen unten sind daraus übernommen. **Gemessen wurde nur am

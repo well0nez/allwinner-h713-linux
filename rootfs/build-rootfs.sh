@@ -931,7 +931,7 @@ if has_profile media; then
 		t "media: user unit $_u masked"          test "$(readlink "$TREE/etc/systemd/user/$_u")" = /dev/null
 	done
 fi
-# Profile desktop only (media side project, packages F, G, H2): the three client modes are units nobody wants (the panel shows the HDMI
+# Profile desktop only: the three client modes (Kodi, the desktop, the browser) are units nobody wants (the panel shows the HDMI
 # input until the launcher starts one), they exclude each other, and every launcher entry names a unit that exists.
 if has_profile desktop; then
 	for _m in kodi desktop browser; do
@@ -945,7 +945,7 @@ if has_profile desktop; then
 	t "desktop: labwc keeps no default keybinds (amixer on the volume keys)" bash -c 'for f in labwc labwc-browser; do ! grep -q "<default" <(sed -n "/<keyboard>/,/<\/keyboard>/p" "$1/etc/h713/$f/rc.xml") || exit 1; done' _ "$TREE"
 	t "desktop: both labwc configurations bind Home, F4 and F5 to nothing (the focus keys stay focus keys)" bash -c 'for f in labwc labwc-browser; do for k in XF86_HomePage F4 F5; do grep -q "key=\"$k\"><action name=\"Execute\" command=\"true\"" "$1/etc/h713/$f/rc.xml" || exit 1; done; done' _ "$TREE"
 	t "desktop: h713-browser.service runs Firefox as labwc's session client" grep -q '^ExecStart=/usr/bin/labwc -C /etc/h713/labwc-browser -S ' "$TREE/etc/systemd/system/h713-browser.service"
-	t "desktop: no mode unit ends itself at the sleep target (package H's h713-mode does)" bash -c '! grep -q "^Conflicts=.*sleep.target" "$1"/etc/systemd/system/h713-{desktop,browser}.service' _ "$TREE"
+	t "desktop: no mode unit ends itself at the sleep target (h713-mode does)" bash -c '! grep -q "^Conflicts=.*sleep.target" "$1"/etc/systemd/system/h713-{desktop,browser}.service' _ "$TREE"
 	t "desktop: Firefox plays through ALSA, which is the DSP bridge (no PipeWire daemon, no pipewire-alsa default)" bash -c 'grep -q "media.cubeb.backend\", \"alsa\"" "$1/var/lib/h713-desktop/firefox/user.js" && ! test -e "$1/etc/alsa/conf.d/99-pipewire-default.conf"' _ "$TREE"
 	t "desktop: sysusers.d entry for h713-desktop"  grep -q '^u h713-desktop ' "$TREE/usr/lib/sysusers.d/h713-desktop.conf"
 	t "desktop: the desktop and the browser run as h713-desktop, hardened, without MemoryDenyWriteExecute (Firefox compiles JavaScript)" bash -c 'for u in desktop browser; do f="$1/etc/systemd/system/h713-$u.service"; grep -qx "User=h713-desktop" "$f" && grep -qx "NoNewPrivileges=yes" "$f" && grep -qx "ProtectSystem=strict" "$f" && ! grep -q "^MemoryDenyWriteExecute" "$f" || exit 1; done' _ "$TREE"

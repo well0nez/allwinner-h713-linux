@@ -23,7 +23,7 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   no standby on this board, the ring alone. Each line keeps it one second. The answer is `ok unseen` when nothing can be
   seen (no signal, the console; no h713-tv) - h713-power then acts at once.
 - `pair` - "hold Left + Right" for 10 s after the remote was forgotten (h713-panel, TODO 2.54).
-- `launcher SEL;NOW;[>]icon:label;...` - the launcher (h713-keys, package H of the media side project): an **opaque page** over the whole
+- `launcher SEL;NOW;[>]icon:label;...` - the launcher (h713-keys): an **opaque page** over the whole
   panel, not an overlay over the picture (Marco, 15.10.2026: it must have a ground): the ground `0xff0b0e0d`, the list of "Launcher C" in
   the column on the left, the rest calm, everything inside a safe margin of 5 % on each side (96 / 54 px at 1080p); it stays until
   `launcher close`. `SEL` the chosen row (the lit pill `0x1c2321`, the colours of h713-settings), `NOW` the second half of the header
@@ -66,7 +66,7 @@ rows. A whole page that was shown is owed to the **other** buffer too: it is put
 The ranges keep the columns too (the union of the shows that make one), so a pill in the middle of the panel is not put from edge to edge.
 
 **Pre-distortion cost** (16.10.2026, from the box: the opaque page through the owner's keystone cost 190 ms mean per key, 288 ms for an
-area switch): the source region is premultiplied once per put together with a **flat map** (per block of 8 x 8 texels the colour, if
+area switch before this change and 66.2 ms mean per key, 102 ms for an area switch after it; `doku/212` §2): the source region is premultiplied once per put together with a **flat map** (per block of 8 x 8 texels the colour, if
 the block is one colour); a run of 16 panel pixels whose source texels - with the bilinear neighbours - all lie in flat blocks of one
 colour is written as that colour without a division per pixel (the ground of a page is most of it; on the settings page 90 % of the
 pixels); and the rows of the premultiply and of the put are cut among up to four threads (`H713_OSD_THREADS=1` for none, the tests;

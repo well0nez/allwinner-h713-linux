@@ -68,7 +68,7 @@ no patches of ours). The kernel side of the Mali-G31 is mainline panfrost, with 
 buffers not mapped cacheable) from his branch and our `0024e` (operating points, cooling map) on top;
 nothing further was taken from his tree for the keystone work.
 
-The launcher's text (media side project, package H) is **FreeType** and **Quicksand**, both Debian trixie, neither modified and
+The launcher's text is **FreeType** and **Quicksand**, both Debian trixie, neither modified and
 neither stored here. `userspace/libh713osd/text.c` draws glyphs with FreeType 2.13.3 (`libfreetype-dev`, in the build sysroot
 through `release/build-all.sh`'s `SYSROOT_PACKAGES`); `h713-osd` links `libfreetype.a` and the archives it needs (libpng 1.6.48,
 bzip2, brotli, zlib, all from the same sysroot) **statically**, so the base image carries no FreeType package. FreeType is dual

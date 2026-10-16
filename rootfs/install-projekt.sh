@@ -28,7 +28,7 @@
 #   5h. crust (H713_CRUST_BIN, our own build) as /lib/firmware/$H713_BOARD-crust.bin; with
 #       H713_STANDBY=1 the standby sleep.conf.d and h713-power + unit (enabled) + power.conf,
 #       and h713-mips-restart, which h713-sleep-post.service (h713-mode sleep-post) runs after a sleep to start the parked MIPS
-#       (package H: h713-mode everywhere, the two sleep units with --standby)
+#       (h713-mode everywhere, the two sleep units with --standby)
 #   5i. h713-keys + unit (enabled) + keys.conf - the stock remote's keys (volume, mute, focus) -
 #       and h713-osd (cross-built) + unit (enabled) + osd.conf - the overlays over the picture
 #   5j. h713-cpufreq + unit (enabled) - schedutil's rate limit and the GPU's interrupt threads
@@ -654,7 +654,7 @@ if ((H713_STANDBY)); then
 		"[Sleep]" "AllowSuspend=yes" "SuspendState=mem" "MemorySleepMode=deep" "AllowHibernation=no" \
 		"AllowSuspendThenHibernate=no" "AllowHybridSleep=no" > "$TREE/etc/systemd/sleep.conf.d/10-h713.conf"
 	info "sleep.conf.d: mem, deep only"
-	# Every way into the sleep ends the same way (package H): the mode is remembered and ended before it, the picture path and
+	# Every way into the sleep ends the same way: the mode is remembered and ended before it, the picture path and
 	# the mode come back after it. Not on an image that cannot suspend: there is no sleep to wrap.
 	install -m 0644 "$H713_POWER_SRC/h713-sleep-pre.service" "$TREE/etc/systemd/system/h713-sleep-pre.service"
 	install -m 0644 "$H713_POWER_SRC/h713-sleep-post.service" "$TREE/etc/systemd/system/h713-sleep-post.service"

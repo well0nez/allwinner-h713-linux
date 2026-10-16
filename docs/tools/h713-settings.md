@@ -9,7 +9,7 @@ Zoom, the corners by hand - the page is **one pill at the foot over the real pic
 cannot start a second page), Back at the top level closes it. Everything the box can do from a shell with
 `h713-... ctl` is reachable here, and **every row is one existing command or one `key = value` of a file in `/etc/h713`**:
 a tool that cannot do something has no row for it. Texts on the wall are English. The look is the owner's choice S1 of
-the mockup `arbeit/medien/H-desktop/mockups/launcher-einstellungen.html` (areas left, rows right).
+the launcher mock-up (areas left, rows right).
 
 ```
 h713-settings [--area NAME] [--idle SECONDS] [--font FILE]   the page on the wall (what the launcher runs)
@@ -67,7 +67,7 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | | Zoom (50-100 %) | `h713-warp ctl zoom` | `ctl zoom N` (and `ctl on` below 100, as the web page does) | h713-warp |
 | | Projection | `ctl mode` | `ctl mode front \| rear \| ceiling \| rear-ceiling` | h713-warp |
 | | Reset keystone | | `ctl keystone reset`, `ctl zoom 100` | h713-warp |
-| Sound | Volume, Mute | `h713-tv ctl volume`, `ctl mute` | `ctl volume N` (steps of 5), `ctl mute on \| off` | the sound card's own state (not measured across a reboot yet) |
+| Sound | Volume, Mute | `h713-tv ctl volume`, `ctl mute` | `ctl volume N` (steps of 5), `ctl mute on \| off` | the sound card's own state; the volume survives a restart, mute does not (by decision: the box is audible after a start; `doku/212` §2) |
 | Focus | Autofocus now | | `h713-autofocus -q run` (the panel is the autofocus's for the length of the run) | |
 | | Autofocus after a move | `after_move` | `after_move = keystone+focus` (turns the automatic keystone on too) | the file |
 | | Focus by hand | | `h713-focus up \| down N` (N = `focus_steps` of `keys.conf` per press; presses during a run are counted and run next) | |
@@ -98,6 +98,7 @@ greyed out.
 - During "Autofocus now" the panel is the autofocus's (it takes it over from h713-tv and h713-warp, chessboard on the
   console); the page is away for the length of the run (h713-osd has no overlay over the console) and comes back by itself.
 - `h713-tv ctl aspect` rebuilds the picture: about half a second of console after a change of the aspect ratio.
-- Not measured on a device: see the report (`arbeit/medien/S-einstellungen/BERICHT.md`).
+- Measured on the HY310 on 15./16.10.2026 (`doku/212` §2): every row set and set back, a warm start keeps 14 of 15 fields, a key to a visible change takes 66.2 ms on average
+  (gate 120 ms), 26 key/state cells without a double effect, the HDMI check after the whole session without a differing row. Not measured on the HY300PRO-G-EU.
 
 Source and host tests: `userspace/h713-settings/`.
