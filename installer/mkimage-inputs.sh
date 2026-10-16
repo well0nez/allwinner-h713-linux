@@ -10,7 +10,7 @@
 # user this never runs.
 #
 #   tmp/hy310-boot.ext4          128 MiB: h713-kernel.fit (real) + an empty mips/
-#   tmp/hy310-rootfs-platz.ext4    1 GiB: the rootfs from rootfs/out/hy310-rootfs.tar,
+#   tmp/hy310-rootfs-platz.ext4    1 GiB (ROOTFS_EXT4_SIZE): the rootfs from rootfs/out/hy310-rootfs.tar,
 #                                         extended by the empty target directories
 #                                         (/lib/firmware/h713, the aic8800 path,
 #                                         /etc/h713/tvconfig, /root/.ssh 0700)
@@ -30,7 +30,9 @@
 # checks the ownership in the finished ext4 afterwards.
 #
 # ROOT/TMP/ROOTFS_OUT/FIT can be overridden through the environment (tests out of a
-# copy). WURZEL is still accepted as the old name of ROOT.
+# copy). ROOTFS_EXT4_SIZE (default 1G) is the size of the rootfs file system: the base image fits in 1 GiB, a profile
+# image (release/build-all.sh --profile media,desktop: 1152 MiB of tree on 16.10.2026) does not. h713-mkimage takes any size up to
+# the partition (7.15 GiB, it grows to the whole partition at the first start). WURZEL is still accepted as the old name of ROOT.
 set -euo pipefail
 
 HERE=$(cd "$(dirname "$0")" && pwd)
@@ -83,7 +85,8 @@ e2fsck -fn "$TMP/hy310-boot.ext4" >/dev/null
 ok "$TMP/hy310-boot.ext4"
 
 # --- 2. hy310-rootfs with the target directories -------------------------
-say "hy310-rootfs-platz.ext4 (1 GiB)"
+ROOTFS_EXT4_SIZE=${ROOTFS_EXT4_SIZE:-1G}
+say "hy310-rootfs-platz.ext4 ($ROOTFS_EXT4_SIZE)"
 mkdir -p "$TMP/rootfs-baum"
 # The accepted rootfs (doku/107 §9) comes out of the tar, not out of the finished
 # ext4: the target directories have to be created with their own modes, and
@@ -106,7 +109,7 @@ if [ -e "$TMP/rootfs-baum/root/.ssh/authorized_keys" ]; then
 	exit 1
 fi
 rm -f "$TMP/hy310-rootfs-platz.ext4"
-truncate -s 1G "$TMP/hy310-rootfs-platz.ext4"
+truncate -s "$ROOTFS_EXT4_SIZE" "$TMP/hy310-rootfs-platz.ext4"
 # Word for word the same as build-rootfs.sh, so that this file system is the same as
 # the accepted one -- only with the empty target directories more.
 mke2fs -q -F -t ext4 -L hy310-rootfs -m 1 \

@@ -551,17 +551,22 @@ else
 	say "7/11 rootfs ($DEBIAN_SUITE/arm64${PROFILES:+, profile $PROFILES}, mmdebstrap in the container as root)"
 	CRUST_ARGS=; [[ -f "$OUT/scp.bin" ]] && CRUST_ARGS="--crust $(c "$OUT")/scp.bin"
 	((WANT_STANDBY)) && CRUST_ARGS="$CRUST_ARGS --standby"
-	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${PROFILES:+--profile $PROFILES} ${LIBVA_TAR:+--libva $(c "$LIBVA_TAR")} ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	# --no-ext4: only the tar goes on (step 8 makes the image's own ext4 out of it). build-rootfs.sh's bench ext4 is
+	# --image-size 1G and unread here; it broke the build when the profile tree grew past 1 GiB (16.10.2026, 1152 MiB).
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") --no-ext4 ${PROFILES:+--profile $PROFILES} ${LIBVA_TAR:+--libva $(c "$LIBVA_TAR")} ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
 # --- 8. ext4 inputs ---------------------------------------------------------
-say "8/11 ext4 inputs (hy310-boot 128 MiB, hy310-rootfs 1 GiB, the vendor files come in at install time)"
+# The base rootfs fits in 1 GiB; the media,desktop tree does not (896 MiB on medien f888d03, 1152 MiB on
+# e3b5a8b with Firefox). A profile image gets 2 GiB: room for the next packages, still a quarter of the partition, grown to the whole at the first start.
+ROOTFS_EXT4_SIZE=1G; [[ -n "$PROFILES" ]] && ROOTFS_EXT4_SIZE=2G
+say "8/11 ext4 inputs (hy310-boot 128 MiB, hy310-rootfs $ROOTFS_EXT4_SIZE, the vendor files come in at install time)"
 # Make tmp/ as the user beforehand: the container writes into it as root, but the
 # self-test (step 10) later puts probe-b-gefuellt.img next to it -- which does not
 # work in a root-owned directory (P3, 12.09.).
 mkdir -p "$INSTALLER/tmp"
-in_container_root "FIT=$(c "$OUT")/h713-kernel.fit ROOTFS_OUT=$(c "$ROOTFS")/out bash $(c "$INSTALLER")/mkimage-inputs.sh" > "$OUT/inputs.log" 2>&1 || { tail -12 "$OUT/inputs.log"; die "ext4 inputs failed"; }
+in_container_root "ROOTFS_EXT4_SIZE=$ROOTFS_EXT4_SIZE FIT=$(c "$OUT")/h713-kernel.fit ROOTFS_OUT=$(c "$ROOTFS")/out bash $(c "$INSTALLER")/mkimage-inputs.sh" > "$OUT/inputs.log" 2>&1 || { tail -12 "$OUT/inputs.log"; die "ext4 inputs failed"; }
 grep -c "  OK" "$OUT/inputs.log" | sed 's/^/    OK lines: /'
 
 # --- 9. image ---------------------------------------------------------------
