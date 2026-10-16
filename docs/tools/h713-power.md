@@ -69,9 +69,9 @@ in `/sys/power/suspend_stats` (`failed_freeze` to `failed_suspend_noirq`) moved,
 the file and an earlier failure would leave the last resume's interrupt there. The file exists with
 `CONFIG_PM_DEBUG`; without it every failure is a refusal, as before (TODO 5.14, review U2).
 
-**The picture after a standby - systemd's since package H.** What this paragraph describes below, h713-power did itself until
-the launcher (media side project): any way into the sleep - the power key, the launcher's Standby entry, Kodi's Suspend menu,
-`systemctl suspend` - must end with the picture and the mode back, so it is now `h713-sleep-pre.service` (`Before=sleep.target`:
+**The picture after a standby - systemd's since the launcher.** What this paragraph describes below, h713-power did itself until
+the launcher: any way into the sleep - the power key, the launcher's Standby entry, Kodi's Suspend menu,
+`systemctl suspend` - must end with the picture and the mode back (35 of 35 standbys from every way, `doku/212` §1), so it is now `h713-sleep-pre.service` (`Before=sleep.target`:
 remember the running mode, HDMI or Kodi, in `/run/h713-mode.resume` and end it) and `h713-sleep-post.service`
 (`After=suspend.target`: `h713-mips-restart` when the MIPS is parked, then start what was remembered), both calling
 `h713-mode` (`userspace/h713-power/h713-mode`). h713-power only waits: while the post unit is `activating` a short press does

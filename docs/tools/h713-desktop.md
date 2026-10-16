@@ -1,12 +1,12 @@
 # h713-desktop - the desktop and the browser
 
-Profile `desktop` only (media side project, package H2). Next to Kodi the projector has two more ways to fill the
+Profile `desktop` only. Next to Kodi the projector has two more ways to fill the
 panel with a program: a small desktop (labwc with a terminal and a menu) and Firefox, maximized. Each is a systemd
 unit that nothing wants - the panel shows the HDMI input until the launcher (or you) starts one.
 
 | Mode | Unit | What runs | Launcher entry |
 |---|---|---|---|
-| Kodi | `h713-kodi.service` | cage with Kodi | `20-kodi.conf` (package H) |
+| Kodi | `h713-kodi.service` | cage with Kodi | `20-kodi.conf` |
 | Browser | `h713-browser.service` | labwc with Firefox as its session client | `/etc/h713/launcher.d/25-browser.conf` |
 | Desktop | `h713-desktop.service` | labwc, a terminal (foot) | `/etc/h713/launcher.d/30-desktop.conf` |
 
@@ -33,7 +33,7 @@ wlroots compositors, `WLR_BACKENDS=wayland,libinput` makes their output one full
 draws it through the keystone and `h713-tv` stays the DRM master. Each unit starts with `h713-tv ctl source auto` (through `h713-kodi-switch source`): the
 client goes before the HDMI ring, and however it ends - a stop, a crash, a SIGKILL of the unit - the ring is back two
 seconds after the compositor is gone. The server keeps one fullscreen window, so the units exclude each other
-(`Conflicts=`); the launcher stops the old mode before it starts the new one. A standby is package H's: `h713-mode`
+(`Conflicts=`); the launcher stops the old mode before it starts the new one. A standby is `h713-mode`'s:
 ends every mode unit that a launcher entry names (`unit =`) before the sleep and starts it again after the wake, so
 these units carry no `Conflicts=sleep.target`.
 
@@ -73,7 +73,7 @@ playing together need a mixer in front of it (PipeWire started by hand, which mp
 ## Keys
 
 Volume, mute and focus are `h713-keys`' in every mode, as with HDMI; Home belongs to the launcher; the power key to
-`h713-power`. The remote's OK arrives as `KEY_ENTER` and its Menu as `KEY_COMPOSE` (package H's
+`h713-power`. The remote's OK arrives as `KEY_ENTER` and its Menu as `KEY_COMPOSE` (the udev rule
 `70-h713-remote.rules`; xkb gives a client no key code above 247), so labwc and Firefox see them like a keyboard's Return and
 context-menu key. The launcher's grab (`EVIOCGRAB`) waits for the release of Home: the press of Home still reaches the program under it.
 So labwc, in the desktop and in the browser, binds Home, the volume and mute keys, the power key and the focus keys (`KEY_F4`/`KEY_F5`)
@@ -84,7 +84,7 @@ The remote's mouse mode (`REL_X`/`REL_Y`, OK as the left button) is the pointer.
 
 ## State
 
-Measured on the HY310 on 15.10.2026 (kernel 600 MHz, Firefox ESR 153.5, labwc 0.8.3, the units of this package; `arbeit/medien/H2-desktop/BERICHT.md`):
+Measured on the HY310 on 15.10.2026 (kernel 600 MHz, Firefox ESR 153.5, labwc 0.8.3, the units described here; `doku/212` §3):
 
 - **Switching** from the HDMI input to the desktop or to the browser and back, 10 times each: the first client picture after 1.0 to 1.2 s, the ring
   back after 2.5 to 2.7 s, `h713-warp` and `h713-tv` untouched (same PIDs), no driver events.
@@ -94,5 +94,5 @@ Measured on the HY310 on 15.10.2026 (kernel 600 MHz, Firefox ESR 153.5, labwc 0.
   `MOZ_DISABLE_RDD_SANDBOX=1` "VA-API FFmpeg init successful": 60 fps decoded by the video engine, 60 VE interrupts/s, and about a third of the frames
   are still not painted (883 of 2748 over 40 s; with cage instead of labwc just the same, 887 of 2765): the limit is Firefox's painting of a 1080p60
   video on this GPU, not the second compositor. A 720p30 clip with the switch: 30 fps, 22 of 555 frames not painted.
-- **Memory** with one video tab playing: Firefox's processes add up to about 900 MiB of resident pages (shared ones counted twice) and the system had
-  330 to 350 MiB left of 924 MiB.
+- **Memory** with one video tab playing: Firefox's processes add up to about 970 MiB of resident pages (shared ones counted twice) and the system had
+  329 to 354 MiB left of 924 MiB.

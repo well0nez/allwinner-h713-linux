@@ -75,7 +75,7 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
   `ok` of the next frame names the policy (`ok source auto`): `hdmi` <-> `auto` no longer takes the ring off the
   panel. A client that waits behind a ring claim does not rely on that frame - a stalled ring sends none - the warp
   asks h713-tv's `source` when the client comes and once a second while it waits. Under `auto` a client goes before the ring. Under `client` without a client the warp asks `source` alone
-  once a second instead of starting the capture for a ring claim that would be refused (M4, 15.10.2026).
+  once a second instead of starting the capture for a ring claim that would be refused (measured 15.10.2026).
 - **A buffer's life:** pending when committed (a newer commit releases an untaken one at once), taken when its
   dma-buf is readable and the previous frame is on the panel (h713-tv's flip fence, sent with the `ok`), the frame
   callbacks done right then, released when the render fence of the frame that read it signals, presented with the
@@ -88,9 +88,9 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
   larger than the panel is refused, a buffer before the first configure is a protocol error; a client that goes
   away keeps the panel for two seconds (a cage restart), then the warp gives it back. A dma-buf shorter than the
   layout the GPU reads for its modifier fails before the import - LINEAR offset + pitch x height, u-interleaved in
-  lines of 16, AFBC a 16-byte header per superblock plus the whole body, as mesa's panfrost lays it out; M4 had a
+  lines of 16, AFBC a 16-byte header per superblock plus the whole body, as mesa's panfrost lays it out; a test client had a
   20-KB buffer described as 1920x1080 AFBC fault the GPU. A `wl_shm` line shorter than 4 x width is a protocol
-  error (libwayland checks only stride >= width), and a `wl_shm` picture goes up in one call (M4, 15.10.2026).
+  error (libwayland checks only stride >= width), and a `wl_shm` picture goes up in one call (measured 15.10.2026).
 - **Status:** `ctl status` has two more lines, `wayland` (clients, toplevel, formats) and `client` (taken,
   presented, discarded, busy, released, imports).
 
@@ -103,9 +103,10 @@ Kodi's unit (`h713-kodi.service`, profile `desktop`) runs cage and Kodi as the s
 `WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and sets `h713-tv ctl source auto` at its
 start (without a running h713-tv there is nothing to set: it comes up on `auto`); there is no way back to run at
 its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the
-warp gives the panel back two seconds after cage is gone and the ring is there again (M4, 15.10.2026: a SIGKILL of the
+warp gives the panel back two seconds after cage is gone and the ring is there again (measured 15.10.2026: a SIGKILL of the
 unit's cgroup skipped the old `ExecStopPost=... source hdmi` and left the console). Measured: the host test (`make
-test`, a client against the server with the GPU stubbed); on the device see `doku/211` §10.
+test`, a client against the server with the GPU stubbed); on the device see `doku/211` §10 and, for the user `h713-kodi`, `source auto` surviving a restart of h713-tv (Kodi shown again after 1.7 to 2.0 s)
+and the polkit rule, `doku/212` §4.
 
 ## `/etc/h713/warp.conf`
 
