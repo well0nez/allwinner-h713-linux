@@ -90,8 +90,9 @@ Hardware video decoding on the H713 has three user-space parts, none of them a D
   Christopher Stenger's, made on the same base: each keeps his `From:`, carries an `Origin:` line naming his file in
   [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline) at `43b2cdd`, and is otherwise his
   file byte for byte (`0007` has the placeholder author `build` in his tree and was left as it is). They change a GPL-3.0 work and
-  are distributed here as GPL-3.0-or-later. `0010` - `0014` are ours (`From: well0nez`, a `License: GPL-3.0-or-later` line),
-  written against that base. `rootfs/libva/` is therefore GPL-3.0-or-later; `build-libva.sh` and `rootfs/mesa/cross-aarch64.ini.in`
+  are distributed here as GPL-3.0-or-later. `0010` - `0017` are ours (`From: well0nez`, a `License: GPL-3.0-or-later` line),
+  written against that base; `0016` reads the HEVC slice header after the syntax of H.265 (7.3.6.1, 7.3.6.3), and `0017`
+  follows libvpx's quantiser arithmetic as knowledge, nothing copied. `rootfs/libva/` is therefore GPL-3.0-or-later; `build-libva.sh` and `rootfs/mesa/cross-aarch64.ini.in`
   are GPL-2.0-or-later so that they can be part of its Corresponding Source. Two things about the base are not checked: megi's
   `decode.c` says it was "ported from the FFmpeg v4l2-request hwaccel" (LGPL-2.1-or-later, so the licence is compatible; whether
   the FFmpeg authors' copyright lines belong in his files is for him), and a full comparison with bootlin's MIT-licensed
