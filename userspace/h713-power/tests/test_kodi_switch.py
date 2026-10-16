@@ -5,6 +5,7 @@ import os
 import socket
 import subprocess
 import tempfile
+import threading
 import unittest
 
 TOOL = os.path.join(os.path.dirname(os.path.abspath(__file__)), "..", "..", "..", "rootfs", "overlay-desktop",
@@ -32,7 +33,7 @@ class Root:
         self.tmp.cleanup()
 
     def run(self, *args):
-        env = dict(os.environ, H713_ROOT=self.d, H713_TV=self.tv)
+        env = dict(os.environ, H713_ROOT=self.d, H713_TV=self.tv, H713_KODI_PORT=str(getattr(self, "port", 9)))
         return subprocess.run(["sh", TOOL, *args], env=env, capture_output=True, text=True, timeout=20)
 
     def calls(self):
@@ -71,3 +72,39 @@ class TestSource(unittest.TestCase):
 
 if __name__ == "__main__":
     unittest.main()
+
+
+class TestReady(unittest.TestCase):
+    """`ready`: exit 0 once Kodi answers JSONRPC.Ping (the launcher's "Starting Kodi..." waits for it)"""
+
+    def serve(self, answer):
+        srv = socket.socket()
+        srv.bind(("127.0.0.1", 0))
+        srv.listen(4)
+        self.addCleanup(srv.close)
+
+        def loop():
+            while True:
+                try:
+                    c, _ = srv.accept()
+                except OSError:
+                    return
+                with c:
+                    c.recv(512)
+                    c.sendall(answer)
+        threading.Thread(target=loop, daemon=True).start()
+        r = Root()
+        r.port = srv.getsockname()[1]
+        return r
+
+    def test_kodi_answers(self):
+        r = self.serve(b'{"id":1,"jsonrpc":"2.0","result":"pong"}')
+        self.assertEqual(r.run("ready").returncode, 0)
+
+    def test_kodi_is_not_there(self):
+        r = Root()                                   # nothing listens on the port (9, discard, closed)
+        self.assertEqual(r.run("ready").returncode, 1)
+
+    def test_something_else_answers(self):
+        r = self.serve(b'{"id":1,"jsonrpc":"2.0","error":{"code":-32601}}')
+        self.assertEqual(r.run("ready").returncode, 1)

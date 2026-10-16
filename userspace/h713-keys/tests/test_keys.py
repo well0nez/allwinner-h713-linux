@@ -96,6 +96,9 @@ class KeysTest(unittest.TestCase):
             f.write('#!/bin/sh\necho "$@" >> %s\nexit $(cat %s 2>/dev/null || echo 0)\n' % (self.focus_log, self.focus_rc))
         os.chmod(focus, 0o755)
         os.makedirs(os.path.join(self.root, "etc/h713"))
+        os.makedirs(os.path.join(self.root, "run"))
+        self.booted = os.path.join(self.root, "run/h713-keys.booted")
+        open(self.booted, "w").close()                  # not the first start after a boot: the tests that want one remove it
         self.device(0, name="sunxi-ir", ids=("0001", "0001"))
         self.device(1, name="h713 remote", ids=("1d5a", "c081"))
         self.device(2, name="USB keyboard", ids=("046d", "c31c"))
@@ -461,6 +464,148 @@ class KeysTest(unittest.TestCase):
         self.assertIn('ENV{KEYBOARD_KEY_%s}="enter"' % ok, rule)
         self.assertIn('ENV{KEYBOARD_KEY_%s}="compose"' % menu, rule)
         self.assertGreater(rule.index('IMPORT{builtin}="keyboard"'), rule.rindex('ENV{KEYBOARD_KEY_'))    # udev runs an IMPORT before the assignments of its own line
+
+    def test_the_launcher_opens_when_the_box_has_started(self):
+        self.launcher_d()
+        os.remove(self.booted)                           # the first start after a boot
+        calls = self.grabs()
+        self.run_once()
+        self.assertTrue(self.osds.lines[0].startswith("launcher 0;HDMI 1080p60;"), self.osds.lines)    # HDMI input is the chosen one
+        self.assertEqual(sorted(c for c in calls if c[1]), [("event0", True), ("event1", True)])         # no Home was pressed: held at once
+        self.assertTrue(os.path.exists(self.booted))     # once per boot
+        del self.osds.lines[:]
+        self.press("mute")
+        self.run_once()                                  # a restart of the service, a standby: not again
+        self.assertEqual([x for x in self.osds.lines if x.startswith("launcher")], [])
+
+    def test_on_start_hdmi_opens_nothing(self):
+        self.launcher_d()
+        os.remove(self.booted)
+        with open(os.path.join(self.root, "etc/h713/keys.conf"), "w") as f:
+            f.write("on_start = hdmi\n")
+        self.press("mute")
+        self.run_once()
+        self.assertEqual([x for x in self.osds.lines if x.startswith("launcher")], [])
+        self.assertTrue(os.path.exists(self.booted))
+
+    def test_a_bad_on_start_is_the_default(self):
+        with open(os.path.join(self.root, "etc/h713/keys.conf"), "w") as f:
+            f.write("on_start = android\n")
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        self.assertEqual(self.mod.Config().values["on_start"], "launcher")
+        self.assertIn("keys.conf:1: 'on_start = android' ignored", out)
+
+    def start_state(self, until=100, slept=0):
+        now = time.monotonic()
+        return {"until": now + until, "next": 0.0, "slept": time.clock_gettime(time.CLOCK_BOOTTIME) - now - slept}
+
+    def test_a_start_without_a_picture_waits_every_5_s_and_gives_up(self):
+        self.launcher_d()
+        self.osds.answer = lambda line: "ok unseen\n"   # no signal: nothing to show it on
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        conf, launcher, boot = self.mod.Config(), self.mod.Launcher(), self.start_state()
+        self.assertFalse(self.mod.boot_launcher(launcher, {}, conf, boot))
+        n = len(self.osds.lines)
+        self.assertEqual((launcher.entries, out), (None, []))        # no launcher, and not a word in the journal
+        self.assertFalse(self.mod.boot_launcher(launcher, {}, conf, boot))
+        self.assertEqual(len(self.osds.lines), n)                    # the next try is 5 s away
+        self.osds.answer = lambda line: "ok\n"
+        boot["next"] = 0.0
+        self.assertTrue(self.mod.boot_launcher(launcher, {}, conf, boot))
+        self.assertIsNotNone(launcher.entries)
+        self.assertEqual(launcher.last, float("inf"))                # it waits for the first key
+        late = self.mod.Launcher()
+        self.assertTrue(self.mod.boot_launcher(late, {}, conf, self.start_state(until=-1)))
+        self.assertIsNone(late.entries)
+        self.assertIn("start: no launcher within 180 s - h713-osd has no picture to show it on, or there are no entries", out)
+
+    def test_a_standby_in_between_ends_it(self):
+        self.launcher_d()
+        launcher = self.mod.Launcher()
+        self.assertTrue(self.mod.boot_launcher(launcher, {}, self.mod.Config(), self.start_state(slept=30)))   # 30 s of sleep since the start
+        self.assertEqual((launcher.entries, self.osds.lines), (None, []))                 # the mode from before stays
+
+    def test_a_launcher_that_waits_for_a_key_does_not_time_out(self):
+        self.launcher_d()
+        conf, launcher = self.mod.Config(), self.mod.Launcher()
+        self.mod.boot_launcher(launcher, {}, conf, self.start_state())
+        self.mod.LAUNCHER_IDLE_S = 0
+        launcher.tick({})
+        self.assertIsNotNone(launcher.entries)                       # a launcher opened by Home would be closed now
+        launcher.key(103, 1, {})                                      # the first key: the idle limit counts from here
+        time.sleep(0.01)
+        launcher.tick({})
+        self.assertIsNone(launcher.entries)
+
+    def script(self, name, rc=0):
+        """an executable whose exit status is the number in <name>.rc: a stand-in for an entry's `active` and `wait` commands"""
+        path = os.path.join(self.root, name)
+        with open(path, "w") as f:
+            f.write("#!/bin/sh\nexit $(cat %s.rc)\n" % path)
+        os.chmod(path, 0o755)
+        self.set_rc(name, rc)
+        return path
+
+    def set_rc(self, name, rc):
+        with open(os.path.join(self.root, name + ".rc"), "w") as f:
+            f.write(str(rc))
+
+    def waiting_launcher(self):
+        """HDMI input and a Browser entry that waits for its first picture; the launcher open, Browser chosen"""
+        act, ready = self.script("active", 1), self.script("ready", 1)
+        self.launcher_d(**{
+            "10-hdmi": "label = HDMI input\nicon = hdmi\nexec = %s/mode hdmi\nnow = HDMI {signal}\nfallback = yes\n" % self.root,
+            "25-browser": "label = Browser\nicon = globe\nunit = h713-browser.service\nactive = %s\nwait = %s\n" % (act, ready)})
+        launcher = self.mod.Launcher()
+        launcher.open({})
+        launcher.key(108, 1, {})
+        return launcher
+
+    def test_an_entry_with_wait_keeps_the_page_until_its_first_picture(self):
+        launcher = self.waiting_launcher()
+        self.assertTrue(launcher.key(352, 1, {}))
+        self.assertEqual(self.osds.lines[-1], "launcher 1;Starting Browser...;hdmi:HDMI input;globe:Browser")   # the header says what is going on
+        time.sleep(0.2)                                              # (systemctl is started, not waited for)
+        self.assertIn("start --no-block h713-browser.service", self.systemctl_calls())
+        self.assertIsNotNone(launcher.entries)                       # the page stays: nothing but the ground until Firefox has a window
+        self.assertTrue(launcher.key(352, 1, {}))                    # a second OK and a move are swallowed ...
+        self.assertTrue(launcher.key(108, 1, {}))
+        time.sleep(0.2)
+        self.assertEqual(self.systemctl_calls().count("start --no-block h713-browser.service"), 1)
+        self.assertFalse(launcher.key(115, 1, {}))                   # ... the volume is still the normal one's
+        launcher.starting["next"] = 0.0
+        launcher.tick({})                                            # the unit is not up (active: 1)
+        self.set_rc("active", 0)
+        launcher.starting["next"] = 0.0
+        launcher.tick({})                                            # up, but the wait command says no picture yet
+        self.assertIsNotNone(launcher.entries)
+        self.set_rc("ready", 0)
+        launcher.starting["next"] = 0.0
+        launcher.tick({})
+        self.assertIsNone(launcher.entries)                          # the picture is there: the page goes, the client shows
+        self.assertEqual(self.osds.lines[-1], "launcher close")
+
+    def test_an_entry_that_shows_nothing_is_let_go_after_the_wait(self):
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        launcher = self.waiting_launcher()
+        launcher.key(352, 1, {})
+        launcher.starting["next"], launcher.starting["until"] = 0.0, 0.0
+        launcher.tick({})
+        self.assertIsNone(launcher.entries)
+        self.assertIn("launcher: Browser shows nothing after 30 s", out)
+
+    def test_back_closes_a_starting_page_and_an_entry_without_wait_closes_at_once(self):
+        launcher = self.waiting_launcher()
+        launcher.key(352, 1, {})
+        self.assertTrue(launcher.key(158, 1, {}))
+        self.assertEqual((launcher.entries, launcher.starting), (None, None))     # the unit goes on starting; only the page is gone
+        launcher = self.mod.Launcher()
+        launcher.open({})
+        launcher.key(352, 1, {})                                                  # HDMI input: no wait
+        self.assertIsNone(launcher.entries)
 
     def test_a_running_kodi_is_the_selected_entry(self):
         self.launcher_d()

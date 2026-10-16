@@ -223,13 +223,15 @@ esac
 class Box:
     """The tools, the files and the program, in one temporary directory."""
 
-    def __init__(self, features="all", standby="offered in the countdown", wifi_mode="sta", extra_env=None):
+    def __init__(self, features="all", standby="offered in the countdown", wifi_mode="sta", extra_env=None, launcher=True):
         self.dir = tempfile.mkdtemp(prefix="h713-settings-")
         self.etc = os.path.join(self.dir, "etc")
         self.bin = os.path.join(self.dir, "bin")
         self.log = os.path.join(self.dir, "log")
         for d in (self.etc, self.bin, self.log):
             os.mkdir(d)
+        if launcher:
+            os.mkdir(os.path.join(self.etc, "launcher.d"))            # the image has a launcher (h713-keys' entries)
         for name, body in TOOLS.items():
             path = os.path.join(self.bin, name)
             with open(path, "w") as f:
@@ -621,6 +623,33 @@ class InputPowerWifi(Base):
         b.keys("ok", "ok")                                    # the same again: nothing is sent, nothing written
         b.dump()
         self.assertEqual([x for x in b.tv.log if x.startswith("source ")], ["source auto"])
+        b.finish()
+
+    def test_on_start_is_kept_for_h713_keys(self):
+        b = self.box()
+        b.write("keys.conf", "# keys\nvolume_step = 5\n")
+        d = b.start("Input").dump()
+        self.assertIn("On start choice [*Launcher|HDMI input]", d)   # nothing in the file: the launcher, h713-keys' default
+        b.keys("ok", "down", "ok", "down", "ok")                      # On start > HDMI input
+        d = b.dump()
+        self.assertIn("On start choice [Launcher|*HDMI input]", d)
+        self.assertIn("on_start = hdmi", b.read("keys.conf"))
+        self.assertIn("volume_step = 5", b.read("keys.conf"))         # the rest of the file stays
+        b.keys("ok", "up", "ok")                                      # and back to the launcher
+        b.dump()
+        self.assertEqual(b.read("keys.conf").count("on_start"), 1)    # the same line, not a second one
+        self.assertIn("on_start = launcher", b.read("keys.conf"))
+        b.finish()
+
+    def test_on_start_shows_what_the_file_holds(self):
+        b = self.box()
+        b.write("keys.conf", "on_start = hdmi\n")
+        self.assertIn("On start choice [Launcher|*HDMI input]", b.start("Input").dump())
+        b.finish()
+
+    def test_no_launcher_no_on_start_row(self):
+        b = self.box(launcher=False)
+        self.assertIn("(hidden) On start", b.start("Input").dump())
         b.finish()
 
     def test_standby_only_where_it_can_happen(self):

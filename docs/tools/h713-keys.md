@@ -48,6 +48,13 @@ on (a Down pressed within the ~100 ms in between would reach both). It opens onl
 or without h713-osd it answers `ok unseen`/nothing and h713-keys does not take the keys from anybody. A remote that connects
 while it is open is held at once.
 
+**The launcher at the start of the box** (Marco, 16.10.2026: the start is where the launcher belongs, not the HDMI picture): with `on_start = launcher` in `keys.conf`
+(the default; `hdmi` keeps the HDMI picture) h713-keys opens the launcher by itself once per boot, with the row of the running mode chosen (HDMI input at a start), as soon as h713-osd can show it. It does not wait for a Home: no release to wait for, so the
+devices are held at once. It tries every 5 s for 180 s after h713-keys has started (h713-osd and the picture come late; without a signal h713-osd answers `ok unseen` and nothing is shown, the console is under it) and then gives up with one warning.
+"Once per boot" is `/run/h713-keys.booted`: /run is empty after every boot and stays through a standby and a restart of the service, so a **standby brings back the mode from before** (a standby between the start and the first open ends the attempt: it
+sees that the machine slept, `CLOCK_BOOTTIME` ahead of `CLOCK_MONOTONIC`) and a deploy of h713-keys does not pop the launcher up. The launcher opened this way **waits for the first key** (the 90 s idle limit counts only from then on): a start page that vanished while
+nobody was at the remote would be the HDMI picture again. The settings page writes the line (Input > On start, [h713-settings](h713-settings.md)); a change counts at the next start of the box.
+
 **The entries are files**, `/etc/h713/launcher.d/NN-name.conf`, sorted by name (a package adds its own and touches no code):
 
 ```
@@ -60,7 +67,17 @@ active   = /usr/bin/systemctl is-active --quiet h713-kodi.service    # optional:
 now      = Kodi                  # the header while it is active (default: the label); {signal} = 1080p60 from h713-tv
 group    = end                   # the foot: Standby is set apart, bottom-anchored, and comes last
 fallback = yes                   # the current entry when no other `active` check succeeds (the HDMI input)
+wait     = /usr/local/sbin/h713-kodi-switch ready    # optional, with `unit`: see below
 ```
+
+**`wait`: the page stays while a client starts** (acceptance of 16.10.2026: Kodi needs 4 s, Firefox 9 to 13 s to a first picture, and the wall was black or the
+old client until then). An entry with `unit` and `wait` does not close the launcher at the OK: it starts the unit, redefines the page with the header
+"Starting Browser..." (`launcher SEL;NOW;rows` again, the same command that opened it), and asks every 0.5 s whether the unit is up (`active`) and the `wait` command exits 0;
+then the page goes and the client is on the wall. At most 30 s (`START_WAIT_S`), then it goes anyway with a journal line. While it waits, Up, Down and OK are swallowed (a second OK would
+start the unit again); Back and Home close the page (the unit goes on starting), Power does what it always does, volume and mute work. The commands in the
+image: Kodi `h713-kodi-switch ready` (its JSON-RPC answers once the home screen is up), Browser and Desktop `test -e /run/h713-browser/mapped` and `/run/h713-desktop/mapped`, files that the unit's
+labwc touches when a window is first mapped (a `windowRule` with an `Execute` action in `labwc-browser/rc.xml` and `labwc/rc.xml`; the unit's runtime directory goes with the unit, so a
+stale file cannot say "ready"). An entry without `wait` closes the page at the OK, as before.
 
 Up to six entries fit the picture (the mock-up's: HDMI input, Kodi, Browser, Desktop, Settings, Standby); the selection starts
 on the entry that is active. A file without label, icon and unit or exec is left out with a journal warning. `H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).
@@ -118,6 +135,7 @@ the vendor's ARISC firmware, which disabled PL8/PL9 when it started. crust leave
 | `volume_step` | 5 | 1..20 of h713-tv's 0..100 |
 | `focus_steps` | 20 | 1..100 msteps; one mstep is about 16 ms of travel (`h713-autofocus`), the sharp range several hundred wide (`doku/94`) - 3 was too little to see (Marco, 11.10.2026) |
 | `input_keys` | (none) | kernel key names, separated by spaces |
+| `on_start` | `launcher` | `launcher` or `hdmi`: what the projector shows when it has started (below, "The launcher at the start of the box") |
 
 A line it does not understand is a warning in the journal; the other lines still count. On a board without a
 focus motor `h713-focus` ends with exit 7 (the device node decides, as for every tool,

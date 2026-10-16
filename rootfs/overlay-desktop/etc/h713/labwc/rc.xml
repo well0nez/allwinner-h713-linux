@@ -4,15 +4,22 @@
      Plain on purpose: the projector is seen from three metres, the remote is a few keys and a mouse mode, the keyboard is an extra. -->
 <labwc_config>
 
-  <!-- square corners, a larger font (a 1080p wall seen from a distance), new windows start in the middle -->
+  <!-- square corners, a larger font (a 1080p wall seen from three metres, like foot's and Firefox's: the title bars and the menu follow
+       the font), new windows start in the middle -->
   <theme>
     <name></name>
     <cornerRadius>0</cornerRadius>
-    <font name="sans" size="14" />
+    <font name="sans" size="20" />
   </theme>
   <placement>
     <policy>center</policy>
   </placement>
+  <!-- the launcher's "Starting Desktop..." waits for this file (launcher.d/30-desktop.conf, `wait`): the first window on the wall -->
+  <windowRules>
+    <windowRule identifier="*">
+      <action name="Execute" command="touch /run/h713-desktop/mapped" />
+    </windowRule>
+  </windowRules>
 
   <!-- No <default /> here, on purpose: labwc's own keybinds run `amixer` on the volume keys, a second volume next to h713-keys
        (which owns volume, mute and focus on this board). What is bound here is what a USB keyboard or the remote needs; the keys that

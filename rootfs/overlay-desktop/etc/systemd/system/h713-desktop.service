@@ -6,7 +6,7 @@
 # the keystone onto the video plane while h713-tv stays the DRM master and the only one that commits. The keystone, the overlays
 # (h713-osd) and the volume keys (h713-keys) stay as they are with HDMI.
 # * The start sets h713-tv's source to `auto` (`h713-kodi-switch source`): the client before the ring, and however the unit ends
-#   (a stop, a crash, a SIGKILL of the group) h713-warp gives the panel back two seconds after labwc is gone. No ExecStopPost.
+#   (a stop, a crash, a SIGKILL of the group) h713-warp gives the panel back two seconds after labwc is gone. Nothing to undo for the source.
 # * One client at a time: the server keeps one fullscreen toplevel and asks a second one to close. Conflicts= stops Kodi and the
 #   browser when this unit starts; the After= lines make the start wait for their stop. A start of Kodi or the browser while this unit
 #   stands is not ordered the other way (no loop): the launcher stops the old mode first and starts the new one after.
@@ -18,6 +18,9 @@
 #   has no wl_seat. WLR_NO_HARDWARE_CURSORS=1: a hardware cursor of the Wayland backend goes to the server, which draws none, so the
 #   pointer is composited into the picture by labwc itself (to be checked on the wall, report H2).
 # * The menu's "HDMI input" ends labwc itself (the Exit action): a program of the user cannot stop a unit, and it needs no more.
+# * The terminal is labwc's session client (-S foot, as Firefox is in h713-browser.service): when it is closed (`exit`, the window's close button) labwc ends, the unit
+#   ends, and h713-warp gives the HDMI ring back two seconds later. A bare labwc with a closed terminal would stand on an empty picture until the launcher
+#   switched modes. A second terminal from the menu or a key is not the session client; closing that one ends nothing.
 # * Not root (the userspace-fix's way for Kodi, h713-kodi.service): the system user h713-desktop (usr/lib/sysusers.d/h713-desktop.conf), shared
 #   by the desktop and the browser (one runs at a time; the desktop's Firefox window and the browser mode share one profile), with the
 #   groups the devices ask for: video (seatd's socket, h713-warp's Wayland socket, the decoders' /dev/video* and /dev/media*), render
@@ -67,6 +70,10 @@ Environment=MOZ_ENABLE_WAYLAND=1
 Environment=MOZ_CRASHREPORTER_DISABLE=1
 #Environment=MOZ_DISABLE_RDD_SANDBOX=1
 ExecStartPre=+/usr/local/sbin/h713-kodi-switch source
-ExecStart=/usr/bin/labwc -C /etc/h713/labwc
+ExecStart=/usr/bin/labwc -C /etc/h713/labwc -S /usr/bin/foot
 KillSignal=SIGTERM
 TimeoutStopSec=20s
+# Firefox keeps ".startup-incomplete" in its profile until it has run for about 35 s, and the start after a stop that came sooner takes the
+# slow path (caches rebuilt, 8.3 s to the first window instead of 5.7 s, measured on the HY310). This unit is stopped on purpose (a mode switch, a
+# standby) with SIGTERM and Firefox ends cleanly, so the marker is not a crash: remove it.
+ExecStopPost=-/bin/rm -f /var/lib/h713-desktop/firefox/.startup-incomplete

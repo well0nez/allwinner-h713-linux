@@ -7,6 +7,9 @@
 // decodes in software (measured, H4); the hardware path needs MOZ_DISABLE_RDD_SANDBOX=1, a commented line in h713-browser.service.
 user_pref("media.hardware-video-decoding.force-enabled", true);
 user_pref("widget.dmabuf.force-enabled", true);
+// A wall seen from three metres: a TV interface, not a laptop's. At 1920x1080 the page is laid out as for 960x540 CSS pixels, a 16 px text is a
+// 32 px letter (Marco 16.10.2026: "hardly readable"). Firefox takes the factor as a string; the browser and the desktop's Firefox window share it.
+user_pref("layout.css.devPixelsPerPx", "2.0");
 // Sound: ALSA `default`, the DSP bridge, like Kodi - no PulseAudio or PipeWire runs on this image (the media profile masks the PipeWire user
 // units and leaves pipewire-alsa out). Asked for by name, Firefox does not try a sound server first.
 user_pref("media.cubeb.backend", "alsa");
@@ -22,3 +25,20 @@ user_pref("browser.sessionstore.resume_from_crash", false);
 user_pref("toolkit.startup.max_resumed_crashes", -1);
 user_pref("app.update.auto", false);
 user_pref("datareporting.policy.dataSubmissionEnabled", false);
+// The first start-up work nobody sees (acceptance of 16.10.2026, F4: Firefox needed 9 to 13 s to its first picture on this board, four
+// Cortex-A53 and one GiB). What the start page fetches and parses (Pocket stories, sponsored tiles), the telemetry, the remote experiments
+// (Normandy), the region and connectivity lookups, and the spare content process Firefox starts in advance (about 100 MiB of 924) are off.
+// The page keeps its search and shortcut tiles. These are the candidates that cost nothing a person sees; what they save is for a measurement
+// on the box (time from the unit's start to the window's first map, with and without the block), not an assumption.
+user_pref("browser.newtabpage.activity-stream.feeds.section.topstories", false);
+user_pref("browser.newtabpage.activity-stream.feeds.system.topstories", false);
+user_pref("browser.newtabpage.activity-stream.discoverystream.enabled", false);
+user_pref("browser.newtabpage.activity-stream.showSponsored", false);
+user_pref("browser.newtabpage.activity-stream.showSponsoredTopSites", false);
+user_pref("toolkit.telemetry.enabled", false);
+user_pref("toolkit.telemetry.unified", false);
+user_pref("datareporting.healthreport.uploadEnabled", false);
+user_pref("app.normandy.enabled", false);
+user_pref("browser.region.update.enabled", false);
+user_pref("network.connectivity-service.enabled", false);
+user_pref("dom.ipc.processPrelaunch.enabled", false);

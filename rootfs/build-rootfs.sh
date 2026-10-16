@@ -961,6 +961,7 @@ if has_profile desktop; then
 	t "desktop: labwc keeps no default keybinds (amixer on the volume keys)" bash -c 'for f in labwc labwc-browser; do ! grep -q "<default" <(sed -n "/<keyboard>/,/<\/keyboard>/p" "$1/etc/h713/$f/rc.xml") || exit 1; done' _ "$TREE"
 	t "desktop: both labwc configurations bind Home, F4 and F5 to nothing (the focus keys stay focus keys)" bash -c 'for f in labwc labwc-browser; do for k in XF86_HomePage F4 F5; do grep -q "key=\"$k\"><action name=\"Execute\" command=\"true\"" "$1/etc/h713/$f/rc.xml" || exit 1; done; done' _ "$TREE"
 	t "desktop: h713-browser.service runs Firefox as labwc's session client" grep -q '^ExecStart=/usr/bin/labwc -C /etc/h713/labwc-browser -S ' "$TREE/etc/systemd/system/h713-browser.service"
+	t "desktop: h713-desktop.service runs the terminal as labwc's session client, and the autostart starts no second one" bash -c 'grep -q "^ExecStart=/usr/bin/labwc -C /etc/h713/labwc -S /usr/bin/foot$" "$1/etc/systemd/system/h713-desktop.service" && ! grep -v "^#" "$1/etc/h713/labwc/autostart" | grep -q foot' _ "$TREE"
 	t "desktop: no mode unit ends itself at the sleep target (h713-mode does)" bash -c '! grep -q "^Conflicts=.*sleep.target" "$1"/etc/systemd/system/h713-{desktop,browser}.service' _ "$TREE"
 	t "desktop: Firefox plays through ALSA, which is the DSP bridge (no PipeWire daemon, no pipewire-alsa default)" bash -c 'grep -q "media.cubeb.backend\", \"alsa\"" "$1/var/lib/h713-desktop/firefox/user.js" && ! test -e "$1/etc/alsa/conf.d/99-pipewire-default.conf"' _ "$TREE"
 	t "desktop: sysusers.d entry for h713-desktop"  grep -q '^u h713-desktop ' "$TREE/usr/lib/sysusers.d/h713-desktop.conf"
@@ -970,6 +971,9 @@ if has_profile desktop; then
 	t "desktop: foot names its shell (the account h713-desktop has none; the window would close at once)" grep -qx 'shell=/bin/bash' "$TREE/etc/xdg/foot/foot.ini"
 	t "desktop: Firefox profile lifts the VA-API blocklist" grep -q 'media.hardware-video-decoding.force-enabled", true' "$TREE/var/lib/h713-desktop/firefox/user.js"
 	t "desktop: launcher entries that name a unit name an existing one" bash -c 'for f in "$1"/etc/h713/launcher.d/*.conf; do u=$(sed -n "s/^unit *= *//p" "$f"); [ -z "$u" ] || test -f "$1/etc/systemd/system/$u" || exit 1; done' _ "$TREE"
+	t "desktop: launcher entries with a wait command: the command is in the image" bash -c 'for f in "$1"/etc/h713/launcher.d/*.conf; do w=$(sed -n "s/^wait *= *//p" "$f" | cut -d" " -f1); [ -z "$w" ] || test -x "$1$w" || exit 1; done' _ "$TREE"
+	t "desktop: the browser's and the desktop's wait files are the ones their labwc touches at the first window" bash -c 'for m in browser desktop; do d=labwc; [ $m = browser ] && d=labwc-browser; grep -q "^wait *= */usr/bin/test -e /run/h713-$m/mapped\$" "$1/etc/h713/launcher.d/"*-$m.conf && grep -q "command=\"touch /run/h713-$m/mapped\"" "$1/etc/h713/$d/rc.xml" || exit 1; done' _ "$TREE"
+	t "desktop: the wall is a TV interface: Firefox at twice its size, foot and the labwc font larger than the defaults" bash -c 'grep -q "layout.css.devPixelsPerPx\", \"2.0\"" "$1/var/lib/h713-desktop/firefox/user.js" && grep -qE "^font=monospace:size=(2[0-9]|3[0-9])" "$1/etc/xdg/foot/foot.ini" && grep -qE "<font name=\"sans\" size=\"(1[8-9]|2[0-9])\"" "$1/etc/h713/labwc/rc.xml"' _ "$TREE"
 	for _pk in cage labwc foot firefox-esr; do t "desktop: $_pk installed" grep -q "^Package: $_pk\$" "$TREE/var/lib/dpkg/status"; done
 fi
 t "h713-arisc (TODO 5.20)"    test -x "$TREE/usr/local/sbin/h713-arisc"

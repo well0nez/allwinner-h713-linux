@@ -11,19 +11,24 @@
 # the client before the ring. Without h713-tv's socket there is nothing to tell: it has not started yet (the first seconds
 # after the boot, the 5 s after a crash) and comes up on `auto` by the desktop profile's tv.conf. A socket that is there and
 # an h713-tv that does not answer is an error of the start.
-# Tests only: H713_ROOT goes before /run, H713_TV replaces the tool.
+# h713-kodi-switch ready - exit 0 once Kodi answers its JSON-RPC, which it does when its home screen is up (the launcher's
+# "Starting Kodi...": launcher.d/20-kodi.conf, `wait`; measured 15.10.2026: 4.2 s after the OK).
+# Tests only: H713_ROOT goes before /run, H713_TV replaces the tool, H713_KODI_PORT the JSON-RPC port.
 R=${H713_ROOT:-}
+P=${H713_KODI_PORT:-9090}      # Kodi's JSON-RPC; tests only
 case ${1:-} in
 source)
 	[ -S "$R/run/h713-tv/ctl" ] || exit 0
 	exec "${H713_TV:-/usr/local/sbin/h713-tv}" ctl source auto ;;
+ready)
+	printf '{"jsonrpc":"2.0","id":1,"method":"JSONRPC.Ping"}' | nc -N -w 2 127.0.0.1 $P 2>/dev/null | grep -q pong ;;
 quit)
 	# Kodi gone already (its own Exit): systemd runs ExecStop anyway, with MAINPID unset - "kill -0 0" would hold the
 	# way back to the HDMI input 15 s (measured 15.10.2026)
 	[ -n "${2:-}" ] || exit 0
-	printf '{"jsonrpc":"2.0","id":1,"method":"Application.Quit"}' | nc -N -w 2 127.0.0.1 9090 >/dev/null 2>&1
+	printf '{"jsonrpc":"2.0","id":1,"method":"Application.Quit"}' | nc -N -w 2 127.0.0.1 $P >/dev/null 2>&1
 	i=0
 	while kill -0 "${2:-0}" 2>/dev/null && [ "$i" -lt 75 ]; do sleep 0.2; i=$((i + 1)); done ;;
 *)
-	echo "usage: h713-kodi-switch quit PID | source" >&2; exit 2 ;;
+	echo "usage: h713-kodi-switch quit PID | source | ready" >&2; exit 2 ;;
 esac
