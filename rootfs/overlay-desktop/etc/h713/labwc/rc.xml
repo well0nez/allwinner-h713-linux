@@ -1,0 +1,57 @@
+<?xml version="1.0"?>
+<!-- /etc/h713/labwc/rc.xml - the desktop of h713-desktop.service (profile desktop; media side project, package H2).
+     labwc -C /etc/h713/labwc reads this directory only (rc.xml, menu.xml, autostart); nothing of it is a user's file.
+     Plain on purpose: the projector is seen from three metres, the remote is a few keys and a mouse mode, the keyboard is an extra. -->
+<labwc_config>
+
+  <!-- square corners, a larger font (a 1080p wall seen from a distance), new windows start in the middle -->
+  <theme>
+    <name></name>
+    <cornerRadius>0</cornerRadius>
+    <font name="sans" size="14" />
+  </theme>
+  <placement>
+    <policy>center</policy>
+  </placement>
+
+  <!-- No <default /> here, on purpose: labwc's own keybinds run `amixer` on the volume keys, a second volume next to h713-keys
+       (which owns volume, mute and focus on this board). What is bound here is what a USB keyboard or the remote needs; the keys that
+       are h713-keys' or the launcher's are bound to `true`, so that no window sees them: Home (Firefox would go to its home page),
+       volume and mute (mpv's own bindings would change its volume), power, and KEY_F4/KEY_F5, the focus keys of the remote - they stay
+       focus keys, F5 would reload a page. A USB keyboard's F4/F5 do nothing on this desktop for the same reason.
+       `<action name="None" />` would not do: labwc takes it for "remove this keybind" (log: "Cleared 5 keybinds", measured under
+       qemu-user). -->
+  <keyboard>
+    <keybind key="W-Return">
+      <action name="Execute" command="foot" />
+    </keybind>
+    <keybind key="A-Tab">
+      <action name="NextWindow" />
+    </keybind>
+    <keybind key="A-F4">
+      <action name="Close" />
+    </keybind>
+    <keybind key="W-a">
+      <action name="ToggleMaximize" />
+    </keybind>
+    <!-- the remote's Menu key (KEY_COMPOSE since package H's 70-h713-remote.rules, keysym Menu, like a PC keyboard's context-menu key)
+         opens the same menu as the desktop's left click; arrows and OK (KEY_ENTER) then work it -->
+    <keybind key="Menu">
+      <action name="ShowMenu" menu="root-menu" />
+    </keybind>
+    <keybind key="XF86_AudioRaiseVolume"><action name="Execute" command="true" /></keybind>
+    <keybind key="XF86_AudioLowerVolume"><action name="Execute" command="true" /></keybind>
+    <keybind key="XF86_AudioMute"><action name="Execute" command="true" /></keybind>
+    <keybind key="XF86_HomePage"><action name="Execute" command="true" /></keybind>
+    <keybind key="XF86_PowerOff"><action name="Execute" command="true" /></keybind>
+    <keybind key="F4"><action name="Execute" command="true" /></keybind>
+    <keybind key="F5"><action name="Execute" command="true" /></keybind>
+  </keyboard>
+
+  <!-- labwc's default mouse binds: a click on the desktop opens the root menu (so the remote's OK, a left click in its mouse mode,
+       does), a click on a window focuses it, the title bar moves it, the buttons maximize and close it -->
+  <mouse>
+    <default />
+  </mouse>
+
+</labwc_config>

@@ -1,0 +1,30 @@
+<?xml version="1.0"?>
+<!-- /etc/h713/labwc-browser/rc.xml - the compositor of h713-browser.service (profile desktop; media side project, package H2).
+     labwc -C /etc/h713/labwc-browser reads this directory only. Firefox is labwc's session client (-S): maximized, no frame. -->
+<labwc_config>
+
+  <windowRules>
+    <windowRule identifier="*" serverDecoration="no">
+      <action name="Maximize" />
+    </windowRule>
+  </windowRules>
+
+  <!-- No <default /> (labwc's own volume keybinds run `amixer`). Every key that h713-keys, the launcher or h713-power owns is bound to
+       `true`, so that Firefox does not see it: Home (its home-page key), volume and mute, power, and KEY_F4/KEY_F5, the focus keys of
+       the remote (F5 reloads a page). A USB keyboard's F5 does not reload in this mode; the page's own reload button does.
+       `<action name="None" />` would not do: labwc takes it for "remove this keybind". -->
+  <keyboard>
+    <keybind key="XF86_AudioRaiseVolume"><action name="Execute" command="true" /></keybind>
+    <keybind key="XF86_AudioLowerVolume"><action name="Execute" command="true" /></keybind>
+    <keybind key="XF86_AudioMute"><action name="Execute" command="true" /></keybind>
+    <keybind key="XF86_HomePage"><action name="Execute" command="true" /></keybind>
+    <keybind key="XF86_PowerOff"><action name="Execute" command="true" /></keybind>
+    <keybind key="F4"><action name="Execute" command="true" /></keybind>
+    <keybind key="F5"><action name="Execute" command="true" /></keybind>
+  </keyboard>
+
+  <mouse>
+    <default />
+  </mouse>
+
+</labwc_config>
