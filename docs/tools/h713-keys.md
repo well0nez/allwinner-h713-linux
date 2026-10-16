@@ -48,6 +48,13 @@ on (a Down pressed within the ~100 ms in between would reach both). It opens onl
 or without h713-osd it answers `ok unseen`/nothing and h713-keys does not take the keys from anybody. A remote that connects
 while it is open is held at once.
 
+**The launcher at the start of the box** (Marco, 16.10.2026: the start is where the launcher belongs, not the HDMI picture): with `on_start = launcher` in `keys.conf`
+(the default; `hdmi` keeps the HDMI picture) h713-keys opens the launcher by itself once per boot, with the row of the running mode chosen (HDMI input at a start), as soon as h713-osd can show it. It does not wait for a Home: no release to wait for, so the
+devices are held at once. It tries every 5 s for 180 s after h713-keys has started (h713-osd and the picture come late; without a signal h713-osd answers `ok unseen` and nothing is shown, the console is under it) and then gives up with one warning.
+"Once per boot" is `/run/h713-keys.booted`: /run is empty after every boot and stays through a standby and a restart of the service, so a **standby brings back the mode from before** (a standby between the start and the first open ends the attempt: it
+sees that the machine slept, `CLOCK_BOOTTIME` ahead of `CLOCK_MONOTONIC`) and a deploy of h713-keys does not pop the launcher up. The launcher opened this way **waits for the first key** (the 90 s idle limit counts only from then on): a start page that vanished while
+nobody was at the remote would be the HDMI picture again. The settings page writes the line (Input > On start, [h713-settings](h713-settings.md)); a change counts at the next start of the box.
+
 **The entries are files**, `/etc/h713/launcher.d/NN-name.conf`, sorted by name (a package adds its own and touches no code):
 
 ```
@@ -118,6 +125,7 @@ the vendor's ARISC firmware, which disabled PL8/PL9 when it started. crust leave
 | `volume_step` | 5 | 1..20 of h713-tv's 0..100 |
 | `focus_steps` | 20 | 1..100 msteps; one mstep is about 16 ms of travel (`h713-autofocus`), the sharp range several hundred wide (`doku/94`) - 3 was too little to see (Marco, 11.10.2026) |
 | `input_keys` | (none) | kernel key names, separated by spaces |
+| `on_start` | `launcher` | `launcher` or `hdmi`: what the projector shows when it has started (below, "The launcher at the start of the box") |
 
 A line it does not understand is a warning in the journal; the other lines still count. On a board without a
 focus motor `h713-focus` ends with exit 7 (the device node decides, as for every tool,

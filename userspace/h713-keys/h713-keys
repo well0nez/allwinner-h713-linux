@@ -65,10 +65,12 @@ SYSTEMCTL = shlex.split(os.environ.get("H713_KEYS_SYSTEMCTL", "systemctl"))
 POWER_SOCK = os.environ.get("H713_KEYS_POWER", "/run/h713-power.sock")
 TRACE = os.environ.get("H713_KEYS_TRACE") == "1"
 LAUNCHER_IDLE_S = 90                        # an open launcher closes after this long without a key
+BOOT_FLAG = "run/h713-keys.booted"          # in /run: gone with every boot, stays through a standby and a restart of this service
+BOOT_WAIT_S = 180                           # how long after the start the launcher is tried: h713-osd and the picture come late
 SHOWN = {}                                  # command -> (time, answer) of check()
 REPEAT = (500, 125)                         # ms: rc-core's, what the IR receiver repeats with (read 11.10., G-EU)
 LIMITS = {"volume_step": 20, "focus_steps": 100}      # the largest value keys.conf may set
-DEFAULTS = {"volume_step": "5", "focus_steps": "20", "input_keys": ""}   # no input key until one is chosen
+DEFAULTS = {"volume_step": "5", "focus_steps": "20", "input_keys": "", "on_start": "launcher"}   # no input key until one is chosen
 
 
 def path(*parts):
@@ -115,6 +117,8 @@ class Config:
             if key in LIMITS and value.isdigit() and 1 <= int(value) <= LIMITS[key]:
                 values[key] = value
             elif key == "input_keys" and all(w in CODES for w in value.split()):
+                values[key] = value
+            elif key == "on_start" and value in ("launcher", "hdmi"):
                 values[key] = value
             else:
                 log("keys.conf:%d: %r ignored" % (n, line), "<4>")
@@ -349,11 +353,11 @@ class Launcher:
     def __init__(self):
         self.entries, self.sel, self.last, self.held = None, 0, 0.0, False
 
-    def open(self, devices):
+    def open(self, devices, quiet=False):
         entries = launcher_entries()
         entries = [e for e in entries if check(e.get("show"), 60)]
         if not entries:
-            return log("Home: no launcher entries in /etc/h713/launcher.d")
+            return quiet or log("Home: no launcher entries in /etc/h713/launcher.d")
         cur = next((i for i, e in enumerate(entries) if not e.get("fallback") and e.get("active") and check(e["active"])), None)
         if cur is None:
             cur = next((i for i, e in enumerate(entries) if e.get("fallback")), 0)
@@ -361,7 +365,7 @@ class Launcher:
         rows = ";".join("%s%s:%s" % (">" if e.get("group") == "end" else "", e["icon"], e["label"]) for e in entries)
         answer = ctl(OSD_SOCK, "launcher %d;%s;%s" % (cur, now, rows), quiet=True) or ""
         if not answer.startswith("ok") or answer.startswith("ok unseen"):
-            return log("Home: no launcher - h713-osd says %s" % (answer.strip() or "nothing (not running?)"))
+            return quiet or log("Home: no launcher - h713-osd says %s" % (answer.strip() or "nothing (not running?)"))
         self.entries, self.sel, self.last, self.held = entries, cur, time.monotonic(), False
         log("launcher open: %d entries, %s selected" % (len(entries), entries[cur]["label"]))
 
@@ -429,10 +433,31 @@ class Launcher:
             self.close(devices)
 
 
+def boot_launcher(launcher, devices, conf, boot):
+    """The start of the box (once per boot): with on_start = launcher the launcher opens as soon as h713-osd can show it - tried every 5 s for
+    BOOT_WAIT_S. True when it is settled: opened, not wanted, given up, or a standby came in between (then the mode from before stays)."""
+    now = time.monotonic()
+    if conf.values["on_start"] != "launcher" or launcher.entries is not None or time.clock_gettime(time.CLOCK_BOOTTIME) - now - boot["slept"] > 2:
+        return True
+    if now > boot["until"]:
+        log("start: no launcher within %d s - h713-osd has no picture to show it on, or there are no entries" % BOOT_WAIT_S, "<4>")
+        return True
+    if now < boot["next"]:
+        return False
+    boot["next"] = now + 5
+    launcher.open(devices, quiet=True)
+    opened = launcher.entries is not None
+    launcher.hold(devices)                   # no Home was pressed, so no release to wait for
+    launcher.last = float("inf") if opened else launcher.last       # it waits for the first key; after that the idle limit counts
+    return opened
+
+
 def run(once):
     conf = Config()
     devices, buf, rescan, told = {}, {}, 0.0, set()
     focus, launcher = Focus(), Launcher()
+    boot = None if os.path.exists(path(BOOT_FLAG)) else {"until": time.monotonic() + BOOT_WAIT_S, "next": 0.0,
+                                                           "slept": time.clock_gettime(time.CLOCK_BOOTTIME) - time.monotonic()}
     while True:
         if time.monotonic() >= rescan:
             conf.load()
@@ -456,6 +481,10 @@ def run(once):
             rescan = time.monotonic() + 5
         ready = select.select(list(devices.values()), [], [], 0.25)[0]
         acted = False
+        if boot and boot_launcher(launcher, devices, conf, boot):
+            acted, boot = launcher.entries is not None, None             # (acted: the tests' --once returns after this round)
+            os.makedirs(os.path.dirname(path(BOOT_FLAG)), exist_ok=True)
+            open(path(BOOT_FLAG), "w").close()
         for p, fd in list(devices.items()):
             if fd not in ready:
                 continue
