@@ -226,6 +226,32 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       0 ns GPU-Zeit, `ctl check 900` 0 Abweichungen, Konsole nach dem Ende im Textmodus). Am G-EU nie gelaufen (anderes Panel, kein Fokusmotor, keine Kamera). Nachmessen:
       Profil `desktop` (oder Schnell-Deploy von `h713-warp`, `h713-tv`, Kodi-Einheit, Keymap), `systemctl start h713-kodi`, Menü 60 s, Video 1080p60, Beenden,
       `ctl check 300`, ein Standby mit Kodi; dazu der HDMI-Ton im Client-Fall mit einer Quelle, die Ton sendet (nicht gemessen). Wartet, bis der G-EU wieder am Strom hängt.
+- [ ] 2.78 **VE bei 600 MHz (Patch `0315`) und `0316`-`0319` am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15./16.10.2026, `doku/212` §5: mpv H.264 2160p 30,0 statt 26,6 VE-Bilder/s,
+      33 von 33 Clips bitgenau, 55 min 112 von 112, Kodi HEVC 2160p eine Stunde 29,75/s ohne Ereignis, Zonen höchstens 68,4/70,6 C). `0315` lässt cedrus mit 600 MHz laufen, solange der
+      AV1-Knoten aus ist (`0310`); `0293` hatte den Takt nur für den AV1-Kern auf 432 MHz gesenkt. Der G-EU hat dasselbe dtsi und dasselbe Defconfig, also denselben Takt. Nachmessen:
+      Kernel mit `0315`-`0319` auf den G-EU (Schnell-Deploy: FIT + `sunxi-cedrus.ko`, die anderen .ko müssen byte-gleich sein), die Zeile `module clock 600000000 Hz` im `dmesg`, der
+      VE-Takt unter Last aus der CCU (`PLL_VE` +0x058, VE +0x690, nur lesend), 33 Clips bitgenau und eine Stunde 4K-HEVC-Dekodieren mit Temperatur und Treiberzeilen (Timeouts,
+      IOMMU-Faults). Bestanden, wenn alles bitgenau ist, 0 Timeouts/Faults und keine Zone über 85 C.
+- [ ] 2.79 **Launcher, Moduswechsel und Standby aus Kodi am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/212` §1: zehn Wechsel HDMI -> Kodi -> HDMI mit 4,16-4,24 s und
+      0,39-0,44 s, Taste mal Zustand ohne Doppelwirkung, Auswahl 52,7 ms über HDMI und 81,8 ms über Kodi bis `osd show`, 35 von 35 Standbys aus allen Wegen mit Modus und Bild zurück). Am G-EU:
+      dieselben vier Messungen mit einer uhid-Fernbedienung (Kennung `1d5a:c081`), das Panel mit 59,71 Hz gegenhalten; zusätzlich, was am HY310 nicht ging: (a) ob die echte
+      Bluetooth-Fernbedienung die Scancodes `0xc0041`/`0xc0040` schickt und `70-h713-remote.rules` sie auf `KEY_ENTER`/`KEY_COMPOSE` stellt, (b) der IR-Weg `0x20b`/`0x21e` mit der echten
+      IR-Fernbedienung, (c) der Flip des Launchers (Kamera), (d) ein Standby mit Weckabbruch (`pm_test`) für das Netz in `h713-power`, (e) dass die Regel nach einem Neustart greift
+      (`keycode.py get ir 20b` gleich 28 ohne `udevadm trigger`).
+- [ ] 2.80 **Kodi als Nutzer `h713-kodi`, `source = auto` und die polkit-Regel am HY300PRO-G-EU nachmessen** - am HY310 gemessen (16.10.2026, `doku/212` §4). Am G-EU (720p-Panel, 59,71 Hz):
+      (1) `systemd-sysusers` mit `h713-kodi.conf`, Einheit und `h713-warp -g video`, danach `ps`: cage und Kodi als `h713-kodi`; (2) `tv.conf` mit `source = auto`,
+      `systemctl restart h713-tv@<N>` bei laufendem Kodi - Kodi muss in wenigen Sekunden wieder präsentiert werden (HY310: 1,7-2,0 s); (3) Kodi starten, während h713-tv steht;
+      (4) VA-Dekodieren (H.264, HEVC) und ALSA stumm öffnen als Nutzer; (5) Kodis Power-Menü: `polkitd` (5 Pakete) und die Regel `50-h713-kodi.rules`, Kodi neu starten, `System.CanSuspend`
+      true, ein `System.Suspend` per JSON-RPC mit RTC-Wecker (HY310: Standby, Kodi und Bild zurück); Standby über Powertaste und Launcher prüfen. Zusätzlich offen am G-EU: `panel_guess` auf 720p.
+- [ ] 2.81 **VA-Treiber `0015`-`0017` am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/212` §6): die ganze Clip-Matrix über VA bitgenau (34 von 34), ein Auflösungswechsel
+      mit `-noautoscale` 300 von 300, mpv und Kodi mit HEVC 8 Bit 1080p/4K über VA je 30 s ohne Treiberereignis. Am G-EU dieselben drei Messungen; `0016` (mehrere Kacheln je Slice) braucht dazu
+      einen HEVC-Strom mit mehreren Kacheln je Slice, den es noch nicht gibt (kein Kodierer in der Reihe).
+- [ ] 2.82 **Einstellungsseite (`h713-settings`) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15./16.10.2026, `doku/212` §2: jede Zeile gesetzt und zurück, Warmstart 14 von 15 Feldern gleich,
+      Taste bis Änderung 66,2 ms im Mittel bei Gate 120 ms, 26 Zellen ohne Doppelwirkung, HDMI-Check 300 mit 0 Abweichungen). Am G-EU gleiche vier Kerne, derselbe Faktor wird erwartet;
+      zu messen S1 bis S5 und die Zeit mit dem Keystone des Geräts (das Vorverzerren der Seite hängt an ihm).
+- [ ] 2.83 **Desktop- und Browser-Modus am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15.10.2026, `doku/212` §3: Wechsel zehn Mal mit 1,0-1,2 s zum ersten Client-Bild und 2,5-2,7 s zurück,
+      mpv 1080p60 im Desktop mit 60,0 Bildern/s dekodiert, Firefox ESR 153.5, Standby 3 von 3 im Browser). Am G-EU: die Wechsel, ein Standby je Modus und der Speicher mit einem Video-Tab
+      (HY310: Firefox 970 MiB RSS, MemAvailable 329-354 MiB von 924).
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -418,8 +444,11 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       nicht auslösbar, Ursache nicht gemessen; Vorschlag: Sätze und Regression im Wechsel fahren, die IOMMU-Register am Fault sichern. (b) H.264 plus VP8 direkt nach HEVC 10 Bit
       plus VP9: in 3 von 8 Runden ein cedrus-Timeout, auch mit dem alten `0298`, nicht verfolgt. (c) Ein Dauerlauf über Stunden mit wechselnden Codecs unter Kodi fehlt. Für Kodi
       kostet ein Timeout ein Bild und 2 s Pause. Dazu das `CmaFree` unter 1 MB, das bei den 4K-Clips der Dauerläufe in 17 von 129 Proben gesehen wurde und nicht geklärt ist.
-- [ ] 9.3d **4K-HEVC in Kodi nicht flüssig** (Marco 15.10.): die VE schafft dort 28,4-28,8 von 30 Bildern/s (mpv am selben Clip 29,97), MemAvailable fällt auf 210-240 MiB
-      (`doku/211` §8). Zu klären: der VE-Takt (432 MHz seit `0293`, gesenkt wegen AV1, das jetzt aus ist) und der Speicherdruck mit dem Wayland-Server daneben.
+- [ ] 9.3d **4K in Kodi: was nach `0315` bleibt** (Marco 15.10.: "4K nicht flüssig"): die VE ist es nicht mehr. Sie lief seit `0293` mit 432 MHz, nur wegen des AV1-Kerns; mit 600 MHz (`0315`)
+      schafft sie H.264 2160p30 in mpv mit 30,0 Bildern/s (26,6 vorher), und eine Stunde Kodi mit HEVC 2160p30 lief mit 29,75 VE-Bildern/s ohne Ereignis (`doku/212` §5). Die "28,4-28,8"
+      der VE bei HEVC in Kodi waren großenteils der 10-s-Testclip, der in der Schleife neu startet (28,63 bei 432 und 28,61 bei 600 MHz). Offen: (a) Kodi H.264 2160p erreicht 27,6-28,9, Kodi
+      überspringt bei 4K weiter Bilder (die GPU ist zu 92 % belegt: Kodi 9,1 + cage 7,5 ms je Bild, `doku/211` §8) - Kodi- und GPU-Seite, nicht gemessen warum; (b) mpv verwirft bei H.264 2160p
+      auch mit 30,0 VE-Bildern/s noch etwa 13 Bilder/s im Ausgabeweg, bei HEVC 0; (c) MemAvailable fällt bei 4K auf 204-240 MiB.
 - [ ] 9.3e **Kodi unter cage: was nur mit Marco geht** (nicht gemessen, `doku/211` §12): die echte IR- und Bluetooth-Fernbedienung (cage hält `event0` offen und legt einen Cursorpuffer an -
       ob echte IR-Zeigerbewegung einen Software-Cursor erzwingt, ist offen); Standby mit Kodi und echter Fernbedienung (bei den Läufen mit Marco wirkte das Bild nach dem Wecken
       etwas dunkler, und ein SLUB-Fehler stand im Log - beides nicht verfolgt); der HDMI-Ton im Client-Fall; die Ton-Synchronität unter 40 ms (nur nach Augenmaß bestätigt, braucht
@@ -429,6 +458,26 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 9.3g **medien nach `main`: IOMMU und die Reste der ersten Übergabe**. Mit dem Merge des Zweigs `medien` kommt `CONFIG_SUN50I_IOMMU=y` mit `0294` (Capture bidirektional) und `0297`
       (Kommentar) nach `main`; wird er nicht als Ganzes übernommen, müssen diese drei mindestens einzeln hinüber (`0294` ohne `0271`-`0293` anwendbar: nicht geprüft). Danach
       `docs/known-issues.md` (Zeile "Hardware video decode, IOMMU") gegen den Release-Kernel prüfen.
+- [ ] 9.3h **`CONFIG_USER_NS` für Firefox** (`doku/212` §3): `about:support` meldet `hasUserNamespaces` false, die Inhalts-Sandbox von Firefox läuft nur auf Seccomp (Stufe 6)
+      ohne die Trennung von Dateisystem, Netz und Prozessen, die Namensräume geben. Das Defconfig schaltet `CONFIG_USER_NS` nicht ein (und `CONFIG_PID_NS`, `NET_NS`, `IPC_NS`,
+      `UTS_NS` nicht ausdrücklich); eine eigene Kernelzeile mit Nachmessung (`about:support`, ein Neustart, ob andere Dienste sich ändern: Namensräume öffnen eine Angriffsfläche
+      des Kernels, die dann gegen den Gewinn für Firefox abzuwägen ist).
+- [ ] 9.3i **Ein Absturz von `h713-tv` beendet Kodi** (userspace-Fund, am HY310 gemessen 16.10.2026, `doku/212` §4): ein `SIGKILL` von `h713-tv@` lässt die Einheit scheitern,
+      `OnFailure=h713-tv-rescue.service` lädt die Display-MIPS neu und startet `h713-warp` neu, `BindsTo=` beendet `h713-kodi.service`; das HDMI-Bild ist nach etwa 16 s
+      wieder da, Kodi bleibt aus, der Modus (`/run/h713-mode.resume`) wird nicht gemerkt. Fix-Richtung: die Rescue-Einheit (oder ein `ExecStartPost`) merkt vor dem Neustart die
+      laufenden Moduseinheiten wie `h713-mode sleep-pre` und stellt sie danach wie `sleep-post` wieder her. Messen: `kill -KILL` der MainPID von `h713-tv` bei laufendem Kodi, Kodi muss
+      nach dem Bild von selbst zurückkommen. `systemctl restart h713-tv@N` ist davon nicht betroffen (gemessen: Kodi bleibt).
+- [ ] 9.3j **Kodi schreibt `guisettings.xml` beim Beenden neu** (`doku/212` §4): als Nutzer `h713-kodi` kann es das jetzt, vorher als root; dabei wählt es Vorgaben nach den Fähigkeiten des
+      Augenblicks (`powermanagement.shutdownstate` fiel ohne `CanSuspend` von 1 auf 0). Eine Einstellung, die das Abbild setzen will, hält also nur, wenn Kodi sie beim Beenden wieder
+      schreibt; zu entscheiden ist, ob die Datei beim Start frisch aus dem Overlay gelegt wird (dann gehen Änderungen des Nutzers verloren) oder ob Kodis Eigenverhalten bleibt.
+- [ ] 9.3k **Firefox: 1080p60 wird zu einem Drittel nicht gezeichnet** (`doku/212` §3): auch mit der Hardware (60 Bilder/s dekodiert, 883 von 2748 = 32 % nicht gezeichnet, mit cage
+      ebenso 887 von 2765); die Grenze ist Firefox' Zeichnen von 1080p60 auf dem Mali-G31, nicht das zweite Compositing. 720p30: 22 von 555. Zu messen: ob die Bilder
+      am GPU-Zeitbudget (Firefox plus labwc plus Warp) oder am Zeitstempel-Takt von Firefox verloren gehen.
+- [ ] 9.3l **Firefox-VA nur ohne Sandbox des Dekoder-Prozesses** (`doku/212` §3): mit der Vorgabe scheitert `Failed to create VA-API device context`, Firefox dekodiert in Software (47 Bilder/s
+      von 60, VE 0/s); `MOZ_DISABLE_RDD_SANDBOX=1` bringt die Hardware, lässt den Dekoder-Prozess aber ohne Sandbox laufen und ist darum nicht die Vorgabe. Firefox 153 hat kein Pref,
+      das der Sandbox des Dekoder-Prozesses die Geräte öffnet. Ungeprüfte Hypothese: `media.rdd-process.enabled = false` (Dekodieren im Inhaltsprozess) plus
+      `security.sandbox.content.read_path_whitelist`/`.write_path_whitelist` mit `/dev/media*`, `/dev/video*` und `/usr/local/lib/dri`; ob Firefox so Hardware versucht und ob die Listen
+      reichen, zeigt nur ein Lauf am Gerät.
 - [ ] 9.5 Windows: Installer nie dort gelaufen; `sunxi-fel.exe` nach Rückmeldungen
 - [ ] 9.6 Zweites Augenpaar auf die Sicherheitspfade (Gate, Recovery, Installer-Verweigerungen)
 - [ ] 9.7 Recovery-Weg **von einer zweiten Person** gegangen; 20 Gate-Zyklen; HDMI-Modustabelle vollständig (aus `61` A.2)
