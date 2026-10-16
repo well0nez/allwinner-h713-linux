@@ -6,7 +6,7 @@
 # the keystone onto the video plane while h713-tv stays the DRM master and the only one that commits. The keystone, the overlays
 # (h713-osd) and the volume keys (h713-keys) stay as they are with HDMI.
 # * The start sets h713-tv's source to `auto` (`h713-kodi-switch source`): the client before the ring, and however the unit ends
-#   (a stop, a crash, a SIGKILL of the group) h713-warp gives the panel back two seconds after labwc is gone. No ExecStopPost.
+#   (a stop, a crash, a SIGKILL of the group) h713-warp gives the panel back two seconds after labwc is gone. Nothing to undo for the source.
 # * One client at a time: the server keeps one fullscreen toplevel and asks a second one to close. Conflicts= stops Kodi and the
 #   browser when this unit starts; the After= lines make the start wait for their stop. A start of Kodi or the browser while this unit
 #   stands is not ordered the other way (no loop): the launcher stops the old mode first and starts the new one after.
@@ -70,3 +70,7 @@ ExecStartPre=+/usr/local/sbin/h713-kodi-switch source
 ExecStart=/usr/bin/labwc -C /etc/h713/labwc
 KillSignal=SIGTERM
 TimeoutStopSec=20s
+# Firefox keeps ".startup-incomplete" in its profile until it has run for about 35 s, and the start after a stop that came sooner takes the
+# slow path (caches rebuilt, 8.3 s to the first window instead of 5.7 s, measured on the HY310). This unit is stopped on purpose (a mode switch, a
+# standby) with SIGTERM and Firefox ends cleanly, so the marker is not a crash: remove it.
+ExecStopPost=-/bin/rm -f /var/lib/h713-desktop/firefox/.startup-incomplete

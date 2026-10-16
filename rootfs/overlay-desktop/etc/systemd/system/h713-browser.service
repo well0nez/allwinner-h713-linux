@@ -4,7 +4,7 @@
 # h713-desktop.service (the same road): labwc is a Wayland client of h713-warp's server, h713-warp draws its window
 # through the keystone, h713-tv stays the DRM master. What differs: the configuration is /etc/h713/labwc-browser/ (the window
 # maximized without a frame, no menu, no terminal) and labwc starts Firefox as its session client (-S): when Firefox ends, labwc
-# ends, the unit ends, and the HDMI ring is back two seconds later (h713-tv `source auto`, no ExecStopPost).
+# ends, the unit ends, and the HDMI ring is back two seconds later (h713-tv `source auto`, nothing to undo).
 # * Why a compositor and not cage alone, which passes a fullscreen client's buffers through without a copy (Kodi): the launcher lets
 #   the press that opens the launcher reach the client like any other (its grab waits for Home's release; Kodi's keymap maps it to nothing; Firefox has no such
 #   layer, and its home-page key would take the page away under the launcher), and the focus keys of the remote are KEY_F4/KEY_F5,
@@ -72,3 +72,7 @@ ExecStartPre=+/usr/local/sbin/h713-kodi-switch source
 ExecStart=/usr/bin/labwc -C /etc/h713/labwc-browser -S "/usr/bin/firefox-esr --no-remote --profile /var/lib/h713-desktop/firefox"
 KillSignal=SIGTERM
 TimeoutStopSec=20s
+# Firefox keeps ".startup-incomplete" in its profile until it has run for about 35 s, and the start after a stop that came sooner takes the
+# slow path (caches rebuilt, 8.3 s to the first window instead of 5.7 s, measured on the HY310). This unit is stopped on purpose (a mode switch, a
+# standby) with SIGTERM and Firefox ends cleanly, so the marker is not a crash: remove it.
+ExecStopPost=-/bin/rm -f /var/lib/h713-desktop/firefox/.startup-incomplete
