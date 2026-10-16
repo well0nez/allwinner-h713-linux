@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<!-- /etc/h713/labwc-browser/rc.xml - the compositor of h713-browser.service (profile desktop; media side project, package H2).
+<!-- /etc/h713/labwc-browser/rc.xml - the compositor of h713-browser.service (profile desktop).
      labwc -C /etc/h713/labwc-browser reads this directory only. Firefox is labwc's session client (-S): maximized, no frame. -->
 <labwc_config>
 

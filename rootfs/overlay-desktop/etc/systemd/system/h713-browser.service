@@ -1,18 +1,18 @@
-# h713-browser.service - Firefox on the panel, in a labwc of its own (profile desktop; media side project, package H2).
+# h713-browser.service - Firefox on the panel, in a labwc of its own (profile desktop).
 #
 # Not wanted by anything, on purpose (the launcher's "Browser" entry, /etc/h713/launcher.d/25-browser.conf). Built like
-# h713-desktop.service (the road of package G, path B''): labwc is a Wayland client of h713-warp's server, h713-warp draws its window
+# h713-desktop.service (the same road): labwc is a Wayland client of h713-warp's server, h713-warp draws its window
 # through the keystone, h713-tv stays the DRM master. What differs: the configuration is /etc/h713/labwc-browser/ (the window
 # maximized without a frame, no menu, no terminal) and labwc starts Firefox as its session client (-S): when Firefox ends, labwc
 # ends, the unit ends, and the HDMI ring is back two seconds later (h713-tv `source auto`, no ExecStopPost).
-# * Why a compositor and not cage alone, which passes a fullscreen client's buffers through without a copy (Kodi, G1): package H lets
+# * Why a compositor and not cage alone, which passes a fullscreen client's buffers through without a copy (Kodi): the launcher lets
 #   the press that opens the launcher reach the client like any other (its grab waits for Home's release; Kodi's keymap maps it to nothing; Firefox has no such
 #   layer, and its home-page key would take the page away under the launcher), and the focus keys of the remote are KEY_F4/KEY_F5,
 #   F5 reloading a page. Only a compositor can bind those keys to nothing. The price is a second GPU pass over a full window and
 #   about 20 MiB of RAM; H4 measures it against cage as the control arm (laeufe/box/h2.sh h4 cage).
 # * One client at a time: Conflicts= stops Kodi and the desktop when this unit starts (After= on Kodi: the start waits for its stop).
 # * BindsTo=h713-warp.service: a stop or restart of the warp ends the browser.
-# * A standby: no Conflicts=sleep.target here, on purpose; package H's h713-sleep-pre/-post end every mode unit that a launcher.d
+# * A standby: no Conflicts=sleep.target here, on purpose; h713-sleep-pre/-post end every mode unit that a launcher.d
 #   entry names and start it again after the wake (see h713-desktop.service). SIGTERM goes to labwc, which closes its clients:
 #   Firefox ends without a restore page (the profile prefs ask for none).
 # * Decoding is software, on purpose (decided 15.10.2026): Firefox loads foreign web content, and its decoder process

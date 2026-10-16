@@ -1,5 +1,5 @@
 <?xml version="1.0"?>
-<!-- /etc/h713/labwc/rc.xml - the desktop of h713-desktop.service (profile desktop; media side project, package H2).
+<!-- /etc/h713/labwc/rc.xml - the desktop of h713-desktop.service (profile desktop).
      labwc -C /etc/h713/labwc reads this directory only (rc.xml, menu.xml, autostart); nothing of it is a user's file.
      Plain on purpose: the projector is seen from three metres, the remote is a few keys and a mouse mode, the keyboard is an extra. -->
 <labwc_config>
@@ -34,7 +34,7 @@
     <keybind key="W-a">
       <action name="ToggleMaximize" />
     </keybind>
-    <!-- the remote's Menu key (KEY_COMPOSE since package H's 70-h713-remote.rules, keysym Menu, like a PC keyboard's context-menu key)
+    <!-- the remote's Menu key (KEY_COMPOSE since the udev rule 70-h713-remote.rules, keysym Menu, like a PC keyboard's context-menu key)
          opens the same menu as the desktop's left click; arrows and OK (KEY_ENTER) then work it -->
     <keybind key="Menu">
       <action name="ShowMenu" menu="root-menu" />

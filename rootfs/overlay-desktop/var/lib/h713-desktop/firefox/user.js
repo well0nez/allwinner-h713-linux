@@ -1,4 +1,4 @@
-// user.js of the browser mode's Firefox profile (h713-browser.service; media side project, package H2). Firefox applies it at every start.
+// user.js of the browser mode's Firefox profile (h713-browser.service). Firefox applies it at every start.
 // Every name below was looked up in Firefox ESR 140.15 (Debian trixie): libxul's static prefs or the omni.ja defaults. Not here:
 // media.ffmpeg.vaapi.enabled, which ESR 140 no longer has (VA-API is on by default, behind the blocklist).
 //
