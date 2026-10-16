@@ -42,6 +42,8 @@ vendor fixtures and the three vendor images skip without `--local`, which adds t
 | `--board <id>`, `--variant <name>` | the board, and for a board with several stock firmwares the variant (required there) - see *Boards* |
 | `--test-image` | a TEST image for a board in test - see *Boards* |
 | `--wifi-env FILE` | put your own `/etc/h713/wifi.env` into the image instead of the public default. Never for an image you hand on: the file, password included, is then inside it, and the stamp says `reproducible: no`. A release is built without it; copy your own file onto the device after installing |
+| `--standby` | offers the standby (experimental): BL31 with PSCI `SYSTEM_SUSPEND` and a rootfs that allows suspend. Only for a verified board that names a crust configuration, or a `--test-image` of one |
+| `--profile NAME[,NAME]` | `media`, `desktop`: the rootfs gets the package lists and overlays of those profiles (players, Kodi, a desktop, a browser) and the VA-API driver - see *The media image* |
 | `--jobs N` | parallelism (default: all cores) |
 
 The skips are for iterating. A release build should run without them: since 2026-09-12 the script wipes
@@ -89,6 +91,19 @@ profile wherever a stock image or a dump exists for it, its DRAM block written d
 the eMMC ([docs/tools/h713-probe.md](docs/tools/h713-probe.md)). It gets no FIT either: `board.env`
 leaves `KERNEL_DTB` empty for a board we have no device tree for, and `build.sh kernel` refuses
 rather than ship one written for a different board.
+
+## The media image
+
+```bash
+CRUST_SRC=<checkout of the head crust-h713/SERIES.txt names> \
+  release/build-all.sh --board hy310 --version vX.Y --profile media,desktop --standby
+```
+
+crust is not a submodule, so `CRUST_SRC=` names its checkout (`crust-h713/README.md` says how to make one). A profile adds the VA-API driver, cross-built before the
+rootfs (`rootfs/libva/build-libva.sh`) and laid in with the package lists and overlays of the profiles; the image is named `<name>-<version>-media-desktop` and the stamp says
+`profile:` and `libva:`. The tree of `media,desktop` is about 1.1 GiB (1152 MiB with Firefox), so a profile image gets a **2 GiB** rootfs file system (the base image keeps 1 GiB; either
+grows to the partition at the first start). The build container is the one of
+[docs/build-container.md](docs/build-container.md) (its recipe has `libwayland-dev` and `libfreetype-dev`, which the profile needs). Measured 16.10.2026: 20 minutes with the downloads cached, 44 minutes cold (`doku/212` §7). A profile image is not a release image.
 
 ## What comes out
 
