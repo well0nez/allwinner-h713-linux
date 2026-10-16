@@ -19,6 +19,7 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 [h713-features](tools/h713-features.md) says which optional hardware - camera, accelerometer, focus motor - the board has.
 [h713-power](tools/h713-power.md) decides the power key on an image that offers standby, and [h713-mips-restart](tools/h713-mips-restart.md) brings the picture and the sound back after it.
 [h713-keys](tools/h713-keys.md) gives the remote's keys their meaning (Bluetooth and IR), [h713-osd](tools/h713-osd.md) shows volume, mute, focus and input over the picture.
+[h713-desktop](tools/h713-desktop.md) is the desktop (labwc, a terminal) and the browser (Firefox) as modes next to Kodi.
 **On your PC:** [h713-install](tools/h713-install.md) · [h713-extract](tools/h713-extract.md) · [h713-mkimage](tools/h713-mkimage.md) · [h713-hdcpkey](tools/h713-hdcpkey.md) · [h713-probe](tools/h713-probe.md)
 
 **U-Boot:** [boot chain and defconfig matrix](uboot/README.md) · [the `h713_*` commands, with the register readback at the
