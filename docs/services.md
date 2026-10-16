@@ -20,10 +20,34 @@ cannot enumerate is a system you cannot trust.
 | `h713-features` | once per boot: the camera, the accelerometer and the focus motor against `/etc/h713/features`, one journal line each and a warning for one the board should have and does not show ([h713-features](tools/h713-features.md)) |
 | `h713-panel` | the settings page on port 8080, one password (`h713-panel --show-password`; [guide](guides/settings-page.md)) |
 | `h713-power` | only on an image built with `release/build-all.sh --standby`: decides the power key under `systemd-inhibit` (a dead service gives the key back to logind). Short press: suspend to RAM through crust; held 3 s: power-off; `/etc/h713/power.conf`. After a wake it runs `h713-mips-restart` ([h713-power](tools/h713-power.md)) |
+| `h713-keys` | the stock remote's keys: volume, mute, focus, the HDMI input; Home opens the launcher, and while it is open Kodi gets no key ([h713-keys](tools/h713-keys.md)) |
+| `h713-osd` | draws the overlays over the picture - volume, mute, focus, input - and the launcher and settings pages ([h713-osd](tools/h713-osd.md)) |
+| `h713-cpufreq` | the CPU clock under the warp's load: the schedutil rate limit and the policy of the GPU's interrupt threads |
+| `h713-tv-rescue` | `OnFailure=` of `h713-tv@`: reloads the display MIPS once when `h713-tv` gave up, and restarts `h713-warp` |
+| `h713-sleep-pre`, `h713-sleep-post` | only on an image built with `--standby`: `-pre` (`Before=sleep.target`) remembers the running mode in `/run/h713-mode.resume` and ends it; `-post` (`After=suspend.target`) brings the picture path back when the display MIPS is parked (`h713-mips-restart`) and starts the remembered mode again ([h713-power](tools/h713-power.md)) |
 
 `hostapd` and `wpa_supplicant` are installed but their own units are masked: `h713-wifi` generates their
 configuration and starts them itself, so editing their files by hand and restarting them does nothing
 lasting.
+
+`/etc/udev/rules.d/70-h713-remote.rules` (every image) moves the stock remote's OK to `KEY_ENTER` and its Menu to `KEY_COMPOSE`: a Wayland client gets
+no key code above 247, and OK and Menu are above it. `h713-keys` and `h713-power` read the new codes.
+
+## The profile images (media, desktop)
+
+An image built with `--profile media,desktop` has players and clients on top of that list. None of these units is wanted by anything: the panel shows the
+HDMI input until the launcher starts one of them.
+
+| Unit | What it does |
+|---|---|
+| `h713-kodi.service` | cage with Kodi in it, drawn by `h713-warp` as a Wayland client, as the system user `h713-kodi` (not root) ([rootfs README](../rootfs/README.md), [h713-warp](tools/h713-warp.md)) |
+| `h713-desktop.service`, `h713-browser.service` | labwc with a terminal, and Firefox in a labwc of its own, as the system user `h713-desktop`; they exclude each other and Kodi (`Conflicts=`) ([h713-desktop](tools/h713-desktop.md)) |
+| `seatd` | seat management for cage and labwc |
+| `polkitd` | with `/etc/polkit-1/rules.d/50-h713-kodi.rules`: lets the user `h713-kodi` suspend, power off and reboot through logind - Kodi's own power menu - and nothing else |
+| `pipewire.service`, `pipewire.socket`, `wireplumber.service`, `filter-chain.service` (user units) | **masked** in `/etc/systemd/user/` (profile `media`): nothing starts PipeWire by itself; a player that wants it starts it by hand |
+| `h713-settings` | not a service: the settings page, a program the launcher's entry starts ([h713-settings](tools/h713-settings.md)); the binary is in every image, the entry in the profile `desktop` |
+
+The two system users, `h713-kodi` and `h713-desktop`, have a home under `/var/lib` (the units' state directory), no login shell and only the groups their devices ask for.
 
 ## Commands worth knowing
 
@@ -36,6 +60,7 @@ Beyond the tools in [docs/tools/](tools/):
 | `fw_printenv` / `fw_setenv` | read and change the U-Boot environment from Linux ([environment](uboot/environment.md)) |
 | `h713-arisc status\|set vendor\|crust` | which firmware the ARISC runs (crust or the vendor's from the dump), where the choice came from, and the switch for the next boot through `/etc/modprobe.d/h713-arisc.conf` ([h713-arisc](tools/h713-arisc.md)) |
 | `h713-mips-restart [FIRMWARE]` | restart the display MIPS and bring the HDMI picture back; `h713-power` runs it after a standby, by hand it also reloads a running MIPS. It stops `h713-warp` and `h713-tv@*`, unbinds and binds the receiver around the restart, starts both again and rebuilds the audio DSP; it refuses while a process holds the receiver's video node ([h713-power](tools/h713-power.md)) |
+| `h713-mode status\|hdmi\|sleep-pre\|sleep-post` | what the panel shows besides the HDMI picture (the mode units a launcher entry names), `hdmi` brings the HDMI picture back and ends every mode, the last two are what the sleep units call ([h713-power](tools/h713-power.md)) |
 | `h713-bt-reset` | sends HCI_Reset to the Bluetooth controller on the bare UART; `h713-bluetooth` runs it before and after `hciattach`; by hand only while that unit is stopped, because it needs the bare UART |
 
 ## The watchdog, and which sleep is allowed
