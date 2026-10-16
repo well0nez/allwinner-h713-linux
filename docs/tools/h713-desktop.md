@@ -41,8 +41,7 @@ these units carry no `Conflicts=sleep.target`.
 
 ## The desktop
 
-labwc reads `/etc/h713/labwc/` only: `rc.xml`, `menu.xml`, `autostart`, `environment` (the pointer size). The autostart
-opens a terminal (foot, text size 24 from `/etc/xdg/foot/foot.ini`: a 32 px letter, like Firefox's text at its factor 2, and labwc's title bars and menu in a 20 pt font - the wall is seen from three metres, 16.10.2026); there is no panel and no background program. A click
+labwc reads `/etc/h713/labwc/` only: `rc.xml`, `menu.xml`, `autostart`, `environment` (the pointer size). The terminal (foot, text size 24 from `/etc/xdg/foot/foot.ini`: a 32 px letter, like Firefox's text at its factor 2, and labwc's title bars and menu in a 20 pt font - the wall is seen from three metres, 16.10.2026) is labwc's session client (`labwc -S foot`, the autostart is empty): when it is closed the desktop ends and the HDMI picture comes back, as when Firefox ends in the browser mode. There is no panel and no background program. A click
 on the empty desktop (the remote's OK in its mouse mode is a left click) opens the menu: Terminal, Web browser (Firefox in
 a window, the same profile as the browser mode), HDMI input (ends labwc, so the unit ends). The remote's Menu key opens the same menu.
 The pointer is drawn by labwc itself (`WLR_NO_HARDWARE_CURSORS=1`; the warp's server has no seat to show a hardware
