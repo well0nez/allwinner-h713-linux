@@ -33,7 +33,10 @@ import http.server
 import json
 import os
 import re
+import importlib.machinery
+import importlib.util
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -439,6 +442,7 @@ class Panel(object):
         self.password_file = password_file or self.p("panel.env")
         self.selfpath = selfpath or os.path.realpath(__file__)   # the fall-back timer runs this file
         self.lock, self.ranges, self.server = threading.Lock(), {}, None
+        self._keystone = False                        # keystone_module(): not looked for yet
 
     def p(self, name):
         return os.path.join(self.etc, name)
@@ -777,12 +781,66 @@ class Panel(object):
         self.server.password = new
         return {"ok": True, "line": "ok password changed - the browser asks for the new one"}
 
+    def keystone_module(self):
+        """h713-keystone as a module, loaded once from the tool directory: a
+        status every three seconds may not start a Python interpreter each
+        time.  None when it is not a Python file there (the tests' /bin/sh
+        fakes) or does not load; then the status runs it as a program."""
+        if self._keystone is not False:
+            return self._keystone
+        self._keystone = None
+        path = os.path.join(self.tools, "h713-keystone") if self.tools else shutil.which("h713-keystone")
+        try:
+            loader = importlib.machinery.SourceFileLoader("h713_keystone", path)
+            spec = importlib.util.spec_from_loader("h713_keystone", loader)
+            module = importlib.util.module_from_spec(spec)
+            loader.exec_module(module)
+            self._keystone = module
+        except Exception:                                 # not Python, not there, not importable
+            self._keystone = None
+        return self._keystone
+
+    def keystone_facts(self, warp_text):
+        """The three lines of `h713-keystone status` the page shows -- "after a
+        move", "reference", "keystone by" -- computed here, in this process,
+        out of keystone.conf, the reference file, the last automatic set and
+        the warp status already read.  Measured on the HY310 (16.10.2026): the
+        program start of h713-keystone costs 0.27 s of CPU every three seconds
+        while the page is open, and the projector's light follows the SoC's
+        current -- the page itself made the picture pulse every three seconds.
+        None when the module is not there: the caller runs the program."""
+        ks = self.keystone_module()
+        if ks is None:
+            return None
+        try:
+            conf = ks.load_conf(self.keystone_conf)
+        except Exception as exc:                          # ks.Error: a value the file cannot carry
+            return {"after a move": "-", "reference": "refused (%s)" % exc, "keystone by": "unknown"}
+        found = {}
+        for corner, x, y in ks.WARP_PAIR.findall(warp_text):
+            found[(corner, "x")], found[(corner, "y")] = int(x), int(y)
+        for corner, axis, value in ks.WARP_VALUE.findall(warp_text):
+            found.setdefault((corner, axis), int(value))
+        warp_set = (tuple(found[slot] for slot in ks.WARP_SLOTS)
+                    if len(found) >= len(ks.WARP_SLOTS) else None)
+        facts = {"after a move": str(conf["after_move"])}
+        for label, call in (("reference", lambda: ks._reference_text(ks.REF_PATH, conf)),
+                            ("keystone by", lambda: ks.keystone_by(
+                                warp_set, ks.read_last_auto(ks.LAST_AUTO_PATH)))):
+            try:
+                facts[label] = call()
+            except Exception as exc:
+                facts[label] = str(exc)
+        return facts
+
     def do_status(self, args):
-        """Three statuses and the thermal zones, every three seconds."""
-        warp, tv, keystone = [
-            labelled(self.run(tool, words, TIMEOUT_S)[2]) for tool, words in
-            (("h713-warp", ("ctl", "status")), ("h713-tv", ("ctl", "status", "brief")),
-             ("h713-keystone", ("status",)))]
+        """Two statuses, the keystone facts and the thermal zones, every three seconds."""
+        warp_text = self.run("h713-warp", ("ctl", "status"), TIMEOUT_S)[2]
+        warp = labelled(warp_text)
+        tv = labelled(self.run("h713-tv", ("ctl", "status", "brief"), TIMEOUT_S)[2])
+        keystone = self.keystone_facts(warp_text)
+        if keystone is None:
+            keystone = labelled(self.run("h713-keystone", ("status",), TIMEOUT_S)[2])
         values = dict((c + "_" + a, 0) for c in CORNERS for a in AXES)
         for corner, x, y in PAIR.findall(warp.get("keystone", "")):
             values[corner + "_x"], values[corner + "_y"] = int(x), int(y)

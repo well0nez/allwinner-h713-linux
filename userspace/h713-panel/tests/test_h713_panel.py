@@ -303,6 +303,38 @@ class VerbTest(unittest.TestCase):
                          [{"name": "cpu-thermal", "c": 54.3},
                           {"name": "gpu-thermal", "c": 58.0}])
 
+    def test_status_takes_the_keystone_facts_in_process(self):
+        """With h713-keystone a Python file beside the tools, the status
+        computes "after a move", "reference" and "keystone by" in this
+        process and does not start the program: on the HY310 that start cost
+        0.27 s of CPU every three seconds and made the light pulse."""
+        module = """
+import re
+WARP_SLOTS = (("tl", "x"), ("tl", "y"), ("tr", "x"), ("tr", "y"), ("bl", "x"), ("bl", "y"), ("br", "x"), ("br", "y"))
+WARP_VALUE = re.compile(r"\\b(tl|tr|bl|br)[ _-]?([xy])\\b\\s*[=:]?\\s*(-?\\d+)")
+WARP_PAIR = re.compile(r"\\b(tl|tr|bl|br)\\s+(-?\\d+),(-?\\d+)")
+REF_PATH, LAST_AUTO_PATH = "/nonexistent/ref", "/nonexistent/last-auto"
+def load_conf(path):
+    return {"after_move": "keystone+focus"}
+def _reference_text(path, conf):
+    return "file (2026-10-16): %s, counts 1 2 3" % path
+def read_last_auto(path):
+    return (0, 0, 0, 0, 0, 0, 0, 0)
+def keystone_by(warp_set, last_auto):
+    return "auto (the last automatic set, untouched since)" if warp_set == last_auto else "manual (changed, %r)" % (warp_set,)
+"""
+        with open(os.path.join(self.fake.dir, "h713-keystone"), "wb") as handle:
+            handle.write(module.encode("utf-8"))
+        fresh = panel.Panel(tools=self.fake.dir, keystone_conf=self.conf,
+                            thermal=os.path.join(self.fake.dir, "thermal"))
+        self.fake.forget()
+        state = fresh.call({"verb": "status"})
+        self.assertEqual(state["after_move"], "keystone+focus")
+        self.assertEqual(state["reference"], "set")
+        self.assertEqual(state["keystone_by"], "manual")      # the fake warp status carries non-zero corners
+        self.assertEqual([c for c in self.fake.calls() if c.startswith("h713-keystone")], [])
+        self.assertEqual(sorted(c.split()[0] for c in self.fake.calls()), ["h713-tv", "h713-warp"])
+
     def test_status_without_any_tool(self):
         empty = panel.Panel(tools=os.path.join(self.fake.dir, "nothing"),
                             thermal=os.path.join(self.fake.dir, "nothing"))
