@@ -262,7 +262,8 @@ int main(void)
 	check(readable(p.want_fd, 1000) && peer_want_notes(&p) && p.claim_noted, "want: the answer and \"note claim\" heard");
 	p.claim_noted = false;
 	peer_want(&p, true, true);
-	check(p.want_said == 1 && !readable(p.want_fd, 50), "want: the same word is not said again");
+	check(p.want_said == 1 && !readable(p.want_fd, 50),
+	      "want: the same word is not said again (the fake takes \"none\" as the next line, a repeated \"ring\" fails it)");
 	peer_want(&p, false, true);
 	check(p.want_said == 0 && readable(p.want_fd, 1000) && peer_want_notes(&p) && !p.claim_noted,
 	      "want: \"warp want none\" said when the word changes, answered, no note");

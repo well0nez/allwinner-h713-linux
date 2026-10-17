@@ -9,6 +9,8 @@
 #   make install         install the NATIVE binary (on the board)
 #   make install-cross   install the CROSS-built binary (from the
 #                        workstation, with DESTDIR=/srv/h713-rootfs)
+#   make test            the host test of the want link (tests/, SYSROOT=
+#                        a board root, for the libdrm and ALSA headers)
 #   make clean
 #
 # The kernel is built through build/build.sh in the container and nowhere
@@ -76,7 +78,12 @@ install-data:
 	install -D -m 0644 README.md $(DESTDIR)$(DOCDIR)/README.md
 	install -D -m 0644 gamma-standard.bin $(DESTDIR)$(DATADIR)/gamma-standard.bin
 
+# the host test of the want link and the straight ring's wait (tests/Makefile): needs only the board root's headers
+test:
+	$(MAKE) -C tests run SYSROOT=$(SYSROOT)
+
 clean:
 	rm -f h713-tv h713-tv.$(TARGET)
+	$(MAKE) -C tests clean
 
-.PHONY: all cross install install-cross install-data clean
+.PHONY: all cross install install-cross install-data test clean
