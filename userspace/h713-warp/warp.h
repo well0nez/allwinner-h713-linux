@@ -62,6 +62,12 @@ struct peer {
 	bool cover;			/* h713-tv said "note cover on": an opaque page hides the panel, the warp pauses */
 	double client_said;		/* when h713-tv last said "note source client": a program starts (0: never) */
 	int target[WARP_TARGETS];	/* dma-buf fds of the panel buffers */
+	/* the want link (P3): a connection of its own, "warp want ring|none" out, "note claim" back */
+	int want_fd;			/* -1: none */
+	int want_said;			/* what h713-tv last heard on it: 1 ring, 0 none, -1 nothing yet */
+	double want_tried;		/* the last attempt to connect it */
+	bool want_refused;		/* h713-tv does not know "warp want" (before 17.10.2026): not asked again */
+	bool claim_noted;		/* h713-tv said "note claim": a claim of the ring is taken now */
 	unsigned int width, height, pitch;
 	unsigned int coff;		/* NV12: the chroma plane's offset in each buffer */
 	unsigned long commits, busy, errors;
@@ -80,6 +86,11 @@ bool peer_switch(struct peer *p, int src, char *why, size_t n);
 bool peer_notes(struct peer *p);
 /* "source X" to h713-tv on a short connection of its own: the program has ended, the mode is HDMI again; false: refused */
 bool peer_set_source(struct peer *p, const char *src);
+/* the want link (P3): "warp want ring|none" when the word changes or the link is new; without a link, connect = try to
+ * make it (at most once a second) */
+void peer_want(struct peer *p, bool ring, bool connect);
+/* what h713-tv said on the want link ("note claim"); false: the link is gone (closed here, made again by peer_want) */
+bool peer_want_notes(struct peer *p);
 
 struct source {
 	const char *want;		/* -v PATH, or NULL: search by name */
@@ -191,6 +202,8 @@ struct runtime {
 	int src;			/* enum warp_source: what the claim is for while WARP_ON */
 	int client_rate;		/* 1: a client frame every vsync, 2: every second (--client-rate half) */
 	bool on;			/* "ctl on"/"ctl off": run time only */
+	bool gpu_failed;		/* the GPU failed the last claim (its buffers, five renders): no ring claim to promise
+					 * h713-tv until a frame is drawn again (P3, warp_want_ring()) */
 	bool cover;			/* the pause as last acted on (peer.cover is h713-tv's word) */
 	bool resume;			/* the ring after a pause: the slots that stood are given back, a fresh one is drawn */
 	double paused_at;		/* when the pause began, for the journal */
@@ -236,6 +249,9 @@ int warp_edge_for(struct runtime *r);	/* the soft edge, 0 at the identity */
 bool warp_pump(struct runtime *r);	/* one capture frame; false: fell back */
 void warp_check_tick(struct runtime *r);	/* the self-check's second draw, from the main loop */
 void warp_status(struct runtime *r, char *buf, size_t n);
+/* the word for h713-tv (P3): the ring will be claimed when h713-tv lets it */
+bool warp_want_ring(const struct runtime *r);
+void warp_want_tell(struct runtime *r);		/* ... said on the want link when it changed */
 
 /* for the Wayland side (loop.c): the client is on the panel; one client frame -- 0 committed, 1 h713-tv was busy
  * (the target is drawn and kept), 2 not drawn, -1 the warp fell back; the same target again after a busy */

@@ -1388,6 +1388,7 @@ struct warp {
 	int revoke_fd;			/* timerfd: the claim's grace after a "note source", -1 none */
 	bool revoking;			/* ... armed */
 	struct timespec last_frame;	/* the previous "warp frame" of this claim, for the timing line; 0: none */
+	struct timespec claimed_at;	/* when this claim was made: the journal line of its first frame */
 	uint32_t handle[WARP_BUFS], fb_id[WARP_BUFS];
 	unsigned int pitch, coff;	/* NV12: the line pitch, the chroma plane's offset */
 	unsigned long commits, busy, errors;
@@ -1416,6 +1417,154 @@ static struct {
 	bool resuming;		/* "note cover off" was said: an overlay change waits for the warp's next frame */
 	int resume_fd;		/* timerfd: ... at most COVER_RESUME_MS */
 } cover = { .resume_fd = -1 };
+
+/*
+ * The warp's word, and the wait for its claim (P3 of the media side project, 17.10.2026). h713-warp keeps a connection of
+ * its own open and says on it whether it will claim the ring when it may: "warp want ring" (a keystone, a mirrored mount,
+ * a test pattern) or "warp want none" (the identity, "warp = off", no GPU, a ring the GPU refused). With "ring",
+ * evaluate() does not put the straight ring on the video plane once the signal stands - when it comes, when it comes
+ * back, after "ctl auto", after the warp's release: it says "note claim" on that connection and waits for the claim, at
+ * most WARP_HOLD_MS. The claim finds the plane off and its first frame turns it on: one switch, from black (the console,
+ * or a page) to the warped picture. Before, the straight ring stood on the whole panel for 0.12-1.2 s, the claim switched
+ * the plane off and its first frame on again, and a frame with false colours stood at that edge (HY310, 17.10.2026: the
+ * box's camera at 12 of 12 claims, Marco's eye "often green after the switch"). Without a claim within WARP_HOLD_MS the
+ * straight ring comes after all, said in the journal, and stays until a claim's first frame. A connection that closes
+ * while it says "ring" - h713-warp restarting - leaves "ring" standing for WARP_HOLD_MS; a new connection with "ring"
+ * starts the wait anew. Without a connection (no h713-warp, or one of before 17.10.2026) the ring comes at once, as
+ * always. Under an opaque page nothing waits - nothing of ours is shown under it - but h713-warp hears "note claim" all
+ * the same: its claim pauses under the page, and its first frame after the page carries the page's end.
+ */
+#define WARP_HOLD_MS	1000
+
+static struct {
+	int peer;		/* h713-warp's "warp want" connection, -1: none */
+	bool ring;		/* its last word: it claims the ring when it may */
+	struct timespec gone;	/* the connection closed while it said "ring" (zero: it did not) */
+	int fd;			/* timerfd: the end of the wait, -1 none */
+	bool armed;		/* ... running */
+	struct timespec since;	/* the wait for the claim began (zero: no wait) */
+	bool noted;		/* "note claim" went since the last claim, loss of signal or new connection */
+	bool fallback;		/* the wait ran out: the straight ring, until a claim's first frame */
+} wish = { .peer = -1, .fd = -1 };
+
+static bool ts_zero(const struct timespec *t)
+{
+	return !t->tv_sec && !t->tv_nsec;
+}
+
+/* milliseconds from t to now */
+static long ms_since(const struct timespec *t)
+{
+	struct timespec now;
+
+	clock_gettime(CLOCK_MONOTONIC, &now);
+	return (now.tv_sec - t->tv_sec) * 1000 + (now.tv_nsec - t->tv_nsec) / 1000000;
+}
+
+/* h713-warp will claim the ring when it may: its word, or the word of a connection that closed less than WARP_HOLD_MS ago */
+static bool warp_wants_ring(void)
+{
+	if (!wish.ring)
+		return false;
+	return wish.peer >= 0 || (!ts_zero(&wish.gone) && ms_since(&wish.gone) < WARP_HOLD_MS);
+}
+
+static void want_disarm(void)
+{
+	struct itimerspec its;
+
+	if (!wish.armed)
+		return;
+	memset(&its, 0, sizeof(its));
+	if (wish.fd >= 0)
+		timerfd_settime(wish.fd, 0, &its, NULL);
+	wish.armed = false;
+}
+
+/* no wait any more: a claim's first frame, a lost signal, "ctl off", a page, "warp want none" */
+static void want_hold_end(void)
+{
+	want_disarm();
+	memset(&wish.since, 0, sizeof(wish.since));
+	wish.fallback = false;
+}
+
+/* "note claim" on h713-warp's connection: a claim of the ring is taken now. Once until the next claim or loss of signal. */
+static void want_note_claim(void)
+{
+	if (wish.noted || wish.peer < 0)
+		return;
+	if (send(wish.peer, "note claim\n", 11, MSG_NOSIGNAL | MSG_DONTWAIT) == 11)
+		wish.noted = true;
+	else
+		warn("warp            \"note claim\" did not go (%s) -- h713-warp claims at its next try", strerror(errno));
+}
+
+/*
+ * evaluate() is about to put the straight ring on the video plane: true while it waits for h713-warp's claim instead,
+ * the plane off. The first call starts the wait and tells h713-warp; once WARP_HOLD_MS are over (the timer brings
+ * evaluate() back), or h713-warp is gone or says "none", the ring goes through - said in the journal.
+ */
+static bool want_hold(const struct display *d)
+{
+	struct itimerspec its = { 0 };
+	long ms;
+
+	if (d->on || warp.claimed || wish.fallback)
+		return false;
+	if (!warp_wants_ring()) {
+		if (!ts_zero(&wish.since))
+			info("warp            no claim to wait for any more (%s) -- the straight ring",
+			     wish.ring ? "h713-warp's connection is gone" : "h713-warp says it will not claim the ring");
+		want_hold_end();
+		return false;
+	}
+	if (ts_zero(&wish.since)) {
+		clock_gettime(CLOCK_MONOTONIC, &wish.since);
+		info("warp            the straight ring waits for h713-warp's claim, at most %d ms -- the video plane stays off until its first frame",
+		     WARP_HOLD_MS);
+	}
+	ms = ms_since(&wish.since);
+	if (ms >= WARP_HOLD_MS - 2) {
+		want_disarm();
+		wish.fallback = true;
+		warn("warp            h713-warp did not claim within %ld ms -- the straight ring after all, until a claim's first frame",
+		     ms);
+		return false;
+	}
+	want_note_claim();
+	if (!wish.armed) {
+		if (wish.fd < 0)
+			wish.fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+		its.it_value.tv_sec = (WARP_HOLD_MS - ms) / 1000;
+		its.it_value.tv_nsec = (WARP_HOLD_MS - ms) % 1000 * 1000000L;
+		wish.armed = wish.fd >= 0 && !timerfd_settime(wish.fd, 0, &its, NULL);
+		if (!wish.armed) {
+			warn("warp            no timer for the wait (%s) -- the straight ring at once", strerror(errno));
+			wish.fallback = true;
+			return false;
+		}
+	}
+	return true;
+}
+
+/* the want line of "ctl status" */
+static const char *want_text(char *buf, size_t n)
+{
+	if (!ts_zero(&wish.since) && !wish.fallback && !warp.claimed)
+		snprintf(buf, n, "ring -- the straight ring waits for h713-warp's claim (%ld of %d ms)", ms_since(&wish.since),
+			 WARP_HOLD_MS);
+	else if (wish.fallback)
+		snprintf(buf, n, "%s -- the wait ran out: the straight ring until a claim's first frame", wish.ring ? "ring" : "none");
+	else if (wish.peer >= 0)
+		snprintf(buf, n, "%s (h713-warp's word: %s)", wish.ring ? "ring" : "none", wish.ring ?
+			 "the straight ring waits up to 1000 ms for its claim" : "the straight ring at once");
+	else if (warp_wants_ring())
+		snprintf(buf, n, "ring (h713-warp's connection closed %ld ms ago: its restart is waited for)", ms_since(&wish.gone));
+	else
+		snprintf(buf, n, "none (no word from h713-warp: the straight ring at once)");
+	return buf;
+}
 
 /* the grace for h713-warp ends: switched or released in time, or nothing more to wait for */
 static void warp_revoke_stop(void)
@@ -4476,6 +4625,11 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		reply_add(r, "warp            on (%s), video plane %u: %lu commits, %lu busy, %lu refused\n",
 			  warp.client ? "a Wayland client" : "the ring", d->plane_id, warp.commits, warp.busy,
 			  warp.errors);
+	{
+		char wbuf[160];
+
+		reply_add(r, "want            %s\n", want_text(wbuf, sizeof(wbuf)));
+	}
 	if (d->src_w)
 		reply_add(r, "buffer          %ux%u NV16, line pitch %u on panel %ux%u\n", d->src_w, d->src_h, d->src_pitch,
 			  d->width, d->height);
@@ -5473,17 +5627,34 @@ static bool warp_note(const char *line)
 	return warp.peer >= 0 && send(warp.peer, line, len, MSG_NOSIGNAL | MSG_DONTWAIT) == (ssize_t)len;
 }
 
-/* "warp claim" (A2): the three targets, their fds with the answer. The video
- * plane goes down first and the master is taken for the whole warp; the
- * answer goes out here, because the fds have to travel with that line.
+/* a ring claim this program cannot take (no plane, no buffers, no master) while the straight ring waits for it: no use
+ * waiting for the next one - true, and evaluate() puts the ring up */
+static bool want_give_up(bool client, const char *why)
+{
+	if (client || ts_zero(&wish.since) || wish.fallback)
+		return false;
+	want_disarm();
+	wish.fallback = true;
+	warn("warp            the claim failed here (%s) -- the straight ring without waiting further", why);
+	return true;
+}
+
+/* "warp claim" (A2): the three targets, their fds with the answer. A video
+ * plane that shows the straight ring goes down first and the master is taken
+ * for the whole warp; the answer goes out here, because the fds have to
+ * travel with that line. A plane that is off (the straight ring waited for
+ * this claim, want_hold()) stays off: the warp's first frame turns it on,
+ * one switch instead of three. True: the caller has to run evaluate() - the
+ * straight ring waited for this claim and it failed here.
  */
-static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display *d, int conn,
+static bool cmd_warp_claim(struct reply *r, struct capture *cap, struct display *d, int conn,
 			   const char *what)
 {
 	/* "warp claim client": h713-warp draws a Wayland client; plain "warp claim" is the ring */
 	bool client = what && !strcmp(what, "client");
 	bool allowed = client ? ctl.source != SOURCE_HDMI : ctl.source != SOURCE_CLIENT;
-	char cbuf[CMSG_SPACE(sizeof(int) * WARP_BUFS)] = { 0 }, line[64];
+	bool was_on = d->on;
+	char cbuf[CMSG_SPACE(sizeof(int) * WARP_BUFS)] = { 0 }, line[64], waited[64] = "";
 	int fds[WARP_BUFS] = { -1, -1, -1 };
 	struct iovec io = { line, 0 };
 	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1,
@@ -5494,44 +5665,44 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	if (warp.claimed || conn < 0) {
 		reply_fail(r, "%s", warp.claimed ? "the warp is already claimed"
 			   : "\"warp claim\" needs the connection it is sent on");
-		return;
+		return false;
 	}
 	if (!d->plane_id || !prop_id(&d->plane_props, "IN_FENCE_FD")) {
 		reply_fail(r, "no video plane with IN_FENCE_FD on CRTC %u", d->crtc_id);
-		return;
+		return want_give_up(client, "no video plane with IN_FENCE_FD");
 	}
 	if (what && !client && strcmp(what, "ring")) {
 		reply_fail(r, "warp claim takes ring or client, not \"%s\"", what);
-		return;
+		return false;
 	}
 	if (client && !d->crtc_props.list)
 		props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &d->crtc_props);
 	if (client && !prop_id(&d->crtc_props, "OUT_FENCE_PTR")) {
 		reply_fail(r, "CRTC %u has no OUT_FENCE_PTR -- a client cannot be paced", d->crtc_id);
-		return;
+		return false;
 	}
 	/* "off" holds until "auto": without this the warp, asking once a second,
 	 * took the picture back about a second after "off" (TODO 2.27)
 	 */
 	if (ctl.policy == POLICY_OFF) {
 		reply_fail(r, "console forced (\"ctl off\") -- ask again");
-		return;
+		return false;
 	}
 	/* the source decides; h713-warp reads the policy from this line and asks again */
 	if (!allowed) {
 		reply_fail(r, "source is %s -- no %s claim, ask again", source_name[ctl.source],
 			   client ? "client" : "ring");
-		return;
+		return false;
 	}
 	if (!client && cap->last_sig != 1) {
-		/* the warp asks again once a second; the console stays until then */
+		/* the warp asks again once a second, or at once on "note claim"; the console stays until then */
 		reply_fail(r, "no signal to warp -- the console stays, ask again");
-		return;
+		return false;
 	}
 	if ((d->on && !display_hide(d)) || !display_take_master(d)) {
 		reply_fail(r, "the video plane or the DRM master could not be taken over: %s",
 			   strerror(errno));
-		return;
+		return want_give_up(client, "the video plane or the DRM master");
 	}
 	bad = !warp_alloc(d, fds);
 	if (bad) {
@@ -5557,22 +5728,31 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	if (bad) {
 		warp_free(d);
 		display_release_master(d);
-		return;
+		return want_give_up(client, "the buffers");
 	}
 	warp.claimed = true;
 	warp.client = client;
 	warp.told = (int)ctl.source;
 	warp.peer = conn;
 	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
+	clock_gettime(CLOCK_MONOTONIC, &warp.claimed_at);
 	d->warped = true;
 	console_keys(false);
-	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u%s",
+	/* the wait is over with the claim's first frame (warp_serve()); a claim that ends before one does not start it anew */
+	want_disarm();
+	wish.noted = false;
+	if (!ts_zero(&wish.since) && !wish.fallback)
+		snprintf(waited, sizeof(waited), " (the straight ring waited %ld ms for it)", ms_since(&wish.since));
+	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u%s%s",
 	     client ? " for a Wayland client (no signal needed, the HDMI sound silent)" : "",
 	     d->width, d->height, warp.pitch, warp.coff, d->plane_id,
-	     cover.on ? " -- under an opaque page: it pauses at once, the video plane stays off" : "");
+	     cover.on ? " -- under an opaque page: it pauses at once, the video plane stays off" :
+	     was_on ? " -- the straight ring off, the first frame turns the plane on" :
+	     " -- the video plane is off and comes on with the first frame", waited);
 	/* claimed under a page: the video plane is off (display_hide above) and stays off; the warp draws from the page's end */
 	if (cover.on && !warp_note("note cover on\n"))
 		warn("warp            \"note cover on\" did not go (%s) -- the warp draws under the page", strerror(errno));
+	return false;
 }
 
 /*
@@ -5700,6 +5880,11 @@ static bool warp_serve(struct capture *cap, struct display *d)
 			if (!cover.on && answer[2] == '\n') {
 				cover_resume_stop();	/* the first frame after a page carried the overlay's change */
 				cover.plane_off = false;	/* ... and turned the video plane on again */
+				if (warp.commits == 1) {	/* the claim's first frame: the plane is on, the wait is over */
+					info("warp            first frame: the video plane on with h713-warp's picture, %ld ms after the claim",
+					     ms_since(&warp.claimed_at));
+					want_hold_end();
+				}
 			}
 			/* "source" changed while the claim stood: the next "ok" says so, h713-warp reads it there */
 			if (!strncmp(answer, "ok", 2) && warp.told != (int)ctl.source) {
@@ -5760,14 +5945,115 @@ static bool warp_serve(struct capture *cap, struct display *d)
 	return true;
 }
 
+/*
+ * "warp want ring|none" (P3, see want above): h713-warp's word whether it claims the ring when it may. The first line makes
+ * the connection h713-warp's want connection - it stays open, "note claim" goes back on it, and a newer one replaces it (a
+ * restarted h713-warp); later lines come through want_serve(). True: the caller has to run evaluate() - the straight ring
+ * no longer waits ("none"), or a new h713-warp says "ring" and the wait (with its "note claim") begins anew.
+ */
+static bool cmd_warp_want(struct reply *r, int conn, const char *what)
+{
+	bool ring = what && !strcmp(what, "ring"), fresh = conn != wish.peer, was = warp_wants_ring();
+
+	if (!what || (!ring && strcmp(what, "none"))) {
+		reply_fail(r, "warp want takes ring or none, not \"%s\"", what ? what : "");
+		return false;
+	}
+	if (conn < 0) {
+		reply_fail(r, "\"warp want\" needs the connection it is sent on");
+		return false;
+	}
+	if (fresh) {
+		if (wish.peer >= 0)
+			close(wish.peer);	/* an older h713-warp's: the newer one's word counts */
+		wish.peer = conn;
+		memset(&wish.gone, 0, sizeof(wish.gone));
+		wish.noted = false;
+	}
+	wish.ring = ring;
+	reply_add(r, "ok want %s\n", ring ? "ring" : "none");
+	if (fresh || was != ring)
+		info("warp            h713-warp %s: %s", fresh ? "says" : "says now",
+		     ring ? "it claims the ring when it may -- the straight ring waits for its claim (at most 1000 ms)" :
+		     "it will not claim the ring -- the straight ring at once");
+	if (!ring) {
+		bool waiting = !ts_zero(&wish.since);
+
+		want_hold_end();
+		return waiting;
+	}
+	if (fresh && !ts_zero(&wish.since) && !wish.fallback) {
+		clock_gettime(CLOCK_MONOTONIC, &wish.since);	/* a restarted h713-warp: its time begins now */
+		want_disarm();
+	}
+	return fresh;
+}
+
+/* h713-warp's want connection is readable: its lines, or its end. True: the caller has to run evaluate(). */
+static bool want_serve(void)
+{
+	char buf[256], *line, *next;
+	bool again = false;
+	ssize_t got;
+
+	got = recv(wish.peer, buf, sizeof(buf) - 1, MSG_DONTWAIT);
+	if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+		return false;
+	if (got <= 0) {
+		close(wish.peer);
+		wish.peer = -1;
+		if (wish.ring)
+			clock_gettime(CLOCK_MONOTONIC, &wish.gone);
+		info("warp            h713-warp's want connection closed%s", wish.ring ?
+		     " -- \"ring\" stands for 1000 ms more (a restart comes back within it)" : "");
+		return false;	/* a wait that runs ends with its timer */
+	}
+	buf[got] = '\0';
+	for (line = buf; *line; line = next) {
+		struct reply r = { .len = 0, .failed = false };
+		char *save = NULL, *w1, *w2, *w3;
+
+		next = line + strcspn(line, "\n");
+		if (*next)
+			*next++ = '\0';
+		line[strcspn(line, "\r")] = '\0';
+		w1 = strtok_r(line, " \t", &save);
+		w2 = strtok_r(NULL, " \t", &save);
+		w3 = strtok_r(NULL, " \t", &save);
+		if (!w1)
+			continue;
+		if (w2 && !strcmp(w1, "warp") && !strcmp(w2, "want"))
+			again |= cmd_warp_want(&r, wish.peer, w3);
+		else
+			reply_fail(&r, "this connection takes \"warp want ring|none\" only");
+		if (wish.peer >= 0 && send(wish.peer, r.buf, r.len, MSG_NOSIGNAL | MSG_DONTWAIT) < 0)
+			warn("warp            answering h713-warp's want line: %s", strerror(errno));
+	}
+	return again;
+}
+
+/* the end of the wait: WARP_HOLD_MS are over - evaluate() decides (the ring, unless the claim came in time) */
+static bool want_hold_due(void)
+{
+	uint64_t ticks;
+
+	if (read(wish.fd, &ticks, sizeof(ticks)) != sizeof(ticks))
+		ticks = 0;
+	wish.armed = false;
+	return !ts_zero(&wish.since) && !warp.claimed;
+}
+
 /* warp [status] for the human; "claim" is h713-warp's (A1) */
 static bool cmd_warp(struct reply *r, struct capture *cap, struct display *d, const char *what,
 		     const char *src, int conn)
 {
 	if (what && !strcmp(what, "claim")) {
-		cmd_warp_claim(r, cap, d, conn, src);
-		return warp.claimed && warp.client;	/* the sound goes quiet behind a client */
+		bool again = cmd_warp_claim(r, cap, d, conn, src);
+
+		return again || (warp.claimed && warp.client);	/* the ring after a failed wait; the sound goes quiet behind a client */
 	}
+	if (what && !strcmp(what, "want"))
+		return cmd_warp_want(r, conn, src);
 	if (what && strcmp(what, "status"))
 		reply_fail(r, "warp knows \"status\" here; on, off and the keystone are h713-warp ctl");
 	else if (!warp.claimed)
@@ -7521,7 +7807,14 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 	} else if (!strcmp(cmd, "zoom")) {
 		return cmd_zoom(r, d, a1, a2);
 	} else if (!strcmp(cmd, "warp")) {
-		return cmd_warp(r, cap, d, a1, a2, conn);
+		bool again = cmd_warp(r, cap, d, a1, a2, conn);
+
+		/* a ring claim on a plane that was off (the straight ring waited for it): the sound follows the picture the warp
+		 * is about to draw - nothing else re-evaluates it, and evaluate() would ask the capture for its timings while the
+		 * warp waits for the answer to its first frame */
+		if (a1 && !strcmp(a1, "claim") && warp.claimed && !warp.client)
+			audio_evaluate(a, cap, true);
+		return again;
 	} else if (!strcmp(cmd, "source")) {
 		return cmd_source(r, d, a1);
 	} else if (!strcmp(cmd, "osd")) {
@@ -7639,7 +7932,7 @@ static bool control_serve(struct control *c, struct capture *cap,
 			break;
 		off += n;
 	}
-	if (fd != warp.peer && fd != osd.peer)	/* the warp's and the overlay's connections live on (A2) */
+	if (fd != warp.peer && fd != osd.peer && fd != wish.peer)	/* the warp's, the overlay's and the want connections live on (A2) */
 		close(fd);
 
 	return reevaluate;
@@ -7736,16 +8029,10 @@ static void evaluate(struct capture *cap, struct display *d,
 		     sig == 0 ? "gone" : sig == 2 ? "changing" : sig == 3 ? "not in the firmware's table" : "not readable");
 		warp_release(d);
 	}
-	/* an opaque page on the wall: no picture of our own under it (cover_follow() puts it back when the page goes) */
-	if (cover.on) {
-		retry_stop(rt);
-		if (d->on)
-			display_hide(d);
-		return;
-	}
 	/* "off" over the control socket: the console stays, whatever the signal does */
 	if (ctl.policy == POLICY_OFF) {
 		retry_stop(rt);
+		want_hold_end();
 		display_hide(d);
 		return;
 	}
@@ -7814,6 +8101,8 @@ static void evaluate(struct capture *cap, struct display *d,
 			     signal_text(&t, sigbuf, sizeof(sigbuf)));
 		else if (was != 3)
 			info("signal          a source the firmware's table does not carry -- console");
+		want_hold_end();
+		wish.noted = false;
 		display_hide(d);
 		return;
 	}
@@ -7821,6 +8110,8 @@ static void evaluate(struct capture *cap, struct display *d,
 	if (sig <= 0) {
 		if (sig == 0)
 			info("signal          no signal (the flip pointers stand still)");
+		want_hold_end();
+		wish.noted = false;
 		display_hide(d);
 		return;
 	}
@@ -7880,6 +8171,23 @@ static void evaluate(struct capture *cap, struct display *d,
 		     d->src_w, d->src_h, d->src_pitch, d->width, d->height);
 	}
 
+	/*
+	 * An opaque page on the wall: no picture of our own under it (cover_follow() brings it back when the page goes). The
+	 * signal is measured all the same, so that a claim of the warp is taken under the page: it pauses at once, and its
+	 * first frame after the page carries the page's end - the page goes straight to the warped picture (before, the
+	 * claim was refused under the page and the straight ring came after it, until the warp asked again).
+	 */
+	if (cover.on) {
+		want_hold_end();
+		if (d->on)
+			display_hide(d);
+		if (warp_wants_ring())
+			want_note_claim();
+		return;
+	}
+	/* h713-warp will draw the ring: the plane stays off until its claim's first frame (want_hold(), at most WARP_HOLD_MS) */
+	if (want_hold(d))
+		return;
 	display_show(d);
 }
 
@@ -7984,7 +8292,7 @@ int main(int argc, char **argv)
 	struct audio au = { .settle_fd = -1, .tick_fd = -1 };
 	struct conf conf = { .path = CONF_FILE };
 	enum audio_policy apol;
-	struct pollfd fds[11];
+	struct pollfd fds[13];
 	const char *sock = CTL_SOCKET;
 	const char *startpreset = "standard";
 	int sfd, arg, rc = 0;
@@ -8361,6 +8669,11 @@ int main(int argc, char **argv)
 		/* the page went: the overlay's change waits for the warp's next frame, this long at most */
 		fds[10].fd = cover.resuming ? cover.resume_fd : -1;
 		fds[10].events = POLLIN;
+		/* h713-warp's word whether it claims the ring (P3), and the end of the straight ring's wait for that claim */
+		fds[11].fd = wish.peer;
+		fds[11].events = POLLIN;
+		fds[12].fd = wish.armed ? wish.fd : -1;
+		fds[12].events = POLLIN;
 		{
 			static struct timespec last_ret;
 			struct timespec now;
@@ -8427,6 +8740,9 @@ int main(int argc, char **argv)
 				LOOP_TIMED("a capture event's evaluation", evaluate(&cap, &d, &rt));
 			LOOP_TIMED("a capture event's audio evaluation", audio_evaluate(&au, &cap, d.on || d.warped));
 		}
+		/* before the warp's own connection: "warp want none" is said before a release, and is to be heard first */
+		if (fds[11].fd >= 0 && fds[11].revents && want_serve())
+			LOOP_TIMED("the warp's word", reevaluate(&cap, &d, &rt, &au));
 		if (fds[6].fd >= 0 && fds[6].revents) {
 			bool again = false;
 
@@ -8474,6 +8790,8 @@ int main(int argc, char **argv)
 		}
 		if (fds[10].fd >= 0 && (fds[10].revents & POLLIN))
 			LOOP_TIMED("the overlay after a page, alone", cover_resume_due(&d));
+		if (fds[12].fd >= 0 && (fds[12].revents & POLLIN) && want_hold_due())
+			LOOP_TIMED("the end of the wait for the warp's claim", reevaluate(&cap, &d, &rt, &au));
 		/* whatever the handlers did with the overlay: does an opaque page hide the picture now? */
 		cover_follow(&cap, &d, &rt, &au);
 		capture_follow();
@@ -8503,6 +8821,10 @@ int main(int argc, char **argv)
 		close(warp.revoke_fd);
 	if (cover.resume_fd >= 0)
 		close(cover.resume_fd);
+	if (wish.peer >= 0)
+		close(wish.peer);
+	if (wish.fd >= 0)
+		close(wish.fd);
 	close(sfd);
 	close(cap.fd);
 

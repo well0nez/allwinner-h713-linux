@@ -5,7 +5,10 @@
  * ("warp switch client|ring") and the note h713-tv says unasked ("note source X") - alone between two exchanges, in
  * front of an answer, behind it, in the same read or in a read of its own, with and without a flip fence; the page's
  * notes ("note cover on|off") and "client" said again (a program starts); and "source auto" on a connection of its own
- * (the program has ended). No GPU, no device: the fake answers on a Unix socket, the three panel buffers are memfds.
+ * (the program has ended). The want link (P3): "warp want ring|none" said once per change on a connection of its own,
+ * h713-tv's "note claim" heard on it, the link made again after h713-tv went (at most once a second), and an h713-tv
+ * that does not know the line asked no more. No GPU, no device: the fake answers on a Unix socket, the three panel
+ * buffers are memfds.
  *
  *   test_peer          exit 0 when every case passed
  */
@@ -128,6 +131,52 @@ static void fake_tv(const char *path)
 	_exit(0);
 }
 
+/* one line in, or nothing within a second */
+static bool hear(int c, const char *want_line)
+{
+	struct pollfd pf = { .fd = c, .events = POLLIN };
+	char buf[128];
+	ssize_t got;
+
+	if (poll(&pf, 1, 1000) != 1)
+		return false;
+	got = recv(c, buf, sizeof(buf) - 1, 0);
+	if (got <= 0)
+		return false;
+	buf[got] = '\0';
+	return !strcmp(buf, want_line);
+}
+
+/* the scripted h713-tv for the want link: ring + note, none, a restart (the link closed), then an h713-tv that does not know it */
+static void fake_tv_want(const char *path)
+{
+	struct sockaddr_un a = { .sun_family = AF_UNIX };
+	int l = socket(AF_UNIX, SOCK_STREAM, 0), c, bad = 0;
+
+	snprintf(a.sun_path, sizeof(a.sun_path), "%s", path);
+	if (l < 0 || bind(l, (struct sockaddr *)&a, sizeof(a)) || listen(l, 2))
+		_exit(2);
+	c = accept(l, NULL, NULL);
+	if (hear(c, "warp want ring\n"))
+		say(c, "ok want ring\nnote claim\n");
+	else
+		bad |= 1;
+	if (hear(c, "warp want none\n"))
+		say(c, "ok want none\n");
+	else
+		bad |= 2;
+	usleep(50000);
+	close(c);			/* h713-tv went (a restart) */
+	c = accept(l, NULL, NULL);	/* the link again, the word again */
+	if (hear(c, "warp want ring\n"))
+		say(c, "error warp knows \"status\" here\n");	/* an h713-tv of before the want link */
+	else
+		bad |= 4;
+	close(c);
+	close(l);
+	_exit(bad ? 10 + bad : 0);
+}
+
 static bool readable(int fd, int ms)
 {
 	struct pollfd pf = { .fd = fd, .events = POLLIN };
@@ -196,6 +245,41 @@ int main(void)
 	check(peer_set_source(&p, "auto") && p.tv_source == TV_AUTO, "source auto on a connection of its own: ok, source auto");
 	waitpid(pid, &st, 0);
 	check(WIFEXITED(st) && WEXITSTATUS(st) == 0, "the fake h713-tv saw every line it expected");
+	unlink(path);
+
+	/* the want link (P3) */
+	snprintf(path, sizeof(path), "%s/want", dir);
+	pid = fork();
+	if (pid == 0)
+		fake_tv_want(path);
+	for (i = 0; i < 100 && access(path, F_OK); i++)
+		usleep(10000);
+	peer_init(&p, path);
+	peer_want(&p, true, false);
+	check(p.want_fd < 0, "want: no link made when it is not asked for (warp = off)");
+	peer_want(&p, true, true);
+	check(p.want_fd >= 0 && p.want_said == 1, "want: the link made, \"warp want ring\" said");
+	check(readable(p.want_fd, 1000) && peer_want_notes(&p) && p.claim_noted, "want: the answer and \"note claim\" heard");
+	p.claim_noted = false;
+	peer_want(&p, true, true);
+	check(p.want_said == 1 && !readable(p.want_fd, 50), "want: the same word is not said again");
+	peer_want(&p, false, true);
+	check(p.want_said == 0 && readable(p.want_fd, 1000) && peer_want_notes(&p) && !p.claim_noted,
+	      "want: \"warp want none\" said when the word changes, answered, no note");
+	check(readable(p.want_fd, 1000) && !peer_want_notes(&p) && p.want_fd < 0 && p.want_said < 0,
+	      "want: h713-tv went - the link is closed, the word unsaid");
+	peer_want(&p, true, true);
+	check(p.want_fd < 0, "want: not made again within a second");
+	p.want_tried = 0;
+	peer_want(&p, true, true);
+	check(p.want_fd >= 0 && p.want_said == 1, "want: made again after the second, the word said again");
+	check(readable(p.want_fd, 1000) && !peer_want_notes(&p) && p.want_refused && p.want_fd < 0,
+	      "want: an h713-tv that does not know the line - the link closed and not asked again");
+	p.want_tried = 0;
+	peer_want(&p, true, true);
+	check(p.want_fd < 0, "want: ... not even after the second");
+	waitpid(pid, &st, 0);
+	check(WIFEXITED(st) && WEXITSTATUS(st) == 0, "want: the fake h713-tv saw every line it expected");
 	unlink(path);
 	rmdir(dir);
 	printf("%s: %d failed\n", failed ? "FAILED" : "PASSED", failed);
