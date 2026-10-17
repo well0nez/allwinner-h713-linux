@@ -6,7 +6,7 @@ Everything is inside a safe margin of 5 % on each side (96 px left and right, 54
 every page against it). While a value that is judged on the picture is adjusted - Brightness, Contrast, Colour, Tint, Sharpness,
 Zoom, the corners by hand - the page is **one pill at the foot over the real picture** (the mockup v1's S2), so that the effect can be seen. The launcher's entry "Settings" opens it
 (`/etc/h713/launcher.d/50-settings.conf`, which starts it as the transient unit `h713-settings` - its journal is kept and a second OK
-cannot start a second page), Back at the top level closes it. Everything the box can do from a shell with
+cannot start a second page), Back at the top level closes it and **the launcher opens again, Settings chosen** (Home closes everything: the mode is on the wall). Everything the box can do from a shell with
 `h713-... ctl` is reachable here, and **every row is one existing command or one `key = value` of a file in `/etc/h713`**:
 a tool that cannot do something has no row for it. Texts on the wall are English. The look is the owner's choice S1 of
 the launcher mock-up (areas left, rows right).
@@ -18,6 +18,22 @@ h713-settings --test [--size WxH] [--area NAME]              the page for the ho
 
 `--test` reads lines (`up down left right ok back home power volup voldown mute focusup focusdown`) and the commands `dump`
 (the model as text, ending with `--`), `snap FILE` (the canvas as PAM) and `sleep MS`; it is how the host tests drive it.
+
+## How it ends: the exit status
+
+How the page ends is its exit status, and [h713-keys](h713-keys.md) reads it (the launcher entry `50-settings.conf` runs `systemd-run --wait` and says `return = launcher`): **Back at the top level is 0 and
+the launcher opens again** with Settings chosen - Back goes one level back, and the page is one level above the launcher. Every other end leaves the wall to the mode below, so none of them is 0:
+
+| Status | End |
+|---|---|
+| 0 | Back at the top level (a test run that ends at the end of its input is 0 too) |
+| 10 | Home: everything closes |
+| 11 | Power: the page closes, h713-power has the press |
+| 12 | no key for `--idle` seconds (120) |
+| 13 | the picture did not come back in time (`H713_SETTINGS_PATIENCE`, 10 s) |
+| 14 | h713-osd does not answer |
+| 15 | SIGTERM or SIGINT |
+| 2 to 5 | the page did not open: usage, h713-osd cannot show it, no remote to hold, no font |
 
 ## How it reaches the wall and the remote
 
@@ -46,7 +62,7 @@ be held means no page: a page whose keys Kodi shares is worse than none.
 | Up / Down | change the area | change the row | change the option | move the corner |
 | Left / Right | (Right: into the rows) | slider and switch: change the value at once; a slider judged on the picture: the first press moves it and shrinks the page to its pill | | move the corner |
 | OK | into the rows | switch: flip; choice: open its options; action: run it; corners: start; a slider judged on the picture: open its pill | take the option | next corner |
-| Back | close the page | back to the areas | cancel | done |
+| Back | close the page (exit 0: the launcher opens again) | back to the areas | cancel | done |
 
 **The pill** (a slider judged on the picture): the label, the track and the number over the real picture, the keys under it;
 Left/Right change the value, Up/Down go to the next such slider of the area (Brightness, Contrast, ...), OK or Back bring the
@@ -71,9 +87,8 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | Focus | Autofocus now | | `h713-autofocus -q run` (the panel is the autofocus's for the length of the run) | |
 | | Autofocus after a move | `after_move` | `after_move = keystone+focus` (turns the automatic keystone on too) | the file |
 | | Focus by hand | | `h713-focus up \| down N` (N = `focus_steps` of `keys.conf` per press; presses during a run are counted and run next) | |
-| Input | Source | `h713-tv ctl source` | `ctl source auto \| hdmi` | `source =` in `tv.conf` |
-| | On start | `on_start` in `keys.conf` (not in the file: Launcher); no row where the image has no `/etc/h713/launcher.d` | `on_start = launcher \| hdmi` | the file; h713-keys reads it at the next start of the box (`doku/213` §4) |
-| | On the wall now | the same answer | | |
+| Input | On start | `on_start` in `keys.conf` (not in the file: Launcher); no row where the image has no `/etc/h713/launcher.d` | `on_start = launcher \| hdmi \| last \| ID` | the file; h713-keys reads it at the next start of the box (`doku/213` §4). The options are Launcher, HDMI input, every `/etc/h713/launcher.d/*.conf` entry that names a `unit` (a mode: Kodi, Browser, Desktop - a new one appears with no change here; ID is the file name without its number and suffix, `20-kodi.conf` is `kodi`) and Last used (what ran when the box went off, `/var/lib/h713-keys/last-mode`). Each has its sentence under the page |
+| | On the wall now | `h713-tv ctl source`, and `systemctl is-active` of each mode unit: the mode that runs by its own name, else "HDMI picture" | | |
 | Power | Power key | `default` of `power.conf`; "Standby" only where `h713-power status` offers it | `h713-power set default standby \| poweroff` | the file |
 | | Remote power key | `remote` of `power.conf` | `h713-power set remote on \| off` | the file |
 | Wi-Fi | Mode, Network, Signal, Address | `wifi.env` (never the password), `iw dev wlan0 link`, `ip -4 addr` | nothing: shown only | |
@@ -88,6 +103,7 @@ greyed out.
 | Colour temperature, Gamma | `h713-tv` has no runtime control for either (the curve is loaded once at the start) |
 | Sound output | the box has one sound path; `h713-tv ctl audio auto \| on \| off` is a policy, not an output |
 | Autofocus after switching on | nothing runs the autofocus at power-on; "after a move" is what exists |
+| Source (Automatic / HDMI only) | no row since 17.10.2026 (the owner): which of the two is on the wall is not a thing to choose - a program that runs is on the wall, with none it is the HDMI input. "HDMI only" undid itself with the next Kodi start, and "Automatic" read as if it had to do with the start. `h713-tv ctl source` stays a tool for tests and the web page |
 | Picture to console / "HDMI auto-switch" off | `h713-tv ctl off` would put the console under the page, and the page has no picture there: nobody could switch it back |
 | Wi-Fi: choose among saved networks, join a new one | `wifi.env` holds one network; a password needs an on-screen keyboard (open, not in this package) |
 
