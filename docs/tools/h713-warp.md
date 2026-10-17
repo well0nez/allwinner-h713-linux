@@ -27,6 +27,16 @@ Per frame: `DQBUF` a capture slot, draw it through the matrix into the next of t
 fence, send `warp frame N` with that fence, and give the slot back only after `h713-tv` has answered - a slot
 is overwritten every third frame and nothing in the dma-buf says so.
 
+A second connection stays open for as long as both run, the *want link* (17.10.2026): `warp want ring` or `warp want
+none`, said once at the start and again only when it changes, tells `h713-tv` whether this daemon will claim the ring
+when it may - `ring` with a keystone, a mirrored mount or a test pattern; `none` at the identity, with `warp = off`, for a
+ring geometry the GPU refused and after the GPU failed a claim (until a frame is drawn again). `none` goes out before a
+claim is given back. With `ring`, `h713-tv` keeps its straight ring off the video plane when the signal stands, says `note
+claim` on the link and waits up to a second; this daemon claims at once on that note, and its first frame turns the plane
+on - one switch from black to the warped picture, see [h713-tv](h713-tv.md), "The first picture". The link is made again
+once a second while `h713-tv` is away; an `h713-tv` of before that day answers the line with an error and is not asked again.
+`ctl status` says the word on its `want` line.
+
 ## `h713-warp ctl` - the control channel
 
 The daemon listens on `/run/h713-warp/ctl`; a command is one line, the answer's first word is `ok` or `error`,
@@ -191,7 +201,11 @@ Every one of these leaves a picture on the wall; that is the rule.
 | no GPU, no mesa, a missing EGL extension | `ctl on` is refused by name (`ctl status` says which piece), the ring stays |
 | no signal | nothing to warp; the daemon idles and `h713-tv`'s own console handback covers the wall |
 | no `h713-tv` | nothing is claimed; the daemon retries once a second |
-| five failed renders in a row, or a lost EGL context | released back to bypass, once in the journal |
+| five failed renders in a row, or a lost EGL context | released back to bypass, once in the journal; the want link says `none` first, so `h713-tv` puts its ring up at once, and `ring` again after the next drawn frame |
+| the GPU does not take `h713-tv`'s buffers after a claim | the same: `none`, the claim given back, the straight ring at once |
+| `h713-warp` restarts | `h713-tv` keeps the `ring` of the closed want link for one second and starts the wait anew when the new daemon says `ring`; the restarted daemon claims within it (HY310, 17.10.2026: the first frame 0.48 s after the stop, 3 of 3 restarts without a straight frame) |
+| `h713-warp` stops, hangs, or does not claim | after one second without a claim `h713-tv` shows the straight ring (journal: `h713-warp did not claim within ... -- the straight ring after all`) and keeps it until a claim's first frame |
+| an `h713-tv` of before 17.10.2026 | it answers `warp want` with an error; the daemon does not ask again, and the straight ring stands until the claim, as before |
 | the source changes resolution | on every `SOURCE_CHANGE` the queue is stopped, the driver asked (`QUERY_DV_TIMINGS`, then `G_FMT` - a streaming queue keeps its format, so `G_FMT` alone could only repeat the old ring, which it did until 12.10.2026) and the six capture images are rebuilt; the driver also reports a ring that moved without a firmware callback since kernel 0260 (`doku/206`) |
 
 ## Limits
@@ -227,7 +241,10 @@ behind that block, re-apps AP2j). Measured against the RGB path on the HY310, sa
 GPU governor settles at 432 instead of 600 MHz, the die cools instead of warming, the bytes per frame halve
 (10.4 MB instead of 20.7), the warp's CPU rises by about three points for the second pass. NV16 on that plane
 shows with every other chroma line dropped, so NV12 loses nothing. Without a signal `h713-tv` releases the
-warp and shows the console; the warp waits on the capture node's source-change event and is back about 0.2 s after the signal (17.10.2026, HY310: signal 9.53 s, claim 9.74 s, `doku/214` §3; until then it asked once a second and came up to a second late, with h713-tv's straight ring on the wall in between); a node that answers poll with an error falls back to once a second. The warp costs about 0.6 GB/s of memory
+warp and shows the console; the warp waits on the capture node's source-change event and is back about 0.2 s after the signal (17.10.2026, HY310: signal 9.53 s, claim 9.74 s, `doku/214` §3; until then it asked once a second and came up to a second late, with h713-tv's straight ring on the wall in between); a node that answers poll with an error falls back to once a second. Since the want link (above) `h713-tv` also says `note claim` once the signal stands, and keeps the straight ring off the plane until the claim's first frame (HY310, 17.10.2026, the source's DPMS off and on: the claim 0.08 s
+after h713-tv's signal line, the warped picture 0.20-0.22 s after it on the camera, 3 of 3 without a straight or tinted frame). While
+the ring is wanted the render node stays open between two claims (no signal, `ctl off`): a claim on `note claim` then costs the
+capture and the claim, not the EGL start - 0.08 s instead of 0.28 s after `ctl auto`. The warp costs about 0.6 GB/s of memory
 bandwidth (read 4.15 MB of NV16, write 3.1 MB of NV12, scanout reads 3.1 MB instead of 4.15 MB per frame)
 and 9.3 MB of CMA for the three targets. The vendor's edge blend is in (`edge`, since 27.09.2026): the same
 darkening ring the stock draws as a blended alpha quad over its warped frame - luma towards Y 16, chroma
