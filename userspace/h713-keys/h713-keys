@@ -380,20 +380,32 @@ class Launcher:
         self.back = None                     # an `exec` entry with `return = launcher` that runs: {"entry", "proc"}
         self.reopen = None                   # the launcher is to open again: {"select", "until", "next"}
         self.started = float("-inf")         # when it last started a mode unit (the mode watch does not judge the switch)
+        self.snap = None                     # the entries, the entry that runs and the signal as the last full open found them
 
-    def open(self, devices, quiet=False, select=None):
-        """The page, with the entry `select` (its id; FALLBACK: HDMI input) chosen - none: the one that runs. The header says what runs."""
-        entries = launcher_entries()
-        entries = [e for e in entries if check(e.get("show"), 60)]
-        if not entries:
-            quiet or log("Home: no launcher entries in /etc/h713/launcher.d")
-            return False
+    def open(self, devices, quiet=False, select=None, fast=False):
+        """The page, with the entry `select` (its id; FALLBACK: HDMI input) chosen - none: the one that runs. The header says what runs.
+        fast: from what the last full open found - no entry files, no `active` checks, no question to h713-tv. The way back from a page
+        uses it: the wall shows the HDMI picture from the moment the page is gone to the moment the launcher is drawn, and the full
+        open took 350 ms of that (HY310, 17.10.2026: systemctl is-active x3, h713-tv's status, 57 ms); what is left is h713-osd's drawing."""
+        snap = self.snap if fast else None
+        if snap:
+            entries, signal = snap["entries"], snap["signal"]
+        else:
+            entries = [e for e in launcher_entries() if check(e.get("show"), 60)]
+            if not entries:
+                quiet or log("Home: no launcher entries in /etc/h713/launcher.d")
+                return False
+            signal = signal_text()
         fall = next((i for i, e in enumerate(entries) if e.get("fallback")), 0)
-        act = next((i for i, e in enumerate(entries) if not e.get("fallback") and e.get("active") and check(e["active"])), None)
-        if act is None:
-            act = fall
+        if snap:
+            act = fall if select is FALLBACK else snap["act"]
+        else:
+            act = next((i for i, e in enumerate(entries) if not e.get("fallback") and e.get("active") and check(e["active"])), None)
+            if act is None:
+                act = fall
+            self.snap = {"entries": entries, "signal": signal, "act": act}
         cur = fall if select is FALLBACK else next((i for i, e in enumerate(entries) if select and e["id"] == select), act)
-        now = entries[act].get("now", entries[act]["label"]).replace("{signal}", signal_text())
+        now = entries[act].get("now", entries[act]["label"]).replace("{signal}", signal)
         rows = self.rows = ";".join("%s%s:%s" % (">" if e.get("group") == "end" else "", e["icon"], e["label"]) for e in entries)
         answer = ctl(OSD_SOCK, "launcher %d;%s;%s" % (cur, now, rows), quiet=True) or ""
         if not answer.startswith("ok") or answer.startswith("ok unseen"):
@@ -456,7 +468,11 @@ class Launcher:
                 if e.get("unit"):
                     self.started = time.monotonic()
                 elif e.get("return") == "launcher":
-                    self.back = {"entry": e, "proc": proc}       # its end with 0 brings the launcher back (tick)
+                    try:
+                        fd = os.pidfd_open(proc.pid)             # readable when it ends: the loop wakes at once, no poll of 50 ms
+                    except (AttributeError, OSError):
+                        fd = None
+                    self.back = {"entry": e, "proc": proc, "fd": fd}     # its end with 0 brings the launcher back (way_back)
             except OSError as err:
                 log("launcher: %s does not start (%s)" % (e["label"], err.strerror), "<4>")
                 if waits:
@@ -481,21 +497,32 @@ class Launcher:
         b = self.back
         if b and b["proc"].poll() is not None:
             self.back = None
+            if b.get("fd") is not None:
+                os.close(b["fd"])
             rc = b["proc"].returncode
             log("launcher: %s ended with %d%s" % (b["entry"]["label"], rc, ": back to the launcher" if rc == 0 else ""))
             if rc == 0:
-                self.reopen = {"select": b["entry"]["id"], "until": now + REOPEN_S, "next": 0.0}
+                self.reopen = {"select": b["entry"]["id"], "until": now + REOPEN_S, "next": 0.0, "fast": True}
         r = self.reopen
         if r and self.entries is not None:
             self.reopen = None                                   # open already (a Home came in between)
         elif r and now >= r["next"]:
             r["next"] = now + REOPEN_RETRY_S
-            if self.open(devices, quiet=True, select=r["select"]):
+            if self.open(devices, quiet=True, select=r["select"], fast=r.get("fast", False)):
                 self.reopen = None
                 self.hold(devices)                               # no Home was pressed, so no release to wait for
             elif now > r["until"]:
                 self.reopen = None
                 log("launcher: not opened again - h713-osd has no page to show it on", "<4>")
+
+    def unstart(self, devices):
+        """The entry that was starting ended before it had a picture: the page goes back to the list (HDMI input chosen, the header says
+        HDMI) instead of saying "Starting X..." for the rest of START_WAIT_S."""
+        self.starting = None
+        fall = next((i for i, e in enumerate(self.entries) if e.get("fallback")), 0)
+        now = self.entries[fall].get("now", self.entries[fall]["label"]).replace("{signal}", signal_text())
+        if self.osd("launcher %d;%s;%s" % (fall, now, self.rows), devices):
+            self.sel = fall
 
     def tick(self, devices):
         now, s = time.monotonic(), self.starting
@@ -577,6 +604,7 @@ class Modes:
             self.gone = None
             if unit != self.mode:
                 self.mode = unit
+                launcher.snap = None         # what runs has changed: the next full open looks again
                 self.store(unit)
             return
         if self.mode is None:                # the first look: nothing runs, HDMI is the mode (stored unless a sleep or a shutdown asks)
@@ -591,6 +619,7 @@ class Modes:
         if now - self.gone < MODE_GONE_S:
             return
         ended, self.mode, self.gone = self.mode, "hdmi", None
+        launcher.snap = None if launcher.entries is not None or launcher.back else launcher.snap
         why = self.on_purpose()
         if why:
             log("mode %s ended (%s)" % (ended, why))
@@ -600,7 +629,9 @@ class Modes:
             log("mode %s ended by itself: the launcher opens, HDMI input chosen" % ended)
             self.store("hdmi")
             if launcher.entries is None:
-                launcher.reopen = {"select": FALLBACK, "until": now + REOPEN_S, "next": 0.0}
+                launcher.reopen = {"select": FALLBACK, "until": now + REOPEN_S, "next": 0.0, "fast": launcher.back is None}
+            elif launcher.starting:
+                launcher.unstart(devices)
 
 
 def boot_launcher(launcher, devices, conf, boot):
@@ -669,7 +700,8 @@ def run(once):
                     except OSError as e:
                         log("%s: %s" % (p, e.strerror), "<4>")
             rescan = time.monotonic() + 5
-        ready = select.select(list(devices.values()), [], [], 0.05 if launcher.back or launcher.reopen else 0.25)[0]   # quick while a way back is due
+        waits = [launcher.back["fd"]] if launcher.back and launcher.back.get("fd") is not None else []
+        ready = select.select(list(devices.values()) + waits, [], [], 0.05 if launcher.reopen or (launcher.back and not waits) else 0.25)[0]   # quick while a way back is due
         acted = False
         if boot and boot_launcher(launcher, devices, conf, boot):
             acted, boot = launcher.entries is not None, None             # (acted: the tests' --once returns after this round)

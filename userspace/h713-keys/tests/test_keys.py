@@ -8,6 +8,7 @@ import importlib.machinery
 import importlib.util
 import os
 import re
+import select
 import socket
 import struct
 import tempfile
@@ -612,6 +613,7 @@ class KeysTest(unittest.TestCase):
         launcher.tick({})
         self.assertIsNone(launcher.entries)
         self.assertIn("launcher: Browser shows nothing after 30 s", out)
+        time.sleep(0.2)                                              # (systemctl is started, not waited for: it must be done before the directory goes)
 
     def test_back_closes_a_starting_page_and_an_entry_without_wait_closes_at_once(self):
         launcher = self.waiting_launcher()
@@ -816,6 +818,63 @@ class KeysTest(unittest.TestCase):
         n = len(self.osds.lines)
         launcher.tick({})
         self.assertEqual((launcher.reopen, len(self.osds.lines)), (None, n))
+
+    def test_the_way_back_asks_nothing_again_it_draws(self):
+        """the wall shows the HDMI picture from the page's end to the launcher's drawing: the full open (3 x systemctl is-active, h713-tv's
+        status) took 350 ms of it on the HY310 - the way back uses what the last full open found"""
+        launcher = self.settings_launcher()                                    # the full open
+        asks, tvs = len([c for c in self.systemctl_calls() if c.startswith("is-active")]), len(self.tvs.lines)
+        self.assertGreater(tvs, 0)                                             # the full open asked h713-tv for the signal
+        launcher.key(352, 1, {})
+        self.ended(launcher)
+        launcher.tick({})
+        self.assertIsNotNone(launcher.entries)
+        self.assertEqual(len([c for c in self.systemctl_calls() if c.startswith("is-active")]), asks)
+        self.assertEqual(len(self.tvs.lines), tvs)
+        self.assertEqual(self.osds.lines[-1], "launcher 1;HDMI 1080p60;hdmi:HDMI input;sliders:Settings")
+
+    def test_a_mode_that_changed_behind_the_page_is_looked_at_again(self):
+        """Kodi ends behind Settings: the header of the launcher that comes back says what runs now, so that one is a full open"""
+        launcher = self.settings_launcher()
+        launcher.snap["act"] = 1                                               # what the last open found: something ran
+        launcher.key(352, 1, {})
+        self.mod.MODE_GONE_S = 0
+        modes = self.mod.Modes()
+        modes.mode = "h713-kodi.service"
+        self.cgroup("h713-kodi.service", False)
+        modes.tick(launcher, {})
+        self.assertIsNone(launcher.snap)
+        self.ended(launcher)
+        launcher.tick({})
+        self.assertEqual(self.osds.lines[-1], "launcher 1;HDMI 1080p60;hdmi:HDMI input;sliders:Settings")
+
+    def test_the_program_that_must_end_wakes_the_loop_at_once(self):
+        launcher = self.settings_launcher()
+        launcher.key(352, 1, {})
+        fd = launcher.back["fd"]
+        self.assertIsNotNone(fd)                                               # a pidfd: readable when the program has ended
+        launcher.back["proc"].wait(timeout=5)
+        self.assertEqual(select.select([fd], [], [], 1)[0], [fd])
+        launcher.tick({})
+        self.assertIsNone(launcher.back)
+        with self.assertRaises(OSError):
+            os.fstat(fd)                                                       # and closed again
+
+    def test_an_entry_that_ends_while_it_starts_does_not_keep_its_page_for_30_seconds(self):
+        launcher = self.waiting_launcher()
+        self.cgroup("h713-browser.service")
+        self.mod.MODE_GONE_S = 0
+        modes = self.mod.Modes()
+        modes.tick(launcher, {})
+        launcher.key(352, 1, {})
+        self.assertEqual(self.osds.lines[-1], "launcher 1;Starting Browser...;hdmi:HDMI input;globe:Browser")
+        launcher.started = float("-inf")                                       # (the quiet seconds after a start are over)
+        self.cgroup("h713-browser.service", False)                             # Firefox died before its first window
+        modes.tick(launcher, {})
+        self.assertIsNone(launcher.starting)
+        self.assertEqual((launcher.entries is not None, launcher.sel), (True, 0))      # the list again, HDMI input chosen
+        self.assertEqual(self.osds.lines[-1], "launcher 0;HDMI 1080p60;hdmi:HDMI input;globe:Browser")
+        time.sleep(0.2)                                                        # (systemctl is started, not waited for)
 
     # --- a mode that ends by itself (cgroup of the unit = it is up) ------------------------------------------
 
