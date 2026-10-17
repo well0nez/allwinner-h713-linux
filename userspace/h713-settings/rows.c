@@ -573,6 +573,7 @@ static void input_enter(struct area *a)
 	struct mode m[MAXOPT - 3];
 	const char *name = NULL;
 	char v[24] = "";
+	bool client;
 	int n = modes_read(m, MAXOPT - 3);
 
 	if (!st->n) {
@@ -599,6 +600,7 @@ static void input_enter(struct area *a)
 	st->val = opt_find(st, v) < 0 ? 0 : opt_find(st, v);
 	st->hidden = access(etc("launcher.d"), F_OK) != 0;	/* no launcher in this image */
 	now->hidden = !tv("source");
+	client = strstr(reply, "Wayland client") != NULL;	/* the next question overwrites the reply */
 	for (int i = 0; i < n && !name; i++) {
 		const char *argv[] = { "systemctl", "is-active", "--quiet", m[i].unit, NULL };
 		char o[64];
@@ -606,8 +608,11 @@ static void input_enter(struct area *a)
 		if (run(argv, o, sizeof(o), 3000) == 0)
 			name = m[i].label;			/* the mode that runs: its own name, Browser is not Kodi */
 	}
-	snprintf(now->text, sizeof(now->text), "%s",
-		 name ? name : strstr(reply, "Wayland client") ? "Kodi" : "HDMI picture");
+	/* the HDMI input with nothing to show: h713-osd's page "No signal on HDMI" is on the wall (h713-tv's status says so: the line
+	 * "nosignal        page: ...") - no mode runs, and the wall is not "the HDMI picture" */
+	if (!name && !client && !now->hidden && tv("status brief") && strstr(reply, "\nnosignal        page"))
+		name = "No HDMI signal";
+	snprintf(now->text, sizeof(now->text), "%s", name ? name : client ? "Kodi" : "HDMI picture");
 }
 
 /* --- Power --------------------------------------------------------------------------------------------------- */

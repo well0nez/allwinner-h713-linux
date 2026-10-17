@@ -58,6 +58,7 @@ class FakeTv(Ctl):
         self.c = dict(zip(("brightness", "contrast", "saturation", "hue", "sharpness"), PRESETS["standard"]))
         self.preset, self.aspect, self.volume, self.mute, self.source = "standard", "auto", 90, False, "hdmi"
         self.saved, self.refuse_43 = 0, False
+        self.nosignal = False                          # the page "No signal on HDMI" is on the wall (h713-tv's status line)
         super().__init__(path)
 
     def answer(self, line):
@@ -79,7 +80,8 @@ class FakeTv(Ctl):
             self.c = dict(zip(self.c, PRESETS[w[1]]))
             return "ok preset %s (the compiled-in table)\n" % w[1]
         if w[0] == "status":
-            return "ok status\nmode            auto\npreset          %s (from the device data)\nsaved           nothing\n" % self.preset
+            return ("ok status\nmode            auto\npreset          %s (from the device data)\nsaved           nothing\n" % self.preset) + (
+                'nosignal        page: h713-osd shows "No signal on HDMI"\n' if self.nosignal else "nosignal        none\n")
         if w[0] == "aspect":
             if len(w) == 2 and w[1] == "4:3" and self.refuse_43:
                 return "error aspect 4:3 saved, but the plane could not be switched off\n"
@@ -712,6 +714,25 @@ class InputPowerWifi(Base):
         with open(os.path.join(b.log, "active"), "w") as f:
             f.write("h713-browser.service\n")
         self.assertIn('On the wall now info "Browser"', b.start("Input").dump())      # not "Kodi" because a client is on the wall
+        b.finish()
+
+    def test_on_the_wall_now_says_no_hdmi_signal_when_the_page_stands(self):
+        """P5: with no mode running and h713-tv saying that h713-osd's page "No signal on HDMI" is on the wall, the sentence says so"""
+        b = self.box()
+        self.modes(b)
+        b.tv.nosignal = True
+        self.assertIn('On the wall now info "No HDMI signal"', b.start("Input").dump())
+        b.finish()
+        b = self.box()                                                  # the control: the status line says "none"
+        self.modes(b)
+        self.assertIn('On the wall now info "HDMI picture"', b.start("Input").dump())
+        b.finish()
+        b = self.box()                                                  # a mode that runs is the wall, whatever the signal does
+        self.modes(b)
+        b.tv.nosignal = True
+        with open(os.path.join(b.log, "active"), "w") as f:
+            f.write("h713-browser.service\n")
+        self.assertIn('On the wall now info "Browser"', b.start("Input").dump())
         b.finish()
 
     def test_no_launcher_no_on_start_row(self):
