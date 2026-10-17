@@ -34,6 +34,14 @@
  * ONE connection carries the whole "on" period, and a closed connection means
  * release on both sides (A2's lifetime rule): if this daemon dies h713-tv puts
  * the ring back by itself, if h713-tv dies this one falls back to bypass (M10).
+ *
+ * A second connection, the want link (P3 of the media side project, 17.10.2026),
+ * stays open for as long as both run: "warp want ring" or "warp want none" says
+ * whether this daemon will claim the ring when h713-tv lets it, said again only
+ * when it changes. With "ring" h713-tv does not put the straight ring on the
+ * video plane when the signal comes or "ctl auto" is said: it says "note claim"
+ * on this link and waits for the claim up to a second, so the plane goes on once,
+ * with the warp's first frame. h713-tv answers each line with "ok want ...".
  */
 #include <errno.h>
 #include <poll.h>
@@ -69,6 +77,8 @@ void peer_init(struct peer *p, const char *path)
 
 	p->path = path;
 	p->fd = -1;
+	p->want_fd = -1;
+	p->want_said = -1;
 	for (i = 0; i < WARP_TARGETS; i++)
 		p->target[i] = -1;
 }
@@ -451,6 +461,82 @@ int peer_frame(struct peer *p, int index, int fence, int *flip, char *why, size_
 	p->commits++;
 
 	return 0;
+}
+
+#define WANT_RETRY_S	0.2	/* the want link is tried again at most this often: h713-tv waits for it after its own start */
+
+/*
+ * The want link (P3): made when there is none and connect is asked for (at most once WANT_RETRY_S), and the word said
+ * when it changed or the link is new. Non-blocking: h713-tv answers in its own time ("ok want ..."), and its notes come
+ * on the same link; peer_want_notes() reads both.
+ */
+void peer_want(struct peer *p, bool ring, bool connect)
+{
+	const char *line = ring ? "warp want ring\n" : "warp want none\n";
+	char why[WARP_WHY];
+
+	if (p->want_refused)
+		return;
+	if (p->want_fd < 0) {
+		struct peer q = { .path = p->path, .fd = -1 };
+
+		if (!connect || now_s() - p->want_tried < WANT_RETRY_S)
+			return;
+		p->want_tried = now_s();
+		if (!peer_connect(&q, why, sizeof(why)))
+			return;			/* h713-tv is not there (yet): again in a second */
+		p->want_fd = q.fd;
+		p->want_said = -1;
+	}
+	if (p->want_said == (int)ring)
+		return;
+	if (send(p->want_fd, line, strlen(line), MSG_NOSIGNAL | MSG_DONTWAIT) != (ssize_t)strlen(line)) {
+		warn("peer            \"warp want %s\" to h713-tv: %s -- the link is made again", ring ? "ring" : "none",
+		     strerror(errno));
+		close(p->want_fd);
+		p->want_fd = -1;
+		return;
+	}
+	p->want_said = ring;
+	info("peer            to h713-tv: %s", ring ? "\"warp want ring\" -- the ring will be claimed when h713-tv lets it, the straight ring waits for it" :
+	     "\"warp want none\" -- no ring claim, h713-tv shows the straight ring at once");
+}
+
+bool peer_want_notes(struct peer *p)
+{
+	char buf[WARP_LINE], *line, *next;
+	ssize_t got;
+
+	if (p->want_fd < 0)
+		return false;
+	got = recv(p->want_fd, buf, sizeof(buf) - 1, MSG_DONTWAIT);
+	if (got < 0 && (errno == EAGAIN || errno == EWOULDBLOCK || errno == EINTR))
+		return true;
+	if (got <= 0) {
+		close(p->want_fd);
+		p->want_fd = -1;
+		p->want_said = -1;
+		return false;
+	}
+	buf[got] = '\0';
+	for (line = buf; *line; line = next) {
+		next = line + strcspn(line, "\n");
+		if (*next)
+			*next++ = '\0';
+		line[strcspn(line, "\r")] = '\0';
+		if (!strcmp(line, "note claim")) {
+			p->claim_noted = true;
+		} else if (!strncmp(line, "error", 5)) {
+			/* an h713-tv of before 17.10.2026: no want link, the ring comes as before (and the claim after it) */
+			warn("peer            h713-tv does not take \"warp want\" (%s) -- not asked again", line);
+			p->want_refused = true;
+			close(p->want_fd);
+			p->want_fd = -1;
+			return false;
+		}
+		/* "ok want ...": the word arrived */
+	}
+	return true;
 }
 
 void peer_release(struct peer *p)

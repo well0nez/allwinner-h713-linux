@@ -1,0 +1,3 @@
+test_want
+*.o
+stubs.c

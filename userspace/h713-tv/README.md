@@ -755,7 +755,10 @@ between and switched the plane off for the new claim - a white flash at every ch
 (16.10.2026). A `source` that no longer allows the claim (a client's under `hdmi`, the ring's under `client`) is
 said to the daemon unasked on the connection, `note source hdmi`; it switches or releases, and 1.5 s later the
 claim is released here if it still stands. The connection is the lifetime - a daemon that dies leaves a
-hangup and the ring comes back by itself. While the warp is on, `h713-tv ctl zoom` is refused with
+hangup and the ring comes back by itself. A second connection of the daemon's, the want link (17.10.2026), carries
+`warp want ring|none` (answered `ok want ...`) and stays open: with `ring` this program does not show the straight
+ring once the signal stands, says `note claim` on that link and waits up to a second for the claim, whose first frame
+turns the dark plane on - one switch instead of ring, off and on (`docs/tools/h713-tv.md`, "The first picture"). While the warp is on, `h713-tv ctl zoom` is refused with
 `error the warp is on - use h713-warp ctl zoom`, and `h713-tv ctl off` releases the warp. `ctl status` says
 `picture warped (h713-warp draws on the video plane)`, and `ctl warp status` gives the plane, the geometry
 and the three counters (commits, busy, refused) without claiming anything.

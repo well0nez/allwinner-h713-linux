@@ -31,6 +31,7 @@
 #include "warp.h"
 
 #define RETRY_MS	1000	/* while the wanted state cannot be reached */
+#define WANT_RETRY_MS	200	/* the want link to h713-tv, while there is none (peer.c: WANT_RETRY_S) */
 #define PATTERN_MS	500	/* the test pattern's heartbeat, see below */
 
 void info(const char *fmt, ...)
@@ -134,8 +135,9 @@ int main(int argc, char **argv)
 	struct runtime r;
 	struct control ctl;
 	const char *sock = WARP_SOCKET, *tv = TV_SOCKET, *video = NULL, *wl = WAYLAND_SOCKET;
-	struct pollfd fds[7];
+	struct pollfd fds[8];
 	bool watch_off = false;		/* the node gave POLLERR without a stream: back to RETRY_MS alone */
+	bool applied;			/* this round claimed on h713-tv's "note claim" already */
 	int sfd, arg, rc = 0;
 	double asked;			/* the last time a waiting client asked h713-tv's source */
 
@@ -195,6 +197,8 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN);
 	control_listen(&ctl);
 	sfd = signal_fd();
+	/* the word to h713-tv first (P3): it holds its straight ring back for our claim from now on */
+	warp_want_tell(&r);
 	/* the Wayland server: a client next to the ring; without it the ring works as before */
 	r.srv = server_start(wl, &r);
 	warp_apply(&r);
@@ -261,7 +265,13 @@ int main(int argc, char **argv)
 		fds[4].events = POLLIN;
 		if (ctl.cfd >= 0 && (timeout < 0 || control_left(&ctl) < timeout))
 			timeout = control_left(&ctl);
-		if (poll(fds, 7, timeout) < 0) {
+		/* the want link to h713-tv (P3): its "note claim", and a try to make it again once a second while there is none */
+		fds[7].fd = r.peer.want_fd;
+		fds[7].events = POLLIN;
+		/* every 200 ms while there is none: a restarted h713-tv waits for the word up to a second (h713-tv's start) */
+		if (r.on && r.peer.want_fd < 0 && !r.peer.want_refused && (timeout < 0 || timeout > WANT_RETRY_MS))
+			timeout = WANT_RETRY_MS;
+		if (poll(fds, 8, timeout) < 0) {
 			if (errno == EINTR)
 				continue;
 			warn("poll: %s", strerror(errno));
@@ -303,6 +313,17 @@ int main(int argc, char **argv)
 				source_geometry_changed(&r.source);	/* takes the events off the queue */
 			}
 		}
+		/* h713-tv said "note claim" (the signal stands, "ctl auto", our restart): the ring is claimed now, not at the next try */
+		if (fds[7].fd >= 0 && fds[7].revents)
+			peer_want_notes(&r.peer);
+		applied = false;
+		if (r.peer.claim_noted) {
+			r.peer.claim_noted = false;
+			if (!live && r.on) {
+				warp_apply(&r);
+				applied = true;		/* not once more below */
+			}
+		}
 		if (fds[3].fd >= 0 && (fds[3].revents & POLLIN) && !(fds[3].revents & (POLLHUP | POLLERR | POLLNVAL)) &&
 		    !peer_notes(&r.peer))
 			fds[3].revents |= POLLHUP;	/* read nothing but the end */
@@ -315,7 +336,7 @@ int main(int argc, char **argv)
 			warp_pump(&r);
 		} else if (live && r.pattern != PATTERN_NONE && !fds[5].revents) {
 			warp_pump(&r);
-		} else if (!live && want && !fds[5].revents) {
+		} else if (!live && want && !fds[5].revents && !applied) {
 			warp_apply(&r);
 		}
 		if (waiting && r.state == WARP_ON && r.src == SRC_RING && server_shown(r.srv) &&
@@ -333,6 +354,7 @@ int main(int argc, char **argv)
 		if (r.peer.cover != r.cover)
 			warp_cover(&r);
 		warp_check_tick(&r);
+		warp_want_tell(&r);	/* the word, when this round changed it (a keystone, on/off, a refused ring, the GPU) */
 		if ((fds[0].fd >= 0 && (fds[0].revents & POLLIN)) ||
 		    (fds[4].fd >= 0 && fds[4].revents) ||
 		    (ctl.cfd >= 0 && control_left(&ctl) == 0))

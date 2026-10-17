@@ -89,7 +89,12 @@ static void note(struct runtime *r, const char *why)
  * without a client keeps the shipped behaviour: the node is not even open. */
 void warp_gl_idle(struct runtime *r)
 {
-	if (r->state != WARP_ON && !server_busy(r->srv) && gl_is_open())
+	/*
+	 * Kept open while the ring is wanted and only h713-tv's leave is missing (no signal, "ctl off", h713-tv away): the
+	 * next claim then costs the capture and the claim, not the EGL start - "ctl auto" to the first frame took 0.28 s
+	 * with the start (HY310, 17.10.2026), the straight ring waiting for it. Nothing is drawn meanwhile; the GPU sleeps.
+	 */
+	if (r->state != WARP_ON && !server_busy(r->srv) && gl_is_open() && !warp_want_ring(r))
 		gl_close();
 }
 
@@ -186,6 +191,10 @@ bool warp_engage(struct runtime *r)
 	}
 	if (!peer_claim(&r->peer, SRC_RING, why, sizeof(why)) ||
 	    !gl_targets(&r->peer, why, sizeof(why))) {
+		if (r->peer.fd >= 0) {		/* claimed, and the GPU did not take h713-tv's buffers */
+			r->gpu_failed = true;
+			warp_want_tell(r);	/* "none" before the release: h713-tv waits for no claim of ours */
+		}
 		peer_release(&r->peer);
 		gl_targets_drop();
 		gl_source_drop();
@@ -205,13 +214,33 @@ bool warp_engage(struct runtime *r)
 }
 
 /* the ring is to be drawn through the GPU: a keystone, a mirrored mount or a test pattern (else h713-tv shows it) */
-static bool ring_wanted(struct runtime *r)
+static bool ring_wanted(const struct runtime *r)
 {
 	int eff[WARP_KEYS];
 
 	warp_effective(&r->conf, eff);
 	return r->on && (r->pattern != PATTERN_NONE || !warp_identity(eff) ||
 			 r->conf.mode != MODE_FRONT);	/* a mirrored identity needs the GPU */
+}
+
+/*
+ * The word for h713-tv on the want link (P3 of the media side project): the ring will be claimed as soon as h713-tv lets
+ * it - so h713-tv keeps the straight ring off the video plane and waits for the claim (at most a second). Not when the
+ * ring is not wanted (the identity, "warp = off": h713-tv's own ring is the picture), when the GPU refused this ring's
+ * geometry (until the source changes), or when the GPU failed the last claim (until a frame is drawn again): then the
+ * straight ring is the picture, at once.
+ */
+bool warp_want_ring(const struct runtime *r)
+{
+	bool refused = r->refused_w && r->source.width == r->refused_w && r->source.height == r->refused_h &&
+		       r->source.pitch == r->refused_pitch && r->pattern == PATTERN_NONE;
+
+	return ring_wanted(r) && !r->gpu_failed && !refused;
+}
+
+void warp_want_tell(struct runtime *r)
+{
+	peer_want(&r->peer, warp_want_ring(r), r->on);
 }
 
 /*
@@ -369,9 +398,11 @@ void warp_apply(struct runtime *r)
 		return;
 
 	if (!want) {
+		warp_want_tell(r);	/* "none" before the release: h713-tv puts its ring up at once, without waiting */
 		if (r->state == WARP_ON)
 			warp_disengage(r, r->on ? "the identity needs no GPU (bypass)"
 						: "ctl off");
+		warp_gl_idle(r);	/* the render node kept for a ring that is no longer wanted */
 		r->state = r->on ? WARP_BYPASS : WARP_OFF;
 		if (!client)	/* else the reason stays the client's: h713-tv's refusal */
 			note(r, r->on ? "the identity needs no GPU: h713-tv is on the ring (M10)"
@@ -552,6 +583,8 @@ bool warp_pump(struct runtime *r)
 		if (r->pattern == PATTERN_NONE)
 			source_queue(&r->source, slot);
 		if (++r->fails >= FAILS_MAX) {
+			r->gpu_failed = true;
+			warp_want_tell(r);	/* "none" before the release */
 			warp_disengage(r, why);
 			return false;
 		}
@@ -607,6 +640,7 @@ bool warp_pump(struct runtime *r)
 		r->dropped++;
 	else
 		r->target = (r->target + 1) % WARP_TARGETS;
+	r->gpu_failed = false;		/* a frame was drawn: the ring can be promised to h713-tv again */
 	/* only now: h713-tv has the frame, so the slot may be overwritten */
 	if (r->pattern == PATTERN_NONE) {
 		if (r->check.want > 0 && r->check.slot < 0 && r->frames % 3 == 0) {
@@ -667,6 +701,7 @@ static int client_answer(struct runtime *r, int rc, double t0, const char *why)
 	}
 	if (rc == 0) {
 		r->target = (r->target + 1) % WARP_TARGETS;
+		r->gpu_failed = false;
 		account(r, t0);
 	} else {
 		r->dropped++;
@@ -689,6 +724,7 @@ int warp_client_frame(struct runtime *r, const struct gl_image *im, int *render,
 	client_matrix(r, im, m);
 	if (!gl_draw_client(r->target, im, m, why, sizeof(why))) {
 		if (++r->fails >= FAILS_MAX) {
+			r->gpu_failed = true;	/* the ring would fail the same way: no ring claim promised to h713-tv */
 			warp_disengage(r, why);
 			return -1;
 		}
@@ -918,6 +954,11 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 			 r->peer.width, r->peer.height, r->peer.pitch, r->peer.path);
 	else
 		text_add(&t, "panel           nothing claimed (%s)\n", r->peer.path);
+	text_add(&t, "want            %s%s\n", warp_want_ring(r) ? "ring (the ring is claimed when h713-tv lets it)" :
+		 r->gpu_failed ? "none (the GPU failed the last claim)" : "none",
+		 r->peer.want_refused ? " -- h713-tv does not take \"warp want\"" :
+		 r->peer.want_fd < 0 ? " -- not said: no link to h713-tv" :
+		 r->peer.want_said == (int)warp_want_ring(r) ? ", said to h713-tv" : ", not said yet");
 	text_add(&t, "renderer        %s\n", gl_renderer());
 	if (r->state == WARP_ON)
 		text_add(&t, "drawing         %s\n", r->src == SRC_CLIENT ? "the Wayland client" : "the capture ring");
