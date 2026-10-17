@@ -192,7 +192,7 @@ behind that block, re-apps AP2j). Measured against the RGB path on the HY310, sa
 GPU governor settles at 432 instead of 600 MHz, the die cools instead of warming, the bytes per frame halve
 (10.4 MB instead of 20.7), the warp's CPU rises by about three points for the second pass. NV16 on that plane
 shows with every other chroma line dropped, so NV12 loses nothing. Without a signal `h713-tv` releases the
-warp and shows the console; the warp asks again once a second and is back within a second of the signal. The warp costs about 0.6 GB/s of memory
+warp and shows the console; the warp waits on the capture node's source-change event and is back about 0.2 s after the signal (17.10.2026, HY310: signal 9.53 s, claim 9.74 s, `doku/214` §3; until then it asked once a second and came up to a second late, with h713-tv's straight ring on the wall in between); a node that answers poll with an error falls back to once a second. The warp costs about 0.6 GB/s of memory
 bandwidth (read 4.15 MB of NV16, write 3.1 MB of NV12, scanout reads 3.1 MB instead of 4.15 MB per frame)
 and 9.3 MB of CMA for the three targets. The vendor's edge blend is in (`edge`, since 27.09.2026): the same
 darkening ring the stock draws as a blended alpha quad over its warped frame - luma towards Y 16, chroma

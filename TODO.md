@@ -289,7 +289,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (oder jünger) über FEL installieren, `/etc/h713`, Bund, Hostschlüssel und Kodis Einstellungen zurückspielen; dann `abnahme.sh` ganz am installierten Stand, dazu:
       die Systemnutzer entstehen beim ersten Start (`ps`: Kodi als `h713-kodi`), der Launcher öffnet beim Start, die erste Firefox-Sitzung einmal 35 s laufen lassen,
       die Fernbedienung verbindet oder fällt auf IR zurück. Bisher ist nur rend3 (693e9ec) gebootet; alles seit dem 16.10. mittags lief als Einzel-Deploy (`doku/213` §7).
-- [ ] 2.90 **Bluetooth: die Fernbedienung nach einem Neustart wieder verbinden** (`doku/213` §6): mit veraltetem Bund (die Fernbedienung wurde am G-EU neu gekoppelt)
+- [x] 2.90 *(erledigt 17.10.2026, `doku/214` §1: mit frischer Kopplung 3 von 3 Warmstarts verbunden; der Fehler war die veraltete Kopplung. Der Fix über IR 0x0266 ist **verworfen** - Maus und Mikrofon sind kein Kopplungsweg (Marco), die Kopplung beginnt mit LINKS+RECHTS. Der Rest ist 2.92.)* **Bluetooth: die Fernbedienung nach einem Neustart wieder verbinden** (`doku/213` §6): mit veraltetem Bund (die Fernbedienung wurde am G-EU neu gekoppelt)
       verbindet sie am HY310 nicht und sendet IR; `h713-remote-pair watch` koppelt nur ohne Bund. Fix gebaut (Kopplungsbitte der Fernbedienung über IR 0x0266 ->
       Bund vergessen, neu koppeln; Hosttests 26 von 26), auf dem HY310, **ungemessen, nicht in `medien`**. Messen mit der echten Fernbedienung: einmal Lauter
       (btmon: Anzeige, Verbindung, Trennungsgrund), Mikrofon-Taste (`pairing request over IR ... pairing afresh`, `Connected: yes`), drei Warmstarts je Taste über
@@ -300,6 +300,17 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Journal `launcher closed: h713-osd says error the launcher is not open`, Grab frei, OK startet nichts; Power 3 s bei offenem Launcher -> `long press: power-off`
       (schaltet die Box aus: nur mit Marco am Gerät), kurz -> `short press: countdown`. `h713-keys`, `h713-power`, `h713-settings` zusammen ausspielen.
 
+- [ ] 2.92 **Bluetooth: LINKS+RECHTS koppelt auch bei veralteter Kopplung neu** (`doku/214` §1): hat der HY310 noch einen Bund, den die
+      Fernbedienung nicht mehr kennt (sie wurde an einer anderen Box gekoppelt), ignoriert `h713-remote-pair watch` das LINKS+RECHTS des
+      Nutzers - nur `h713-remote-pair forget` per ssh hilft. Wurzel: `watch` koppelt nur ohne Bund. Zu klären am Mitschnitt (`btmon`
+      während LINKS+RECHTS mit altem Bund): woran der HY310 erkennt, dass sich die bekannte Fernbedienung zum Koppeln anbietet, und dann
+      Bund vergessen und neu koppeln. Messung: alter Bund, LINKS+RECHTS -> `Connected: yes` ohne ssh; danach drei Warmstarts wie in §1.
+- [ ] 2.93 **Grün beim Initialisieren** (Marco 17.10.2026 am HY310, nach `doku/214` §3): beim Start ist kurz etwas Grünes zu sehen. Nicht
+      untersucht: Zeitpunkt, Ebene (Video oder Primär), ob es ein ungefüllter NV12-Puffer der Warp-Übernahme ist (Nullen = Grün).
+      Erst mit der Kamera der Box bzw. den Ebenenregistern je Vsync den Zeitpunkt messen, dann die Wurzel.
+- [ ] 2.94 **Startfixe vom 17.10. am HY300PRO-G-EU nachmessen** (`doku/214` §2-3, c89234f, 8d22136, 47a29d9): Launcher beim Start vor dem
+      HDMI-Bild (Journal: `launcher open` vor `plane 38 on`), Warp-Claim innerhalb 0,3 s nach `signal`, keine Zeile `drawn again` von
+      h713-osd während des Starts; dazu einmal mit `On start: HDMI input` ansehen (der gerade Ring für ~0,14 s, `doku/214` §4).
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
