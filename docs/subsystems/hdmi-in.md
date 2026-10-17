@@ -25,7 +25,7 @@ the TMDS ceiling while doing it ([arisc.md](arisc.md)). Since kernel `0170` `S_E
 blocks - one 256-byte EDID - and makes it the served half, the other half keeping what it held; that
 is how `h713-tv ctl edid block1` puts the 2.0 set with its 1080p100/120 in front of a source without
 touching the mask, and working journal `FB-EDID/edid-vs-firmware.csv` lists what each half offers
-against what the table locks.
+against what the table locks. `h713-tv` publishes neither the modes the table lacks nor Deep Colour: the display firmware does not take 10 or 12 bit, and a source that renegotiated to 12 bit (1080p60 at 222.8 MHz) after a replug or a signal return ended on the console, so the Deep Colour bits of the HDMI vendor block (and of the HDMI Forum block, where there is one) are cleared in every EDID it publishes ([h713-tv](../tools/h713-tv.md)).
 
 The first detailed timing of that EDID is 1920x1080p60 on every board, the 1280x720 panels included,
 and that is what a source sends unless told otherwise. On a 720p panel the firmware then downscales in

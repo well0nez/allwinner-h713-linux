@@ -351,6 +351,11 @@ h713-tv ctl edid block0|block1  a replug that publishes that half of /lib/firmwa
                                  Published halves lose every short video descriptor the firmware's mode table
                                  does not carry (480i/576i, VICs 6 7 21 on the HY310): an offered mode that never
                                  locks is a black wall. The status line then says 'all in the firmware's table' (6g)
+                                 They also lose Deep Colour (DC_48/36/30/Y444 of the HDMI vendor block, the
+                                 DC_*_420 bits of the HDMI Forum block; the checksum is computed again): the
+                                 firmware does not take 10 or 12 bit, and a source that went to 12 bit after a
+                                 replug sent a clock the table lacks and left the wall on the console. The
+                                 plain `replug` and the start do the same; the status says 'no deep colour offered'
 h713-tv ctl warp [status]       whether h713-warp has the video plane, with its counters (6e)
 h713-tv ctl osd [status]        whether h713-osd has an overlay over the picture, with its counters (6h)
 h713-tv ctl hdcp                HDCP: the version negotiated, whether a session stands, the 1.4 and 2.2
@@ -709,7 +714,8 @@ edid       = block0 | block1 # which half of /lib/firmware/hy310-edid.bin port 0
                              # (working journal `FB-EDID/edid-vs-firmware.csv`). Applied once at start as a
                              # replug, about a second of console; `ctl status` says which half is up
                              # driver's default. Absent, the served half is still published once at start
-                             # without the VICs the table lacks, if there are any (one HPD pulse)
+                             # without the VICs the table lacks and without Deep Colour, if there is any of it
+                             # (one HPD pulse; with `edid =` as well, if the half served still offers Deep Colour)
 edid_prefer = file | panel   # file (default): the file's order. panel: a panel smaller than the file's first detailed timing gets
                              # the CTA timing of its own size as the first timing, so a source that follows
                              # the EDID sends the panel's resolution; the file's first timing moves to the
