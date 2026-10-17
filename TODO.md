@@ -252,6 +252,53 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.83 **Desktop- und Browser-Modus am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15.10.2026, `doku/212` §3: Wechsel zehn Mal mit 1,0-1,2 s zum ersten Client-Bild und 2,5-2,7 s zurück,
       mpv 1080p60 im Desktop mit 60,0 Bildern/s dekodiert, Firefox ESR 153.5, Standby 3 von 3 im Browser). Am G-EU: die Wechsel, ein Standby je Modus und der Speicher mit einem Video-Tab
       (HY310: Firefox 970 MiB RSS, MemAvailable 329-354 MiB von 924).
+- [ ] 2.84 **G-EU-Testabbild aus `medien`: was den HY300PRO-G-EU anders trifft als den HY310** (Sammelzeile, `doku/213`; Abbild `--board hy200-qz713df-a1
+      --variant projector05061226 --test-image --standby --profile media,desktop`; vorher `/etc/h713`, Bluetooth-Bund und Hostschlüssel sichern; der G-EU läuft
+      heute `main`, alles ab `0252` kommt neu). Bestanden, wenn jeder Punkt die genannte Messung besteht: (a) **Panel 1280x720 @ 59,71 Hz** - `h713-warp ctl status`
+      nennt 1280x720 (der Server rät 1920x1080, wenn der afbd-Connector beim Start noch nicht geprüft ist, und lehnt dann Puffer über 1280 ab); Kodi, Desktop,
+      Browser je drei Wechsel mit Bild (Auge statt Kamera); Launcher und Seite im 5-%-Rand; Firefox-Startseite lesbar und nicht im Handy-Layout (Faktor 2,0 ergibt
+      dort 640x360 CSS-Pixel - sonst 1,33 bis 1,5 in `user.js`); (b) **Lampe über `backlight-pwm-info` 5 1 40000 1 1 100** (die Firmware treibt dort die PWM,
+      `0320` stellt `losc` von 24,2 auf 32,8 kHz) - Lampe an nach Boot und nach Standby, `h713-tv ctl set backlight_level 50/100` wirkt (Auge), eine weiße Seite
+      bei CPU-Stößen ohne sichtbares Flackern (Auge; `doku/213` §3); (c) **keine Kamera, kein Fokusmotor** - `abnahme.sh -n 1 -t wechsel,settings` mit dem Auge
+      als Wand-Spalte, Settings ohne Fokus-Zeilen, F4/F5 melden "not present" ohne Fehler; (d) `0314`: 10 RTC-Standbys aus HDMI mit Bildern danach (2.74);
+      (e) `0315`-`0319`: B1-Kurzsatz bitgenau, 15 min Kodi HEVC 2160p mit 29,5+ VE-Bildern/s, 0 Timeouts/Faults, Zonen unter 75 C (2.78); (f) `0312`/`0313`:
+      Kodi 4K 15 min neben `dd`, 0 `data error`/`send stop` (2.75); (g) `0320`: Rate 1,000 über 90 s, zwei RTC-Standbys `wake rtc`, IR-Taste dekodiert (2.87);
+      (h) Bildweiche: sechs Client-Client-Wechsel ohne Konsole, kein weißer Blitz (Auge), `ctl mute on` über einen Standby, Home ohne Signal zeigt den Launcher
+      (2.85); (i) erster Start des Profilabbilds: `ps` ohne root-Kodi, Launcher beim Start, `System.CanSuspend` true, HDMI -> Kodi -> HDMI fünfmal unter 5 s,
+      Browser-Start unter 7 s nach der ersten 35-s-Sitzung (2.79, 2.80, 2.86); (j) **Ton**: `aplay -L` nennt `hy310hdmi` (ALSA `default` zeigt darauf), Kodi/mpv
+      öffnen `pcm0p` (`RUNNING`), Hörprobe nur nach Ansage; (k) **Bluetooth**: die Fernbedienung ist seit 11.10. am G-EU gekoppelt - nach dem Boot `Connected: yes`
+      und Tasten ohne IR-Interrupts, sonst 2.90; (l) Standby mit PB5 (Lampe und Lüfter aus seit `0249`): fünf Standbys aus HDMI und Kodi, Bild und Modus zurück;
+      (m) 1080p60-Quelle auf dem 720p-Panel: 60 s Ring 59,7 Bilder/s, `check 300` 0 Abweichungen.
+- [ ] 2.85 **Bildweiche (seatd ohne VT, Primärebene je Commit, Übergabe auf einem Claim, Stumm über den Neustart, Seite ohne Signal) am HY300PRO-G-EU nachmessen** - am HY310
+      bestanden (16.10.2026, `doku/213` §1: 30 von 30 Wechseln mit Bild, 0 Blitze in 24 Übergaben, Stumm in 5 von 5 Standbys gehalten, 74 von 75 Zellen). Am G-EU: dieselbe
+      display.bin-Revision, aber 720p-Übergabe und ein anderes Fenster; `abnahme.sh -n 1 -t wechsel` mit Marcos Blick statt der Kamera, `ctl mute on` über einen Standby,
+      Home ohne HDMI-Signal.
+- [ ] 2.86 **Start-Launcher, "Starting X...", Firefox-Start, Kodis Ende und Schriftgröße am HY300PRO-G-EU nachmessen** - am HY310 bestanden (16.10.2026, `doku/213` §4:
+      Launcher 10,6-10,9 s nach dem Boot in vier Warmstarts; Firefox 5,6 s statt 8,3 s mit dem `ExecStopPost`, die erste Sitzung nach einer Installation muss einmal
+      etwa 35 s laufen; Kodis Ende 3,1/2,8 s -> 1,9/2,3 s mit `services.wsdiscovery = false`; Faktor 2,0, foot 24 pt, labwc 20 pt). Am G-EU dazu: ein Kaltstart mit
+      Start-Launcher, ein Start ohne Signal (Quelle abziehen), ob die Firefox-Caches von einem Abbild aufs nächste gelten, "On start" über die Einstellungsseite mit
+      der echten Fernbedienung, die Schriftgröße am 720p-Panel (siehe 2.84 a).
+- [ ] 2.87 **RTC am 24-MHz-Quarz (`0320`) am HY300PRO-G-EU nachmessen** - am HY310 gemessen (16.10.2026, `doku/213` §5): vorher 1,357 s je RTC-Sekunde am RC, der
+      11-Minuten-Abgleich des Kernels verschluckte Wecker unter 174 s; mit `0320` Rate 1,000, zwei RTC-Standbys `wake rtc`, IR unberührt. Am G-EU (derselbe RTC-Block,
+      kein 32-kHz-Quarz im Baum): `since_epoch` gegen `date` über 90 s (nur lesend) vor und nach dem Kernel, `hwclock` gegen `date`, zwei RTC-Standbys mit dem
+      Wecker-Schritt der Abnahme, die IR-Fernbedienung. Dazu `referenz`-Zeile "RTC-Sekunde = 1,071 s" überholen.
+- [ ] 2.88 **Fokus-Randbild und `h713-remote-pair` am HY300PRO-G-EU** - am HY310 gemessen (16.10.2026, `doku/213` §6). Der G-EU hat keinen Fokusmotor (`features =
+      accelerometer`): der Randbild-Teil entfällt; Fernbedienung: nach dem Boot verbunden (sie ist dort gekoppelt), Tasten ohne IR-Interrupts; der BT-Fix (2.90) erst
+      nach seiner Messung.
+- [ ] 2.89 **Das Endabbild aus `medien` auf dem HY310 installieren und am installierten Abbild abnehmen** (Auflage A1 der Prüfung vor `main`): das Abbild von a70bd6f
+      (oder jünger) über FEL installieren, `/etc/h713`, Bund, Hostschlüssel und Kodis Einstellungen zurückspielen; dann `abnahme.sh` ganz am installierten Stand, dazu:
+      die Systemnutzer entstehen beim ersten Start (`ps`: Kodi als `h713-kodi`), der Launcher öffnet beim Start, die erste Firefox-Sitzung einmal 35 s laufen lassen,
+      die Fernbedienung verbindet oder fällt auf IR zurück. Bisher ist nur rend3 (693e9ec) gebootet; alles seit dem 16.10. mittags lief als Einzel-Deploy (`doku/213` §7).
+- [ ] 2.90 **Bluetooth: die Fernbedienung nach einem Neustart wieder verbinden** (`doku/213` §6): mit veraltetem Bund (die Fernbedienung wurde am G-EU neu gekoppelt)
+      verbindet sie am HY310 nicht und sendet IR; `h713-remote-pair watch` koppelt nur ohne Bund. Fix gebaut (Kopplungsbitte der Fernbedienung über IR 0x0266 ->
+      Bund vergessen, neu koppeln; Hosttests 26 von 26), auf dem HY310, **ungemessen, nicht in `medien`**. Messen mit der echten Fernbedienung: einmal Lauter
+      (btmon: Anzeige, Verbindung, Trennungsgrund), Mikrofon-Taste (`pairing request over IR ... pairing afresh`, `Connected: yes`), drei Warmstarts je Taste über
+      Bluetooth (IR-Interrupts unverändert), zwei Minuten Leerlauf, Fokusrichtung über Bluetooth gegen IR. Besteht es: mergen und das Abbild neu bauen; dazu die
+      Installationsanleitung (LINKS+RECHTS allein geht mit vorhandenem Bund nicht; erst `h713-remote-pair forget`).
+- [ ] 2.91 **userspace-fix Runde 2 (N-1 Launcher nach h713-osd-Neustart, N-2 langer Power-Druck bei offener Seite) am HY300PRO-G-EU nachmessen** - am HY310 bestanden
+      (16.10.2026, `doku/212` §4 Umfeld; N-2 im Trockenlauf mit einer `systemctl`-Attrappe). Am G-EU: Launcher öffnen, `systemctl restart h713-osd`, eine Taste ->
+      Journal `launcher closed: h713-osd says error the launcher is not open`, Grab frei, OK startet nichts; Power 3 s bei offenem Launcher -> `long press: power-off`
+      (schaltet die Box aus: nur mit Marco am Gerät), kurz -> `short press: countdown`. `h713-keys`, `h713-power`, `h713-settings` zusammen ausspielen.
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -478,6 +525,15 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       das der Sandbox des Dekoder-Prozesses die Geräte öffnet. Ungeprüfte Hypothese: `media.rdd-process.enabled = false` (Dekodieren im Inhaltsprozess) plus
       `security.sandbox.content.read_path_whitelist`/`.write_path_whitelist` mit `/dev/media*`, `/dev/video*` und `/usr/local/lib/dri`; ob Firefox so Hardware versucht und ob die Listen
       reichen, zeigt nur ein Lauf am Gerät.
+- [ ] 9.3m **Fokusmotor bleibt am unteren Rand OUTSIDE** (`doku/213` §6, HY310 16.10.2026, zweimal: Schritt -386 und -6, `raw 0`, beide Kanten 0): der Treiber fährt
+      nicht zurück in den Bereich, `h713-focus` meldet es, danach sind beide Richtungen bis zum Warmstart gesperrt; am oberen Rand rastet die Kante ein. Rücklauf und
+      Kantenlogik unten im Treiber prüfen (`0164`/`0165`, Homing). Dazu: warum die Richtung am Anschlag verdreht gemeldet wurde (das Rand-Bild ist auf Marcos Vorgabe
+      getauscht, kein Wurzelfix), und ob IR (`0254`) und Bluetooth (`0169`) die Fokustasten gleich zuordnen.
+- [ ] 9.3n **Das Licht des HY310 folgt dem Strom des SoC** (`doku/213` §3): +1,2 % je Rechenstoß bei 1296 MHz, Bildkette und Lampensteuerung ausgeschlossen, Deckeln
+      des Takts im Blindtest ohne Wirkung - Hardware (Versorgung oder Masse des LED-Boosts gegen den VDD_CPU-Wandler). Offen: (a) VIN, 5 V, VDD_CPU und LED-Strom
+      mit dem Oszilloskop bei einem CPU-Stoß (nur mit Marco am Gerät); (b) weniger Leerlauflast der Clients (Firefox rechnet im Leerlauf, die zwei C-Statusprogramme
+      der Weboberfläche je +0,45 %); (c) Marcos "HDMI flackert erst nach dem Wechsel von einem Client zurück" nachmessen (Wechsel als Reiz, Kamera am Ring);
+      (d) die Boot-Spätbilder (157 + 55 in den ersten 100 s) mit der echten Fernbedienung im Verbindungsaufbau; (e) dasselbe am G-EU (LCD, Lampen-PWM der Firmware).
 - [ ] 9.5 Windows: Installer nie dort gelaufen; `sunxi-fel.exe` nach Rückmeldungen
 - [ ] 9.6 Zweites Augenpaar auf die Sicherheitspfade (Gate, Recovery, Installer-Verweigerungen)
 - [ ] 9.7 Recovery-Weg **von einer zweiten Person** gegangen; 20 Gate-Zyklen; HDMI-Modustabelle vollständig (aus `61` A.2)
