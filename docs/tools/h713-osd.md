@@ -59,7 +59,7 @@ seam, the launcher's reasoning, measured by a test that compares a page shown in
 answers after `osd show`: without an HDMI signal a page is shown over black (`osd show N cover`, pre-distorted with warp.conf's keystone
 when that warps; over the straight ring too, which it hides - the second before the warp's claim at every start, so the launcher no longer jumps, `doku/214` §3), and the launcher opens there too (measured 16.10.2026: Home over the console puts the launcher on the wall, Back brings the console back, `doku/213` §1). `ok waiting` means h713-tv has no picture at the moment and keeps the page for its return (the autofocus
 has the panel, a source changes its mode). Popups and the mute badge are not drawn while a page is open; the page covers the
-panel, and a launcher does not open over it. `page` in `ctl status` says closed, open and opaque, or open with transparent pixels.
+panel, and a launcher does not open over it. `page` in `ctl status` says `closed`, `open (opaque ...)` or `open (transparent pixels ...)` - the first word stays `open`.
 Host tests: `tests/test_page.py`.
 
 **`cover`, and what it does (17.10.2026):** the launcher and a page without a single transparent pixel are opaque - they are

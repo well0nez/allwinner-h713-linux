@@ -1342,8 +1342,8 @@ static bool handle(const char *line, char *reply, size_t n)
 			 m_valid ? "from warp.conf (pre-distorted while the picture under it is warped)" : "refused",
 			 style.place == OSD_BOTTOM ? "bottom" : style.place == OSD_TOP_RIGHT ? "top-right" : "center",
 			 style.look == OSD_PILL ? "pill" : "bare", style.scale, seconds,
-			 lau.open ? "open" : "closed", !page.open ? "closed" : page.holes ? "open, with transparent pixels (the picture under it runs on)" :
-			 "open, opaque (the mode under it pauses)", last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
+			 lau.open ? "open" : "closed", !page.open ? "closed" : page.holes ? "open (transparent pixels: the picture under it runs on)" :
+			 "open (opaque: the mode under it pauses)", last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
 		return false;
 	} else {
 		snprintf(reply, n, "error unknown: volume N | mute on|off N | focus up|down [edge] | input console|hdmi | power TENTHS standby|off [only] [ALPHA%%] | pair | launcher ... | hide | status\n");
