@@ -463,7 +463,7 @@ int peer_frame(struct peer *p, int index, int fence, int *flip, char *why, size_
 	return 0;
 }
 
-#define WANT_RETRY_S	1.0	/* the want link is tried again at most this often */
+#define WANT_RETRY_S	0.2	/* the want link is tried again at most this often: h713-tv waits for it after its own start */
 
 /*
  * The want link (P3): made when there is none and connect is asked for (at most once WANT_RETRY_S), and the word said

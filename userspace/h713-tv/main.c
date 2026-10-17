@@ -1435,6 +1435,7 @@ static struct {
  * the same: its claim pauses under the page, and its first frame after the page carries the page's end.
  */
 #define WARP_HOLD_MS	1000
+#define WARP_CTL_SOCKET	"/run/h713-warp/ctl"	/* h713-warp's own control socket: it runs */
 
 static struct {
 	int peer;		/* h713-warp's "warp want" connection, -1: none */
@@ -8627,6 +8628,18 @@ int main(int argc, char **argv)
 
 	/* the EDID half tv.conf asks for, before the first picture is judged */
 	edid_apply_start(&conf, &cap, &d, &rt);
+	/*
+	 * h713-warp runs (its control socket is there) but has had no chance to say its word on the want link yet - this
+	 * program's socket is only just up: its "ring" is assumed for WARP_HOLD_MS, as after a restart of h713-warp, so that
+	 * the first picture waits for its claim instead of showing the straight ring first (17.10.2026, HY310: h713-tv
+	 * restarted, the signal stood at once, the straight ring 0.5 s before the claim). "warp want none" ends it at once.
+	 */
+	if (!access(WARP_CTL_SOCKET, F_OK)) {
+		wish.ring = true;
+		clock_gettime(CLOCK_MONOTONIC, &wish.gone);
+		info("warp            h713-warp runs (%s) -- its word on the want link is waited for, at most %d ms", WARP_CTL_SOCKET,
+		     WARP_HOLD_MS);
+	}
 	/* The state at startup counts as much as any later change. */
 	reevaluate(&cap, &d, &rt, &au);
 

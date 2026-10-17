@@ -269,8 +269,9 @@ int main(void)
 	      "want: \"warp want none\" said when the word changes, answered, no note");
 	check(readable(p.want_fd, 1000) && !peer_want_notes(&p) && p.want_fd < 0 && p.want_said < 0,
 	      "want: h713-tv went - the link is closed, the word unsaid");
+	p.want_tried = now_s();
 	peer_want(&p, true, true);
-	check(p.want_fd < 0, "want: not made again within a second");
+	check(p.want_fd < 0, "want: not made again at once (at most every 0.2 s)");
 	p.want_tried = 0;
 	peer_want(&p, true, true);
 	check(p.want_fd >= 0 && p.want_said == 1, "want: made again after the second, the word said again");

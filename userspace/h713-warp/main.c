@@ -31,6 +31,7 @@
 #include "warp.h"
 
 #define RETRY_MS	1000	/* while the wanted state cannot be reached */
+#define WANT_RETRY_MS	200	/* the want link to h713-tv, while there is none (peer.c: WANT_RETRY_S) */
 #define PATTERN_MS	500	/* the test pattern's heartbeat, see below */
 
 void info(const char *fmt, ...)
@@ -267,8 +268,9 @@ int main(int argc, char **argv)
 		/* the want link to h713-tv (P3): its "note claim", and a try to make it again once a second while there is none */
 		fds[7].fd = r.peer.want_fd;
 		fds[7].events = POLLIN;
-		if (r.on && r.peer.want_fd < 0 && !r.peer.want_refused && (timeout < 0 || timeout > RETRY_MS))
-			timeout = RETRY_MS;
+		/* every 200 ms while there is none: a restarted h713-tv waits for the word up to a second (h713-tv's start) */
+		if (r.on && r.peer.want_fd < 0 && !r.peer.want_refused && (timeout < 0 || timeout > WANT_RETRY_MS))
+			timeout = WANT_RETRY_MS;
 		if (poll(fds, 8, timeout) < 0) {
 			if (errno == EINTR)
 				continue;
