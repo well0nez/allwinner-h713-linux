@@ -94,6 +94,15 @@ boots straight back). Not measured: HDCP 2.2 from the source after the restart. 
 | Bluetooth remote | not a wake source: Bluetooth is down in standby. Its power key **starts** a standby once it is paired (`h713-power` listens on it; HY300PRO-G-EU, 10.10.2026); asleep it falls back to IR, which wakes the box |
 | IR remote, going to sleep | not possible yet: Linux has no keymap on the IR receiver (`rc-empty`), so its power key never reaches `h713-power` (TODO 2.35) |
 
+**The RTC ran 26 % slow until kernel `0320` (16.10.2026), and the kernel's clock sync swallowed alarms.** Measured on the HY310:
+one RTC second was 1.357 s, because the H713's RTC took its 32 kHz from the internal RC oscillator; with NTP in sync the kernel
+sets the RTC to system time every eleven minutes (`CONFIG_RTC_SYSTOHC`), a jump of about 174 s forward, and the RTC core then
+drops every alarm whose time has passed - so a `rtcwake -s 90` armed shortly before such a sync left the box asleep without a
+wake timer (`standby N: net none, no RTC alarm`). The vendor kernel divides the 24 MHz crystal instead (`dcxo24M-div32k`), and so
+does `0320` since 16.10.2026: rate 1.000 against system time, two RTC standbys woken by the alarm, the IR remote unaffected
+(`doku/213` §5). The acceptance scripts still set the RTC to system time before every `rtcwake` and read `wakealarm` back - as a
+check, not as a workaround. Not measured on the HY300PRO-G-EU, which has the same RTC block and no 32 kHz crystal in its tree.
+
 After a wake by the power key Linux sees a `KEY_POWER` - the press that woke it. On an image with standby
 [h713-power](../tools/h713-power.md) ignores it; without h713-power logind would power off.
 

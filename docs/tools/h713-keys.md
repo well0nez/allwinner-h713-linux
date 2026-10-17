@@ -16,7 +16,7 @@ h713-keys run            # what the unit runs
 |---|---|
 | `KEY_VOLUMEUP` / `KEY_VOLUMEDOWN` | `h713-tv ctl volume N` in steps of `volume_step`; both lift a mute first (the owner's choice of 11.10.2026) |
 | `KEY_MUTE` | toggles `h713-tv ctl mute`; held down it does not repeat |
-| `KEY_F4` / `KEY_F5` (the BLE remote's focus keys, kernel 0169; IR 0x0251/0x0250) | `h713-focus up/down` with `focus_steps`; one run at a time, presses during a run wait for the next (at most two presses' worth, so a held key keeps the motor going and it stops one run after the release), a press the other way replaces what was waiting. At the end of the travel (`h713-focus` exit 3) the overlay shows the end stop and nothing more is queued that way. The end stop picture is the other direction's: a run up ends with `focus down edge`, a run down with `focus up edge` (the owner's eye at the wall, 16.10.2026: the run he drove down to its stop showed the top edge picture) |
+| `KEY_F4` / `KEY_F5` (the BLE remote's focus keys, kernel 0169; IR 0x0251/0x0250) | `h713-focus up/down` with `focus_steps`; one run at a time, presses during a run wait for the next (at most two presses' worth, so a held key keeps the motor going and it stops one run after the release), a press the other way replaces what was waiting. At the end of the travel (`h713-focus` exit 3) the overlay shows the end stop and nothing more is queued that way. The end stop picture is the other direction's: a run up ends with `focus down edge`, a run down with `focus up edge` (the owner's eye at the wall, 16.10.2026: the run he drove down to its stop showed the top edge picture; `doku/213` §6 - his instruction, not a root cause: why the direction is reported the wrong way round is open) |
 | `input_keys` (none by default) | `h713-tv ctl off` (console) when the picture is on automatic, `h713-tv ctl auto` otherwise. The remote has no record key; which key gets this is open |
 | `KEY_POWER` | left alone: logind powers off, or [h713-power](h713-power.md) decides on an image with standby |
 | `KEY_HOMEPAGE` | opens the launcher (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
@@ -53,7 +53,7 @@ while it is open is held at once.
 devices are held at once. It tries every 5 s for 180 s after h713-keys has started (h713-osd and the picture come late; without a signal h713-osd answers `ok unseen` and nothing is shown, the console is under it) and then gives up with one warning.
 "Once per boot" is `/run/h713-keys.booted`: /run is empty after every boot and stays through a standby and a restart of the service, so a **standby brings back the mode from before** (a standby between the start and the first open ends the attempt: it
 sees that the machine slept, `CLOCK_BOOTTIME` ahead of `CLOCK_MONOTONIC`) and a deploy of h713-keys does not pop the launcher up. The launcher opened this way **waits for the first key** (the 90 s idle limit counts only from then on): a start page that vanished while
-nobody was at the remote would be the HDMI picture again. The settings page writes the line (Input > On start, [h713-settings](h713-settings.md)); a change counts at the next start of the box.
+nobody was at the remote would be the HDMI picture again. The settings page writes the line (Input > On start, [h713-settings](h713-settings.md)); a change counts at the next start of the box. Measured on the HY310, 16.10.2026: four warm starts, the launcher open 10.6 to 10.9 s after the boot, seen by the camera (`doku/213` §4).
 
 **The entries are files**, `/etc/h713/launcher.d/NN-name.conf`, sorted by name (a package adds its own and touches no code):
 
@@ -70,8 +70,8 @@ fallback = yes                   # the current entry when no other `active` chec
 wait     = /usr/local/sbin/h713-kodi-switch ready    # optional, with `unit`: see below
 ```
 
-**`wait`: the page stays while a client starts** (acceptance of 16.10.2026: Kodi needs 4 s, Firefox 9 to 13 s to a first picture, and the wall was black or the
-old client until then). An entry with `unit` and `wait` does not close the launcher at the OK: it starts the unit, redefines the page with the header
+**`wait`: the page stays while a client starts** (acceptance of 16.10.2026, `doku/213` §1 and §4: Kodi needs 4 s, Firefox 9 to 13 s to a first picture, and the wall was black or the
+old client until then; with the page: Kodi 4.7 to 4.9 s, desktop 1.2 s, browser 6.3 s from HDMI, the wall never black). An entry with `unit` and `wait` does not close the launcher at the OK: it starts the unit, redefines the page with the header
 "Starting Browser..." (`launcher SEL;NOW;rows` again, the same command that opened it), and asks every 0.5 s whether the unit is up (`active`) and the `wait` command exits 0;
 then the page goes and the client is on the wall. At most 30 s (`START_WAIT_S`), then it goes anyway with a journal line. While it waits, Up, Down and OK are swallowed (a second OK would
 start the unit again); Back and Home close the page (the unit goes on starting), Power does what it always does, volume and mute work. The commands in the

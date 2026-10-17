@@ -72,7 +72,7 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
   needs no signal, and the capture stays closed. Between the ring and a client the claim is not given back: the
   warp switches it (`warp switch client|ring` to h713-tv) and draws the other source into the same three buffers,
   the video plane up all the time - so a change between HDMI and a client goes from the last frame of the one to
-  the first of the other (giving the claim back and claiming again flashed white, 16.10.2026). This happens when a
+  the first of the other (giving the claim back and claiming again flashed white in 8 of 8 handovers; with the switch 0 of 24, 16.10.2026, `doku/213` §1). This happens when a
   client comes under `auto`, when the client is gone and the ring is to be warped, and when h713-tv's `source`
   forbids the claim that stands: h713-tv says so unasked on the connection (`note source hdmi`), the warp switches
   to the ring - or gives the claim back when the ring needs no GPU, has no signal, or the switch is refused; then it

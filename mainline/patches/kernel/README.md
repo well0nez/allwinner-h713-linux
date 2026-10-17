@@ -203,6 +203,12 @@ roadmap and `docs/status.md`.
   (`0315`); an H.265 collocated index outside the active list is refused (`0316`); `cedrus_vp9_finish()` no longer puts a
   2 KiB frame context on the stack (`0317`); the AV1 node of `0024` that no driver binds goes (`0318`); the IOMMU comment of
   August that said there is none goes (`0319`). *(ours)*
+- **0320 - the RTC runs from the 24 MHz crystal.** The H713's RTC took its 32 kHz from the internal 16 MHz RC oscillator and
+  ran 26 % slow (one RTC second = 1.357 s on the HY310); the kernel's eleven-minute sync then jumped it forward by about 174 s and
+  the RTC core dropped every alarm within that span - a standby armed with `rtcwake -s 90` slept without a wake timer. The vendor
+  kernel divides the 24 MHz crystal (`dcxo24M-div32k`, LOSC_CTRL 0x4002); this patch does the same, gate of the divider first
+  (LOSC_OUT_GATING bit 16, as mainline does on the H616), then the mux. Measured 16.10.2026 on the HY310: rate 1.000, two RTC
+  standbys woken by the alarm, the IR remote unaffected (`doku/213` §5). The mux alone stops the RTC - measured, not shipped. *(ours)*
 
 With these patches in place `build/build.sh kernel` emits the board's DTB plus
 cstenger's two HY200 DTBs, and a bootable FIT (`build/out/h713-kernel.fit`:
