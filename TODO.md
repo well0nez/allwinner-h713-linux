@@ -6,6 +6,30 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 1 Release — in dieser Reihenfolge
 
+**Reihenfolge bis zum Release (Marco 17.10.2026).** Die Nummern darunter bleiben die Arbeitspunkte; diese Liste ordnet sie.
+1. **Nebenprojekt `medien` am HY310 fertig messen:** Endabbild rend5 installieren, `abnahme.sh` am installierten Abbild (im Zweig
+   `medien` TODO 2.89, Auflage A1 der Schlussprüfung M5).
+2. **HY300PRO-G-EU:** Medienabbild installieren und die 13 Punkte der Schlussprüfung messen, dazu alle nur am HY310 gemessenen Pakete
+   (im Zweig `medien` TODO 2.74-2.94, Auflage A2); die zwei Baufehler für eine verifizierte Variante (bl31 ohne Variante, Abbild in
+   HY310-eMMC-Größe) gehen mit (Zweig `medien-geu`, betreffen auch `main`).
+3. **`medien` nach `main` übernehmen:** Merge (in `TODO.md` konfliktbehaftet: `main` hat 2.73 und 7.20 mehr), alle Tore mit `--tests`,
+   `boards/check.sh` - nach 1 und 2 und dem Go der Schlussprüfung.
+4. **Lizenzen 7.20:** a (Bauskripte im Reinraum) und c (Entflechtung) sind fertig auf ihren Zweigen - einbauen; b und d nachziehen;
+   **e (Lizenzhinweise und Quelltextangebot im Abbild) ist für jedes verteilte Abbild Pflicht**, unabhängig von cstenger (Kernel/U-Boot
+   GPL, mesa MIT, TF-A/crust BSD). Nachgeprüft 17.10.: cstengers Repo hat weiter keine Lizenz für seine eigenen Dateien (kein LICENSE,
+   README ohne Lizenz; `PROVENANCE.md` dort nennt nur die Lizenzen der Fremdteile und unsere Kernel-Patches als GPL-2.0).
+5. **Doku-Runde 7.19 als komplette Überarbeitung:** alles Neue und Geänderte seit v0.96 (Einblendungen/OSD, Launcher, Einstellungen,
+   Kodi, Desktop/Browser, Warp-Server, Standby/crust, RTC), fehlende Seiten (`h713-remote-pair`, `h713-cpufreq`), README, STATUS,
+   known-issues; zum Schluss die Release-Seite aus Fremdensicht.
+6. **Die übrigen Release-Punkte:** 1.2a (Journal persistent), 1.2b (Installer übernimmt `/etc/h713`), 1.3 (ins Abbild), 1.9.
+7. **Release-Neubau 1.1a** von vorn, HY310 und HY300PRO-G-EU, an beiden installieren und messen.
+8. **Leck-Prüfung 1.7a** über alles, was rausgeht (Klarname, Adressen, Firma, Seriennummern/MACs; `main`, Forks, Submodul-Commits,
+   Spiegel-Patches).
+9. **Pushen 1.6, 1.7:** Forks zuerst (crust als neues Repo), dann `main`, alte Branches löschen - jeder Push mit Marcos Ja; danach
+   1.7a gegen einen frischen Klon.
+10. **1.8** RELEASES.md, Tag, Release-Text.
+
+
 - [ ] 1.1a **Release-Neubau** mit allem seit dem v0.96-Bau vom 05.10. (Baustand `be4f8e1`; der alte Hash `819a09a` ist seit dem
       Identitäts-Rewrite unerreichbar): Kernel 0184/0185 und pwm-sun8i (`5e4475a`), Warp (Zoom, Moduswechsel,
       Stale-Schwelle, Import), EDID-Beschnitt, Panel (Auth, Zoom-Schieber), h713-tv (Aspect zoom), Installer-Texte, die neu
