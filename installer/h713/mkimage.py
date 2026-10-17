@@ -244,22 +244,28 @@ def uboot_version(path):
     return m.group(0).decode("latin1") if m else None
 
 
-def disk_sectors_for(test_for):
-    """The eMMC size an image is cut for: the HY310's (layout.DISK_SECTORS), or for a TEST
-    image the one its board's installer profile states ("layout" -> "disk_sectors").
+def disk_sectors_for(test_for, board=None):
+    """The eMMC size an image is cut for: the one its board's installer profile states
+    ("layout" -> "disk_sectors") - the board of a TEST image (--test-for) or of a release
+    image (--board) - else the HY310's (layout.DISK_SECTORS).
     The table carries it as "disk_sektoren", and h713-install writes the image only onto
     a device of exactly that size. A board with variants is named with its variant
-    ("<board>/<variant>"): eMMC size and DRAM clock are the firmware's, not the board's."""
-    if not test_for:
+    ("<board>/<variant>"): eMMC size and DRAM clock are the firmware's, not the board's.
+    A verified board other than the HY310 gets no --test-for, so before --board its
+    release image was cut for the HY310's eMMC and refused on its own (HY300PRO-G-EU,
+    15273600 sectors, 17.10.2026)."""
+    pid = test_for or board
+    if not pid:
         return DISK_SECTORS
+    flag = "--test-for" if test_for else "--board"
     from h713.profiles import get
-    profile = get(test_for)
+    profile = get(pid)
     if profile is None:
-        raise SystemExit("--test-for %s: no installer profile has that id, so h713-install "
-                         "could never identify the board this image is for" % test_for)
+        raise SystemExit("%s %s: no installer profile has that id, so h713-install "
+                         "could never identify the board this image is for" % (flag, pid))
     if profile.get("variants"):
-        raise SystemExit("--test-for %s: this board has variants (%s) -- name one as %s/<variant>"
-                         % (test_for, ", ".join(sorted(profile["variants"])), test_for))
+        raise SystemExit("%s %s: this board has variants (%s) -- name one as %s/<variant>"
+                         % (flag, pid, ", ".join(sorted(profile["variants"])), pid))
     return (profile.get("layout") or {}).get("disk_sectors") or DISK_SECTORS
 
 
@@ -299,7 +305,7 @@ def build(args, here=None):
             raise SystemExit("%s: %s not found" % (w, p))
 
     test_for = getattr(args, "test_for", None)
-    disk_sectors = disk_sectors_for(test_for)
+    disk_sectors = disk_sectors_for(test_for, getattr(args, "board", None))
     part_c = part_c_lba(disk_sectors)
     partitions = partitions_for(disk_sectors)
     target = os.path.abspath(args.out)

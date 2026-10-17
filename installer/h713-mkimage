@@ -101,6 +101,9 @@ def parser():
                    help="mark this build as a TEST IMAGE for one installer profile "
                         '(table key "test_for"; <board>/<variant> for a board with variants): '
                         "h713-install writes it only on that board and only with --test-image")
+    b.add_argument("--board", dest="board", metavar="PROFILE_ID",
+                   help="the installer profile of the board this image is for (<board>/<variant> for a board "
+                        "with variants): the table is cut for its eMMC (layout.disk_sectors); default the HY310's")
     b.add_argument("--arisc", choices=("crust", "vendor"), default=None,
                    help='which firmware the ARISC runs on this image (table key "arisc"): crust, built with it, '
                         "or vendor, the owner's from the dump; h713-install says so at the end (TODO 5.20)")
