@@ -294,7 +294,9 @@ class PageTest(PageBase):
         self.assertEqual(self.shown(), bytes(c.map))
 
     def test_the_picture_turning_warped_puts_the_page_again(self):
-        self.write("warp.conf", "bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = on\n")
+        # warp = off in warp.conf: over the straight ring the page is straight; the warp switched on at run time
+        # warps the picture, and the page is drawn again for it
+        self.write("warp.conf", "bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = off\n")
         self.start()
         c = self.page()
         c.paint(0, H)
@@ -305,6 +307,20 @@ class PageTest(PageBase):
         warped = self.shown()
         self.assertNotEqual(warped, straight)
         self.assertEqual(straight, bytes(c.map))
+
+    def test_over_the_straight_ring_an_opaque_page_stands_as_the_warp_will(self):
+        # warp = on: the straight ring under the page is the second before the warp's claim (every start); the page
+        # hides it and is drawn for the wall at once, so the claim changes nothing (17.10.2026: warped, straight, warped)
+        self.write("warp.conf", "bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = on\n")
+        self.start()
+        c = self.page()
+        c.paint(0, H)
+        c.show(0, H)
+        over_ring = self.shown()
+        self.assertNotEqual(over_ring, bytes(c.map))   # pre-distorted, not the straight canvas
+        self.tv.picture = "warped"
+        time.sleep(0.6)
+        self.assertEqual(self.shown(), over_ring)
 
     def test_no_picture_the_page_over_black(self):
         """without a signal a page (the settings) opens all the same and is shown over black ("osd show N cover")"""

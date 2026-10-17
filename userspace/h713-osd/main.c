@@ -264,8 +264,8 @@ static void geom_load(void)
  * How an overlay is drawn for what lies under it ("osd picture"): pre-distorted over the warped picture, straight
  * over the ring. An opaque page (the launcher, a settings page) needs no picture under it: without one h713-tv shows
  * it over black ("osd show N cover"), and it is drawn for the wall as the warped picture would stand there - with
- * the keystone of warp.conf when that says "warp = on". 16.10.2026: without an HDMI signal the launcher did not open
- * at all.
+ * the keystone of warp.conf when that says "warp = on" - over the straight ring too, which it hides. 16.10.2026:
+ * without an HDMI signal the launcher did not open at all.
  */
 static bool covering(void)
 {
@@ -274,7 +274,11 @@ static bool covering(void)
 
 static bool skew_for(const char *picture)
 {
-	bool warped = !strcmp(picture, "ok warped") || (covering() && geom.start_on && !strcmp(picture, "ok none"));
+	/* An opaque page hides what lies under it, so it is drawn for the wall whether the ring is there or not:
+	 * a straight ring under it is the second between the signal and the warp's claim (at every start - the
+	 * launcher was drawn warped, straight and warped again within two seconds, HY310 17.10.2026) */
+	bool warped = !strcmp(picture, "ok warped") ||
+		      (covering() && geom.start_on && (!strcmp(picture, "ok none") || !strcmp(picture, "ok ring")));
 
 	return warped && m_valid && !m_identity;
 }
