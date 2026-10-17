@@ -117,8 +117,11 @@ An opaque page on the wall (the launcher, a settings page: h713-osd's `osd show 
 mode under it pauses: h713-tv says `note cover on` on the claim's connection and the warp draws nothing more - the ring's
 capture is not asked (its slots stay with the driver), a client's pictures are taken once a panel period as without the
 page (frame callbacks done, feedback discarded: the client runs on, Kodi plays on) and the newest one is held instead of
-drawn. The claim, the capture, the link and HDCP stay; the video plane keeps its last frame. A claim made under a page draws
-its first frame and then pauses, so that the video plane is up beneath the page and not switched on at its end. `note cover
+drawn. The claim, the capture, the link and HDCP stay; h713-tv switches the video plane **off** under the page (since 17.10.2026
+evening, Marco: nothing of HDMI lies behind a page, and nothing nobody sees is read), and a claim made under a page draws nothing
+until the page goes. Between two opaque pages (the settings page and the launcher, either way) the first stays on the wall until
+the second is drawn in its place (h713-osd, "page handover" / "launcher close keep"), so the pause and the dark plane last through
+the change. `note cover
 off` - the page goes, or turns into the settings' slider pill over the picture, which is not opaque - and the next frame is
 drawn at once: the ring's slots that stood are given back and the next one handed on is drawn (a slot handed on less than
 10 ms ago is drawn at once), a client's held picture is drawn, or with none the client's buffer on the panel is committed

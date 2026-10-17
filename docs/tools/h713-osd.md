@@ -71,6 +71,14 @@ sound - nothing in h713-settings says so, its pixels do. Over no picture at all 
 `cover` all the same (over black, as before), and while such a page is open h713-osd asks what lies under it every quarter
 second, so that the word follows a signal that goes or comes.
 
+**Hand-over between two pages (17.10.2026):** a page that goes and is followed by another says so - `page handover` on the page
+channel before its connection ends (h713-settings on Back at the top, which brings the launcher back), `launcher close keep`
+(h713-keys on OK on an entry whose program is a page) - and stays on the wall until its successor is drawn into the other buffer
+and shown in its place, at most a second. Before, the first page went with `osd hide` and the HDMI picture stood on the wall for
+the 0.19-0.20 s the second took to draw through the keystone. Without the word (Home, Power, a crash) a page goes at once. `ctl
+status` says `closed (handed over ...)` meanwhile; `H713_OSD_TRACE=1` names per refresh the buffer drawn, whether the other one
+is on the wall, what lies under it and what was wiped. Host tests: `tests/test_handover.py`.
+
 The new rows are kept as up to four ranges (one that lies within 24 rows of another joins it), so a row and the note at the foot are
 two small puts, not the rectangle around both; each is written a half row wider than it tiles, because a panel pixel reads two source
 rows. A whole page that was shown is owed to the **other** buffer too: it is put right after the answer, not at the next key.
