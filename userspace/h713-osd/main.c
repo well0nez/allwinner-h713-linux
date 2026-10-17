@@ -1888,6 +1888,7 @@ static int run(void)
 	tv_claim();		/* at the start: h713-tv's word on the signal is wanted before any event */
 	if (want.muted || sig.none)
 		refresh();
+	arm(tfd);		/* h713-tv may not be up yet: the claim is tried again every second, without waiting for the first event */
 	info("ready: %s; place %s, look %s; keystone %s", osd_socket,
 	     style.place == OSD_BOTTOM ? "bottom" : style.place == OSD_TOP_RIGHT ? "top-right" : "center",
 	     style.look == OSD_PILL ? "pill" : "bare", m_identity ? "none" : m_valid ? "from warp.conf" : "refused");

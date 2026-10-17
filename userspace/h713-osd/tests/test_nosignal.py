@@ -16,7 +16,7 @@ import time
 import unittest
 
 from test_launcher import COLUMN, FONT, GROUND, ROWS, SX0, SX1, SY0, SY1, line
-from test_osd import BIN, H, PITCH, W
+from test_osd import BIN, FakeTv, H, PITCH, W
 from test_page import PageBase
 
 
@@ -251,6 +251,18 @@ class NoSignalTest(PageBase):
         time.sleep(0.5)
         self.assertIsNone(self.tv.shown)
         self.assertIn("no-signal page  none", self.status())
+
+    def test_it_claims_when_h713_tv_comes_up_after_it(self):
+        """a restart of both (an update, a boot): h713-osd is up first, h713-tv a moment later - no event is needed for the page"""
+        self.tv.stop()                                          # h713-tv is not there yet
+        self.start()
+        time.sleep(0.3)
+        self.tv = FakeTv(self.env["H713_OSD_TV"])
+        self.tv.signal = "none"
+        self.tv.start()
+        time.sleep(2.5)                                         # the claim is tried every second
+        self.assertEqual(self.tv.lines.count("osd claim"), 1)
+        self.assertIsNotNone(self.tv.shown, "the page stands without any event")
 
     def test_status_names_the_word(self):
         self.start_none()
