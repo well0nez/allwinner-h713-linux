@@ -5039,6 +5039,73 @@ static unsigned int edid_prune(uint8_t *edid, const uint8_t have[16], char *list
 }
 
 /*
+ * Take Deep Colour out of one 256-byte EDID.
+ *
+ * The display firmware does not take Deep Colour: a source that renegotiates to 10 or 12 bits per channel
+ * (a replug, a standby, the return from a parked capture) sends a pixel clock the firmware's table has no record
+ * for (1080p60 at 12 bit is 222.8 MHz) and the wall shows the console instead of a picture. The vendor's file
+ * offers it all the same, in two places of the CTA extension:
+ *
+ *  - the HDMI vendor block (OUI 00-0C-03), flags byte (payload byte 5): DC_48bit (bit 6), DC_36bit (5),
+ *    DC_30bit (4) and DC_Y444 (3), the last being "Deep Colour in YCbCr 4:4:4 as well"; Supports_AI (bit 7)
+ *    and DVI_Dual (bit 0) are not Deep Colour and stay;
+ *  - the HDMI Forum vendor block (OUI C4-5D-D8), payload byte 6: DC_48bit_420, DC_36bit_420, DC_30bit_420
+ *    (bits 2..0), Deep Colour of the YCbCr 4:2:0 modes. The vendor's file has none of it; a file that does gets it
+ *    cleared the same way.
+ *
+ * Only those bits change, so a source is left with 8 bits per channel everywhere. The maximum TMDS clock of both
+ * blocks, the modes and every other vendor block (Dolby Vision, HDR) are not touched: the clock is a limit that
+ * 8-bit modes need as much as Deep Colour ones, and a mode is no Deep Colour statement. The extension's
+ * checksum is computed again. Returns how many bits were cleared (0: nothing to do, nothing changed); `list`
+ * gets their names, each with a blank in front.
+ */
+static unsigned int edid_strip_dc(uint8_t *edid, char *list, size_t n)
+{
+	static const char *const hdmi_dc[] = { NULL, NULL, NULL, "DC_Y444", "DC_30bit", "DC_36bit", "DC_48bit" };
+	static const char *const forum_dc[] = { "DC_30bit_420", "DC_36bit_420", "DC_48bit_420" };
+	uint8_t *ext = edid + 128;
+	unsigned int i, b, cleared = 0, sum = 0;
+
+	if (list && n)
+		list[0] = '\0';
+	if (!edid[0x7e] || ext[0] != 0x02 || ext[2] < 4)
+		return 0;
+	for (i = 4; i < ext[2] && i < 127; i += (ext[i] & 0x1f) + 1) {
+		unsigned int len = ext[i] & 0x1f;
+		uint8_t *flags = NULL;
+		const char *const *names = NULL;
+		uint8_t mask = 0;
+
+		if (ext[i] >> 5 != 3 || i + len >= 127)	/* a vendor block that lies inside the extension */
+			continue;
+		if (len >= 6 && ext[i + 1] == 0x03 && ext[i + 2] == 0x0c && ext[i + 3] == 0x00) {
+			flags = &ext[i + 6];
+			names = hdmi_dc;
+			mask = 0x78;
+		} else if (len >= 7 && ext[i + 1] == 0xd8 && ext[i + 2] == 0x5d && ext[i + 3] == 0xc4) {
+			flags = &ext[i + 7];
+			names = forum_dc;
+			mask = 0x07;
+		}
+		for (b = 0; flags && b < 8; b++) {
+			if (!(*flags & mask & (1u << b)))
+				continue;
+			*flags &= (uint8_t)~(1u << b);
+			cleared++;
+			if (list && n)
+				snprintf(list + strlen(list), n - strlen(list), " %s", names[b]);
+		}
+	}
+	if (cleared) {
+		for (i = 0; i < 127; i++)
+			sum += ext[i];
+		ext[127] = (uint8_t)(-(int)sum);
+	}
+
+	return cleared;
+}
+
+/*
  * The panel's own timing first.
  *
  * A source follows the EDID's first detailed timing. The vendor's file puts
@@ -5079,6 +5146,7 @@ static unsigned int edid_dtd_h(const uint8_t *t) { return t[5] | (unsigned int)(
 static bool edid_prefer_panel = false;		/* tv.conf edid_prefer */
 static unsigned int edid_panel_w, edid_panel_h;	/* the panel, once the display knows it */
 static char edid_panel_note[96];		/* what edid_panel_first did to the half published last */
+static char edid_dc_note[128];			/* what edid_strip_dc took out of the half published last */
 
 static bool edid_panel_first(uint8_t *edid, unsigned int w, unsigned int h, char *what, size_t n)
 {
@@ -5112,11 +5180,24 @@ static bool edid_panel_first(uint8_t *edid, unsigned int w, unsigned int h, char
 	return true;
 }
 
-/* half `half` of the file as this program publishes it: the panel's timing first, without the modes the table lacks */
+/* what edid_strip_dc did, in the words the answer and the journal use ("" when it did nothing) */
+static void edid_dc_say(char *note, size_t n, unsigned int cleared, const char *list)
+{
+	if (cleared)
+		snprintf(note, n, "without deep colour (%s)", list + 1);
+	else if (n)
+		note[0] = '\0';
+}
+
+/*
+ * half `half` of the file as this program publishes it: the panel's timing first, without the modes the table
+ * lacks, without Deep Colour
+ */
 static bool edid_file_half(struct capture *cap, int half, uint8_t *out, unsigned int *dropped,
 			   char *list, size_t n, char *why, size_t wn)
 {
 	uint8_t file[EDID_BYTES], have[16];
+	char dc[96];
 
 	if (!edid_from_file(EDID_FILE, file, why, wn))
 		return false;
@@ -5126,6 +5207,7 @@ static bool edid_file_half(struct capture *cap, int half, uint8_t *out, unsigned
 		edid_panel_first(out, edid_panel_w, edid_panel_h, edid_panel_note, sizeof(edid_panel_note));
 	edid_table_have(cap, have);
 	*dropped = edid_prune(out, have, list, n);
+	edid_dc_say(edid_dc_note, sizeof(edid_dc_note), edid_strip_dc(out, dc, sizeof(dc)), dc);
 
 	return true;
 }
@@ -5142,7 +5224,7 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	struct timespec low = { .tv_sec = 0, .tv_nsec = REPLUG_LOW_MS * 1000000L };
 	uint8_t buf[EDID_BYTES], pub[EDID_BYTES / 2];
 	struct v4l2_edid e;
-	char why[160], what[160] = "EDID loaded again", list[64];
+	char why[160], what[320] = "EDID loaded again", list[64], extra[160] = "";
 	const char *origin = "";
 	bool copy = false;
 	unsigned int dropped = 0;
@@ -5205,16 +5287,32 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 	e.blocks = EDID_BLOCKS;
 	e.edid = buf;
 	if (half >= 0) {
+		size_t w;
+
 		e.blocks = EDID_BLOCKS / 2;
 		e.edid = pub;
-		if (dropped)
-			snprintf(what, sizeof(what), "block %d of %s published without %u VIC%s the firmware's table lacks (%s)%s%s",
-				 half, EDID_FILE, dropped, dropped == 1 ? "" : "s", list + 1,
-				 edid_panel_note[0] ? ", " : "", edid_panel_note);
-		else
-			snprintf(what, sizeof(what), "block %d of %s published%s%s", half, EDID_FILE,
-				 edid_panel_note[0] ? ", " : "", edid_panel_note);
+		w = (size_t)snprintf(what, sizeof(what), "block %d of %s published", half, EDID_FILE);
+		if (dropped && w < sizeof(what))
+			w += (size_t)snprintf(what + w, sizeof(what) - w, " without %u VIC%s the firmware's table lacks (%s)",
+					      dropped, dropped == 1 ? "" : "s", list + 1);
+		if (edid_dc_note[0] && w < sizeof(what))
+			w += (size_t)snprintf(what + w, sizeof(what) - w, "%s%s", dropped ? ", " : " ", edid_dc_note);
+		if (edid_panel_note[0] && w < sizeof(what))
+			snprintf(what + w, sizeof(what) - w, ", %s", edid_panel_note);
 		origin = "";
+	} else {
+		/*
+		 * The plain replug sends the read-back (or the copy, or the file): none of them is
+		 * the half as edid_file_half makes it, and the file offers Deep Colour. Both EDIDs
+		 * of the four blocks lose it, so no way of publishing brings it back.
+		 */
+		char dc0[96], dc1[96];
+		unsigned int c0 = edid_strip_dc(buf, dc0, sizeof(dc0));
+		unsigned int c1 = edid_strip_dc(buf + EDID_BYTES / 2, dc1, sizeof(dc1));
+
+		edid_dc_say(edid_dc_note, sizeof(edid_dc_note), c0 + c1, c0 ? dc0 : dc1);
+		if (edid_dc_note[0])
+			snprintf(extra, sizeof(extra), ", %s%s", edid_dc_note, c0 && c1 ? " in both EDIDs" : "");
 	}
 	if (ioctl(cap->fd, VIDIOC_S_EDID, &e)) {
 		int err = errno;
@@ -5247,9 +5345,9 @@ static bool cmd_replug(struct reply *r, struct capture *cap, struct display *d,
 			edid_served = d0 > 8 && d1 > 8 ? -2 : (int)(d1 < d0);
 		}
 	}
-	info("replug          %s%s, HPD high -- the source renegotiates", what, origin);
-	reply_add(r, "ok replug -- HPD %u ms low, %s%s, the source renegotiates\n",
-		  REPLUG_LOW_MS, what, origin);
+	info("replug          %s%s%s, HPD high -- the source renegotiates", what, origin, extra);
+	reply_add(r, "ok replug -- HPD %u ms low, %s%s%s, the source renegotiates\n",
+		  REPLUG_LOW_MS, what, origin, extra);
 
 	return true;
 }
@@ -5324,10 +5422,10 @@ static int edid_served_known(struct capture *cap, uint8_t *served)
 
 static void cmd_status_edid(struct reply *r, struct capture *cap)
 {
-	uint8_t served[EDID_BYTES / 2], have[16];	/* one bit per VIC 0..127 */
+	uint8_t served[EDID_BYTES / 2] = { 0 }, have[16];	/* one bit per VIC 0..127 */
 	const uint8_t *ext = served + 128;
 	unsigned int i, k, n = 0, miss = 0;
-	char list[128] = "", which[96];
+	char list[128] = "", which[96], dc[96];
 	int half = edid_served_known(cap, served);
 
 	if (half == -1) {	/* no read-back: what this program published is still known */
@@ -5359,6 +5457,15 @@ static void cmd_status_edid(struct reply *r, struct capture *cap)
 		snprintf(which, sizeof(which), "block %d of %s", half, EDID_FILE);
 	reply_add(r, "edid            %s served (%u VICs offered, %s%s)\n", which, n,
 		  miss ? "not in the firmware's table: VIC" : "all in the firmware's table", list);
+	if (ext[0] == 0x02) {	/* the Deep Colour bits are read off what is served, on a copy */
+		uint8_t copy[EDID_BYTES / 2];
+
+		memcpy(copy, served, sizeof(copy));
+		if (edid_strip_dc(copy, dc, sizeof(dc)))
+			reply_add(r, "                deep colour offered:%s -- a source may negotiate more than 8 bit\n", dc);
+		else
+			reply_add(r, "                no deep colour offered, a source sends 8 bit\n");
+	}
 	if (half >= 0 && edid_panel_note[0])
 		reply_add(r, "                %s\n", edid_panel_note);
 }
@@ -5383,40 +5490,52 @@ static void edid_apply_start(const struct conf *cf, struct capture *cap,
 	if (cf->edid < 0) {
 		/*
 		 * No half asked for: the driver's default is the raw file, and if
-		 * that offers modes the firmware's table has no record for, the
-		 * same half goes out once more without them (edid_prune). One HPD
-		 * pulse at start; a restart of this program finds the pruned EDID
-		 * served and does nothing.
+		 * that offers modes the firmware's table has no record for, or Deep
+		 * Colour, the same half goes out once more without them (edid_prune,
+		 * edid_strip_dc). One HPD pulse at start; a restart of this program
+		 * finds the pruned EDID served and does nothing.
 		 */
 		uint8_t have[16];
-		char list[64], first[96] = "";
+		char list[64], dc[96], first[96] = "";
 		int half = edid_served_known(cap, served);
+		unsigned int pruned, cleared;
 		bool moved;
 
 		if (half < 0)
 			return;
 		moved = edid_prefer_panel && edid_panel_first(served, edid_panel_w, edid_panel_h, first, sizeof(first));
 		edid_table_have(cap, have);
-		if (!edid_prune(served, have, list, sizeof(list)) && !moved) {
-			info("edid            block %d of %s is served, all of it in the firmware's table%s", half, EDID_FILE,
+		pruned = edid_prune(served, have, list, sizeof(list));
+		cleared = edid_strip_dc(served, dc, sizeof(dc));
+		if (!pruned && !cleared && !moved) {
+			info("edid            block %d of %s is served, all of it in the firmware's table, no deep colour%s", half, EDID_FILE,
 			     edid_panel_w && edid_panel_h ? ", its first timing fits the panel" : "");
 			return;
 		}
 		if (moved)
 			info("edid            block %d of %s is served -- %s: published again", half, EDID_FILE, first);
-		if (list[0])
+		if (pruned)
 			info("edid            block %d of %s offers VIC%s the firmware's table lacks -- published again without them",
 			     half, EDID_FILE, list);
+		if (cleared)
+			info("edid            block %d of %s offers deep colour (%s) -- published again without it",
+			     half, EDID_FILE, dc + 1);
 		memset(&r, 0, sizeof(r));
 		cmd_replug(&r, cap, d, rt, half);
 		r.buf[strcspn(r.buf, "\n")] = '\0';
 		(r.failed ? warn : info)("edid            %s", r.buf);
 		return;
 	}
-	/* already served, as after a restart of this program: no second sequence */
+	/* already served, as after a restart of this program: no second sequence, unless it still offers Deep Colour */
 	if (edid_served_known(cap, served) == cf->edid) {
-		info("edid            block %d of %s is served -- as tv.conf says", cf->edid, EDID_FILE);
-		return;
+		char dc[96];
+
+		if (!edid_strip_dc(served, dc, sizeof(dc))) {
+			info("edid            block %d of %s is served -- as tv.conf says", cf->edid, EDID_FILE);
+			return;
+		}
+		info("edid            block %d of %s is served, but offers deep colour (%s) -- published again without it",
+		     cf->edid, EDID_FILE, dc + 1);
 	}
 	memset(&r, 0, sizeof(r));
 	cmd_replug(&r, cap, d, rt, cf->edid);

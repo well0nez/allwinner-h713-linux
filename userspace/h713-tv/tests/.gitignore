@@ -1,3 +1,5 @@
 test_want
+test_edid
 *.o
 stubs.c
+*-stubs.c
