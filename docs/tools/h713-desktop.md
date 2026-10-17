@@ -20,7 +20,7 @@ systemctl stop h713-desktop.service
 Kodi runs as the system user `h713-kodi`; the desktop and the browser run as **`h713-desktop`** (`usr/lib/sysusers.d/h713-desktop.conf`,
 made by systemd-sysusers at the first boot; one user for both modes, they never run together and share the Firefox profile). Groups:
 `video` (seatd's socket - seatd runs without a VT here, `SEATD_VTBOUND=0` in `seatd.service.d/10-h713-no-vt.conf`: bound to a VT it
-switched tty1 back to text mode whenever a compositor ended, and the kernel then laid the console over the next client's picture -,
+switched tty1 back to text mode whenever a compositor ended, and the kernel then laid the console over the next client's picture, 19 of 19 switches on 16.10.2026, `doku/213` §1 -,
 h713-warp's Wayland socket, the decoders' `/dev/video*` and `/dev/media*`), `render` (the GPU's render
 node), `audio` (ALSA, the DSP bridge). The home is the units' StateDirectory `/var/lib/h713-desktop`; `/tmp` is private. The hardening is
 `h713-warp.service`'s (`NoNewPrivileges`, `ProtectSystem=strict`, `ProtectHome`, `PrivateTmp`, `RestrictSUIDSGID`) **without**
@@ -41,7 +41,7 @@ these units carry no `Conflicts=sleep.target`.
 
 ## The desktop
 
-labwc reads `/etc/h713/labwc/` only: `rc.xml`, `menu.xml`, `autostart`, `environment` (the pointer size). The terminal (foot, text size 24 from `/etc/xdg/foot/foot.ini`: a 32 px letter, like Firefox's text at its factor 2, and labwc's title bars and menu in a 20 pt font - the wall is seen from three metres, 16.10.2026) is labwc's session client (`labwc -S foot`, the autostart is empty): when it is closed the desktop ends and the HDMI picture comes back, as when Firefox ends in the browser mode. There is no panel and no background program. A click
+labwc reads `/etc/h713/labwc/` only: `rc.xml`, `menu.xml`, `autostart`, `environment` (the pointer size). The terminal (foot, text size 24 from `/etc/xdg/foot/foot.ini`: a 32 px letter, like Firefox's text at its factor 2, and labwc's title bars and menu in a 20 pt font - the wall is seen from three metres, 16.10.2026, `doku/213` §4) is labwc's session client (`labwc -S foot`, the autostart is empty): when it is closed the desktop ends and the HDMI picture comes back, as when Firefox ends in the browser mode. There is no panel and no background program. A click
 on the empty desktop (the remote's OK in its mouse mode is a left click) opens the menu: Terminal, Web browser (Firefox in
 a window, the same profile as the browser mode), HDMI input (ends labwc, so the unit ends). The remote's Menu key opens the same menu.
 The pointer is drawn by labwc itself (`WLR_NO_HARDWARE_CURSORS=1`; the warp's server has no seat to show a hardware
@@ -59,8 +59,8 @@ pass over the window; the control arm with cage is `laeufe/box/h2.sh h4 cage` of
 The profile is `/var/lib/h713-desktop/firefox` (shared with the desktop's Firefox window), its `user.js` sets the few things that matter here: the VA-API blocklist
 off (`media.hardware-video-decoding.force-enabled`), fewer content processes (the box has 1 GiB), no first-run pages, no
 update checks, **a TV interface's size** (`layout.css.devPixelsPerPx` 2.0, a string: at 1920x1080 the page is laid out as for 960x540 CSS pixels, a 16 px text is a 32 px letter; the
-text was "hardly readable" at 1.0, Marco 16.10.2026; whether 2.0 is the right factor for his wall is for the camera and the eye, the pref is one line) and the start-up work nobody sees off
-(Pocket and sponsored tiles, telemetry, Normandy, region and connectivity lookups, the spare content process; **candidates, their effect on the 9 to 13 s to the first picture is not measured**). Decoding is software by default: Firefox loads foreign web content, so its decoder process stays in its sandbox, and inside it the VA-API driver
+text was "hardly readable" at 1.0, Marco 16.10.2026; whether 2.0 is the right factor for his wall is for the camera and the eye, the pref is one line; judged with the camera at 1.5, 2.0 and 2.5 on 16.10.2026, `doku/213` §4) and the start-up work nobody sees off
+(Pocket and sponsored tiles, telemetry, Normandy, region and connectivity lookups, the spare content process; measured 16.10.2026: **they change nothing about the start time**). The 9 to 13 s to the first picture were Firefox's recovery path: a session that ends within about 35 s leaves the marker `.startup-incomplete` behind, and the next start rebuilds the start-up caches (8 s of one core). The units remove the marker after their own, orderly stop (`ExecStopPost`), and a start takes **5.6 s** instead of 8.3 to 8.9 s (16.10.2026, `doku/213` §4); after a fresh installation the first browser session has to run about 35 s once, until then a start takes 8 to 11 s. Decoding is software by default: Firefox loads foreign web content, so its decoder process stays in its sandbox, and inside it the VA-API driver
 of `rootfs/libva` (drop-in as Kodi's: `LIBVA_DRIVER_NAME`, `LIBVA_DRIVERS_PATH`) cannot be used. The hardware path is a commented line in the unit
 (`#Environment=MOZ_DISABLE_RDD_SANDBOX=1`): with it the decoder process runs without its sandbox, as the unprivileged user `h713-desktop` under the
 unit's hardening. Firefox has no pref that opens the decoder sandbox to the device nodes (its path whitelists are the content process's).

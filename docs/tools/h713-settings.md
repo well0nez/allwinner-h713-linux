@@ -72,7 +72,7 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | | Autofocus after a move | `after_move` | `after_move = keystone+focus` (turns the automatic keystone on too) | the file |
 | | Focus by hand | | `h713-focus up \| down N` (N = `focus_steps` of `keys.conf` per press; presses during a run are counted and run next) | |
 | Input | Source | `h713-tv ctl source` | `ctl source auto \| hdmi` | `source =` in `tv.conf` |
-| | On start | `on_start` in `keys.conf` (not in the file: Launcher); no row where the image has no `/etc/h713/launcher.d` | `on_start = launcher \| hdmi` | the file; h713-keys reads it at the next start of the box |
+| | On start | `on_start` in `keys.conf` (not in the file: Launcher); no row where the image has no `/etc/h713/launcher.d` | `on_start = launcher \| hdmi` | the file; h713-keys reads it at the next start of the box (`doku/213` §4) |
 | | On the wall now | the same answer | | |
 | Power | Power key | `default` of `power.conf`; "Standby" only where `h713-power status` offers it | `h713-power set default standby \| poweroff` | the file |
 | | Remote power key | `remote` of `power.conf` | `h713-power set remote on \| off` | the file |
