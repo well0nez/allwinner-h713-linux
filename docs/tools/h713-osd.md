@@ -59,7 +59,17 @@ seam, the launcher's reasoning, measured by a test that compares a page shown in
 answers after `osd show`: without an HDMI signal a page is shown over black (`osd show N cover`, pre-distorted with warp.conf's keystone
 when that warps; over the straight ring too, which it hides - the second before the warp's claim at every start, so the launcher no longer jumps, `doku/214` §3), and the launcher opens there too (measured 16.10.2026: Home over the console puts the launcher on the wall, Back brings the console back, `doku/213` §1). `ok waiting` means h713-tv has no picture at the moment and keeps the page for its return (the autofocus
 has the panel, a source changes its mode). Popups and the mute badge are not drawn while a page is open; the page covers the
-panel, and a launcher does not open over it. `page` in `ctl status` says open or closed. Host tests: `tests/test_page.py`.
+panel, and a launcher does not open over it. `page` in `ctl status` says `closed`, `open (opaque ...)` or `open (transparent pixels ...)` - the first word stays `open`.
+Host tests: `tests/test_page.py`.
+
+**`cover`, and what it does (17.10.2026):** the launcher and a page without a single transparent pixel are opaque - they are
+shown with `osd show N cover`, and h713-tv pauses the mode under them: h713-warp draws nothing, the HDMI sound is muted, both
+come back with the first frame after the page ([h713-tv](h713-tv.md), "Under an opaque page"). Whether a page is opaque is
+read off its pixels row by row as its rows come in (a row that never came counts as not opaque). The settings' slider pill is
+drawn on a clear canvas: it is an overlay over the picture, shown without `cover`, and the picture under it runs on with its
+sound - nothing in h713-settings says so, its pixels do. Over no picture at all a page with transparent pixels is shown with
+`cover` all the same (over black, as before), and while such a page is open h713-osd asks what lies under it every quarter
+second, so that the word follows a signal that goes or comes.
 
 The new rows are kept as up to four ranges (one that lies within 24 rows of another joins it), so a row and the note at the foot are
 two small puts, not the rectangle around both; each is written a half row wider than it tiles, because a panel pixel reads two source

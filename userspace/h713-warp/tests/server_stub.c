@@ -4,7 +4,9 @@
  * The Wayland server of h713-warp (wayland.c) on its own, for the host test: no GPU, no h713-tv. The GL
  * side and the warp's loop are stubs - an import is a record, a frame is two eventfds that are readable at once (the
  * render fence and the flip fence). It says what the loop would have been told on stdout, one word a line, for
- * test_wayland.c: "shown", "gone", "frame", "resend".
+ * test_wayland.c: "shown", "gone", "frame", "resend", "repeat". A line on stdin plays h713-tv's word about an opaque
+ * page: "cover on" (the warp pauses, "covered"), "cover off" (server_resume(), "uncovered"); "pictures" says
+ * server_pictures().
  *
  *   server_stub SOCKET [GROUP]     runs until stdin closes; GROUP is the socket's group (h713-warp -g)
  */
@@ -24,7 +26,7 @@ struct gl_image {
 };
 
 static struct server *srv;
-static bool live;
+static bool live, paused;
 static void say(const char *w);
 
 void info(const char *fmt, ...) { (void)fmt; }
@@ -92,6 +94,14 @@ static void say(const char *w)
 	fflush(stdout);
 }
 bool warp_client_live(const struct runtime *r) { (void)r; return live; }
+bool warp_paused(const struct runtime *r) { (void)r; return live && paused; }
+int warp_client_repeat(struct runtime *r, int *flip)
+{
+	(void)r;
+	*flip = eventfd(1, EFD_CLOEXEC);
+	say("repeat");
+	return 0;
+}
 int warp_client_frame(struct runtime *r, const struct gl_image *im, int *render, int *flip)
 {
 	(void)r;
@@ -135,6 +145,7 @@ int main(int argc, char **argv)
 
 	if (argc != 2 && argc != 3)
 		return 2;
+	setvbuf(stdin, NULL, _IONBF, 0);	/* one line at a time: poll() sees the pipe, not stdio's buffer */
 	memset(&r, 0, sizeof(r));
 	r.render_node = "/dev/null";
 	r.wl_group = argc == 3 ? argv[2] : NULL;
@@ -152,8 +163,23 @@ int main(int argc, char **argv)
 		pf[1].events = POLLIN;
 		if (poll(pf, 2, 1000) < 0)
 			break;
-		if (pf[1].revents)
-			break;
+		if (pf[1].revents) {
+			char line[64];
+
+			if (!fgets(line, sizeof(line), stdin))
+				break;
+			if (!strncmp(line, "cover on", 8)) {
+				paused = true;
+				say("covered");
+			} else if (!strncmp(line, "cover off", 9)) {
+				paused = false;
+				server_resume(srv, true);
+				say("uncovered");
+			} else if (!strncmp(line, "pictures", 8)) {
+				printf("pictures %ld\n", server_pictures(srv));
+				fflush(stdout);
+			}
+		}
 		if (pf[0].revents)
 			server_dispatch(srv);
 	}

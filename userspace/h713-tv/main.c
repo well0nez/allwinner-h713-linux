@@ -1395,6 +1395,23 @@ struct warp {
 
 static struct warp warp = { .peer = -1, .flip = -1, .told = -1, .revoke_fd = -1 };
 
+/*
+ * An opaque page on the wall (the launcher, a settings page) hides the whole picture, and the mode under it pauses:
+ * h713-warp hears "note cover on" on its claim's connection and stops drawing - the video plane keeps its last
+ * picture; the claim, the capture, the link and HDCP stay - and the HDMI sound goes behind the DSP's mute and nothing
+ * more (the path stays routed: no click, no DAC source change). "note cover off" when the page goes, or turns into a
+ * pill over the picture: the warp's first frame carries the change of the primary plane, so the wall goes from the
+ * page to a new picture in one commit, and the sound comes back with it. Only a page that IS on the wall covers: one
+ * that waits for the warp's next frame to ride on does not, or that frame would never come.
+ */
+#define COVER_RESUME_MS	100	/* "note cover off": the change waits this long for the warp's frame, then goes alone */
+
+static struct {
+	bool on;		/* what h713-warp and the sound were last told */
+	bool resuming;		/* "note cover off" was said: an overlay change waits for the warp's next frame */
+	int resume_fd;		/* timerfd: ... at most COVER_RESUME_MS */
+} cover = { .resume_fd = -1 };
+
 /* the grace for h713-warp ends: switched or released in time, or nothing more to wait for */
 static void warp_revoke_stop(void)
 {
@@ -1557,6 +1574,7 @@ static void warp_release(struct display *d)
 		close(warp.peer);
 	warp.peer = -1;
 	warp_revoke_stop();
+	cover.resuming = false;		/* nothing will carry a waiting overlay change: the release commits it */
 	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
 	if (!warp.claimed)
 		return;
@@ -1788,6 +1806,12 @@ static bool osd_on_panel(void)
 	return osd.claimed && osd.shown;
 }
 
+/* an opaque page is on the wall and hides the picture: the mode under it pauses (cover) */
+static bool osd_covering(void)
+{
+	return osd.claimed && osd.shown && osd.cover && osd.want >= 0;
+}
+
 /*
  * The primary plane as this program wants it, into a commit that is being made anyway: every picture, every warp
  * frame (warp_commit). picture: the commit puts a picture up or keeps one there. A change of the overlay waiting
@@ -1862,7 +1886,15 @@ static bool osd_alone(const struct display *d)
 {
 	struct pollfd pf[2] = { { .fd = warp.flip, .events = POLLIN }, { .fd = warp.peer, .events = POLLIN } };
 
-	if (!d->warped || !warp.client)
+	if (!d->warped || cover.resuming)
+		return false;		/* none, or the warp's first frame after a page is on its way and carries the change */
+	/*
+	 * The warp pauses under a page: a page that stays (the launcher's next row) goes on its own, there is no frame to
+	 * ride on; one that goes rides with the warp's first frame after "note cover off" (cover_follow()).
+	 */
+	if (cover.on)
+		return osd.cover && osd.want >= 0;
+	if (!warp.client)
 		return false;
 	if (warp.flip >= 0 && poll(pf, 1, 0) != 1)
 		return false;		/* the last flip is still in flight */
@@ -2522,6 +2554,7 @@ struct audio {
 	int volume;			/* 0..100 as last asked for with ctl volume */
 	bool volume_set;		/* ... and not yet written (cards were missing) */
 	bool mute;			/* ctl mute */
+	bool covered;			/* an opaque page hides the picture: the HDMI sound behind the DSP's mute (cover) */
 
 	int settle_fd;			/* one-shot, AUDIO_SETTLE_MS */
 	int tick_fd;			/* periodic: card search or source poll */
@@ -3159,7 +3192,7 @@ static void audio_route(struct audio *a, unsigned int rate)
  */
 static void audio_level(struct audio *a)
 {
-	bool quiet = a->mute || a->state != AUDIO_LOUD;
+	bool quiet = a->mute || a->state != AUDIO_LOUD || a->covered;
 	long raw;
 
 	if (quiet)
@@ -3178,8 +3211,29 @@ static void audio_level(struct audio *a)
 		audio_put(a, &a->msp, AUDIO_C_VOLUME, raw);
 	if (!quiet)
 		audio_put(a, &a->msp, audio_auto_mute(a), 0);
-	else if (a->have_inmute && a->state == AUDIO_LOUD)
+	else if (a->have_inmute && a->state == AUDIO_LOUD && !a->covered)
 		audio_put(a, &a->msp, AUDIO_C_INMUTE, 0);
+}
+
+/*
+ * An opaque page covers the picture, or goes (cover): the HDMI sound goes quiet with the picture and comes back with
+ * it, behind the automaton's own mute alone - the input mute on the mixed path (the box's own sounds play on), the DSP
+ * mute otherwise. Route, rate, switch and the DAC's source stay as they are: nothing that could click, and no debounce
+ * on the way back, the source did not change. A path that is not loud is quiet anyway; audio_level() keeps the
+ * cover when it gets loud under the page.
+ */
+static void audio_cover(struct audio *a, bool on)
+{
+	if (a->covered == on)
+		return;
+	a->covered = on;
+	if (!a->enabled || a->state != AUDIO_LOUD)
+		return;
+	if (on)
+		audio_put(a, &a->msp, audio_auto_mute(a), 1);
+	else if (a->have_inmute || !a->mute)	/* the listener's mute is the master mute there, the DSP mute here */
+		audio_put(a, &a->msp, audio_auto_mute(a), 0);
+	info("audio           %s", on ? "muted: an opaque page covers the picture" : "on again with the picture");
 }
 
 /* ------------------------------------------------------------------ *
@@ -4240,18 +4294,18 @@ static void cmd_status_audio(struct reply *r, struct audio *a, bool live)
 		return;
 	}
 	if (a->state == AUDIO_LOUD && a->applied_rate)
-		reply_add(r, "audio           %s (%s), %u Hz, %s, %s%s\n",
+		reply_add(r, "audio           %s (%s), %u Hz, %s, %s%s%s\n",
 			  audio_state_text(a), audio_policy_text(a),
 			  a->applied_rate, audio_volume_text(a, text, sizeof(text)),
 			  audio_trim_text(a, trim, sizeof(trim)),
-			  a->mute ? ", ctl mute on" : "");
+			  a->mute ? ", ctl mute on" : "", a->covered ? ", muted under an opaque page" : "");
 	else
-		reply_add(r, "audio           %s (%s)%s, %s, %s%s\n",
+		reply_add(r, "audio           %s (%s)%s, %s, %s%s%s\n",
 			  audio_state_text(a), audio_policy_text(a),
 			  a->state == AUDIO_STILL ? "" : ", rate unknown",
 			  audio_volume_text(a, text, sizeof(text)),
 			  audio_trim_text(a, trim, sizeof(trim)),
-			  a->mute ? ", ctl mute on" : "");
+			  a->mute ? ", ctl mute on" : "", a->covered && a->state != AUDIO_STILL ? ", muted under an opaque page" : "");
 	/*
 	 * The card lines read the controls back from the hardware, seven
 	 * reads that cost this single-threaded program about 50 ms in all -
@@ -4410,6 +4464,8 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		  d->on ? "plane on" : "console",
 		  d->master ? ", DRM master held" : "");
 	reply_add(r, "source          %s\n", source_name[c->source]);
+	reply_add(r, "cover           %s\n", cover.on ? "an opaque page hides the picture: h713-warp pauses, the HDMI sound is muted" :
+		  cover.resuming ? "the page went: the overlay's change waits for h713-warp's next frame" : "none");
 	if (warp.claimed)
 		reply_add(r, "warp            on (%s), video plane %u: %lu commits, %lu busy, %lu refused\n",
 			  warp.client ? "a Wayland client" : "the ring", d->plane_id, warp.commits, warp.busy,
@@ -5390,6 +5446,27 @@ static bool cmd_zoom(struct reply *r, struct display *d, const char *verb,
 
 static struct control ctl;	/* defined with the control socket below */
 
+/* the overlay's change went with a warp frame (or alone, COVER_RESUME_MS later): nothing waits any more */
+static void cover_resume_stop(void)
+{
+	struct itimerspec its;
+
+	if (!cover.resuming)
+		return;
+	memset(&its, 0, sizeof(its));
+	if (cover.resume_fd >= 0)
+		timerfd_settime(cover.resume_fd, 0, &its, NULL);
+	cover.resuming = false;
+}
+
+/* one line to h713-warp on its claim's connection, unasked ("note ..."); false when it could not go */
+static bool warp_note(const char *line)
+{
+	size_t len = strlen(line);
+
+	return warp.peer >= 0 && send(warp.peer, line, len, MSG_NOSIGNAL | MSG_DONTWAIT) == (ssize_t)len;
+}
+
 /* "warp claim" (A2): the three targets, their fds with the answer. The video
  * plane goes down first and the master is taken for the whole warp; the
  * answer goes out here, because the fds have to travel with that line.
@@ -5483,9 +5560,13 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
 	d->warped = true;
 	console_keys(false);
-	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u",
+	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u%s",
 	     client ? " for a Wayland client (no signal needed, the HDMI sound silent)" : "",
-	     d->width, d->height, warp.pitch, warp.coff, d->plane_id);
+	     d->width, d->height, warp.pitch, warp.coff, d->plane_id,
+	     cover.on ? " -- under an opaque page: one frame, then it pauses" : "");
+	/* claimed under a page: the warp draws one frame, so that the video plane is up with a picture under it, and pauses */
+	if (cover.on && !warp_note("note cover on\n"))
+		warn("warp            \"note cover on\" did not go (%s) -- the warp draws under the page", strerror(errno));
 }
 
 /*
@@ -5605,6 +5686,8 @@ static bool warp_serve(struct capture *cap, struct display *d)
 			gap = prev.tv_sec ? (c0.tv_sec - prev.tv_sec) * 1e3 + (c0.tv_nsec - prev.tv_nsec) / 1e6 : 0;
 			answer = warp_commit(d, n, fence, &busy, &flip) ? "ok\n" :
 				 busy ? "ok busy\n" : "error the commit was refused\n";
+			if (answer[2] == '\n')
+				cover_resume_stop();	/* the first frame after a page carried the overlay's change */
 			/* "source" changed while the claim stood: the next "ok" says so, h713-warp reads it there */
 			if (!strncmp(answer, "ok", 2) && warp.told != (int)ctl.source) {
 				snprintf(told, sizeof(told), "%.*s source %s\n", (int)strcspn(answer, "\n"), answer,
@@ -5708,6 +5791,88 @@ static void warp_revoke(struct display *d)
 	warp.revoking = true;
 }
 
+/* the source to h713-warp on a claim that stands: a client claim at rest sends no frame whose "ok" could carry it */
+static void warp_tell_source(void)
+{
+	char line[32];
+
+	snprintf(line, sizeof(line), "note source %s\n", source_name[ctl.source]);
+	if (warp_note(line))
+		warp.told = (int)ctl.source;
+	else
+		warn("warp            \"%.*s\" did not go (%s) -- h713-warp hears it with its next frame",
+		     (int)strlen(line) - 1, line, strerror(errno));
+}
+
+/* a change that waited for a warp frame goes on its own: the frame did not come */
+static void osd_flush(struct display *d)
+{
+	if (!osd.queued)
+		return;
+	osd.queued = false;
+	if (osd.want < 0) {
+		osd_drop(d);
+		osd_uncover(d);
+	} else if (osd_commit(d, osd.fb_id[osd.want], 2)) {
+		osd.shown = true;
+		osd.shows++;
+	}
+}
+
+/*
+ * After every handler of the loop: is an opaque page on the wall now (cover)? A change goes to h713-warp ("note cover
+ * on|off") and to the sound. When the page goes, the overlay's change waits for the warp's next frame - the first after
+ * the pause, so that the wall goes from the page to a new picture in one commit (osd_alone()) - but no longer than
+ * COVER_RESUME_MS; then it goes on its own (cover_resume_due()).
+ */
+static void cover_follow(struct display *d, struct audio *a)
+{
+	struct itimerspec its = { .it_value = { 0, COVER_RESUME_MS * 1000000L } };
+	bool on = osd_covering();
+
+	if (on == cover.on)
+		return;
+	cover.on = on;
+	memset(&warp.last_frame, 0, sizeof(warp.last_frame));	/* a pause is not a late frame */
+	audio_cover(a, on);
+	if (!warp.claimed) {
+		info("cover           %s", on ? "an opaque page is on the wall" : "the page is gone");
+		return;
+	}
+	if (!warp_note(on ? "note cover on\n" : "note cover off\n")) {
+		warn("warp            \"note cover %s\" did not go (%s)", on ? "on" : "off", strerror(errno));
+		if (!on)
+			osd_flush(d);
+		return;
+	}
+	info("cover           %s", on ? "an opaque page hides the picture -- h713-warp pauses, the HDMI sound is muted" :
+	     "the page is gone -- h713-warp draws again, its first frame carries the change");
+	if (on || !osd.queued)
+		return;
+	if (cover.resume_fd < 0)
+		cover.resume_fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+	cover.resuming = cover.resume_fd >= 0 && !timerfd_settime(cover.resume_fd, 0, &its, NULL);
+	if (!cover.resuming)
+		osd_flush(d);
+}
+
+/* COVER_RESUME_MS after "note cover off" and no frame of h713-warp's: the overlay's change on its own */
+static void cover_resume_due(struct display *d)
+{
+	uint64_t ticks;
+
+	if (read(cover.resume_fd, &ticks, sizeof(ticks)) != sizeof(ticks))
+		ticks = 0;
+	if (!cover.resuming)
+		return;
+	cover.resuming = false;
+	if (!osd.queued)
+		return;
+	warn("cover           h713-warp drew no frame within %d ms of \"note cover off\" -- the overlay's change goes on its own",
+	     COVER_RESUME_MS);
+	osd_flush(d);
+}
+
 /* the grace is over: a claim the source still does not allow is released here */
 static bool warp_revoke_due(struct display *d)
 {
@@ -5729,11 +5894,17 @@ static bool warp_revoke_due(struct display *d)
 }
 
 /*
- * "source [hdmi|client|auto]": what the panel shows. A standing warp claim the new policy forbids - a ring claim
- * under "client", a client claim under "hdmi" - is said to h713-warp at once (warp_revoke()), which switches it to
- * the source that is allowed or gives it back. One it allows stands - giving it back took the panel off the ring
- * and back for "hdmi" <-> "auto" (the wall blinked) - and h713-warp hears the new policy with the "ok" of its next
- * frame ("ok source auto"), so a ring claim under "auto" still gives way to a client.
+ * "source [hdmi|client|auto]": what the panel shows - the mode. "hdmi" is the HDMI input; "client" is a program (a mode
+ * unit says it at its start): its picture only, never the ring - while the program starts, between two programs and
+ * while one builds its window anew, h713-warp keeps the last picture on the video plane until the program's first
+ * (P2b of the media side project: HDMI is a mode, not what fills a gap); "auto" is the client while there is one and
+ * the ring otherwise (the test clients', and h713-warp's own once a program has ended for good).
+ * A standing warp claim the new policy forbids - a ring claim under "client", a client claim under "hdmi" - is said
+ * to h713-warp at once (warp_revoke()), which switches it to the source that is allowed or gives it back. One it
+ * allows stands - giving it back took the panel off the ring and back for "hdmi" <-> "auto" (the wall blinked) - and
+ * h713-warp hears the new policy at once all the same ("note source auto"): a client claim at rest sends no frame
+ * whose answer could carry it. "client" said again while a claim stands is a program that starts: h713-warp hears
+ * that too, it decides whether a picture between two programs is held (a program follows) or the program has ended.
  * h713-warp asks again at once after a release and learns the policy from the answer.
  * Not saved; "source =" in tv.conf is the start value.
  */
@@ -5750,12 +5921,18 @@ static bool cmd_source(struct reply *r, struct display *d, const char *what)
 
 		ctl.source = s;
 		info("source          %s%s", source_name[s], !warp.claimed ? "" : stands ?
-		     " -- the warp's claim stands, h713-warp hears it with its next frame" :
+		     " -- the warp's claim stands, h713-warp is told" :
 		     " -- h713-warp is told: it switches the claim or gives it back");
 		if (!stands)
 			warp_revoke(d);
+		else
+			warp_tell_source();
 		reply_add(r, "ok source %s\n", source_name[s]);
 		return true;		/* the ring, the console, or the claim h713-warp sends next */
+	}
+	if (what && s == SOURCE_CLIENT && warp.claimed) {
+		info("source          client again -- a program starts, h713-warp is told");
+		warp_tell_source();
 	}
 	reply_add(r, "ok source %s%s\n", source_name[s],
 		  !warp.claimed ? "" : warp.client ? " -- h713-warp shows a Wayland client" : " -- h713-warp shows the ring");
@@ -7228,8 +7405,10 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        (S_EDID blocks=0), load the EDID again, HPD high (~1 s, blocks)\n"
 		  "  edid block0|block1    publish that half of " EDID_FILE " to the source (a replug\n"
 		  "                        with it); tv.conf \"edid =\" makes it the standing setting\n"
-		  "  source [hdmi|client|auto]  what the panel shows: the HDMI input, a Wayland client\n"
-		  "                        through h713-warp, or the client while there is one; not\n"
+		  "  source [hdmi|client|auto]  what the panel shows - the mode: the HDMI input; a program\n"
+		  "                        (a Wayland client through h713-warp, never the ring: between two\n"
+		  "                        programs the last picture stays; \"client\" again = a program starts);\n"
+		  "                        or the client while there is one and the ring otherwise; not\n"
 		  "                        saved (tv.conf \"source =\" is the start value)\n"
 		  "  warp [status]         has h713-warp the video plane? plus its counters\n"
 		  "  osd [status]          has h713-osd an overlay over the picture? plus its counters\n"
@@ -7752,7 +7931,7 @@ int main(int argc, char **argv)
 	struct audio au = { .settle_fd = -1, .tick_fd = -1 };
 	struct conf conf = { .path = CONF_FILE };
 	enum audio_policy apol;
-	struct pollfd fds[10];
+	struct pollfd fds[11];
 	const char *sock = CTL_SOCKET;
 	const char *startpreset = "standard";
 	int sfd, arg, rc = 0;
@@ -8094,8 +8273,9 @@ int main(int argc, char **argv)
 	 * Six sources, three of which may be absent: the control socket when
 	 * its bind failed, and the two audio timers with -a none; then the
 	 * warp's and the overlay's connections, set in the loop, a client's
-	 * flip fence while an overlay change waits for it, and the warp's grace
-	 * after a "note source". poll()
+	 * flip fence while an overlay change waits for it, the warp's grace
+	 * after a "note source", and the wait for the warp's first frame after
+	 * an opaque page went ("note cover off"). poll()
 	 * ignores an entry with a negative fd and reports revents 0 for it, so
 	 * the table keeps its fixed indices instead of shifting.
 	 */
@@ -8119,12 +8299,15 @@ int main(int argc, char **argv)
 		fds[6].events = POLLIN;
 		fds[7].fd = osd.peer;	/* only while h713-osd has claimed */
 		fds[7].events = POLLIN;
-		/* an overlay change waiting for a client's flip */
-		fds[8].fd = osd.queued && warp.client ? warp.flip : -1;
+		/* an overlay change waiting for a client's flip (not one waiting for the first frame after a page) */
+		fds[8].fd = osd.queued && warp.client && !cover.on && !cover.resuming ? warp.flip : -1;
 		fds[8].events = POLLIN;
 		/* a claim the source no longer allows: h713-warp's grace (warp_revoke()) */
 		fds[9].fd = warp.revoking ? warp.revoke_fd : -1;
 		fds[9].events = POLLIN;
+		/* the page went: the overlay's change waits for the warp's next frame, this long at most */
+		fds[10].fd = cover.resuming ? cover.resume_fd : -1;
+		fds[10].events = POLLIN;
 		{
 			static struct timespec last_ret;
 			struct timespec now;
@@ -8236,6 +8419,10 @@ int main(int argc, char **argv)
 				warn("audio           reading the timerfd: %s", strerror(errno));
 			LOOP_TIMED("the audio tick", audio_tick(&au, &cap, d.on || d.warped));
 		}
+		if (fds[10].fd >= 0 && (fds[10].revents & POLLIN))
+			LOOP_TIMED("the overlay after a page, alone", cover_resume_due(&d));
+		/* whatever the handlers did with the overlay: does an opaque page hide the picture now? */
+		cover_follow(&d, &au);
 	}
 
 	/*
@@ -8260,6 +8447,8 @@ int main(int argc, char **argv)
 	close(rt.fd);
 	if (warp.revoke_fd >= 0)
 		close(warp.revoke_fd);
+	if (cover.resume_fd >= 0)
+		close(cover.resume_fd);
 	close(sfd);
 	close(cap.fd);
 

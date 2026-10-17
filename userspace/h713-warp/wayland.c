@@ -15,6 +15,11 @@
  * dma-buf is readable (the writer's fence is through - never wait behind a client); taken when it is ready AND the
  * previous commit is on the panel (h713-tv's flip fence), the frame callbacks done right then; released when the
  * render fence of the frame that read it signals; presented with the flip fence's timestamp.
+ *
+ * Under an opaque page (h713-tv's "note cover on", warp_paused()) nothing is drawn, and the client runs on: a ready
+ * buffer is taken once a panel period as without the page - its frame callbacks done, its feedback discarded - and
+ * HELD, not drawn; the one held before goes back to the client. When the page goes, the held one, the newest picture,
+ * is drawn at once (server_resume()), and the end of the page rides on that frame.
  */
 #include <errno.h>
 #include <fcntl.h>
@@ -120,6 +125,9 @@ struct server {
 	struct gl_image *shm;
 	struct wsurf *top;			/* the one toplevel that is shown */
 	struct wbuf *pending;			/* committed, not taken */
+	struct wbuf *held;			/* taken under a page, not drawn: the newest picture for the page's end */
+	long pictures;				/* pictures of the shown toplevel taken since it was mapped (held or drawn) */
+	double last_open, held_at;		/* the last connection's arrival; the last take under a page */
 	struct gpu gpu[2];
 	struct wl_event_source *ready_src, *flip_src, *tick, *hold;
 	int flip_fd, busy_fd;
@@ -452,11 +460,43 @@ static void watch_flip(struct server *s, int flip)
 	}
 }
 
+/* the pending buffer under a page: taken as a frame would take it (callbacks done, feedback discarded: it is not
+ * shown), held instead of drawn; the one held before goes back */
+static void take_held(struct server *s)
+{
+	struct wbuf *b = s->pending;
+
+	s->pending = NULL;
+	s->ready = false;
+	s->take_due = 0;
+	discard(s, &s->feedback);
+	if (s->busy) {			/* a frame h713-tv refused just before the page: never shown now */
+		discard(s, &s->flipped);
+		s->busy = false;
+		if (s->busy_fd >= 0)
+			close(s->busy_fd);
+		s->busy_fd = -1;
+	}
+	if (s->held)
+		wbuf_unref(s->held);
+	s->held = b;			/* the reference set_pending() took */
+	s->held_at = now_s();
+	s->taken++;
+	s->pictures++;
+	frames_done(&s->frames);
+}
+
 static void take(struct server *s)
 {
 	struct wbuf *b = s->pending;
-	struct gl_image *im = image_for(s, b);
+	struct gl_image *im;
 	int render = -1, flip = -1, rc = -1, i;
+
+	if (warp_paused(s->r)) {
+		take_held(s);
+		return;
+	}
+	im = image_for(s, b);
 
 	s->pending = NULL;
 	s->ready = false;
@@ -471,6 +511,7 @@ static void take(struct server *s)
 	if (im)
 		rc = warp_client_frame(s->r, im, &render, &flip);
 	s->taken++;
+	s->pictures++;
 	frames_done(&s->frames);	/* "done" right after the take: the client has a whole period */
 	if (rc < 0 || rc == 2) {	/* not drawn, or the warp fell back: the buffer goes back */
 		discard(s, &s->feedback);
@@ -512,6 +553,12 @@ static void try_take(struct server *s)
 		return;			/* two frames still being read: never happens with the flip in between */
 	if (s->r->client_rate > 1 && s->last_flip > 0 && now_s() < s->last_flip + 1.1 * s->period) {
 		s->take_due = s->last_flip + 1.1 * s->period;
+		schedule(s);
+		return;
+	}
+	/* under a page no flip paces the client: one take a panel period (client rate), as the flips would */
+	if (warp_paused(s->r) && s->held_at > 0 && now_s() < s->held_at + 0.95 * s->period * s->r->client_rate) {
+		s->take_due = s->held_at + 0.95 * s->period * s->r->client_rate;
 		schedule(s);
 		return;
 	}
@@ -625,6 +672,12 @@ static void top_lost(struct server *s, bool destroyed)
 		wbuf_unref(s->pending);
 		s->pending = NULL;
 	}
+	if (s->held) {			/* a picture of the toplevel that went: not drawn at the page's end */
+		wbuf_unref(s->held);
+		s->held = NULL;
+	}
+	s->held_at = 0;
+	s->pictures = 0;
 	s->ready = false;
 	if (destroyed) {
 		s->top = wl_list_empty(&s->toplevels) ? NULL : container_of(s->toplevels.next, struct wsurf, tl_link);
@@ -1449,6 +1502,9 @@ static void client_gone(struct wl_listener *l, void *data)
 		wl_event_source_remove(wc->kick);
 	if (wc->allowed)
 		s->clients--;
+	/* the last connection closed while the claim holds a picture without a toplevel: is the program over? */
+	if (wc->allowed && !s->clients && !s->stopping && s->live && !server_shown(s))
+		wl_event_source_timer_update(s->hold, HOLD_MS);
 	wl_list_for_each_safe(imp, t, &s->imports, link)
 		if (imp->owner == data) {
 			imp->owner = NULL;
@@ -1481,6 +1537,7 @@ static void client_created(struct wl_listener *l, void *data)
 	wl_client_add_destroy_listener(data, &wc->gone);
 	if (wc->allowed) {
 		s->clients++;
+		s->last_open = now_s();
 		return;
 	}
 	/*
@@ -1666,6 +1723,9 @@ void server_stop(struct server *s)
 		return;
 	s->stopping = true;
 	s->live = false;
+	if (s->held)
+		wbuf_unref(s->held);
+	s->held = NULL;
 	wl_display_destroy_clients(s->dpy);
 	stop_flip(s);
 	for (i = 0; i < 2; i++)
@@ -1722,6 +1782,10 @@ void server_engaged(struct server *s, bool on)
 		return;
 	s->live = on;
 	if (!on) {			/* h713-tv let go: nothing more is presented, the client pauses (no callbacks) */
+		if (s->held)
+			wbuf_unref(s->held);
+		s->held = NULL;
+		s->held_at = 0;
 		stop_flip(s);
 		discard(s, &s->flipped);
 		s->busy = false;
@@ -1768,6 +1832,56 @@ void server_redraw(struct server *s)
 	schedule(s);
 }
 
+/* the end of a pause (warp_cover()): a picture newer than the held one goes when it is ready; else the held one is
+ * drawn now; with none, the panel's buffer once more (again: there is one) - the end of the page rides on that frame */
+void server_resume(struct server *s, bool again)
+{
+	int flip = -1, rc;
+
+	if (!s || !s->live)
+		return;
+	s->held_at = 0;
+	if (s->pending && s->held) {
+		wbuf_unref(s->held);
+		s->held = NULL;
+	} else if (s->held && !s->pending) {
+		s->pending = s->held;
+		s->held = NULL;
+		s->ready = true;
+	}
+	if (s->pending) {
+		s->take_due = 0;
+		try_take(s);
+	} else if (again && s->flip_fd < 0 && !s->busy) {
+		rc = warp_client_repeat(s->r, &flip);
+		if (rc == 0)
+			watch_flip(s, flip);
+		else if (flip >= 0)
+			close(flip);
+	}
+	schedule(s);
+}
+
+long server_pictures(const struct server *s)
+{
+	return s && s->live && server_shown(s) ? s->pictures : -1;
+}
+
+bool server_program(const struct server *s, double said)
+{
+	return s && (s->clients > 0 || (said > s->last_open && now_s() - said < PROGRAM_S));
+}
+
+void server_recheck(struct server *s, double at)
+{
+	double dt;
+
+	if (!s || s->stopping)
+		return;
+	dt = at - now_s();
+	wl_event_source_timer_update(s->hold, dt > 0.001 ? (int)(dt * 1e3) + 1 : 1);
+}
+
 void server_status(const struct server *s, struct textbuf *t)
 {
 	if (!s) {
@@ -1783,4 +1897,6 @@ void server_status(const struct server *s, struct textbuf *t)
 		 "%lu imports (%lu found again); rate %s, flip period %.2f ms\n", s->taken, s->presented,
 		 s->discarded, s->busys, s->released, s->asked, s->imports_made, s->hits,
 		 s->r->client_rate > 1 ? "half" : "full", s->period * 1e3);
+	text_add(t, "pictures        %ld of the toplevel on the panel%s\n", server_pictures(s),
+		 s->held ? ", the newest held under the page" : "");
 }

@@ -23,10 +23,13 @@
  *                      16.10.2026): the video plane stays up, only what is
  *                      drawn into the buffers changes
  *
- * and one line h713-tv says unasked, while a claim stands: "note source X" when
- * its "source" no longer allows the claim. This daemon switches the claim or
- * gives it back; a note can arrive alone, between two frames, or in front of
- * (or behind) the answer to a frame, and is read wherever it comes.
+ * and the lines h713-tv says unasked, while a claim stands: "note source X" when
+ * its "source" changed (or "client" again: a program starts) - this daemon
+ * switches the claim, gives it back or holds the last picture; and "note cover
+ * on|off" when an opaque page comes on the wall or goes - this daemon pauses
+ * under it and draws again after it. A note can arrive alone, between two
+ * frames, or in front of (or behind) the answer to a frame, and is read wherever
+ * it comes.
  *
  * ONE connection carries the whole "on" period, and a closed connection means
  * release on both sides (A2's lifetime rule): if this daemon dies h713-tv puts
@@ -83,16 +86,23 @@ static void close_targets(struct peer *p)
 
 static void tv_source(struct peer *p, const char *reply);
 
-/* "note source X": h713-tv's "source" changed under the standing claim; the main loop acts on p->noted */
+/* "note source X": h713-tv's "source" changed under the standing claim, or "client" again: a program starts; the main
+ * loop acts on p->noted. "note cover on|off": the main loop compares p->cover with what it did last. */
 static void peer_note(struct peer *p, const char *line)
 {
+	if (!strcmp(line, "note cover on") || !strcmp(line, "note cover off")) {
+		p->cover = !strcmp(line, "note cover on");
+		return;
+	}
 	if (strncmp(line, "note source ", 12)) {
 		warn("peer            h713-tv said \"%s\" -- not a note this daemon knows", line);
 		return;
 	}
 	tv_source(p, line);
+	if (p->tv_source == TV_CLIENT)
+		p->client_said = now_s();
 	p->noted = true;
-	info("peer            h713-tv: %s, the claim is switched or given back", line + 5);
+	info("peer            h713-tv: %s, the claim follows", line + 5);
 }
 
 /*
@@ -337,6 +347,29 @@ bool peer_source(struct peer *p)
 	return ok;
 }
 
+/*
+ * "source X" (auto) on a connection of its own, as peer_source() asks: the program whose picture this claim holds has
+ * ended and none follows - HDMI is the mode again. h713-tv says the new source to the claim as a note, too.
+ */
+bool peer_set_source(struct peer *p, const char *src)
+{
+	struct peer q = { .path = p->path, .fd = -1 };
+	char line[32], reply[WARP_LINE] = "", why[WARP_WHY] = "";
+	bool ok;
+
+	snprintf(line, sizeof(line), "source %s\n", src);
+	ok = peer_connect(&q, why, sizeof(why)) &&
+	     exchange(&q, line, -1, reply, sizeof(reply), NULL, 0, 0, CLAIM_MS, why, sizeof(why)) &&
+	     !strncmp(reply, "ok", 2);
+	if (q.fd >= 0)
+		close(q.fd);
+	if (ok)
+		tv_source(p, reply);
+	else
+		warn("peer            \"source %s\" to h713-tv: %s", src, why[0] ? why : reply);
+	return ok;
+}
+
 bool peer_claim(struct peer *p, int src, char *why, size_t n)
 {
 	char reply[WARP_LINE];
@@ -346,6 +379,7 @@ bool peer_claim(struct peer *p, int src, char *why, size_t n)
 
 	if (p->fd >= 0)
 		return true;
+	p->cover = false;		/* h713-tv says "note cover on" after the answer if a page is up */
 	if (!peer_connect(p, why, n))
 		return false;
 	if (!exchange(p, line, -1, reply, sizeof(reply), p->target,
@@ -429,5 +463,6 @@ void peer_release(struct peer *p)
 		close(p->fd);
 	}
 	p->fd = -1;
+	p->cover = false;
 	close_targets(p);
 }

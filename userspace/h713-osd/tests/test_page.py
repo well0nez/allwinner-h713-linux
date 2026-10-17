@@ -314,7 +314,7 @@ class PageTest(PageBase):
         self.write("warp.conf", "bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = on\n")
         self.start()
         c = self.page()
-        c.paint(0, H)
+        c.paint(0, H, a=255)
         c.show(0, H)
         over_ring = self.shown()
         self.assertNotEqual(over_ring, bytes(c.map))   # pre-distorted, not the straight canvas
@@ -333,6 +333,54 @@ class PageTest(PageBase):
         c.paint(0, H)
         self.assertTrue(c.show(0, H).startswith("ok"))
         self.assertTrue([l for l in self.tv.lines if l.endswith(" cover")], self.tv.lines)
+
+    def shows(self):
+        return [l for l in self.tv.lines if l.startswith("osd show ")]
+
+    def test_an_opaque_page_covers_the_picture(self):
+        """a page without a transparent pixel hides the picture: "osd show N cover", h713-tv pauses the mode under it (P2);
+        one transparent row is enough to let the picture through, and the row painted over makes it opaque again"""
+        self.start()
+        c = self.page()
+        c.paint(0, H, a=255)
+        c.show(0, H)
+        self.assertTrue(self.shows()[-1].endswith(" cover"), self.shows())
+        self.assertIn("open (opaque", self.ctl("status"))
+        c.paint(H // 2, H // 2 + 1, a=254)
+        c.show(H // 2, 1)
+        self.assertFalse(self.shows()[-1].endswith(" cover"), self.shows())
+        self.assertIn("open (transparent pixels", self.ctl("status"))
+        c.paint(H // 2, H // 2 + 1, a=255)
+        c.show(H // 2, 1)
+        self.assertTrue(self.shows()[-1].endswith(" cover"), self.shows())
+
+    def test_a_page_not_yet_all_said_is_no_cover(self):
+        """rows that never came are not known to be opaque: a page that showed half of itself does not pause the picture"""
+        self.start()
+        c = self.page()
+        c.paint(0, H, a=255)
+        c.show(0, H // 2)
+        self.assertFalse(self.shows()[-1].endswith(" cover"), self.shows())
+        c.show(H // 2, H - H // 2)
+        self.assertTrue(self.shows()[-1].endswith(" cover"), self.shows())
+
+    def test_the_pill_over_the_picture_is_no_cover(self):
+        """the settings' slider pill: a clear canvas with a pill at the foot - the picture under it runs on, no "cover";
+        over no picture it is shown over black all the same ("cover"), and the signal coming back takes the word away"""
+        self.start()
+        c = self.page()
+        c.paint(0, H, a=255)
+        c.show(0, H)
+        c.map[:] = bytes(PITCH * H)
+        c.paint(H - 20, H - 10, a=184)
+        c.show(0, H)
+        self.assertFalse(self.shows()[-1].endswith(" cover"), self.shows())
+        self.tv.picture = "none"
+        time.sleep(0.6)                                # a pill is watched every quarter second
+        self.assertTrue(self.shows()[-1].endswith(" cover"), self.shows())
+        self.tv.picture = "ring"
+        time.sleep(0.6)
+        self.assertFalse(self.shows()[-1].endswith(" cover"), self.shows())
 
     def test_waiting_is_said(self):
         self.start()

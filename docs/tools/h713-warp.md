@@ -48,6 +48,7 @@ so the exit code is decided without parsing further.
 | `check [FRAMES]` | the self-check, no eyes needed: every third slot drawn a second time 4 ms later into a scratch buffer and compared in 32 rows; "N frames, 0 with differing rows" on the status line is the pass, one journal line per differing frame. While it runs the readback stalls the loop and frames are dropped (`busy`); it ends by itself. 11.10.2026, `hold off`, a moving 1080p60 source: 300 frames, 0 differing rows |
 | `trace [N] [gpu]` | log the next N frames with what they cost: this thread's CPU microseconds per step (dequeue, the two passes, the fence, h713-tv's answer) and, with `gpu`, the GPU's time from the submit to the out-fence - the only honest GPU clock here, Panfrost answers `GL_EXT_disjoint_timer_query` from the CPU clock |
 | `trace [N]` | log the next N dequeues with their timestamps, gaps between pumps and slow phases (draw, the peer's answer) |
+| `picture` | `ok N ...`: the pictures of the Wayland client on the panel since its window was mapped, those taken under an opaque page included; `error` when no client picture is on the panel. What the launcher's "Starting Kodi..." waits for (`h713-kodi-switch ready`: a picture of Kodi's after Kodi said it is up) |
 
 `CORNER` is `tl tr bl br` **as the picture stands on the wall**, `AXIS` is `x` or `y`. Every change is clamped
 and saved at once. The clamp is the vendor's: the x of a corner is limited by the corner at the other end of
@@ -81,6 +82,17 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
   panel. A client that waits behind a ring claim does not rely on that frame - a stalled ring sends none - the warp
   asks h713-tv's `source` when the client comes and once a second while it waits. Under `auto` a client goes before the ring. Under `client` without a client the warp asks `source` alone
   once a second instead of starting the capture for a ring claim that would be refused (measured 15.10.2026).
+- **`client` is a program, and HDMI is a mode, not a filler** (17.10.2026): a mode unit sets `source client` at its start
+  (`h713-kodi-switch source`). A ring claim then turns into the client's on the same buffers at once, with no picture of
+  the program yet: the ring is drawn no more and the video plane keeps its last frame until the program's first picture.
+  When a client's window goes, the claim stays and the last picture stands - while the program runs (its connection
+  stands) or another program has said that it starts (h713-tv repeats `note source client` for every unit's start). Only
+  when neither is so two seconds later has the program ended: the warp sets `h713-tv source auto` itself and the ring
+  takes over (a program that said it starts and has not connected within 30 s counts as ended). Under `auto` a client that
+  goes is followed by the ring after two seconds, as before; `hdmi` takes the panel to the ring at once. Measured on the
+  HY310 on 17.10.2026: Kodi -> launcher -> browser and back, three times each - the claim stayed the client's throughout
+  (no switch to the ring in the journal), the camera saw the page and then the new program, no HDMI picture and no
+  straight ring between them.
 - **A buffer's life:** pending when committed (a newer commit releases an untaken one at once), taken when its
   dma-buf is readable and the previous frame is on the panel (h713-tv's flip fence, sent with the `ok`), the frame
   callbacks done right then, released when the render fence of the frame that read it signals, presented with the
@@ -96,8 +108,27 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
   lines of 16, AFBC a 16-byte header per superblock plus the whole body, as mesa's panfrost lays it out; a test client had a
   20-KB buffer described as 1920x1080 AFBC fault the GPU. A `wl_shm` line shorter than 4 x width is a protocol
   error (libwayland checks only stride >= width), and a `wl_shm` picture goes up in one call (measured 15.10.2026).
-- **Status:** `ctl status` has two more lines, `wayland` (clients, toplevel, formats) and `client` (taken,
-  presented, discarded, busy, released, imports).
+- **Status:** `ctl status` has three more lines, `wayland` (clients, toplevel, formats), `client` (taken,
+  presented, discarded, busy, released, imports) and `pictures` (of the toplevel on the panel, one held under a page).
+
+## Under an opaque page - the pause
+
+An opaque page on the wall (the launcher, a settings page: h713-osd's `osd show N cover`) hides the whole picture, and the
+mode under it pauses: h713-tv says `note cover on` on the claim's connection and the warp draws nothing more - the ring's
+capture is not asked (its slots stay with the driver), a client's pictures are taken once a panel period as without the
+page (frame callbacks done, feedback discarded: the client runs on, Kodi plays on) and the newest one is held instead of
+drawn. The claim, the capture, the link and HDCP stay; the video plane keeps its last frame. A claim made under a page draws
+its first frame and then pauses, so that the video plane is up beneath the page and not switched on at its end. `note cover
+off` - the page goes, or turns into the settings' slider pill over the picture, which is not opaque - and the next frame is
+drawn at once: the ring's slots that stood are given back and the next one handed on is drawn (a slot handed on less than
+10 ms ago is drawn at once), a client's held picture is drawn, or with none the client's buffer on the panel is committed
+once more. h713-tv lays the end of the page on that frame, so the wall goes from the page to a new picture in one commit.
+`ctl status` says `pause` while it lasts. Measured on the HY310 on 17.10.2026 (1080p60 source): under the launcher and a
+settings page 0 warp frames a second, 0 changes of the video plane's address, the GPU runtime-suspended the whole time,
+0.006 / 0.000 cores without the sampler (HDMI on the wall: 0.156); Kodi under the launcher answers JSON-RPC and ~23 of its
+pictures a second are taken and held, none drawn; the settings' slider pill: the warp at 60 frames a second; from
+`launcher close` to the first new frame 23-36 ms (5 runs), and with the camera no black, straight or tinted picture between
+the page and HDMI (6 runs).
 
 Kodi sees 0 Hz under cage (wlroots' nested output has no rate) and picks the presentation protocol for its video
 sync: leave Kodi's "Sync playback to display" off (the default) - with it on, 1080p60 played at 18 fps and Kodi hung
@@ -105,11 +136,12 @@ on stopping the video (measured 15.10.2026).
 
 Kodi's unit (`h713-kodi.service`, profile `desktop`) runs cage and Kodi as the system user `h713-kodi` (groups `video`,
 `render`, `audio`; not root), sets `WAYLAND_DISPLAY=/run/h713-warp/wayland` and
-`WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and sets `h713-tv ctl source auto` at its
-start (without a running h713-tv there is nothing to set: it comes up on `auto`); there is no way back to run at
-its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the
-warp gives the panel back two seconds after cage is gone and the ring is there again (measured 15.10.2026: a SIGKILL of the
-unit's cgroup skipped the old `ExecStopPost=... source hdmi` and left the console). Measured: the host test (`make
+`WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and sets `h713-tv ctl source client` at its
+start (since 17.10.2026, before `auto`; without a running h713-tv there is nothing to set: it comes up on `auto`); there is
+no way back to run at its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the warp sees cage's
+connection close, and when no other program says it starts it sets `source auto` and the ring is there again two seconds
+after cage is gone (measured 15.10.2026: a SIGKILL of the unit's cgroup skipped the old `ExecStopPost=... source hdmi`
+and left the console). Measured: the host test (`make
 test`, a client against the server with the GPU stubbed); on the device see `doku/211` §10 and, for the user `h713-kodi`, `source auto` surviving a restart of h713-tv (Kodi shown again after 1.7 to 2.0 s)
 and the polkit rule, `doku/212` §4.
 
