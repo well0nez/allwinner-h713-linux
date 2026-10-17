@@ -209,6 +209,24 @@ class NoSignalTest(PageBase):
         self.assertTrue(top)
         self.assertTrue(any(self.px(data, x, y) != GROUND for y in range(int(H * 0.8), H) for x in range(W)), "the strip rides in it")
 
+    def test_a_note_right_behind_the_answer_is_taken_too(self):
+        """h713-tv sends the answer to "osd show" and, a tenth of a millisecond later, the note: one read can hold both. poll() does not fire
+        again for bytes already out of the socket, so a note left lying there waited for the next key - "none": no page; a word "signal": the page
+        stayed over a signal"""
+        self.start()
+        time.sleep(0.3)
+        self.tv.post_note = "note signal none"
+        self.ctl("volume", "40")                                # (0.15 s later: the strip stays 0.6 s)
+        self.assertIn("no-signal page  shown", self.status(), "the page, without another event")
+        self.tv.shown = None
+        time.sleep(0.8)                                         # the strip's seconds are over; the page stands on
+        self.assertIsNotNone(self.tv.shown)
+        self.tv.post_note = "note signal 1920x1080p60"
+        self.ctl("volume", "41")
+        self.assertIn("no-signal page  none", self.status(), "the word signal, behind the answer, takes the page away without another event")
+        time.sleep(0.8)
+        self.assertIsNone(self.tv.shown)
+
     def test_it_is_pre_distorted_over_a_keystone(self):
         self.write("warp.conf", "bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = on\n")
         self.tv.picture = "none"

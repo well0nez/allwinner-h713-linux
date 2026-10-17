@@ -27,6 +27,7 @@ class FakeTv(threading.Thread):
         self.path, self.picture, self.mute = path, picture, "off"
         self.signal = "off"                      # what "osd signal" answers: "none" - no signal - or anything else
         self.knows_signal = True                 # False: an h713-tv of before, "osd signal" is a line it answers with a plain "ok"
+        self.post_note = None                    # a note sent in the same write BEHIND the next "osd show" or "osd hide" answer
         self.pre_note = None                     # a note sent in the same write as the next "osd picture" answer
         self.show_reply = b"ok\n"                # what "osd show" answers: b"ok waiting\n" when no picture is up
         self.lines, self.shown, self.conn = [], None, None
@@ -66,16 +67,22 @@ class FakeTv(threading.Thread):
                     c.sendall((note + "ok %s\n" % self.picture).encode())
                 elif line.startswith("osd show "):
                     self.shown = int(line.split()[2])
-                    c.sendall(self.show_reply)
+                    c.sendall(self.show_reply + self.behind())
                 elif line == "osd signal" and self.knows_signal:
                     c.sendall(("ok signal %s\n" % self.signal).encode())
                 elif line == "mute":
                     c.sendall(("ok mute %s (DSP)\n" % self.mute).encode())
                 elif line == "osd hide":
                     self.shown = None
-                    c.sendall(b"ok\n")
+                    c.sendall(b"ok\n" + self.behind())
                 else:
                     c.sendall(b"ok\n")
+
+    def behind(self):
+        """the note that goes in the same write as the answer, right behind it (h713-tv: osd_serve answers, nosig_follow notes, a tenth of a
+        millisecond apart)"""
+        note, self.post_note = (self.post_note.encode() + b"\n") if self.post_note else b"", None
+        return note
 
     def hangup(self):
         """h713-tv goes away under the connection (a restart, a standby)"""

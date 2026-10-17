@@ -432,8 +432,19 @@ static bool tv_take(char *line, size_t n)
 	return true;
 }
 
+/* the notes that came behind an answer in the same read: taken now - poll() does not fire again for bytes that are already out of the
+ * socket, and a "note signal TEXT" left lying here would keep the page up over a signal until the next key */
+static void tv_notes_left(void)
+{
+	char line[96];
+
+	while (memchr(tv.in, '\n', tv.inlen) && !strncmp(tv.in, "note ", 5) && tv_take(line, sizeof(line)))
+		if (tv_note(line))
+			redo = true;
+}
+
 /* one line to h713-tv, its answer; false when the connection broke (then it is dropped) or the answer is no "ok".
- * h713-tv's notes ("note signal ...") may come between the question and its answer: they are taken on the way. */
+ * h713-tv's notes ("note signal ...") may come between the question and its answer, or right behind it: they are taken. */
 static bool tv_say(const char *line, char *answer, size_t n)
 {
 	if (tv.fd < 0)
@@ -444,8 +455,12 @@ static bool tv_say(const char *line, char *answer, size_t n)
 		ssize_t got;
 
 		while (tv_take(answer, n)) {
-			if (strncmp(answer, "note ", 5))
-				return !strncmp(answer, "ok", 2);
+			if (strncmp(answer, "note ", 5)) {
+				bool ok = !strncmp(answer, "ok", 2);
+
+				tv_notes_left();
+				return ok;
+			}
 			if (tv_note(answer))
 				redo = true;
 		}
