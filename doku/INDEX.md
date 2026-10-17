@@ -26,7 +26,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/188`, `doku/190`, `doku/70`, `doku/72`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/212`, `doku/213`, `doku/80` |
-| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/193`, `doku/197`, `doku/198`, `doku/199`, `doku/200`, `doku/211`, `doku/212`, `doku/213`, `doku/60`, `doku/61` |
+| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/193`, `doku/197`, `doku/198`, `doku/199`, `doku/200`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107`, `doku/170`, `doku/213` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/184`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/206`, `doku/nachtlog/S21-re-audif-zugang` |
@@ -50,17 +50,17 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-fel.md` | `doku/20`, `doku/nachtlog/S48-fel-aus-uboot` |
 | `docs/tools/h713-focus.md` | `doku/94` |
 | `docs/tools/h713-install.md` | `doku/110`, `doku/121` |
-| `docs/tools/h713-keys.md` | `doku/138`, `doku/195`, `doku/212`, `doku/213`, `doku/94` |
+| `docs/tools/h713-keys.md` | `doku/138`, `doku/195`, `doku/212`, `doku/213`, `doku/214`, `doku/94` |
 | `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-mips-restart.md` | `doku/172`, `doku/173`, `doku/174`, `doku/177` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
-| `docs/tools/h713-osd.md` | `doku/212`, `doku/213` |
+| `docs/tools/h713-osd.md` | `doku/212`, `doku/213`, `doku/214` |
 | `docs/tools/h713-power.md` | `doku/165`, `doku/167`, `doku/172`, `doku/174`, `doku/188`, `doku/190`, `doku/212` |
 | `docs/tools/h713-pq.md` | `doku/81`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation` |
 | `docs/tools/h713-probe.md` | `doku/120` |
 | `docs/tools/h713-settings.md` | `doku/212`, `doku/213` |
 | `docs/tools/h713-tv.md` | `doku/101`, `doku/172`, `doku/174`, `doku/177`, `doku/78`, `doku/86`, `doku/88`, `doku/99` |
-| `docs/tools/h713-warp.md` | `doku/197`, `doku/200`, `doku/201`, `doku/206`, `doku/211`, `doku/212`, `doku/213` |
+| `docs/tools/h713-warp.md` | `doku/197`, `doku/200`, `doku/201`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214` |
 | `docs/tools/h713-wifi.md` | `doku/60` |
 | `docs/uboot/README.md` | `doku/10`, `doku/109`, `doku/163`, `doku/170`, `doku/30` |
 | `docs/uboot/commands.md` | `doku/108`, `doku/67`, `doku/70`, `doku/98` |
@@ -269,6 +269,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md`](211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md) | Protokoll | 2026-10-15 | 211 - Das Nebenprojekt Medien: Dekoder, VA-API-Treiber, mesa, Kodi und der Wayland-Server im Warp; die Messungen am HY310 (13. bis 15.10.2026) | 6 |
 | [`212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md`](212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md) | Protokoll | 2026-10-16 | 212 - Das Nebenprojekt Medien, zweiter Teil: Launcher, Einstellungsseite, Desktop und Browser, Kodi als Nutzer, die VE mit 600 MHz, der VA-Treiber `0015` bis `0017`, der Endbau (15. und 16.10.2026) | 13 |
 | [`213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md`](213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md) | Protokoll | 2026-10-16 | 213 - Das Nebenprojekt Medien, dritter Teil: die Bildweiche, die Bedienung beim Start, die RTC am 24-MHz-Quarz (Patch `0320`), Fokus und Bluetooth, das Licht des HY310 (16. und 17.10.2026) | 12 |
+| [`214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md`](214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md) | Protokoll | 2026-10-17 | 214 - Das Nebenprojekt Medien: Bluetooth nach dem Neustart, der Launcher beim Start, der Warp übernimmt das Signal sofort (17.10.2026) | 4 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -425,7 +426,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-51 von 271 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+51 von 272 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
