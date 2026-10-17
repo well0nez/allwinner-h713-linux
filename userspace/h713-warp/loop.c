@@ -89,7 +89,12 @@ static void note(struct runtime *r, const char *why)
  * without a client keeps the shipped behaviour: the node is not even open. */
 void warp_gl_idle(struct runtime *r)
 {
-	if (r->state != WARP_ON && !server_busy(r->srv) && gl_is_open())
+	/*
+	 * Kept open while the ring is wanted and only h713-tv's leave is missing (no signal, "ctl off", h713-tv away): the
+	 * next claim then costs the capture and the claim, not the EGL start - "ctl auto" to the first frame took 0.28 s
+	 * with the start (HY310, 17.10.2026), the straight ring waiting for it. Nothing is drawn meanwhile; the GPU sleeps.
+	 */
+	if (r->state != WARP_ON && !server_busy(r->srv) && gl_is_open() && !warp_want_ring(r))
 		gl_close();
 }
 
@@ -397,6 +402,7 @@ void warp_apply(struct runtime *r)
 		if (r->state == WARP_ON)
 			warp_disengage(r, r->on ? "the identity needs no GPU (bypass)"
 						: "ctl off");
+		warp_gl_idle(r);	/* the render node kept for a ring that is no longer wanted */
 		r->state = r->on ? WARP_BYPASS : WARP_OFF;
 		if (!client)	/* else the reason stays the client's: h713-tv's refusal */
 			note(r, r->on ? "the identity needs no GPU: h713-tv is on the ring (M10)"
