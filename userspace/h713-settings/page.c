@@ -95,6 +95,18 @@ int page_show(const int box[4])
 	return strstr(answer, "waiting") || strstr(answer, "unseen") ? 0 : 1;
 }
 
+/*
+ * Back at the top brings the launcher back (h713-keys): the page says it hands over before its connection ends, and h713-osd keeps
+ * it on the wall until the launcher is drawn in its place - without, the HDMI picture stood between the two for the launcher's
+ * drawing (0.19 s, HY310 17.10.2026). An h713-osd that does not know the line answers an error nobody reads and takes the page
+ * away at the end, as before.
+ */
+void page_handover(void)
+{
+	if (sock >= 0)
+		send(sock, "page handover\n", 14, MSG_NOSIGNAL);
+}
+
 void page_close(void)
 {
 	if (sock >= 0)

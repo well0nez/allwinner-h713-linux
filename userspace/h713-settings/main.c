@@ -482,6 +482,8 @@ int main(int argc, char **argv)
 	rows_flush();
 	if (!test) {
 		input_close();
+		if (leave == EXIT_BACK)
+			page_handover();	/* the launcher comes back: the page stays until it is drawn */
 		page_close();
 	}
 	return leave;
