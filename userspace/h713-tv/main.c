@@ -1812,6 +1812,44 @@ struct osd {
 
 static struct osd osd = { .peer = -1, .want = -1 };
 
+/*
+ * No signal as a page (P5 of the media side project, 17.10.2026). In the mode HDMI with nothing to show - no signal, a source the
+ * display cannot take - the wall shows h713-osd's opaque page "No signal on HDMI" (a line below: "HOME: menu"), not the console:
+ * the wall shows nothing that nobody ordered (Marco), and the console is the service's - "ctl off" - and an image's without
+ * h713-osd. This program tells h713-osd on the overlay connection, unasked: "note signal none" while the page is wanted, "note
+ * signal TEXT" when it is not (the signal's name; "off" when the console is forced or a program is the mode). h713-osd also asks
+ * once after each claim ("osd signal"), so a restart of either side, a standby, finds the page where it belongs. Under a program
+ * the signal does not matter: no page. The launcher and the settings are h713-osd's to put in front of the page and take away
+ * again - this program does not know them.
+ *
+ * The wall between the signal's loss and the page: the last picture stands until the page is on the wall (the ring or the warp's
+ * last frame, frozen, at most NOSIG_WAIT_MS - h713-osd needs ~0.1 s through the keystone), and the page then covers it; before, the
+ * claim went and the console showed for that tenth of a second. Without a page after NOSIG_WAIT_MS: the console, as it always was.
+ * The way back: when the signal stands again and h713-warp is to claim the ring, the page stays until the claim is made (it pauses
+ * under the page, its first frame carries the page's end: one commit from the page to the picture), at most WARP_HOLD_MS.
+ */
+#define NOSIG_WAIT_MS	1000	/* the last picture stands for the page this long, then the console after all */
+
+static struct {
+	bool lost;		/* nothing to show in the mode HDMI, and the signal is not back with its claim yet */
+	bool said;		/* h713-osd's last word was "none" */
+	struct timespec since;	/* the last picture has waited for the page since (zero: not waiting) */
+	struct timespec back;	/* the signal stands again, the page has waited for h713-warp's claim since (zero: not waiting) */
+	char text[64];		/* the signal's name: the word that takes the page away */
+} nosig;
+
+static bool nosig_page_ok(void);		/* the page can stand for "no signal" (h713-osd claimed, no console forced, no program) */
+static const char *nosig_word(void);		/* what h713-osd is to hear now: "none", or what is not none */
+static void nosig_said(bool said);
+
+/* a claim of the ring was made: that needed a signal, so the signal is back and the page can go (nosig_follow() says so) */
+static void nosig_claimed(void)
+{
+	nosig.lost = false;
+	memset(&nosig.back, 0, sizeof(nosig.back));
+	memset(&nosig.since, 0, sizeof(nosig.since));
+}
+
 /* the primary plane of our CRTC with "zpos" (kernel 0251) and ARGB8888 */
 static bool osd_find_plane(struct display *d)
 {
@@ -2123,6 +2161,7 @@ static void osd_release(struct display *d)
 		return;
 	osd.want = -1;
 	osd.cover = false;
+	nosig_said(false);
 	osd_drop(d);
 	osd_free(d);
 	osd.claimed = false;
@@ -2135,8 +2174,8 @@ static void osd_release(struct display *d)
 /* The peer's connection, one line per message as with the warp. */
 static void osd_serve(struct display *d)
 {
-	char buf[64], word[16] = "";
-	const char *answer = "error unknown (osd show N [cover] | osd hide | osd picture | osd release)\n";
+	char buf[64], word[16] = "", sigans[96];
+	const char *answer = "error unknown (osd show N [cover] | osd hide | osd picture | osd signal | osd release)\n";
 	ssize_t got;
 	int n = -1;
 
@@ -2186,6 +2225,11 @@ static void osd_serve(struct display *d)
 	} else if (!strcmp(buf, "osd picture")) {
 		/* what lies under the overlay: h713-osd pre-distorts only over the warp */
 		answer = d->warped ? "ok warped\n" : d->on ? "ok ring\n" : "ok none\n";
+	} else if (!strcmp(buf, "osd signal")) {
+		/* the word on the signal, asked after every claim: "none" is the page without a signal (see "No signal as a page") */
+		snprintf(sigans, sizeof(sigans), "ok signal %s\n", nosig_word());
+		nosig_said(!strcmp(nosig_word(), "none"));
+		answer = sigans;
 	}
 	if (send(osd.peer, answer, strlen(answer), MSG_NOSIGNAL) < 0) {
 		warn("osd             answering \"%s\": %s", buf, strerror(errno));
@@ -4622,6 +4666,11 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	reply_add(r, "cover           %s\n", cover.on ? (cover.plane_off || !d->warped ? "an opaque page hides the picture: h713-warp pauses, the video plane is off, the HDMI sound is muted" :
 		  "an opaque page hides the picture: h713-warp pauses, the HDMI sound is muted (the video plane could not go off)") :
 		  cover.resuming ? "the page went: the overlay's change waits for h713-warp's next frame" : "none");
+	/* "page" first on the line when the wall shows the page: h713-settings reads "nosignal        page" for "No HDMI signal" */
+	reply_add(r, "nosignal        %s\n", !nosig.lost ? "none" :
+		  !nosig_page_ok() ? "no page: nothing to show, but h713-osd is not claimed, the console is forced or a program is the mode" :
+		  osd_covering() ? "page: h713-osd shows \"No signal on HDMI\"" :
+		  "waiting for the page: h713-osd draws it, the last picture stands until it is up");
 	if (warp.claimed)
 		reply_add(r, "warp            on (%s), video plane %u: %lu commits, %lu busy, %lu refused\n",
 			  warp.client ? "a Wayland client" : "the ring", d->plane_id, warp.commits, warp.busy,
@@ -5854,6 +5903,8 @@ static bool cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	warp.client = client;
 	warp.told = (int)ctl.source;
 	warp.peer = conn;
+	if (!client)
+		nosig_claimed();	/* a ring claim needs the signal: it is back, the page may go (it waited for this) */
 	memset(&warp.last_frame, 0, sizeof(warp.last_frame));
 	clock_gettime(CLOCK_MONOTONIC, &warp.claimed_at);
 	d->warped = true;
@@ -6310,6 +6361,122 @@ static void capture_follow(void)
 	     cover.on ? "not needed: an opaque page covers the panel" : "not needed: a program is the mode");
 }
 
+/*
+ * No signal as a page: the functions (the story is with struct nosig). The page can stand for "no signal" when h713-osd is here, the
+ * console is not forced and no program is the mode - under a program the signal is none of the wall's business.
+ */
+static bool nosig_page_ok(void)
+{
+	return osd.claimed && osd.peer >= 0 && ctl.policy != POLICY_OFF && ctl.source != SOURCE_CLIENT && !(warp.claimed && warp.client);
+}
+
+/* what h713-osd is to hear: "none" while the page is wanted; "off" when there is no signal and no page (console forced, a program);
+ * else the signal's name */
+static const char *nosig_word(void)
+{
+	if (nosig.lost)
+		return nosig_page_ok() ? "none" : "off";
+	return nosig.text[0] ? nosig.text : "ok";
+}
+
+static void nosig_said(bool said)
+{
+	nosig.said = said;
+}
+
+/* h713-osd hears a change of the word, once */
+static void nosig_tell(void)
+{
+	bool want = nosig.lost && nosig_page_ok();
+	char line[96];
+	int len;
+
+	if (osd.peer < 0 || !osd.claimed) {
+		nosig.said = false;
+		return;
+	}
+	if (want == nosig.said)
+		return;
+	len = snprintf(line, sizeof(line), "note signal %s\n", nosig_word());
+	if (len <= 0 || send(osd.peer, line, (size_t)len, MSG_NOSIGNAL | MSG_DONTWAIT) != len) {
+		warn("nosignal       \"note signal ...\" did not go (%s) -- h713-osd hears it at its next claim", strerror(errno));
+		return;
+	}
+	nosig.said = want;
+	info("nosignal       h713-osd is told: %s", want ? "no signal -- its page \"No signal on HDMI\"" : "the signal is back -- the page goes");
+}
+
+/*
+ * evaluate() found nothing to show in the mode HDMI. decided: no signal, or one the display cannot take (not a change in flight, not a
+ * reading that failed). True: the picture on the wall stays for now, the page is on its way (the caller returns).
+ */
+static bool nosig_defer(struct display *d, struct retry *rt, bool decided)
+{
+	long left;
+
+	if (!decided)
+		return false;
+	if (!nosig.lost) {
+		nosig.lost = true;
+		memset(&nosig.back, 0, sizeof(nosig.back));
+		memset(&nosig.since, 0, sizeof(nosig.since));
+		nosig.text[0] = '\0';
+		info("nosignal       nothing to show in the mode HDMI%s", nosig_page_ok() ? " -- h713-osd is to put its page up" :
+		     " -- no page (h713-osd not claimed, the console forced or a program the mode): the console");
+	}
+	if (!nosig_page_ok() || osd_covering() || !(d->on || d->warped))
+		return false;		/* no page wanted, the page already stands, or no picture to hold */
+	if (ts_zero(&nosig.since))
+		clock_gettime(CLOCK_MONOTONIC, &nosig.since);
+	left = NOSIG_WAIT_MS - ms_since(&nosig.since);
+	if (left <= 0) {
+		warn("nosignal       h713-osd put no page up within %d ms -- the console after all", NOSIG_WAIT_MS);
+		return false;
+	}
+	retry_arm(rt, (unsigned int)left + 5);
+	return true;
+}
+
+/*
+ * evaluate() measured a signal the display can take. The page goes with the word "signal"; with a claim of h713-warp's to come it goes
+ * after the claim, at most WARP_HOLD_MS (nosig_claimed(), nosig_follow()).
+ */
+static void nosig_back(struct retry *rt, const struct v4l2_dv_timings *t)
+{
+	char text[64];
+
+	snprintf(nosig.text, sizeof(nosig.text), "%s", signal_text(t, text, sizeof(text)));
+	memset(&nosig.since, 0, sizeof(nosig.since));
+	if (!nosig.lost)
+		return;
+	if (nosig_page_ok() && warp_wants_ring() && !warp.claimed) {
+		long left;
+
+		if (ts_zero(&nosig.back))
+			clock_gettime(CLOCK_MONOTONIC, &nosig.back);
+		left = WARP_HOLD_MS - ms_since(&nosig.back);
+		if (left > 0) {
+			retry_arm(rt, (unsigned int)left + 5);
+			return;
+		}
+		warn("nosignal       h713-warp made no claim within %d ms -- the page goes without it", WARP_HOLD_MS);
+	}
+	nosig.lost = false;
+	memset(&nosig.back, 0, sizeof(nosig.back));
+	info("nosignal       the signal is back (%s)", nosig.text);
+}
+
+/* after every handler of the loop: h713-osd hears a change; a claim that stood while the page came goes under the page now */
+static void nosig_follow(struct capture *cap, struct display *d, struct retry *rt, struct audio *a)
+{
+	nosig_tell();
+	/* the signal went, the last picture stayed for the page, the page is on the wall now: the claim goes under it */
+	if (nosig.lost && warp.claimed && !warp.client && cover.on && cap->last_sig != 1) {
+		reevaluate(cap, d, rt, a);
+		nosig_tell();
+	}
+}
+
 /* COVER_RESUME_MS after "note cover off" and no frame of h713-warp's: the overlay's change on its own */
 static void cover_resume_due(struct display *d)
 {
@@ -6442,6 +6609,7 @@ static void cmd_osd_claim(struct reply *r, struct display *d, int conn)
 	osd.claimed = true;
 	osd.peer = conn;
 	osd.want = -1;
+	nosig_said(false);	/* a new h713-osd knows nothing: it asks */
 	info("osd             claimed: two %ux%u ARGB8888 buffers, line pitch %u, primary plane %u, console framebuffer %u",
 	     d->width, d->height, osd.pitch, osd.plane_id, osd.console_fb);
 }
@@ -8145,10 +8313,17 @@ static void evaluate(struct capture *cap, struct display *d,
 		cap->last_sig = sig;
 		if (sig != 2)
 			cap->last_t = t;
-		if (sig == 1)
+		if (sig == 1) {
+			nosig_back(rt, &t);	/* a signal back under the claim that never let go: the page, if it came, goes now */
 			return;
-		info("signal          %s while the warp is on -- the warp is released, the console until a signal is back",
-		     sig == 0 ? "gone" : sig == 2 ? "changing" : sig == 3 ? "not in the firmware's table" : "not readable");
+		}
+		/* gone, or one the display cannot take: h713-osd's page "No signal on HDMI" instead of the console - the last picture
+		 * stands until the page is on the wall, the claim goes under it (nosig_follow()) */
+		if (nosig_defer(d, rt, sig == 0 || sig == 3))
+			return;
+		info("signal          %s while the warp is on -- the warp is released, %s until a signal is back",
+		     sig == 0 ? "gone" : sig == 2 ? "changing" : sig == 3 ? "not in the firmware's table" : "not readable",
+		     nosig.lost && nosig_page_ok() && osd_covering() ? "the page" : "the console");
 		warp_release(d);
 	}
 	/* "off" over the control socket: the console stays, whatever the signal does */
@@ -8225,6 +8400,8 @@ static void evaluate(struct capture *cap, struct display *d,
 			info("signal          a source the firmware's table does not carry -- console");
 		want_hold_end();
 		wish.noted = false;
+		if (nosig_defer(d, rt, true))
+			return;
 		display_hide(d);
 		return;
 	}
@@ -8234,6 +8411,8 @@ static void evaluate(struct capture *cap, struct display *d,
 			info("signal          no signal (the flip pointers stand still)");
 		want_hold_end();
 		wish.noted = false;
+		if (nosig_defer(d, rt, sig == 0))
+			return;
 		display_hide(d);
 		return;
 	}
@@ -8260,6 +8439,8 @@ static void evaluate(struct capture *cap, struct display *d,
 	if (ring_w > d->width || ring_h > d->height || (ring_h & 1)) {
 		warn("the plane does not take the ring geometry %ux%u (larger than the panel %ux%u, or an odd height); source %ux%u -- the console stays",
 		     ring_w, ring_h, d->width, d->height, t.bt.width, t.bt.height);
+		if (nosig_defer(d, rt, true))
+			return;
 		display_hide(d);
 		return;
 	}
@@ -8299,6 +8480,7 @@ static void evaluate(struct capture *cap, struct display *d,
 	 * first frame after the page carries the page's end - the page goes straight to the warped picture (before, the
 	 * claim was refused under the page and the straight ring came after it, until the warp asked again).
 	 */
+	nosig_back(rt, &t);	/* the page without a signal goes with this - after h713-warp's claim, if one is to come */
 	if (cover.on) {
 		want_hold_end();
 		if (d->on)
@@ -8928,6 +9110,7 @@ int main(int argc, char **argv)
 			LOOP_TIMED("the end of the wait for the warp's claim", reevaluate(&cap, &d, &rt, &au));
 		/* whatever the handlers did with the overlay: does an opaque page hide the picture now? */
 		cover_follow(&cap, &d, &rt, &au);
+		nosig_follow(&cap, &d, &rt, &au);
 		capture_follow();
 	}
 
