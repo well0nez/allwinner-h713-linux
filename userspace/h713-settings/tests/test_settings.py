@@ -1303,7 +1303,7 @@ class Stack(Base):
         again = self.shown()
         self.assertEqual(again[3::4].count(255), self.W * self.H)
         b.press(HOME)
-        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertEqual(b.proc.wait(timeout=5), 10)
         self.assertTrue(wait_for(lambda: self.osd_tv.shown is None, 5))      # the end of the page takes it from the wall
 
     def test_the_page_through_a_keystone(self):
