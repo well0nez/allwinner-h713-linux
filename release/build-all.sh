@@ -308,7 +308,7 @@ else
 	# 10.09. built with assertions enabled (49260 instead of 45164 bytes). make
 	# saw everything as up to date and never replaced it -- it sits in v0.8 to v0.10.
 	rm -rf "$MAINLINE/external/arm-trusted-firmware/build"
-	in_container "cd $WORK/mainline && BOARD=$BOARD H713_STANDBY=$WANT_STANDBY H713_TEST_IMAGE=$TEST_IMAGE build/build.sh bl31" | tail -3 | sed 's/^/    /'
+	in_container "cd $WORK/mainline && BOARD=$BOARD ${VARIANT:+VARIANT=$VARIANT }H713_STANDBY=$WANT_STANDBY H713_TEST_IMAGE=$TEST_IMAGE build/build.sh bl31" | tail -3 | sed 's/^/    /'
 fi
 [[ -f "$OUT/bl31.bin" ]] || die "no bl31.bin"
 
