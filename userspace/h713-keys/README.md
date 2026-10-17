@@ -34,7 +34,11 @@ the files `/etc/h713/launcher.d/NN-name.conf` (`label`, `icon`, `unit` or `exec`
 (`EVIOCGRAB`, taken at the release of Home: grabbed earlier, cage would hold Home down and Kodi repeat it), so Kodi, which reads them through cage, gets no key; it opens only where `h713-osd` can show it and closes by
 itself after 90 s. A Power press with it open closes it and goes on to `h713-power` (a datagram `down`: h713-power starts the press, so a 3 s hold still powers off).
 
-At the start of the box the launcher opens by itself (`on_start = launcher` in `keys.conf`, the default; `hdmi` keeps the HDMI picture): once per boot (`/run/h713-keys.booted`), as soon as `h713-osd` can show it
+**The ways back** (17.10.2026): an entry with `return = launcher` (Settings) opens the launcher again, with itself chosen, when its program ends with status 0 (Back at the top of the page; Home, Power, idle and the rest end with 10 or more and
+open nothing); a mode unit that ends by itself (Kodi's Exit, the browser or the terminal closed, a crash) opens the launcher with HDMI input chosen - not when `h713-mode hdmi`, a sleep or the shutdown ended it. The mode that runs is kept in
+`/var/lib/h713-keys/last-mode` (`StateDirectory=h713-keys`) for `on_start = last`. Details: [docs/tools/h713-keys.md](../../docs/tools/h713-keys.md).
+
+At the start of the box the launcher opens by itself (`on_start = launcher` in `keys.conf`, the default; `hdmi` keeps the HDMI picture; `kodi` or another entry's id starts that mode; `last` what ran last): once per boot (`/run/h713-keys.booted`), as soon as `h713-osd` can show it
 (tried every 5 s for 180 s), with the devices held at once, and it waits for the first key. A standby brings back the mode from before, not the launcher. The settings page writes the line (Input > On start).
 
 ## Only the remote
@@ -51,7 +55,7 @@ read the power key from the same nodes. A remote that connects later is found wi
 volume_step = 5          # 1..20
 focus_steps = 20         # 1..100
 input_keys =             # kernel key names, separated by spaces; empty = none
-on_start = launcher      # launcher | hdmi: what the projector shows when it has started
+on_start = launcher      # launcher | hdmi | last | the id of an entry with a unit (kodi, browser, desktop): what the projector shows when it has started
 ```
 
 A line it does not understand is logged as a warning and ignored; the rest keeps working. On a board without a

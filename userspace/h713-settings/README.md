@@ -14,6 +14,11 @@ testsink.c  the host's sink (-DH713_TEST, not in the board's binary): keys as li
 tests/      test_settings.py: host tests (two of them run the real h713-osd; one measures every page against the safe margin)
 ```
 
+## How it ends
+
+The exit status says why, and h713-keys reads it (`launcher.d/50-settings.conf`: `return = launcher`): 0 is Back at the top level - the launcher opens again, Settings chosen; 10 Home, 11 Power, 12 idle, 13 no picture for `H713_SETTINGS_PATIENCE`
+seconds, 14 h713-osd gone, 15 a signal (the mode below gets the wall); 2 to 5 are the page that did not open. Table: [`docs/tools/h713-settings.md`](../../docs/tools/h713-settings.md).
+
 ## Building and testing
 
 In the container `h713-build`, against libh713osd (shapes and `osd_text`; `OSD=` names where it lives):

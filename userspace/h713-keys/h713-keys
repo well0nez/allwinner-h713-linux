@@ -21,7 +21,12 @@ arrows and OK are Kodi's with the launcher closed; so are the mouse and the
 microphone key over IR, which only ask for the Bluetooth pairing (KEY_F6) - nothing acts on that: a remote
 paired with another box since is re-paired with `h713-remote-pair forget` and Left+Right (TODO 2.54).
 
-Configuration /etc/h713/keys.conf (volume_step, focus_steps, input_keys), read again when it changes.
+The ways back (17.10.2026): an entry with `return = launcher` (Settings) opens the launcher again, with itself chosen, when its
+program ends with 0 (Back at the top); a mode unit that ends by itself (Kodi's Exit, the browser or the terminal closed, a crash)
+opens the launcher with "HDMI input" chosen. Home from a page and a mode ended on purpose (h713-mode hdmi, a sleep, the shutdown)
+open nothing. The mode that runs is remembered in /var/lib/h713-keys/last-mode for on_start = last.
+
+Configuration /etc/h713/keys.conf (volume_step, focus_steps, input_keys, on_start), read again when it changes.
 Commands: run [--once], status. docs/tools/h713-keys.md.
 """
 
@@ -70,6 +75,16 @@ BOOT_FLAG = "run/h713-keys.booted"          # in /run: gone with every boot, sta
 BOOT_WAIT_S = 180                           # how long after the start the launcher is tried: h713-osd and the picture come late
 BOOT_RETRY_S = 0.5                          # how often: h713-osd shows it as soon as h713-tv is up, ~4 s before the HDMI picture (17.10.2026)
 START_WAIT_S = 30                           # how long a launcher entry with a `wait` command may take to show its first picture
+MODE_GONE_S = 0.5                           # a mode unit counts as ended when none has run for this long (a switch has no gap this long)
+MODE_QUIET_S = 6.0                          # after the launcher starts a mode unit its end or its start is not judged for this long
+MODE_ENDED = "run/h713-mode.ended"          # h713-mode hdmi touches it before it ends the modes: that end is the user's, not the program's
+MODE_RESUME = "run/h713-mode.resume"        # h713-mode sleep-pre writes it before it ends the modes (until sleep-post): a sleep
+MODE_ENDED_S = 15                           # how long h713-mode hdmi's mark counts (Kodi needs ~3 s to quit)
+CGROUPS = "sys/fs/cgroup/system.slice"      # a unit that has a cgroup there is up, coming up or going down: a stat, no process
+LAST_MODE = "var/lib/h713-keys/last-mode"   # "hdmi" or the unit that ran last (StateDirectory=h713-keys)
+REOPEN_S = 5.0                              # how long the launcher is tried again after a way back (h713-osd may still show the page it left)
+REOPEN_RETRY_S = 0.1
+FALLBACK = object()                         # select: the entry that is `fallback` (HDMI input)
 SHOWN = {}                                  # command -> (time, answer) of check()
 REPEAT = (500, 125)                         # ms: rc-core's, what the IR receiver repeats with (read 11.10., G-EU)
 LIMITS = {"volume_step": 20, "focus_steps": 100}      # the largest value keys.conf may set
@@ -121,7 +136,7 @@ class Config:
                 values[key] = value
             elif key == "input_keys" and all(w in CODES for w in value.split()):
                 values[key] = value
-            elif key == "on_start" and value in ("launcher", "hdmi"):
+            elif key == "on_start" and (value in ("launcher", "hdmi", "last") or value in [e["id"] for e in launcher_entries(True) if e.get("unit")]):
                 values[key] = value
             else:
                 log("keys.conf:%d: %r ignored" % (n, line), "<4>")
@@ -332,19 +347,23 @@ def check(cmd, keep=0):
     return ok
 
 
-def launcher_entries():
-    """The entries of /etc/h713/launcher.d/*.conf in file-name order: key = value lines, # comments."""
+def launcher_entries(quiet=False):
+    """The entries of /etc/h713/launcher.d/*.conf in file-name order: key = value lines, # comments. `id` is the file's name without its
+    number and suffix (20-kodi.conf: kodi) - what on_start names."""
     entries = []
     for f in sorted(glob.glob(path("etc/h713/launcher.d", "*.conf"))):
-        e = {}
+        e = {"id": re.sub(r"^\d+-", "", os.path.basename(f)[:-len(".conf")])}
         for line in read(f).splitlines():
             k, _, v = (x.strip() for x in line.split("#", 1)[0].partition("="))
-            if k in ("label", "icon", "unit", "exec", "show", "active", "now", "group", "fallback", "wait") and v:
+            if k in ("label", "icon", "unit", "exec", "show", "active", "now", "group", "fallback", "wait", "return") and v:
                 e[k] = v.replace(";", ",")
+        if e.get("return") and (e["return"] != "launcher" or not e.get("exec")):
+            quiet or log("%s: return = %s ignored (only `return = launcher` on an `exec` entry)" % (f, e["return"]), "<4>")
+            del e["return"]
         if e.get("label") and e.get("icon") and (e.get("unit") or e.get("exec")):
             entries.append(e)
         else:
-            log("%s: needs label, icon and unit or exec: left out" % f, "<4>")
+            quiet or log("%s: needs label, icon and unit or exec: left out" % f, "<4>")
     return entries
 
 
@@ -358,22 +377,43 @@ class Launcher:
 
     def __init__(self):
         self.entries, self.sel, self.last, self.held, self.starting, self.rows = None, 0, 0.0, False, None, ""
+        self.back = None                     # an `exec` entry with `return = launcher` that runs: {"entry", "proc"}
+        self.reopen = None                   # the launcher is to open again: {"select", "until", "next"}
+        self.started = float("-inf")         # when it last started a mode unit (the mode watch does not judge the switch)
+        self.snap = None                     # the entries, the entry that runs and the signal as the last full open found them
 
-    def open(self, devices, quiet=False):
-        entries = launcher_entries()
-        entries = [e for e in entries if check(e.get("show"), 60)]
-        if not entries:
-            return quiet or log("Home: no launcher entries in /etc/h713/launcher.d")
-        cur = next((i for i, e in enumerate(entries) if not e.get("fallback") and e.get("active") and check(e["active"])), None)
-        if cur is None:
-            cur = next((i for i, e in enumerate(entries) if e.get("fallback")), 0)
-        now = entries[cur].get("now", entries[cur]["label"]).replace("{signal}", signal_text())
+    def open(self, devices, quiet=False, select=None, fast=False):
+        """The page, with the entry `select` (its id; FALLBACK: HDMI input) chosen - none: the one that runs. The header says what runs.
+        fast: from what the last full open found - no entry files, no `active` checks, no question to h713-tv. The way back from a page
+        uses it: the wall shows the HDMI picture from the moment the page is gone to the moment the launcher is drawn, and the full
+        open took 350 ms of that (HY310, 17.10.2026: systemctl is-active x3, h713-tv's status, 57 ms); what is left is h713-osd's drawing."""
+        snap = self.snap if fast else None
+        if snap:
+            entries, signal = snap["entries"], snap["signal"]
+        else:
+            entries = [e for e in launcher_entries() if check(e.get("show"), 60)]
+            if not entries:
+                quiet or log("Home: no launcher entries in /etc/h713/launcher.d")
+                return False
+            signal = signal_text()
+        fall = next((i for i, e in enumerate(entries) if e.get("fallback")), 0)
+        if snap:
+            act = fall if select is FALLBACK else snap["act"]
+        else:
+            act = next((i for i, e in enumerate(entries) if not e.get("fallback") and e.get("active") and check(e["active"])), None)
+            if act is None:
+                act = fall
+            self.snap = {"entries": entries, "signal": signal, "act": act}
+        cur = fall if select is FALLBACK else next((i for i, e in enumerate(entries) if select and e["id"] == select), act)
+        now = entries[act].get("now", entries[act]["label"]).replace("{signal}", signal)
         rows = self.rows = ";".join("%s%s:%s" % (">" if e.get("group") == "end" else "", e["icon"], e["label"]) for e in entries)
         answer = ctl(OSD_SOCK, "launcher %d;%s;%s" % (cur, now, rows), quiet=True) or ""
         if not answer.startswith("ok") or answer.startswith("ok unseen"):
-            return quiet or log("Home: no launcher - h713-osd says %s" % (answer.strip() or "nothing (not running?)"))
+            quiet or log("Home: no launcher - h713-osd says %s" % (answer.strip() or "nothing (not running?)"))
+            return False
         self.entries, self.sel, self.last, self.held = entries, cur, time.monotonic(), False
         log("launcher open: %d entries, %s selected" % (len(entries), entries[cur]["label"]))
+        return True
 
     def hold(self, devices):
         """The grab, once Home is up: its release must reach cage too, or cage holds Home down and Kodi repeats it (15.10.2026)."""
@@ -421,9 +461,18 @@ class Launcher:
             if not waits:
                 self.close(devices)
             log("launcher: %s" % e["label"])
+            proc = None
             try:
-                subprocess.Popen(SYSTEMCTL + ["start", "--no-block", e["unit"]] if e.get("unit") else shlex.split(e["exec"]),
-                                 stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                proc = subprocess.Popen(SYSTEMCTL + ["start", "--no-block", e["unit"]] if e.get("unit") else shlex.split(e["exec"]),
+                                        stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
+                if e.get("unit"):
+                    self.started = time.monotonic()
+                elif e.get("return") == "launcher":
+                    try:
+                        fd = os.pidfd_open(proc.pid)             # readable when it ends: the loop wakes at once, no poll of 50 ms
+                    except (AttributeError, OSError):
+                        fd = None
+                    self.back = {"entry": e, "proc": proc, "fd": fd}     # its end with 0 brings the launcher back (way_back)
             except OSError as err:
                 log("launcher: %s does not start (%s)" % (e["label"], err.strerror), "<4>")
                 if waits:
@@ -442,8 +491,42 @@ class Launcher:
             return False
         return True
 
+    def way_back(self, devices, now):
+        """The launcher again, after Back in a page (the entry's program ended with 0) or after a mode ended by itself: tried every
+        REOPEN_RETRY_S for REOPEN_S, because h713-osd answers "the page is open" until it has seen the page's connection end."""
+        b = self.back
+        if b and b["proc"].poll() is not None:
+            self.back = None
+            if b.get("fd") is not None:
+                os.close(b["fd"])
+            rc = b["proc"].returncode
+            log("launcher: %s ended with %d%s" % (b["entry"]["label"], rc, ": back to the launcher" if rc == 0 else ""))
+            if rc == 0:
+                self.reopen = {"select": b["entry"]["id"], "until": now + REOPEN_S, "next": 0.0, "fast": True}
+        r = self.reopen
+        if r and self.entries is not None:
+            self.reopen = None                                   # open already (a Home came in between)
+        elif r and now >= r["next"]:
+            r["next"] = now + (REOPEN_RETRY_S if r.get("fast") and self.snap else 0.5)    # a full open forks: not ten times a second
+            if self.open(devices, quiet=True, select=r["select"], fast=r.get("fast", False)):
+                self.reopen = None
+                self.hold(devices)                               # no Home was pressed, so no release to wait for
+            elif now > r["until"]:
+                self.reopen = None
+                log("launcher: not opened again - h713-osd has no page to show it on", "<4>")
+
+    def unstart(self, devices):
+        """The entry that was starting ended before it had a picture: the page goes back to the list (HDMI input chosen, the header says
+        HDMI) instead of saying "Starting X..." for the rest of START_WAIT_S."""
+        self.starting = None
+        fall = next((i for i, e in enumerate(self.entries) if e.get("fallback")), 0)
+        now = self.entries[fall].get("now", self.entries[fall]["label"]).replace("{signal}", signal_text())
+        if self.osd("launcher %d;%s;%s" % (fall, now, self.rows), devices):
+            self.sel = fall
+
     def tick(self, devices):
         now, s = time.monotonic(), self.starting
+        self.way_back(devices, now)
         if s and now >= s["next"]:           # the entry has its first picture when its unit is up and its `wait` command says so
             s["next"] = now + 0.5
             if now > s["until"] or (check(s["entry"].get("active")) and check(s["entry"]["wait"])):
@@ -454,14 +537,117 @@ class Launcher:
             self.close(devices)
 
 
+def mode_units():
+    """The mode units: the `unit` of every launcher entry, in file-name order."""
+    return [e["unit"] for e in launcher_entries(True) if e.get("unit")]
+
+
+def shutting_down():
+    """True while systemd is bringing the box down: the mode units end then, and that is nobody's Exit."""
+    try:
+        out = subprocess.run(SYSTEMCTL + ["is-system-running"], stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, timeout=3)
+        return out.stdout.decode(errors="replace").strip() == "stopping"
+    except (OSError, subprocess.SubprocessError):
+        return False
+
+
+class Modes:
+    """Which mode unit runs - a stat of its cgroup, no process: it is there while the unit comes up, runs and goes down.
+
+    Two things come of it. The mode is remembered in last-mode ("hdmi" or the unit) for on_start = last; the file follows the box
+    through every start and end of a mode, except a sleep (h713-mode brings the mode back after it) and the shutdown (the mode that ran
+    when the box went off is the one to remember). And when the last mode unit ends by itself - Kodi's Exit, the browser or the
+    terminal closed, a crash - the launcher opens with HDMI input chosen (Marco, 17.10.2026): whoever ends a program has the remote in
+    hand and chooses. Ended on purpose it is not: by `h713-mode hdmi` (it leaves a mark first), by a sleep (h713-mode's resume file),
+    by the shutdown, or in the seconds after the launcher itself started a mode (a switch from one mode to the next has no gap)."""
+
+    def __init__(self):
+        self.units, self.mode, self.gone, self.stored = mode_units(), None, None, read(path(LAST_MODE))
+
+    def rescan(self):
+        self.units = mode_units()
+
+    def running(self):
+        return next((u for u in self.units if os.path.isdir(path(CGROUPS, u))), None)
+
+    def store(self, mode):
+        if mode == self.stored:
+            return
+        p = path(LAST_MODE)
+        try:
+            os.makedirs(os.path.dirname(p), exist_ok=True)
+            with open(p + ".new", "w") as f:
+                f.write(mode + "\n")
+            os.replace(p + ".new", p)
+            self.stored = mode
+            log("last mode: %s" % mode)
+        except OSError as e:
+            log("%s: %s" % (p, e.strerror), "<4>")
+
+    def on_purpose(self, ended=True):
+        """Why the end of the mode is not the program's own, or None. `ended`: a mode unit has just gone (not the first look)."""
+        if os.path.exists(path(MODE_RESUME)):
+            return "a sleep"
+        try:
+            if ended and time.time() - os.stat(path(MODE_ENDED)).st_mtime < MODE_ENDED_S:
+                return "h713-mode hdmi"
+        except OSError:
+            pass
+        return "the shutdown" if ended and shutting_down() else None
+
+    def tick(self, launcher, devices):
+        now, unit = time.monotonic(), self.running()
+        if unit is None and now < launcher.started + MODE_QUIET_S:
+            self.gone = None                 # the launcher has just started a mode: its unit is not up yet, and no end is judged
+            return
+        if unit:
+            self.gone = None
+            if unit != self.mode:
+                self.mode = unit
+                launcher.snap = None         # what runs has changed: the next full open looks again
+                self.store(unit)
+            return
+        if self.mode is None:                # the first look: nothing runs, HDMI is the mode (stored unless a sleep or a shutdown asks)
+            self.mode = "hdmi"
+            if not self.on_purpose(False):
+                self.store("hdmi")
+            return
+        if self.mode == "hdmi":
+            return
+        if self.gone is None:
+            self.gone = now
+        if now - self.gone < MODE_GONE_S:
+            return
+        ended, self.mode, self.gone = self.mode, "hdmi", None
+        launcher.snap = None if launcher.entries is not None or launcher.back else launcher.snap
+        why = self.on_purpose()
+        if why:
+            log("mode %s ended (%s)" % (ended, why))
+            if why == "h713-mode hdmi":
+                self.store("hdmi")
+        else:
+            log("mode %s ended by itself: the launcher opens, HDMI input chosen" % ended)
+            self.store("hdmi")
+            if launcher.entries is None and not launcher.back:      # (a page over the dead mode: its Back opens the launcher, and anew)
+                launcher.reopen = {"select": FALLBACK, "until": now + REOPEN_S, "next": 0.0, "fast": True}
+            elif launcher.starting:
+                launcher.unstart(devices)
+
+
 def boot_launcher(launcher, devices, conf, boot):
-    """The start of the box (once per boot): with on_start = launcher the launcher opens as soon as h713-osd can show it - tried every
+    """The start of the box (once per boot), by on_start: `launcher` - the launcher opens as soon as h713-osd can show it - tried every
     BOOT_RETRY_S for BOOT_WAIT_S, and only once h713-tv's socket is there (before that h713-osd answers "ok unseen"). Every 5 s, as before
     17.10.2026, the first try fell before h713-tv's start and the next after the HDMI picture: the wall showed HDMI for 1.3 s, then the
-    launcher (HY310, picture at 9.5 s, launcher at 10.8 s). True when it is settled: opened, not wanted, given up, or a standby came in
-    between (then the mode from before stays)."""
+    launcher (HY310, picture at 9.5 s, launcher at 10.8 s). `hdmi` - nothing is done, the HDMI picture comes by itself. The id of an entry
+    with a unit (`kodi`) - the launcher opens with that entry chosen and takes its OK, so the page stays, "Starting Kodi...", until the
+    first picture. `last` - what ran when the box went off: HDMI, or the unit in last-mode (the launcher if there is none or its entry is
+    gone). True when it is settled: opened, not wanted, given up, or a standby came in between (then the mode from before stays)."""
     now = time.monotonic()
-    if conf.values["on_start"] != "launcher" or launcher.entries is not None or time.clock_gettime(time.CLOCK_BOOTTIME) - now - boot["slept"] > 2:
+    want = conf.values["on_start"]
+    if want == "last":
+        last = read(path(LAST_MODE))
+        want = "hdmi" if last == "hdmi" else next((e["id"] for e in launcher_entries(True) if last and e.get("unit") == last), "launcher")
+    if want == "hdmi" or launcher.entries is not None or time.clock_gettime(time.CLOCK_BOOTTIME) - now - boot["slept"] > 2:
         return True
     if now > boot["until"]:
         log("start: no launcher within %d s - h713-osd has no picture to show it on, or there are no entries" % BOOT_WAIT_S, "<4>")
@@ -471,22 +657,31 @@ def boot_launcher(launcher, devices, conf, boot):
     boot["next"] = now + BOOT_RETRY_S
     if not os.path.exists(TV_SOCK):
         return False                         # h713-tv is not up yet: nothing to show it on, and no reason to read the entries
-    launcher.open(devices, quiet=True)
+    launcher.open(devices, quiet=True, select=None if want == "launcher" else want)
     opened = launcher.entries is not None
     launcher.hold(devices)                   # no Home was pressed, so no release to wait for
-    launcher.last = float("inf") if opened else launcher.last       # it waits for the first key; after that the idle limit counts
+    if launcher.entries is None:
+        return opened                        # the remote could not be held: no launcher (hold said so)
+    if want != "launcher":
+        if launcher.entries[launcher.sel]["id"] == want:
+            log("start: %s" % launcher.entries[launcher.sel]["label"])
+            launcher.key(352, 1, devices)    # OK on it: the page says "Starting X..." and stays until its first picture
+            return True
+        log("start: no entry %r (any more): the launcher stays" % want, "<4>")
+    launcher.last = float("inf") if opened else launcher.last    # it waits for the first key; after that the idle limit counts
     return opened
 
 
 def run(once):
     conf = Config()
     devices, buf, rescan, told = {}, {}, 0.0, set()
-    focus, launcher = Focus(), Launcher()
+    focus, launcher, modes = Focus(), Launcher(), Modes()
     boot = None if os.path.exists(path(BOOT_FLAG)) else {"until": time.monotonic() + BOOT_WAIT_S, "next": 0.0,
                                                            "slept": time.clock_gettime(time.CLOCK_BOOTTIME) - time.monotonic()}
     while True:
         if time.monotonic() >= rescan:
             conf.load()
+            modes.rescan()
             want = remote_devices()
             for p in set(devices) - set(want):
                 os.close(devices.pop(p))
@@ -505,7 +700,8 @@ def run(once):
                     except OSError as e:
                         log("%s: %s" % (p, e.strerror), "<4>")
             rescan = time.monotonic() + 5
-        ready = select.select(list(devices.values()), [], [], 0.25)[0]
+        waits = [launcher.back["fd"]] if launcher.back and launcher.back.get("fd") is not None else []
+        ready = select.select(list(devices.values()) + waits, [], [], 0.05 if launcher.reopen or (launcher.back and not waits) else 0.25)[0]   # quick while a way back is due
         acted = False
         if boot and boot_launcher(launcher, devices, conf, boot):
             acted, boot = launcher.entries is not None, None             # (acted: the tests' --once returns after this round)
@@ -557,6 +753,8 @@ def run(once):
                     log("%s (code %d): no meaning here" % (NAMES.get(code, "key"), code))
         focus.tick()
         launcher.tick(devices)
+        if boot is None:                     # not before the start is settled: its mode is what last-mode must still say
+            modes.tick(launcher, devices)
         if once and acted:
             deadline = time.time() + 5               # the tests: let a running focus move end
             while focus.proc is not None and time.time() < deadline:

@@ -45,6 +45,8 @@ static void dump(void)
 			for (int k = 0; k < r->n; k++)
 				printf("%s%s%s", k ? "|" : "", k == r->val ? "*" : "", r->opt[k]);
 			printf("]");
+			if (r->opt_note[v.f == F_CHOICE && visible_row(a, v.row) == r ? v.choice : r->val])	/* the sentence the wall shows for it */
+				printf(" note \"%s\"", r->opt_note[v.f == F_CHOICE && visible_row(a, v.row) == r ? v.choice : r->val]);
 		}
 		if (r->text[0])
 			printf(" \"%s\"", r->text);
