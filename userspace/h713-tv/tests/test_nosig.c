@@ -115,6 +115,41 @@ int main(void)
 	memset(&nosig.since, 0, sizeof(nosig.since));
 	check(nosig_defer(&d, &rt, true), "a fresh wait begins again");
 
+	/* h713-warp lets go while the page is not up: the claim and the last frame stay (no console for a tenth of a second) */
+	warp.claimed = true;
+	warp.client = false;
+	warp.peer = sw[0];
+	d.on = false;
+	d.warped = true;
+	memset(&nosig.since, 0, sizeof(nosig.since));
+	check(nosig_linger(&d) && warp.claimed && warp.peer < 0 && !ts_zero(&nosig.since),
+	      "h713-warp lets go, the page is not up: the claim stays, without its connection, the release is left for later");
+	check(osd_alone(&d), "... and a change of the primary plane (the page) goes on its own: no frame of the warp will carry it");
+	osd.shown = true;
+	osd.cover = true;
+	osd.want = 0;
+	check(!nosig_linger(&d), "the page stands: the release goes ahead (nosig_follow() asks for it)");
+	osd.shown = false;
+	osd.cover = false;
+	osd.want = -1;
+	warp.peer = sw[0];
+	back_by(&nosig.since, NOSIG_WAIT_MS + 10);
+	check(!nosig_linger(&d), "a wait that ran out: released at once, the console after all");
+	memset(&nosig.since, 0, sizeof(nosig.since));
+	nosig.lost = false;
+	check(!nosig_linger(&d), "no loss decided (the daemon let go for another reason): released at once");
+	nosig.lost = true;
+	ctl.policy = POLICY_OFF;
+	check(!nosig_linger(&d), "the console forced: released at once");
+	ctl.policy = POLICY_AUTO;
+	warp.client = true;
+	check(!nosig_linger(&d), "a client's claim: released at once");
+	warp.client = false;
+	warp.claimed = false;
+	warp.peer = -1;
+	d.warped = false;
+	d.on = true;
+
 	/* "osd signal": answered with the word, and said is set */
 	nosig.said = false;
 	check(send(sv[1], "osd signal\n", 11, 0) == 11, "h713-osd asks after a claim");

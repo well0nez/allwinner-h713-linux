@@ -1751,6 +1751,7 @@ static void warp_release(struct display *d)
 	if (!osd_on_panel()) {
 		display_release_master(d);
 		console_restore();
+		info("console         back with the warp's release, no page on the wall");
 	}
 	info("warp            released: %lu commits, %lu busy, %lu refused -- the panel is ours again%s",
 	     warp.commits, warp.busy, warp.errors, osd_on_panel() ? ", the opaque page stays over black" : "");
@@ -1839,6 +1840,7 @@ static struct {
 } nosig;
 
 static bool nosig_page_ok(void);		/* the page can stand for "no signal" (h713-osd claimed, no console forced, no program) */
+static bool nosig_linger(struct display *d);	/* h713-warp lets go while the page is not up: the claim and the last frame stay */
 static const char *nosig_word(void);		/* what h713-osd is to hear now: "none", or what is not none */
 static void nosig_said(bool said);
 
@@ -2081,6 +2083,8 @@ static bool osd_alone(const struct display *d)
 
 	if (!d->warped || cover.resuming)
 		return false;		/* none, or the warp's first frame after a page is on its way and carries the change */
+	if (warp.peer < 0)
+		return true;		/* a claim whose daemon let go (nosig_linger()): no frame will come to carry the change */
 	/*
 	 * The warp pauses under a page: a page that stays (the launcher's next row) goes on its own, there is no frame to
 	 * ride on; one that goes rides with the warp's first frame after "note cover off" (cover_follow()).
@@ -6007,7 +6011,8 @@ static bool warp_serve(struct capture *cap, struct display *d)
 
 	got = recvmsg(warp.peer, &msg, MSG_DONTWAIT);
 	if (got <= 0) {			/* the daemon is gone: A2's lifetime */
-		warp_release(d);
+		if (!nosig_linger(d))
+			warp_release(d);
 		return true;
 	}
 	buf[got] = '\0';
@@ -6018,7 +6023,8 @@ static bool warp_serve(struct capture *cap, struct display *d)
 	if (!strcmp(buf, "warp release")) {
 		if (send(warp.peer, "ok\n", 3, MSG_NOSIGNAL) < 0)
 			warn("warp            answering the release: %s", strerror(errno));
-		warp_release(d);
+		if (!nosig_linger(d))
+			warp_release(d);
 		return true;
 	}
 	if (sscanf(buf, "warp switch %15s", what) == 1) {
@@ -6319,6 +6325,11 @@ static void cover_follow(struct capture *cap, struct display *d, struct retry *r
 			reevaluate(cap, d, rt, a);
 		return;
 	}
+	if (warp.peer < 0) {		/* a claim whose daemon let go (nosig_linger()): nobody to tell, it is released under the page */
+		if (!on)
+			osd_flush(d);
+		return;
+	}
 	if (!warp_note(on ? "note cover on\n" : "note cover off\n")) {
 		warn("warp            \"note cover %s\" did not go (%s)", on ? "on" : "off", strerror(errno));
 		if (!on)
@@ -6403,7 +6414,8 @@ static void nosig_tell(void)
 		return;
 	}
 	nosig.said = want;
-	info("nosignal       h713-osd is told: %s", want ? "no signal -- its page \"No signal on HDMI\"" : "the signal is back -- the page goes");
+	info("nosignal       h713-osd is told: %s", want ? "no signal -- its page \"No signal on HDMI\"" :
+	     nosig.lost ? "no page (the console forced, or a program the mode) -- the page goes" : "the signal is back -- the page goes");
 }
 
 /*
@@ -6434,6 +6446,28 @@ static bool nosig_defer(struct display *d, struct retry *rt, bool decided)
 		return false;
 	}
 	retry_arm(rt, (unsigned int)left + 5);
+	return true;
+}
+
+/*
+ * h713-warp lets go of its claim (its own QUERY_DV_TIMINGS saw the signal go too, a tenth of a second after this program did) while h713-osd's
+ * page is not on the wall yet: the claim stays, without its connection, and with it the last frame on the video plane - until the page covers
+ * (nosig_follow() then releases the claim under it, evaluate()) or NOSIG_WAIT_MS are over. Releasing at once gave the console for that tenth of a
+ * second (HY310, 17.10.2026, journal: the release, then the page 150 ms later). True: the release is left for later.
+ */
+static bool nosig_linger(struct display *d)
+{
+	if (!warp.claimed || warp.client || !d->warped || !nosig.lost || !nosig_page_ok() || osd_covering())
+		return false;
+	if (!ts_zero(&nosig.since) && ms_since(&nosig.since) >= NOSIG_WAIT_MS)
+		return false;
+	if (ts_zero(&nosig.since))
+		clock_gettime(CLOCK_MONOTONIC, &nosig.since);
+	if (warp.peer >= 0)
+		close(warp.peer);
+	warp.peer = -1;
+	warp_revoke_stop();
+	info("nosignal       h713-warp let go -- its claim and the last frame stay until the page is up (at most %d ms)", NOSIG_WAIT_MS);
 	return true;
 }
 
@@ -8313,16 +8347,18 @@ static void evaluate(struct capture *cap, struct display *d,
 		cap->last_sig = sig;
 		if (sig != 2)
 			cap->last_t = t;
-		if (sig == 1) {
+		/* a claim whose daemon let go (nosig_linger()) is nobody's to draw into: it is released whatever the signal does */
+		if (sig == 1 && warp.peer >= 0) {
 			nosig_back(rt, &t);	/* a signal back under the claim that never let go: the page, if it came, goes now */
 			return;
 		}
 		/* gone, or one the display cannot take: h713-osd's page "No signal on HDMI" instead of the console - the last picture
 		 * stands until the page is on the wall, the claim goes under it (nosig_follow()) */
-		if (nosig_defer(d, rt, sig == 0 || sig == 3))
+		if (sig != 1 && nosig_defer(d, rt, sig == 0 || sig == 3))
 			return;
 		info("signal          %s while the warp is on -- the warp is released, %s until a signal is back",
-		     sig == 0 ? "gone" : sig == 2 ? "changing" : sig == 3 ? "not in the firmware's table" : "not readable",
+		     sig == 0 ? "gone" : sig == 1 ? "back, but the warp's daemon had let go" : sig == 2 ? "changing" :
+		     sig == 3 ? "not in the firmware's table" : "not readable",
 		     nosig.lost && nosig_page_ok() && osd_covering() ? "the page" : "the console");
 		warp_release(d);
 	}
