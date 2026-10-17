@@ -136,6 +136,9 @@ static struct {
  * Rows are kept as up to PAGE_RANGES ranges [y0, y1) (y0 >= y1: none): a row and the note at the foot are two small ranges,
  * not the one big rectangle around both - what is put through a keystone is paid for by the pixel. A range also keeps the columns
  * [x0, x1) its "page show"s named (the union): a pill in the middle of the panel is not put from edge to edge.
+ * Whether the page hides what lies under it is read off its pixels, row by row as the rows come in: a page without a transparent
+ * pixel is opaque, and h713-tv pauses the mode under it ("osd show N cover"); the settings' slider pill over the picture is a
+ * page with a clear canvas around it, so the picture under it runs on, and its sound - the program says nothing about it.
  */
 #define PAGE_RANGES 4
 static struct {
@@ -147,9 +150,32 @@ static struct {
 	int cnew[PAGE_RANGES][4];	/* the rows (y0, y1) and columns (x0, x1) not yet copied into the canvas */
 	int dirty[2][PAGE_RANGES][4];	/* per buffer: the same for what is not yet put there */
 	bool live[2], skew[2];		/* the buffer holds page pixels / they went through the matrix */
+	unsigned char *hole;		/* per row of the canvas: a pixel in it is not opaque (or the row never came) */
+	int holes;			/* rows with a hole: 0 = an opaque page */
 	char buf[160];
 	size_t blen;
 } page = { .fd = -1 };
+
+/* every pixel of the row opaque (alpha 255): the row hides what lies under it */
+static bool row_opaque(const uint32_t *px, int w)
+{
+	uint32_t a = 0xff000000u;
+
+	for (int x = 0; x < w; x++)
+		a &= px[x];
+	return (a & 0xff000000u) == 0xff000000u;
+}
+
+/* rows y0..y1 of the canvas came anew from the page: are they opaque? */
+static void page_holes(int y0, int y1, const uint32_t *px, int w, int stride)
+{
+	for (int y = y0 < 0 ? 0 : y0; page.hole && y < y1; y++) {
+		unsigned char h = !row_opaque(px + (size_t)y * stride, w);
+
+		page.holes += (int)h - (int)page.hole[y];
+		page.hole[y] = h;
+	}
+}
 
 static bool osd_waiting;		/* the last refresh was not seen: no picture, or no channel */
 
@@ -269,16 +295,29 @@ static void geom_load(void)
  */
 static bool covering(void)
 {
-	return lau.open || page.open;
+	return lau.open || (page.open && !page.holes);
+}
+
+/*
+ * "cover" with the show: an opaque page - h713-tv pauses the mode under it; or a page over no picture at all, shown over
+ * black as it always was (the settings' pill without a signal). A page with transparent pixels over a picture is an
+ * overlay: the picture under it runs on (the pill of a slider that is judged on the picture).
+ */
+static bool cover_for(const char *picture)
+{
+	return covering() || (page.open && !strcmp(picture, "ok none"));
 }
 
 static bool skew_for(const char *picture)
 {
 	/* An opaque page hides what lies under it, so it is drawn for the wall whether the ring is there or not:
 	 * a straight ring under it is the second between the signal and the warp's claim (at every start - the
-	 * launcher was drawn warped, straight and warped again within two seconds, HY310 17.10.2026) */
+	 * launcher was drawn warped, straight and warped again within two seconds, HY310 17.10.2026). A page with
+	 * transparent pixels is drawn for the picture it lets through - straight over the straight ring - and over
+	 * no picture for the wall, as the warped picture will stand there. */
 	bool warped = !strcmp(picture, "ok warped") ||
-		      (covering() && geom.start_on && (!strcmp(picture, "ok none") || !strcmp(picture, "ok ring")));
+		      ((lau.open || page.open) && geom.start_on && !strcmp(picture, "ok none")) ||
+		      (covering() && geom.start_on && !strcmp(picture, "ok ring"));
 
 	return warped && m_valid && !m_identity;
 }
@@ -302,7 +341,7 @@ static struct osd_canvas canvas;	/* the overlays straight, in the source's (= pa
 static struct {
 	double draw, ask, clear, put, show;
 	int pixels;
-	bool skew;
+	bool skew, cover;		/* ... pre-distorted; shown with "cover" */
 } last;
 static int cbox[2][4];			/* what the canvas holds: the overlay, the badge */
 
@@ -526,6 +565,8 @@ static bool compose(int box[2][4])
 				if (cx1 > cx0)
 					memcpy(canvas.px + (size_t)y * canvas.stride + cx0, page.px + (size_t)y * canvas.stride + cx0, (size_t)(cx1 - cx0) * 4);
 			}
+		for (int i = 0; i < PAGE_RANGES; i++)	/* the whole of each row that came: an opaque page or not */
+			page_holes(page.cnew[i][0], page.cnew[i][1], canvas.px, canvas.w, canvas.stride);
 		rows_set(page.cnew, 0, 0);
 	} else {
 		if (want.until > now_s())
@@ -1087,6 +1128,7 @@ static void refresh(void)
 	if (tv.fd < 0)
 		return;
 	skew = skew_for(answer);
+	last.cover = cover_for(answer);
 	b = tv.next;
 	last.ask = (now_s() - t0) * 1e3;	/* the question to h713-tv: its loop may be in a warp frame */
 	t0 = now_s();
@@ -1120,7 +1162,7 @@ static void refresh(void)
 	last.skew = skew;
 	t0 = now_s();
 	memcpy(tv.box[b], out, sizeof(out));
-	snprintf(answer, sizeof(answer), covering() ? "osd show %d cover\n" : "osd show %d\n", b);
+	snprintf(answer, sizeof(answer), last.cover ? "osd show %d cover\n" : "osd show %d\n", b);
 	if (tv_say(answer, answer, sizeof(answer))) {
 		tv.shown = true;
 		tv.next ^= 1;
@@ -1300,7 +1342,8 @@ static bool handle(const char *line, char *reply, size_t n)
 			 m_valid ? "from warp.conf (pre-distorted while the picture under it is warped)" : "refused",
 			 style.place == OSD_BOTTOM ? "bottom" : style.place == OSD_TOP_RIGHT ? "top-right" : "center",
 			 style.look == OSD_PILL ? "pill" : "bare", style.scale, seconds,
-			 lau.open ? "open" : "closed", page.open ? "open" : "closed", last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
+			 lau.open ? "open" : "closed", !page.open ? "closed" : page.holes ? "open, with transparent pixels (the picture under it runs on)" :
+			 "open, opaque (the mode under it pauses)", last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
 		return false;
 	} else {
 		snprintf(reply, n, "error unknown: volume N | mute on|off N | focus up|down [edge] | input console|hdmi | power TENTHS standby|off [only] [ALPHA%%] | pair | launcher ... | hide | status\n");
@@ -1370,6 +1413,11 @@ static bool page_open_cmd(int fd)
 		close(fd);
 		return false;
 	}
+	free(page.hole);
+	page.hole = malloc((size_t)canvas.h);
+	if (page.hole)
+		memset(page.hole, 1, (size_t)canvas.h);
+	page.holes = canvas.h;		/* no row came yet: not opaque until the page has said all of them */
 	page.fd = fd;
 	page.px = map;
 	page.len = len;
@@ -1392,6 +1440,9 @@ static void page_close(void)
 	page.fd = -1;
 	page.px = NULL;
 	page.open = false;
+	free(page.hole);
+	page.hole = NULL;
+	page.holes = 0;
 	page.blen = 0;
 	page.owe = 0;
 	info("page closed");
@@ -1528,7 +1579,11 @@ static double watch_at;			/* the next question; 0: none due */
 
 static bool watching(void)
 {
-	return tv.fd >= 0 && tv.shown && (want.muted || lau.open || page.open || want.until > now_s()) && m_valid && !m_identity;
+	if (tv.fd < 0 || !tv.shown)
+		return false;
+	if (page.open && page.holes)
+		return true;		/* a pill: what lies under it decides about "cover" (a signal that goes or comes) */
+	return (want.muted || lau.open || page.open || want.until > now_s()) && m_valid && !m_identity;
 }
 
 /* true when the picture under the overlay no longer matches the way it was drawn */
@@ -1538,12 +1593,15 @@ static bool picture_changed(void)
 	bool skew;
 
 	watch_at = 0;
-	if (!tv_say("osd picture\n", answer, sizeof(answer)) || (!strcmp(answer, "ok none") && !covering()))
+	if (!tv_say("osd picture\n", answer, sizeof(answer)) || (!strcmp(answer, "ok none") && !cover_for(answer)))
 		return false;		/* gone (claimed again at the next event), or no picture: nothing is seen */
 	skew = skew_for(answer);
-	if (skew == last.skew)
+	if (skew == last.skew && cover_for(answer) == last.cover)
 		return false;
-	info("the picture under the overlay is %s now -- drawn again", skew ? "warped" : "straight");
+	if (skew != last.skew)
+		info("the picture under the overlay is %s now -- drawn again", skew ? "warped" : "straight");
+	else
+		info("the page is %s now -- shown again", cover_for(answer) ? "over no picture" : "over the picture");
 	return true;
 }
 

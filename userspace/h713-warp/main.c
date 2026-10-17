@@ -234,7 +234,8 @@ int main(int argc, char **argv)
 		 * on a slow heartbeat -- the plane keeps showing the last
 		 * buffer in between, this only proves the path is alive.
 		 */
-		fds[2].fd = live && r.pattern == PATTERN_NONE && r.src == SRC_RING ? r.source.fd : -1;
+		/* under an opaque page the capture is not asked: its slots stay with the driver (loop.c warp_pump) */
+		fds[2].fd = live && r.pattern == PATTERN_NONE && r.src == SRC_RING && !warp_paused(&r) ? r.source.fd : -1;
 		fds[2].events = POLLIN | POLLPRI;
 		fds[3].fd = live ? r.peer.fd : -1;
 		fds[3].events = POLLIN;
@@ -246,7 +247,7 @@ int main(int argc, char **argv)
 		 */
 		fds[6].fd = !live && r.on && r.pattern == PATTERN_NONE && !watch_off ? r.source.fd : -1;
 		fds[6].events = POLLPRI;
-		if (live && r.pattern != PATTERN_NONE)
+		if (live && r.pattern != PATTERN_NONE && !warp_paused(&r))
 			timeout = PATTERN_MS;
 		else if (!live && want)
 			timeout = RETRY_MS;
@@ -328,6 +329,9 @@ int main(int argc, char **argv)
 			if (r.state == WARP_ON)
 				warp_apply(&r);
 		}
+		/* an opaque page came or went ("note cover on|off", read wherever it came): pause, or draw at once */
+		if (r.peer.cover != r.cover)
+			warp_cover(&r);
 		warp_check_tick(&r);
 		if ((fds[0].fd >= 0 && (fds[0].revents & POLLIN)) ||
 		    (fds[4].fd >= 0 && fds[4].revents) ||

@@ -8,7 +8,8 @@
  * size, the life of a buffer (taken, frame done, released, presented), wl_shm, the refusals (too large, a buffer
  * before the configure, a second toplevel, a fifth connection) and the two seconds after the client is gone; a wl_shm
  * line shorter than 4 x width, a dma-buf shorter than its layout for every modifier, a waiting toplevel that takes the
- * panel over and a fifth connection that is closed.
+ * panel over and a fifth connection that is closed; and the pause under an opaque page (the client runs on, nothing is
+ * drawn, the newest picture is drawn when the page goes, the panel's buffer once more when there is none).
  *
  *   test_wayland ./server_stub     exit 0: all passed
  */
@@ -203,6 +204,29 @@ static void p_created(void *d, struct zwp_linux_buffer_params_v1 *p, struct wl_b
 }
 static void p_failed(void *d, struct zwp_linux_buffer_params_v1 *p) { (void)d; (void)p; ev.failed = true; }
 static const struct zwp_linux_buffer_params_v1_listener params_l = { p_created, p_failed };
+
+/* the pause test's own flags: one per buffer, callback and feedback */
+static void rel_flag(void *d, struct wl_buffer *b) { (void)b; *(bool *)d = true; }
+static const struct wl_buffer_listener rel_l = { rel_flag };
+static void done_flag(void *d, struct wl_callback *cb, uint32_t t) { (void)t; wl_callback_destroy(cb); *(bool *)d = true; }
+static const struct wl_callback_listener done_l = { done_flag };
+struct fbk {
+	bool presented, discarded;
+};
+static void k_sync(void *d, struct wp_presentation_feedback *f, struct wl_output *o) { (void)d; (void)f; (void)o; }
+static void k_presented(void *d, struct wp_presentation_feedback *f, uint32_t hi, uint32_t lo, uint32_t ns,
+			uint32_t refresh, uint32_t sh, uint32_t sl, uint32_t flags)
+{
+	(void)hi; (void)lo; (void)ns; (void)refresh; (void)sh; (void)sl; (void)flags;
+	((struct fbk *)d)->presented = true;
+	wp_presentation_feedback_destroy(f);
+}
+static void k_discarded(void *d, struct wp_presentation_feedback *f)
+{
+	((struct fbk *)d)->discarded = true;
+	wp_presentation_feedback_destroy(f);
+}
+static const struct wp_presentation_feedback_listener k_l = { k_sync, k_presented, k_discarded };
 
 /* round trips until the flag is up or the time is out */
 static bool wait_for(struct conn *c, bool *flag, int ms)
@@ -603,6 +627,71 @@ int main(int argc, char **argv)
 		CHECK(!server_says("gone", 1500), "the panel is held after the toplevel went (cage restart)");
 		CHECK(server_says("gone", 1500), "... and given back after two seconds");
 		wl_display_disconnect(f.d);
+	}
+
+	/*
+	 * An opaque page over the client (h713-tv's "note cover on", the stub's stdin): its pictures are taken - the frame
+	 * callback comes, the feedback is discarded - and not drawn; the newest is held, the one before goes back; when the
+	 * page goes the held one is drawn at once, and with none held the panel's buffer is committed once more.
+	 */
+	{
+		struct conn g;
+		struct wl_surface *gs;
+		struct xdg_surface *gx;
+		struct xdg_toplevel *gt;
+		struct wl_buffer *gb[3];
+		bool rel[3] = { false, false, false }, done[3] = { false, false, false };
+		struct fbk fk[2] = { { false, false }, { false, false } };
+		char line[64] = "";
+		int k;
+
+		CHECK(connect_to(&g, path) && g.comp && g.pres, "a client for the pause under a page");
+		xdg_wm_base_add_listener(g.wm, &wm_l, NULL);
+		gs = wl_compositor_create_surface(g.comp);
+		gx = xdg_wm_base_get_xdg_surface(g.wm, gs);
+		ev.configured = false;
+		xdg_surface_add_listener(gx, &xs_l, NULL);
+		gt = xdg_surface_get_toplevel(gx);
+		xdg_toplevel_add_listener(gt, &tl_l, NULL);
+		wl_surface_commit(gs);
+		wait_for(&g, &ev.configured, 1000);
+		for (k = 0; k < 3; k++) {
+			gb[k] = dmabuf(&g, ev.cfg_w, ev.cfg_h, true);
+			wl_buffer_add_listener(gb[k], &rel_l, &rel[k]);
+		}
+		wl_surface_attach(gs, gb[0], 0, 0);
+		wl_callback_add_listener(wl_surface_frame(gs), &done_l, &done[0]);
+		wl_surface_commit(gs);
+		wl_display_flush(g.d);
+		CHECK(server_says("shown", 2000) && server_says("frame", 2000) && wait_for(&g, &done[0], 1000),
+		      "its first picture is drawn");
+		CHECK(write(in[1], "cover on\n", 9) == 9 && server_says("covered", 1000), "a page covers the panel");
+		wl_surface_attach(gs, gb[1], 0, 0);
+		wl_callback_add_listener(wl_surface_frame(gs), &done_l, &done[1]);
+		wp_presentation_feedback_add_listener(wp_presentation_feedback(g.pres, gs), &k_l, &fk[0]);
+		wl_surface_commit(gs);
+		wl_display_flush(g.d);
+		CHECK(wait_for(&g, &done[1], 1000), "under the page its frame callback still comes: the client runs on");
+		CHECK(!server_says("frame", 300), "... and nothing is drawn");
+		CHECK(wait_for(&g, &fk[0].discarded, 1000) && !fk[0].presented, "... its feedback is discarded, not presented");
+		CHECK(!rel[1], "... and the picture is held, not released");
+		wl_surface_attach(gs, gb[2], 0, 0);
+		wl_callback_add_listener(wl_surface_frame(gs), &done_l, &done[2]);
+		wl_surface_commit(gs);
+		wl_display_flush(g.d);
+		CHECK(wait_for(&g, &done[2], 1000) && wait_for(&g, &rel[1], 1000) && !rel[2],
+		      "a newer picture is held, the one before goes back");
+		CHECK(write(in[1], "pictures\n", 9) == 9 && fgets(line, sizeof(line), srv) && !strcmp(line, "pictures 3\n"),
+		      "three pictures of the toplevel counted, the two under the page too (%.*s)", (int)strcspn(line, "\n"), line);
+		CHECK(write(in[1], "cover off\n", 10) == 10 && server_says("frame", 1000),
+		      "the page goes: the held picture is drawn at once");
+		CHECK(server_says("uncovered", 1000), "... before the stub has said that the page went");
+		wl_display_roundtrip(g.d);
+		CHECK(write(in[1], "cover on\n", 9) == 9 && server_says("covered", 1000) &&
+		      write(in[1], "cover off\n", 10) == 10 && server_says("repeat", 1000),
+		      "a page without a new picture under it: its end rides on the panel's buffer once more");
+		wl_display_disconnect(g.d);
+		CHECK(server_says("gone", 3000), "the client went: given back after two seconds");
 	}
 
 	wl_display_disconnect(c.d);

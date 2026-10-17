@@ -3,8 +3,9 @@
 /*
  * The peer link to h713-tv (peer.c) against a scripted h713-tv: the claim, frames, the switch of a standing claim
  * ("warp switch client|ring") and the note h713-tv says unasked ("note source X") - alone between two exchanges, in
- * front of an answer, behind it, in the same read or in a read of its own, with and without a flip fence. No GPU, no
- * device: the fake answers on a Unix socket, the three panel buffers are memfds.
+ * front of an answer, behind it, in the same read or in a read of its own, with and without a flip fence; the page's
+ * notes ("note cover on|off") and "client" said again (a program starts); and "source auto" on a connection of its own
+ * (the program has ended). No GPU, no device: the fake answers on a Unix socket, the three panel buffers are memfds.
  *
  *   test_peer          exit 0 when every case passed
  */
@@ -103,6 +104,10 @@ static void fake_tv(const char *path)
 			say(c, "note source auto\n");
 			usleep(20000);
 			send_fds(c, "ok\n", 1);
+		} else if (!strcmp(buf, "warp frame 4")) {		/* an opaque page came: the note in front of the answer */
+			say(c, "note cover on\nok\n");
+		} else if (!strcmp(buf, "warp frame 5")) {		/* the page went, and a program says it starts */
+			say(c, "ok\nnote cover off\nnote source client\n");
 		} else if (!strcmp(buf, "warp release")) {
 			say(c, "ok\n");
 			break;
@@ -110,6 +115,14 @@ static void fake_tv(const char *path)
 			say(c, "error unknown\n");
 		}
 	}
+	close(c);
+	/* the program has ended: "source auto" on a connection of its own, answered and closed */
+	c = accept(l, NULL, NULL);
+	got = recv(c, buf, sizeof(buf) - 1, 0);
+	if (got <= 0)
+		_exit(4);
+	buf[got] = '\0';
+	say(c, strcmp(buf, "source auto\n") ? "error unknown\n" : "ok source auto\n");
 	close(c);
 	close(l);
 	_exit(0);
@@ -171,8 +184,16 @@ int main(void)
 		close(flip);
 	p.noted = false;
 
+	rc = peer_frame(&p, 4, -1, &flip, why, sizeof(why));
+	check(rc == 0 && p.cover && !p.noted, "\"note cover on\" in front of the answer: the page is heard, no source note");
+	rc = peer_frame(&p, 5, -1, &flip, why, sizeof(why));
+	check(rc == 0 && !p.cover && p.noted && p.tv_source == TV_CLIENT && p.client_said > 0,
+	      "\"note cover off\" and \"note source client\" behind the answer: the page went, a program starts");
+	p.noted = false;
+
 	peer_release(&p);
-	check(p.fd < 0, "the release closes the link");
+	check(p.fd < 0 && !p.cover, "the release closes the link, and the page's word goes with it");
+	check(peer_set_source(&p, "auto") && p.tv_source == TV_AUTO, "source auto on a connection of its own: ok, source auto");
 	waitpid(pid, &st, 0);
 	check(WIFEXITED(st) && WEXITSTATUS(st) == 0, "the fake h713-tv saw every line it expected");
 	unlink(path);

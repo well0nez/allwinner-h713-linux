@@ -33,6 +33,7 @@
 #define WARP_SLOTS	3	/* capture ring slots (M5) */
 #define WARP_LINE	512	/* one control line, as h713-tv's CTL_MAXLINE */
 #define WARP_WHY	256	/* why something is off -- journal and status */
+#define PROGRAM_S	30.0	/* a program that said it starts and has not connected by then is not coming (P2b) */
 
 /* ---------------- the journal, h713-tv's house style (main.c) ---------- */
 __attribute__((format(printf, 1, 2))) void info(const char *fmt, ...);
@@ -58,6 +59,8 @@ struct peer {
 	int fd;				/* -1: no connection */
 	int tv_source;			/* enum tv_source */
 	bool noted;			/* h713-tv said "note source X" since the main loop last looked */
+	bool cover;			/* h713-tv said "note cover on": an opaque page hides the panel, the warp pauses */
+	double client_said;		/* when h713-tv last said "note source client": a program starts (0: never) */
 	int target[WARP_TARGETS];	/* dma-buf fds of the panel buffers */
 	unsigned int width, height, pitch;
 	unsigned int coff;		/* NV12: the chroma plane's offset in each buffer */
@@ -75,6 +78,8 @@ bool peer_source(struct peer *p);
 bool peer_switch(struct peer *p, int src, char *why, size_t n);
 /* notes h713-tv said unasked, read when the connection is readable between exchanges; false: it is gone */
 bool peer_notes(struct peer *p);
+/* "source X" to h713-tv on a short connection of its own: the program has ended, the mode is HDMI again; false: refused */
+bool peer_set_source(struct peer *p, const char *src);
 
 struct source {
 	const char *want;		/* -v PATH, or NULL: search by name */
@@ -186,6 +191,9 @@ struct runtime {
 	int src;			/* enum warp_source: what the claim is for while WARP_ON */
 	int client_rate;		/* 1: a client frame every vsync, 2: every second (--client-rate half) */
 	bool on;			/* "ctl on"/"ctl off": run time only */
+	bool cover;			/* the pause as last acted on (peer.cover is h713-tv's word) */
+	bool resume;			/* the ring after a pause: the slots that stood are given back, a fresh one is drawn */
+	double paused_at;		/* when the pause began, for the journal */
 	int pattern;			/* enum warp_pattern */
 	int mark_corner;		/* the mask's marked corner, 0..3 tl tr bl br, -1 none */
 	int target;			/* the next panel buffer to draw, advanced on an accepted commit */
@@ -237,6 +245,12 @@ int warp_client_resend(struct runtime *r, int render, int *flip);
 void warp_client_shown(struct runtime *r);	/* a toplevel has its first picture: claim the panel for it */
 void warp_client_gone(struct runtime *r);	/* ... it is gone for good: give the panel back */
 void warp_gl_idle(struct runtime *r);		/* close the render node if nothing needs it */
+/* an opaque page hides the panel and the plane has a picture of this claim: nothing is drawn (wayland.c holds the
+ * client's newest picture, main.c leaves the capture alone) */
+bool warp_paused(const struct runtime *r);
+void warp_cover(struct runtime *r);		/* h713-tv's "note cover on|off" came: pause, or draw again */
+/* the buffer on the panel committed once more, nothing drawn: the end of a page rides on it; as warp_client_frame */
+int warp_client_repeat(struct runtime *r, int *flip);
 
 /* ---------------- the Wayland server (wayland.c) ------------ */
 struct server *server_start(const char *path, struct runtime *r);
@@ -250,6 +264,14 @@ void server_engaged(struct server *s, bool on);	/* the warp shows the client now
 void server_panel(struct server *s, unsigned int w, unsigned int h);
 void server_redraw(struct server *s);		/* the keystone moved or a pattern went: draw again */
 void server_status(const struct server *s, struct textbuf *t);
+/* the end of a pause: the newest picture held under the page is drawn, or (again: the panel has one) the panel's
+ * buffer is committed once more, so that the end of the page rides on a frame */
+void server_resume(struct server *s, bool again);
+/* the pictures of the toplevel on the panel since it was mapped (held under a page or drawn); -1: none on the panel */
+long server_pictures(const struct server *s);
+/* a program runs (a client is connected) or has said that it starts and not connected since (P2b) */
+bool server_program(const struct server *s, double said);
+void server_recheck(struct server *s, double at);	/* warp_client_gone() at that time, if no picture is shown by then */
 
 /* ---------------- the control socket and the client (ctl.c) ------------ */
 struct control {
