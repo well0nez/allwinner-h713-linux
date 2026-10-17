@@ -839,6 +839,22 @@ class Device(Base):
         self.assertEqual(b.proc.wait(timeout=5), 0)
         self.assertTrue(wait_for(lambda: b.osd.closed))                                 # the connection ends: the page is gone
 
+    def test_back_hands_the_wall_over_home_does_not(self):
+        """Back at the top brings the launcher back: the page says "page handover" before its connection ends, so that h713-osd keeps
+        it on the wall until the launcher is drawn (no HDMI picture between the two, P2c); Home leaves the wall to the mode at once"""
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(BACK)
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertTrue(wait_for(lambda: b.osd.closed))
+        self.assertIn("page handover", b.osd.log)
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(HOME)
+        self.assertEqual(b.proc.wait(timeout=5), 10)
+        self.assertTrue(wait_for(lambda: b.osd.closed))
+        self.assertNotIn("page handover", b.osd.log)
+
     def test_the_keys_drive_the_page(self):
         b = self.box().start_device("Sound")
         wait_for(lambda: len(b.osd.log) > 1)

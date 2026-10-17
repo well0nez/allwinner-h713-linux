@@ -423,11 +423,13 @@ class Launcher:
                 self.close(devices)
                 log("launcher closed: the remote's devices cannot be held", "<4>")
 
-    def close(self, devices):
+    def close(self, devices, keep=False):
+        """keep: a page follows (an entry with `return = launcher`, Settings): h713-osd keeps the launcher on the wall until the page is
+        drawn in its place - without, the HDMI picture stood between the two for the page's first drawing (0.20 s, HY310 17.10.2026)."""
         self.entries, self.held, self.starting = None, False, None
         for fd in devices.values():
             grab(fd, False)                  # first: Kodi and h713-power read again before the overlay is gone
-        ctl(OSD_SOCK, "launcher close", quiet=True)
+        ctl(OSD_SOCK, "launcher close keep" if keep else "launcher close", quiet=True)
 
     def osd(self, line, devices):
         """A launcher command for h713-osd that must be answered ok. If it is not, h713-osd shows no launcher any more (it was
@@ -459,7 +461,7 @@ class Launcher:
             e = self.entries[self.sel]
             waits = bool(e.get("wait") and e.get("unit"))        # the page stays, "Starting X...", until the entry's first picture
             if not waits:
-                self.close(devices)
+                self.close(devices, keep=e.get("return") == "launcher" and bool(e.get("exec")))   # a page: handed over
             log("launcher: %s" % e["label"])
             proc = None
             try:

@@ -245,8 +245,8 @@ int warp_client_resend(struct runtime *r, int render, int *flip);
 void warp_client_shown(struct runtime *r);	/* a toplevel has its first picture: claim the panel for it */
 void warp_client_gone(struct runtime *r);	/* ... it is gone for good: give the panel back */
 void warp_gl_idle(struct runtime *r);		/* close the render node if nothing needs it */
-/* an opaque page hides the panel and the plane has a picture of this claim: nothing is drawn (wayland.c holds the
- * client's newest picture, main.c leaves the capture alone) */
+/* an opaque page hides the panel: nothing is drawn (wayland.c holds the client's newest picture, main.c leaves the capture
+ * alone; h713-tv has the video plane off) */
 bool warp_paused(const struct runtime *r);
 void warp_cover(struct runtime *r);		/* h713-tv's "note cover on|off" came: pause, or draw again */
 /* the buffer on the panel committed once more, nothing drawn: the end of a page rides on it; as warp_client_frame */

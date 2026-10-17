@@ -1397,17 +1397,22 @@ static struct warp warp = { .peer = -1, .flip = -1, .told = -1, .revoke_fd = -1 
 
 /*
  * An opaque page on the wall (the launcher, a settings page) hides the whole picture, and the mode under it pauses:
- * h713-warp hears "note cover on" on its claim's connection and stops drawing - the video plane keeps its last
- * picture; the claim, the capture, the link and HDCP stay - and the HDMI sound goes behind the DSP's mute and nothing
+ * h713-warp hears "note cover on" on its claim's connection and stops drawing, and the video plane goes OFF - nothing
+ * of HDMI lies behind the page, and the display reads no picture nobody sees (Marco, 17.10.2026: "HDMI should lie
+ * behind nothing, I do not want to waste resources"); the claim, the capture, the link and HDCP stay. A frame the warp
+ * sends while the page stands is answered and not committed. The HDMI sound goes behind the DSP's mute and nothing
  * more (the path stays routed: no click, no DAC source change). "note cover off" when the page goes, or turns into a
- * pill over the picture: the warp's first frame carries the change of the primary plane, so the wall goes from the
- * page to a new picture in one commit, and the sound comes back with it. Only a page that IS on the wall covers: one
- * that waits for the warp's next frame to ride on does not, or that frame would never come.
+ * pill over the picture: the warp's first frame turns the video plane on again and carries the change of the primary
+ * plane, so the wall goes from the page to a new picture in one commit, and the sound comes back with it. Without a
+ * warp claim (the ring straight on the plane) the plane goes off under the page the same way and the ring comes back
+ * after it. Only a page that IS on the wall covers: one that waits for the warp's next frame to ride on does not, or
+ * that frame would never come.
  */
 #define COVER_RESUME_MS	100	/* "note cover off": the change waits this long for the warp's frame, then goes alone */
 
 static struct {
 	bool on;		/* what h713-warp and the sound were last told */
+	bool plane_off;		/* the video plane was switched off for the page: the warp's next frame turns it on */
 	bool resuming;		/* "note cover off" was said: an overlay change waits for the warp's next frame */
 	int resume_fd;		/* timerfd: ... at most COVER_RESUME_MS */
 } cover = { .resume_fd = -1 };
@@ -4464,7 +4469,8 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		  d->on ? "plane on" : "console",
 		  d->master ? ", DRM master held" : "");
 	reply_add(r, "source          %s\n", source_name[c->source]);
-	reply_add(r, "cover           %s\n", cover.on ? "an opaque page hides the picture: h713-warp pauses, the HDMI sound is muted" :
+	reply_add(r, "cover           %s\n", cover.on ? (cover.plane_off || !d->warped ? "an opaque page hides the picture: h713-warp pauses, the video plane is off, the HDMI sound is muted" :
+		  "an opaque page hides the picture: h713-warp pauses, the HDMI sound is muted (the video plane could not go off)") :
 		  cover.resuming ? "the page went: the overlay's change waits for h713-warp's next frame" : "none");
 	if (warp.claimed)
 		reply_add(r, "warp            on (%s), video plane %u: %lu commits, %lu busy, %lu refused\n",
@@ -5563,8 +5569,8 @@ static void cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	info("warp            claimed%s: three %ux%u NV12 buffers, line pitch %u, chroma at %u, video plane %u%s",
 	     client ? " for a Wayland client (no signal needed, the HDMI sound silent)" : "",
 	     d->width, d->height, warp.pitch, warp.coff, d->plane_id,
-	     cover.on ? " -- under an opaque page: one frame, then it pauses" : "");
-	/* claimed under a page: the warp draws one frame, so that the video plane is up with a picture under it, and pauses */
+	     cover.on ? " -- under an opaque page: it pauses at once, the video plane stays off" : "");
+	/* claimed under a page: the video plane is off (display_hide above) and stays off; the warp draws from the page's end */
 	if (cover.on && !warp_note("note cover on\n"))
 		warn("warp            \"note cover on\" did not go (%s) -- the warp draws under the page", strerror(errno));
 }
@@ -5684,10 +5690,17 @@ static bool warp_serve(struct capture *cap, struct display *d)
 
 			clock_gettime(CLOCK_MONOTONIC, &c0);
 			gap = prev.tv_sec ? (c0.tv_sec - prev.tv_sec) * 1e3 + (c0.tv_nsec - prev.tv_nsec) / 1e6 : 0;
-			answer = warp_commit(d, n, fence, &busy, &flip) ? "ok\n" :
-				 busy ? "ok busy\n" : "error the commit was refused\n";
-			if (answer[2] == '\n')
+			/* under an opaque page the video plane is off and stays off: a frame sent before the warp heard the
+			 * page is answered and not shown (the warp draws nothing more after "note cover on") */
+			if (cover.on)
+				answer = "ok\n";
+			else
+				answer = warp_commit(d, n, fence, &busy, &flip) ? "ok\n" :
+					 busy ? "ok busy\n" : "error the commit was refused\n";
+			if (!cover.on && answer[2] == '\n') {
 				cover_resume_stop();	/* the first frame after a page carried the overlay's change */
+				cover.plane_off = false;	/* ... and turned the video plane on again */
+			}
 			/* "source" changed while the claim stood: the next "ok" says so, h713-warp reads it there */
 			if (!strncmp(answer, "ok", 2) && warp.told != (int)ctl.source) {
 				snprintf(told, sizeof(told), "%.*s source %s\n", (int)strcspn(answer, "\n"), answer,
@@ -5825,7 +5838,9 @@ static void osd_flush(struct display *d)
  * the pause, so that the wall goes from the page to a new picture in one commit (osd_alone()) - but no longer than
  * COVER_RESUME_MS; then it goes on its own (cover_resume_due()).
  */
-static void cover_follow(struct display *d, struct audio *a)
+static void reevaluate(struct capture *cap, struct display *d, struct retry *rt, struct audio *a);
+
+static void cover_follow(struct capture *cap, struct display *d, struct retry *rt, struct audio *a)
 {
 	struct itimerspec its = { .it_value = { 0, COVER_RESUME_MS * 1000000L } };
 	bool on = osd_covering();
@@ -5836,7 +5851,13 @@ static void cover_follow(struct display *d, struct audio *a)
 	memset(&warp.last_frame, 0, sizeof(warp.last_frame));	/* a pause is not a late frame */
 	audio_cover(a, on);
 	if (!warp.claimed) {
-		info("cover           %s", on ? "an opaque page is on the wall" : "the page is gone");
+		/* the ring straight on the video plane (no warp): off under the page, and back from evaluate() after it */
+		info("cover           %s", on ? "an opaque page is on the wall -- the video plane goes off under it" :
+		     "the page is gone -- the picture comes back");
+		if (on && d->on)
+			display_hide(d);	/* the page stays, over black (osd_on_panel()) */
+		else if (!on)
+			reevaluate(cap, d, rt, a);
 		return;
 	}
 	if (!warp_note(on ? "note cover on\n" : "note cover off\n")) {
@@ -5845,8 +5866,15 @@ static void cover_follow(struct display *d, struct audio *a)
 			osd_flush(d);
 		return;
 	}
-	info("cover           %s", on ? "an opaque page hides the picture -- h713-warp pauses, the HDMI sound is muted" :
-	     "the page is gone -- h713-warp draws again, its first frame carries the change");
+	info("cover           %s", on ? "an opaque page hides the picture -- h713-warp pauses, the video plane goes off, the HDMI sound is muted" :
+	     "the page is gone -- h713-warp draws again, its first frame turns the video plane on and carries the change");
+	if (on && d->warped) {
+		int rc = display_plane_off(d);	/* the page stays on the primary plane: osd_wanted() keeps an opaque page */
+
+		cover.plane_off = !rc;
+		if (rc)
+			warn("cover           the video plane did not go off under the page (%s)", rc == -1 ? strerror(errno) : "a property is missing");
+	}
 	if (on || !osd.queued)
 		return;
 	if (cover.resume_fd < 0)
@@ -5854,6 +5882,24 @@ static void cover_follow(struct display *d, struct audio *a)
 	cover.resuming = cover.resume_fd >= 0 && !timerfd_settime(cover.resume_fd, 0, &its, NULL);
 	if (!cover.resuming)
 		osd_flush(d);
+}
+
+/*
+ * Is the HDMI capture needed now? Not under an opaque page, not while a program is the mode ("source client", or a client drawn under
+ * "auto"). This is the one place that knows when the box leaves the mode HDMI and when it comes back: today it says so in the journal;
+ * the firmware's own switch of its capture (P7 of the media side project, THal_Vp_SetSource) belongs here, behind the pause, which
+ * already stops everything of ours.
+ */
+static void capture_follow(void)
+{
+	static int need = -1;
+	int n = !cover.on && ctl.source != SOURCE_CLIENT && !(warp.claimed && warp.client);
+
+	if (n == need)
+		return;
+	need = n;
+	info("capture         %s", n ? "needed: HDMI is the mode and on the wall" :
+	     cover.on ? "not needed: an opaque page covers the panel" : "not needed: a program is the mode");
 }
 
 /* COVER_RESUME_MS after "note cover off" and no frame of h713-warp's: the overlay's change on its own */
@@ -7690,6 +7736,13 @@ static void evaluate(struct capture *cap, struct display *d,
 		     sig == 0 ? "gone" : sig == 2 ? "changing" : sig == 3 ? "not in the firmware's table" : "not readable");
 		warp_release(d);
 	}
+	/* an opaque page on the wall: no picture of our own under it (cover_follow() puts it back when the page goes) */
+	if (cover.on) {
+		retry_stop(rt);
+		if (d->on)
+			display_hide(d);
+		return;
+	}
 	/* "off" over the control socket: the console stays, whatever the signal does */
 	if (ctl.policy == POLICY_OFF) {
 		retry_stop(rt);
@@ -8422,7 +8475,8 @@ int main(int argc, char **argv)
 		if (fds[10].fd >= 0 && (fds[10].revents & POLLIN))
 			LOOP_TIMED("the overlay after a page, alone", cover_resume_due(&d));
 		/* whatever the handlers did with the overlay: does an opaque page hide the picture now? */
-		cover_follow(&d, &au);
+		cover_follow(&cap, &d, &rt, &au);
+		capture_follow();
 	}
 
 	/*

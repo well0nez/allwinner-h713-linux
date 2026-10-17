@@ -763,12 +763,19 @@ class KeysTest(unittest.TestCase):
         launcher = self.settings_launcher(rc=0)
         self.assertTrue(launcher.key(352, 1, {}))                              # OK on Settings: the launcher lets go, the page starts
         self.assertIsNone(launcher.entries)
-        self.assertEqual(self.osds.lines[-1], "launcher close")
+        self.assertEqual(self.osds.lines[-1], "launcher close keep")           # a page follows: h713-osd hands the wall over to it
         self.ended(launcher)                                                   # Back at the top: exit 0
         launcher.tick({})
         self.assertIsNotNone(launcher.entries)
         self.assertEqual((launcher.sel, launcher.entries[launcher.sel]["label"]), (1, "Settings"))     # the way back is the way that was come
         self.assertEqual(self.osds.lines[-1], "launcher 1;HDMI 1080p60;hdmi:HDMI input;sliders:Settings")  # the header says what runs, not what is chosen
+
+    def test_ok_on_an_entry_that_is_no_page_closes_the_launcher_plainly(self):
+        """only an `exec` entry with `return = launcher` (a page) keeps the launcher for its successor; HDMI input closes it at once"""
+        launcher = self.settings_launcher(rc=0)
+        launcher.key(103, 1, {})                                               # up: HDMI input
+        self.assertTrue(launcher.key(352, 1, {}))
+        self.assertEqual(self.osds.lines[-1], "launcher close")
 
     def test_home_power_idle_and_a_crash_in_settings_open_no_launcher(self):
         for rc in (10, 11, 12, 13, 14, 15, 1, 127):

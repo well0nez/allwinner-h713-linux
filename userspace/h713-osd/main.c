@@ -150,6 +150,7 @@ static struct {
 	int cnew[PAGE_RANGES][4];	/* the rows (y0, y1) and columns (x0, x1) not yet copied into the canvas */
 	int dirty[2][PAGE_RANGES][4];	/* per buffer: the same for what is not yet put there */
 	bool live[2], skew[2];		/* the buffer holds page pixels / they went through the matrix */
+	bool handover;			/* "page handover": when the connection ends the page stays until its successor is shown */
 	unsigned char *hole;		/* per row of the canvas: a pixel in it is not opaque (or the row never came) */
 	int holes;			/* rows with a hole: 0 = an opaque page */
 	char buf[160];
@@ -178,6 +179,17 @@ static void page_holes(int y0, int y1, const uint32_t *px, int w, int stride)
 }
 
 static bool osd_waiting;		/* the last refresh was not seen: no picture, or no channel */
+
+/*
+ * The hand-over between two opaque pages (P2c of the media side project): the page that goes says so ("page handover" before its
+ * connection ends - h713-settings on Back, which brings the launcher back; "launcher close keep" - h713-keys on OK on an entry
+ * whose program is a page) and stays on the wall until its successor is drawn into the other buffer and shown in its place, at
+ * most HANDOVER_S. Before, the first page was taken away ("osd hide") and the second drawn afterwards: for the 0.19 s that the
+ * launcher's whole page took through the keystone the HDMI picture stood on the wall between the two (HY310, 17.10.2026).
+ */
+#define HANDOVER_S 1.0
+static double handover_until;		/* the page that went stays on the wall until then; 0: none */
+static bool handover_lau;		/* ... and it is the launcher (else a page of the page channel) */
 
 /* y0..y1 x x0..x1 into the ranges: merged with one it touches or lies within 24 rows of (the columns united), else a free place, else
  * into the last one */
@@ -1113,6 +1125,7 @@ static void refresh(void)
 	double t0;
 
 	osd_waiting = true;
+	handover_until = 0;		/* whatever was handed over: this refresh decides what is on the wall */
 	if (!tv_claim())
 		return;
 	t0 = now_s();
@@ -1133,9 +1146,17 @@ static void refresh(void)
 	last.ask = (now_s() - t0) * 1e3;	/* the question to h713-tv: its loop may be in a warp frame */
 	t0 = now_s();
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE);
-	if (lau.live[b] && (lau.wipe[b] || !lau.open || lau.skew[b] != skew))
+	bool wiped_lau = lau.live[b] && (lau.wipe[b] || !lau.open || lau.skew[b] != skew);
+	bool wiped_page = page.live[b] && (!page.open || page.skew[b] != skew);
+
+	if (trace)		/* what this refresh does to which buffer: a wipe of the buffer on the wall would show what lies under it */
+		info("trace: refresh into buffer %d (the other is on the wall: %s), picture \"%s\", %s, %s%s%s", b, tv.shown ? "yes" : "no",
+		     answer, skew ? "pre-distorted" : "straight", last.cover ? "cover" : "no cover",
+		     wiped_lau ? (lau.wipe[b] ? ", launcher wiped (new geometry)" : !lau.open ? ", launcher wiped (closed)" : ", launcher wiped (skew)") : "",
+		     wiped_page ? ", page wiped" : "");
+	if (wiped_lau)
 		lau_wipe(b);	/* closed, a new geometry, or the picture under it turned warped or straight */
-	if (page.live[b] && (!page.open || page.skew[b] != skew))
+	if (wiped_page)
 		page_wipe(b);	/* the page is gone, or the picture under it turned warped or straight */
 	for (int r = 0; r < 2; r++)	/* what this buffer showed before */
 		for (int y = tv.box[b][r][1]; y < tv.box[b][r][1] + tv.box[b][r][3]; y++)
@@ -1168,8 +1189,9 @@ static void refresh(void)
 		tv.next ^= 1;
 		osd_waiting = strstr(answer, "waiting") != NULL;
 		if (trace)
-			info("trace: command %.4f, show answered %.4f (%.1f ms; draw %.1f, put %.1f, show %.1f)", t_cmd, real_s(),
-			     (real_s() - t_cmd) * 1e3, last.draw, last.put, (now_s() - t0) * 1e3);
+			info("trace: command %.4f, show answered %.4f (%.1f ms; draw %.1f, put %.1f, show %.1f), buffer %d: \"%.*s\"", t_cmd,
+			     real_s(), (real_s() - t_cmd) * 1e3, last.draw, last.put, (now_s() - t0) * 1e3, b,
+			     (int)strcspn(answer, "\n"), answer);
 	} else if (tv.fd >= 0) {
 		warn("h713-tv refused the overlay: %s", answer);
 	}
@@ -1199,12 +1221,20 @@ static bool launcher_cmd(const char *args, char *reply, size_t n)
 	bool end = false;
 
 	snprintf(buf, sizeof(buf), "%s", args + strspn(args, " "));
-	if (!strcmp(buf, "close")) {
+	if (!strcmp(buf, "close") || !strcmp(buf, "close keep")) {
+		bool keep = buf[5] && lau.open && tv.shown;
+
 		lau.open = false;
 		lau.prefill_at = 0;
 		osd_clear(&canvas);		/* the page was drawn all over it: a volume strip next must not find the ground under it */
 		memset(cbox, 0, sizeof(cbox));
 		snprintf(reply, n, "ok\n");
+		if (keep) {			/* a page follows: the launcher stays on the wall until it is drawn (P2c) */
+			handover_until = now_s() + HANDOVER_S;
+			handover_lau = true;
+			info("launcher closed, handed over: it stays on the wall until the next page is drawn (%.1f s at most)", HANDOVER_S);
+			return false;
+		}
 		return true;
 	}
 	if (page.open) {
@@ -1342,7 +1372,8 @@ static bool handle(const char *line, char *reply, size_t n)
 			 m_valid ? "from warp.conf (pre-distorted while the picture under it is warped)" : "refused",
 			 style.place == OSD_BOTTOM ? "bottom" : style.place == OSD_TOP_RIGHT ? "top-right" : "center",
 			 style.look == OSD_PILL ? "pill" : "bare", style.scale, seconds,
-			 lau.open ? "open" : "closed", !page.open ? "closed" : page.holes ? "open (transparent pixels: the picture under it runs on)" :
+			 lau.open ? "open" : handover_until > 0 && handover_lau ? "closed (handed over: on the wall until the next page is drawn)" : "closed",
+			 !page.open ? (handover_until > 0 && !handover_lau ? "closed (handed over: on the wall until the launcher is drawn)" : "closed") : page.holes ? "open (transparent pixels: the picture under it runs on)" :
 			 "open (opaque: the mode under it pauses)", last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
 		return false;
 	} else {
@@ -1440,6 +1471,7 @@ static void page_close(void)
 	page.fd = -1;
 	page.px = NULL;
 	page.open = false;
+	page.handover = false;
 	free(page.hole);
 	page.hole = NULL;
 	page.holes = 0;
@@ -1457,7 +1489,15 @@ static bool page_read(void)
 	char *nl;
 
 	if (got == 0 || (got < 0 && errno != EAGAIN && errno != EINTR)) {
-		page_close();	/* the page's program ended: it is gone from the wall */
+		bool keep = page.handover && tv.shown;
+
+		page_close();	/* the page's program ended: it is gone from the wall - or, handed over, when its successor is there */
+		if (keep) {
+			handover_until = now_s() + HANDOVER_S;
+			handover_lau = false;
+			info("page handed over: it stays on the wall until the launcher is drawn (%.1f s at most)", HANDOVER_S);
+			return false;
+		}
 		return true;
 	}
 	if (got > 0)
@@ -1484,8 +1524,10 @@ static bool page_read(void)
 		} else if (!strcmp(page.buf, "page hide")) {
 			page_close();
 			return true;
+		} else if (!strcmp(page.buf, "page handover")) {
+			page.handover = true;	/* no answer: the connection ends right after it */
 		} else {
-			send(page.fd, "error page show X Y W H | page hide\n", 36, MSG_NOSIGNAL);
+			send(page.fd, "error page show X Y W H | page handover | page hide\n", 52, MSG_NOSIGNAL);
 		}
 		memmove(page.buf, page.buf + used, page.blen - used + 1);
 		page.blen -= used;
@@ -1621,6 +1663,8 @@ static void arm(int tfd)
 	}
 	if (lau.open && lau.prefill_at > 0 && (!next || lau.prefill_at < next))
 		next = lau.prefill_at;
+	if (handover_until > 0 && (!next || handover_until < next))
+		next = handover_until;
 	if (lau.open) {		/* the clock in the header: the next full minute */
 		double nm = now_s() + 60 - (double)(time(NULL) % 60) + 0.1;
 
@@ -1712,6 +1756,10 @@ static int run(void)
 				if (want.until && want.until <= now_s()) {
 					want.until = 0;
 					again = true;
+				}
+				if (handover_until > 0 && handover_until <= now_s()) {
+					info("hand-over: nothing followed within %.1f s -- the page goes", HANDOVER_S);
+					again = true;	/* the refresh takes it away */
 				}
 				if (tv.fd < 0 && (want.muted || lau.open || page.open || want.until))
 					again = true;	/* the claim again */

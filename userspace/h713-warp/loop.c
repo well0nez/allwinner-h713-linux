@@ -762,11 +762,11 @@ void warp_client_gone(struct runtime *r)
 	warp_gl_idle(r);
 }
 
-/* paused: a page hides the panel, and the plane shows a picture of this claim (the first frame of a claim made under
- * the page is drawn: the plane goes up beneath it, not at the page's end) */
+/* paused: a page hides the panel. h713-tv switches the video plane off under it (nothing of HDMI behind a page, 17.10.2026),
+ * so nothing is drawn at all - also not for a claim made under the page: the first frame comes at the page's end */
 bool warp_paused(const struct runtime *r)
 {
-	return r->state == WARP_ON && r->peer.cover && r->peer.commits > 0;
+	return r->state == WARP_ON && r->peer.cover;
 }
 
 /*
@@ -786,8 +786,7 @@ void warp_cover(struct runtime *r)
 			r->source.held = -1;
 		}
 		r->paused_at = now_s();
-		info("warp            paused: an opaque page hides the panel -- nothing is drawn, the video plane keeps its last frame%s",
-		     r->peer.commits ? "" : " (after this claim's first frame)");
+		info("warp            paused: an opaque page hides the panel -- nothing is drawn (h713-tv switches the video plane off)");
 		return;
 	}
 	info("warp            on again: the page is gone after %.1f s -- the next frame is drawn now",
@@ -930,10 +929,8 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 		 r->frame_ms, r->frame_ms_max, r->source.timeouts, r->source.settled, r->source.stale);
 	text_add(&t, "hold            %s (a slot is drawn one vsync late)\n", r->hold ? "on" : "off");
 	if (warp_paused(r))
-		text_add(&t, "pause           an opaque page hides the panel: nothing is drawn, the video plane keeps its last frame (%.1f s)\n",
+		text_add(&t, "pause           an opaque page hides the panel: nothing is drawn, the video plane is off (%.1f s)\n",
 			 now_s() - r->paused_at);
-	else if (r->state == WARP_ON && r->peer.cover)
-		text_add(&t, "pause           an opaque page hides the panel: this claim's first frame is drawn, then nothing\n");
 	if (r->check.frames || r->check.want)
 		text_add(&t, "check           %lu frames%s, %lu with differing rows (rows %d..%d, at most %lu of 32 sampled in one frame), %lu late samples skipped\n",
 			 r->check.frames, r->check.want ? ", running" : "", r->check.differing,
