@@ -49,11 +49,16 @@ or without h713-osd it answers `ok unseen`/nothing and h713-keys does not take t
 while it is open is held at once.
 
 **The launcher at the start of the box** (Marco, 16.10.2026: the start is where the launcher belongs, not the HDMI picture): with `on_start = launcher` in `keys.conf`
-(the default; `hdmi` keeps the HDMI picture) h713-keys opens the launcher by itself once per boot, with the row of the running mode chosen (HDMI input at a start), as soon as h713-osd can show it. It does not wait for a Home: no release to wait for, so the
+(the default; `hdmi` keeps the HDMI picture; `kodi`, `last` and the other values are below) h713-keys opens the launcher by itself once per boot, with the row of the running mode chosen (HDMI input at a start), as soon as h713-osd can show it. It does not wait for a Home: no release to wait for, so the
 devices are held at once. It tries every 0.5 s for 180 s after h713-keys has started, and only once h713-tv's socket is there (before that h713-osd answers `ok unseen`), so the launcher stands before the HDMI picture: 8.2 s against the picture at 9.1 s on the HY310 (17.10.2026, `doku/214` §2; until then every 5 s, and the wall showed 1.3 s of HDMI first). Then it gives up with one warning.
 "Once per boot" is `/run/h713-keys.booted`: /run is empty after every boot and stays through a standby and a restart of the service, so a **standby brings back the mode from before** (a standby between the start and the first open ends the attempt: it
 sees that the machine slept, `CLOCK_BOOTTIME` ahead of `CLOCK_MONOTONIC`) and a deploy of h713-keys does not pop the launcher up. The launcher opened this way **waits for the first key** (the 90 s idle limit counts only from then on): a start page that vanished while
 nobody was at the remote would be the HDMI picture again. The settings page writes the line (Input > On start, [h713-settings](h713-settings.md)); a change counts at the next start of the box. Measured on the HY310, 16.10.2026: four warm starts, the launcher open 10.6 to 10.9 s after the boot, seen by the camera (`doku/213` §4).
+
+**Other starts** (the owner, 17.10.2026): `on_start = kodi` (or the id of any entry with a `unit`) opens the launcher with that entry chosen and takes its OK by itself, so the page says "Starting Kodi..." until the first picture
+and then goes; `on_start = last` is what ran when the box went off - `hdmi` (nothing is done), the unit in `last-mode` (as the entry's id), or the launcher if nothing is kept or the entry is gone. Measured on the HY310 (rend5 with this change), one warm start each,
+the camera and `h713-osd ctl status` 40 to 47 s after the boot: `launcher` - the page open from 8.7 s, Y 3.0 on all 128 camera frames; `hdmi` - no launcher, Y 58.7; `kodi` - the page "Starting Kodi..." from 8.6 s, Kodi's first picture at 15.0 s, Kodi running, no launcher;
+`last` with Kodi running at the restart - Kodi again (page from 8.5 s, picture at 15.6 s; the shutdown did not overwrite `last-mode`); `last` after HDMI - the HDMI picture, no launcher.
 
 **The entries are files**, `/etc/h713/launcher.d/NN-name.conf`, sorted by name (a package adds its own and touches no code):
 
@@ -68,7 +73,10 @@ now      = Kodi                  # the header while it is active (default: the l
 group    = end                   # the foot: Standby is set apart, bottom-anchored, and comes last
 fallback = yes                   # the current entry when no other `active` check succeeds (the HDMI input)
 wait     = /usr/local/sbin/h713-kodi-switch ready    # optional, with `unit`: see below
+return   = launcher              # optional, with `exec`: the program's end with 0 opens the launcher again, see "The ways back"
 ```
+
+An entry's **id** is its file name without the number and the suffix (`20-kodi.conf` is `kodi`); `on_start` names it.
 
 **`wait`: the page stays while a client starts** (acceptance of 16.10.2026, `doku/213` §1 and §4: Kodi needs 4 s, Firefox 9 to 13 s to a first picture, and the wall was black or the
 old client until then; with the page: Kodi 4.7 to 4.9 s, desktop 1.2 s, browser 6.3 s from HDMI, the wall never black). An entry with `unit` and `wait` does not close the launcher at the OK: it starts the unit, redefines the page with the header
@@ -81,6 +89,39 @@ stale file cannot say "ready"). An entry without `wait` closes the page at the O
 
 Up to six entries fit the picture (the mock-up's: HDMI input, Kodi, Browser, Desktop, Settings, Standby); the selection starts
 on the entry that is active. A file without label, icon and unit or exec is left out with a journal warning. `H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).
+
+## The ways back (Marco, 17.10.2026)
+
+Back goes one level back and Home goes home; whoever ends a program has the remote in hand and chooses.
+
+| From | Back | Home | the program ends |
+|---|---|---|---|
+| Settings (a page over the mode) | the launcher opens again, Settings chosen | everything closes, the mode is on the wall | |
+| the launcher | closes: the mode below | closes | |
+| a mode (HDMI, Kodi, Browser, Desktop) | Kodi's, the browser's | opens the launcher | **the launcher opens, HDMI input chosen** (Kodi's Exit, the browser or the terminal closed, a crash) |
+
+**`return = launcher`** (an `exec` entry; the Settings entry): h713-keys keeps the program it started and waits for its end. With exit status 0 it opens the launcher again with that entry
+chosen; the header still says what runs. Any other status leaves the wall to the mode below. h713-settings ends with 0 on Back at its top level, 10 on Home, 11 on Power, 12 after 120 s without a key,
+13 when the picture did not come back, 14 when h713-osd is gone and 15 on a signal; the entry runs `systemd-run --wait`, whose status is the program's. h713-osd shows one page at a time and answers "the page is open" until it has
+seen the page's connection end, so the launcher is asked for again every 0.1 s for up to 5 s. The wall shows the HDMI picture from the moment the page is gone to the moment the launcher is drawn; to keep that short the way back takes
+the entries, the row that runs and the signal from the last full open instead of asking `systemctl` and h713-tv again (a full open took 350 ms of the 0.55 s on the HY310, measured 17.10.2026; the rest is h713-osd drawing the page through the keystone, 110 to 150 ms), and the loop wakes on a pidfd of the program, not on a poll.
+
+**A mode that ends by itself.** The mode units are the `unit` lines of the entries. h713-keys looks every 0.25 s whether one has a cgroup under `/sys/fs/cgroup/system.slice` (a `stat`, no process: the cgroup is there while a unit comes up, runs and goes
+down). When none has been there for 0.5 s, the mode has ended and the launcher opens with HDMI input chosen - **unless the end was not the program's**:
+
+- `h713-mode hdmi` (the launcher's HDMI input, or a shell) touches `/run/h713-mode.ended` first: the end is the user's, and the launcher does not come back;
+- a sleep: `/run/h713-mode.resume` exists from `h713-mode sleep-pre` to `sleep-post`;
+- the shutdown: `systemctl is-system-running` says `stopping`;
+- the six seconds after the launcher itself started a mode (a switch from one mode to the next has no gap that long);
+- the launcher is open already (Kodi crashed behind it): nothing opens a second one; an entry that was starting ("Starting Browser...") and ended before its first picture puts the list back at once, HDMI input chosen, instead of keeping the page for 30 s.
+
+**The mode is remembered** in `/var/lib/h713-keys/last-mode` (`StateDirectory=h713-keys`): `hdmi`, or the unit that ran last. It follows the box through every start and end of a mode, except the end for a sleep (the mode comes back after it) and the end for the
+shutdown: what ran when the box went off is what `on_start = last` brings back. The first look after h713-keys has started writes `hdmi` when nothing runs; it waits for the start under `on_start` to be settled, so that the start still finds what was kept.
+
+Measured on the HY310 (17.10.2026, uhid remote, the colour camera, `h713-osd ctl status` and the journal; HDMI and over Kodi): Settings, Back: the launcher is open with Settings chosen, Back again: closed, the mode unchanged (Kodi's JSON-RPC answers);
+Home in Settings: everything closed, Home in the mode: the launcher; Back in the launcher: closed, Kodi keeps running. Kodi's Quit, a SIGKILL of its unit, Firefox killed and the desktop's terminal killed each opened the launcher with HDMI input chosen
+(`h713-osd ctl status`: launcher open, `h713-mode status`: hdmi). HDMI input from Kodi: no launcher, `source` still `auto`. A standby with Kodi running (RTC alarm): the journal says "ended (a sleep)", Kodi is back, no launcher, `last-mode` still Kodi.
+Not measured: the same on the HY300PRO-G-EU (a 720p LCD with the warp in bypass: the paths are the same Python and C, the gap between the pages is h713-osd's), and a power-off with `last` (the restart was measured, a cold start was not).
 
 ## OK and Menu below code 248 (`70-h713-remote.rules`)
 
@@ -135,7 +176,7 @@ the vendor's ARISC firmware, which disabled PL8/PL9 when it started. crust leave
 | `volume_step` | 5 | 1..20 of h713-tv's 0..100 |
 | `focus_steps` | 20 | 1..100 msteps; one mstep is about 16 ms of travel (`h713-autofocus`), the sharp range several hundred wide (`doku/94`) - 3 was too little to see (Marco, 11.10.2026) |
 | `input_keys` | (none) | kernel key names, separated by spaces |
-| `on_start` | `launcher` | `launcher` or `hdmi`: what the projector shows when it has started (below, "The launcher at the start of the box") |
+| `on_start` | `launcher` | what the projector shows when it has started: `launcher`; `hdmi`; the id of an entry with a `unit` (`kodi`, `browser`, `desktop`: that mode, straight away); `last` (what ran when the box went off: the HDMI input, or the mode in `last-mode`; the launcher if nothing is kept). An unknown value is a warning and the default. See "The launcher at the start of the box" |
 
 A line it does not understand is a warning in the journal; the other lines still count. On a board without a
 focus motor `h713-focus` ends with exit 7 (the device node decides, as for every tool,

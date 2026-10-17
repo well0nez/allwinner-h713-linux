@@ -73,11 +73,35 @@ class ModeTest(unittest.TestCase):
         r = Root(active=["not.this.one.service", "something.service"])      # a comment's unit, and a unit no entry names
         self.assertEqual(r.mode("status").stdout.strip(), "hdmi")
 
-    def test_hdmi_ends_every_mode_unit(self):
+    def test_hdmi_ends_every_mode_unit_and_leaves_the_source_on_auto(self):
         r = Root(active=["h713-kodi.service"])
         self.assertEqual(r.mode("hdmi").returncode, 0)
-        self.assertEqual(r.calls(), ["tv ctl source hdmi", "systemctl stop h713-kodi.service", "systemctl stop h713-desktop.service"])
-        # the picture first: the source goes to hdmi before any unit is ended (the ring is back while Kodi still quits)
+        self.assertEqual(r.calls(), ["tv ctl source hdmi", "systemctl stop h713-kodi.service", "systemctl stop h713-desktop.service",
+                                     "tv ctl source auto"])
+        # the picture first: the source goes to hdmi before any unit is ended (the ring is back while Kodi still quits); `auto` last,
+        # when no client is left to take the panel again - `source` is not the user's word (Marco 17.10.2026), it stays `auto`
+
+    def test_hdmi_with_no_mode_running_only_says_auto(self):
+        r = Root()
+        self.assertEqual(r.mode("hdmi").returncode, 0)
+        self.assertEqual(r.calls(), ["systemctl stop h713-kodi.service", "systemctl stop h713-desktop.service", "tv ctl source auto"])    # no hdmi/auto toggle of the ring
+
+    def test_hdmi_marks_the_end_as_the_users_before_anything_is_ended(self):
+        r = Root(active=["h713-kodi.service"])
+        self.assertFalse(os.path.exists(r.p("run/h713-mode.ended")))
+        r.mode("hdmi")
+        self.assertTrue(os.path.exists(r.p("run/h713-mode.ended")))       # h713-keys opens no launcher for an end that came after it
+        r2 = Root(active=["h713-kodi.service"])
+        r2.mode("sleep-pre")
+        self.assertFalse(os.path.exists(r2.p("run/h713-mode.ended")))     # a sleep has its own mark: the resume file
+
+    def test_hdmi_without_the_run_directory_still_ends_the_modes(self):
+        r = Root(active=["h713-kodi.service"])
+        os.rmdir(r.p("run"))
+        out = r.mode("hdmi")
+        self.assertEqual(out.returncode, 0)
+        self.assertIn("cannot write", out.stderr)
+        self.assertIn("systemctl stop h713-kodi.service", r.calls())
 
     def test_before_a_sleep_kodi_is_remembered_and_ended(self):
         r = Root(active=["h713-kodi.service"])
