@@ -500,7 +500,7 @@ class KeysTest(unittest.TestCase):
         now = time.monotonic()
         return {"until": now + until, "next": 0.0, "slept": time.clock_gettime(time.CLOCK_BOOTTIME) - now - slept}
 
-    def test_a_start_without_a_picture_waits_every_5_s_and_gives_up(self):
+    def test_a_start_without_a_picture_tries_again_and_gives_up(self):
         self.launcher_d()
         self.osds.answer = lambda line: "ok unseen\n"   # no signal: nothing to show it on
         out = []
@@ -510,7 +510,7 @@ class KeysTest(unittest.TestCase):
         n = len(self.osds.lines)
         self.assertEqual((launcher.entries, out), (None, []))        # no launcher, and not a word in the journal
         self.assertFalse(self.mod.boot_launcher(launcher, {}, conf, boot))
-        self.assertEqual(len(self.osds.lines), n)                    # the next try is 5 s away
+        self.assertEqual(len(self.osds.lines), n)                    # the next try is BOOT_RETRY_S away
         self.osds.answer = lambda line: "ok\n"
         boot["next"] = 0.0
         self.assertTrue(self.mod.boot_launcher(launcher, {}, conf, boot))
@@ -520,6 +520,21 @@ class KeysTest(unittest.TestCase):
         self.assertTrue(self.mod.boot_launcher(late, {}, conf, self.start_state(until=-1)))
         self.assertIsNone(late.entries)
         self.assertIn("start: no launcher within 180 s - h713-osd has no picture to show it on, or there are no entries", out)
+
+    def test_the_start_waits_for_h713_tv_not_for_a_period(self):
+        self.launcher_d()
+        conf, launcher, boot = self.mod.Config(), self.mod.Launcher(), self.start_state()
+        tv, self.mod.TV_SOCK = self.mod.TV_SOCK, os.path.join(self.root, "no-tv.sock")
+        try:
+            self.assertFalse(self.mod.boot_launcher(launcher, {}, conf, boot))      # h713-tv not up: h713-osd is not asked
+            self.assertEqual(self.osds.lines, [])
+        finally:
+            self.mod.TV_SOCK = tv
+        self.assertLessEqual(boot["next"] - time.monotonic(), self.mod.BOOT_RETRY_S)
+        boot["next"] = 0.0                                                       # BOOT_RETRY_S later, h713-tv is there
+        self.assertTrue(self.mod.boot_launcher(launcher, {}, conf, boot))
+        self.assertIsNotNone(launcher.entries)
+        self.assertLessEqual(self.mod.BOOT_RETRY_S, 1)                           # not the 5 s that let HDMI show first
 
     def test_a_standby_in_between_ends_it(self):
         self.launcher_d()

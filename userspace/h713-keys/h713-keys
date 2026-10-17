@@ -68,6 +68,7 @@ TRACE = os.environ.get("H713_KEYS_TRACE") == "1"
 LAUNCHER_IDLE_S = 90                        # an open launcher closes after this long without a key
 BOOT_FLAG = "run/h713-keys.booted"          # in /run: gone with every boot, stays through a standby and a restart of this service
 BOOT_WAIT_S = 180                           # how long after the start the launcher is tried: h713-osd and the picture come late
+BOOT_RETRY_S = 0.5                          # how often: h713-osd shows it as soon as h713-tv is up, ~4 s before the HDMI picture (17.10.2026)
 START_WAIT_S = 30                           # how long a launcher entry with a `wait` command may take to show its first picture
 SHOWN = {}                                  # command -> (time, answer) of check()
 REPEAT = (500, 125)                         # ms: rc-core's, what the IR receiver repeats with (read 11.10., G-EU)
@@ -454,8 +455,11 @@ class Launcher:
 
 
 def boot_launcher(launcher, devices, conf, boot):
-    """The start of the box (once per boot): with on_start = launcher the launcher opens as soon as h713-osd can show it - tried every 5 s for
-    BOOT_WAIT_S. True when it is settled: opened, not wanted, given up, or a standby came in between (then the mode from before stays)."""
+    """The start of the box (once per boot): with on_start = launcher the launcher opens as soon as h713-osd can show it - tried every
+    BOOT_RETRY_S for BOOT_WAIT_S, and only once h713-tv's socket is there (before that h713-osd answers "ok unseen"). Every 5 s, as before
+    17.10.2026, the first try fell before h713-tv's start and the next after the HDMI picture: the wall showed HDMI for 1.3 s, then the
+    launcher (HY310, picture at 9.5 s, launcher at 10.8 s). True when it is settled: opened, not wanted, given up, or a standby came in
+    between (then the mode from before stays)."""
     now = time.monotonic()
     if conf.values["on_start"] != "launcher" or launcher.entries is not None or time.clock_gettime(time.CLOCK_BOOTTIME) - now - boot["slept"] > 2:
         return True
@@ -464,7 +468,9 @@ def boot_launcher(launcher, devices, conf, boot):
         return True
     if now < boot["next"]:
         return False
-    boot["next"] = now + 5
+    boot["next"] = now + BOOT_RETRY_S
+    if not os.path.exists(TV_SOCK):
+        return False                         # h713-tv is not up yet: nothing to show it on, and no reason to read the entries
     launcher.open(devices, quiet=True)
     opened = launcher.entries is not None
     launcher.hold(devices)                   # no Home was pressed, so no release to wait for
