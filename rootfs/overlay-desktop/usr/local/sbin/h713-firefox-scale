@@ -1,0 +1,21 @@
+#!/bin/sh
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-firefox-scale USER.JS - Firefox's page scale for this panel (h713-browser.service and h713-desktop.service ExecStartPre=, as the
+# unit's user): the wall shows 960 CSS pixels across on every panel, a TV interface seen from three metres. user.js ships the HY310's
+# factor (1920 / 960 = 2.0); a 1280x720 panel (the HY300 Pro) needs 1280 / 960 = 1.333, with 2.0 Firefox lays the page out for 640x360
+# CSS pixels, a phone's width. The panel is the first connected DRM connector's first mode, the one h713-warp's server takes before a claim.
+# No connector or no mode read: user.js keeps its factor.
+
+prefs=${1:?usage: h713-firefox-scale USER.JS}
+w=
+for s in /sys/class/drm/card*-*/status; do
+	[ "$(cat "$s" 2>/dev/null)" = connected ] || continue
+	w=$(sed -n '1s/x.*//p' "${s%status}modes" 2>/dev/null)
+	break
+done
+case $w in
+'' | *[!0-9]*) exit 0 ;;
+esac
+f=$(LC_ALL=C awk -v w="$w" 'BEGIN { s = sprintf("%.3f", w / 960); sub(/0+$/, "", s); sub(/\.$/, ".0", s); print s }')
+sed -i "s/^user_pref(\"layout\.css\.devPixelsPerPx\", \"[0-9.]*\");/user_pref(\"layout.css.devPixelsPerPx\", \"$f\");/" "$prefs"

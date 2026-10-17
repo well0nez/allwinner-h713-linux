@@ -71,6 +71,8 @@ Environment=MOZ_ENABLE_WAYLAND=1
 Environment=MOZ_CRASHREPORTER_DISABLE=1
 #Environment=MOZ_DISABLE_RDD_SANDBOX=1
 ExecStartPre=+/usr/local/sbin/h713-kodi-switch source
+# the page scale follows the panel (1920 -> 2.0, 1280 -> 1.333), as the unit's user: the profile is its own
+ExecStartPre=/usr/local/sbin/h713-firefox-scale /var/lib/h713-desktop/firefox/user.js
 ExecStart=/usr/bin/labwc -C /etc/h713/labwc -S /usr/bin/foot
 KillSignal=SIGTERM
 TimeoutStopSec=20s
