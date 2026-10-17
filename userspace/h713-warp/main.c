@@ -134,7 +134,8 @@ int main(int argc, char **argv)
 	struct runtime r;
 	struct control ctl;
 	const char *sock = WARP_SOCKET, *tv = TV_SOCKET, *video = NULL, *wl = WAYLAND_SOCKET;
-	struct pollfd fds[6];
+	struct pollfd fds[7];
+	bool watch_off = false;		/* the node gave POLLERR without a stream: back to RETRY_MS alone */
 	int sfd, arg, rc = 0;
 	double asked;			/* the last time a waiting client asked h713-tv's source */
 
@@ -237,6 +238,14 @@ int main(int argc, char **argv)
 		fds[2].events = POLLIN | POLLPRI;
 		fds[3].fd = live ? r.peer.fd : -1;
 		fds[3].events = POLLIN;
+		/*
+		 * No claim yet and a ring wanted: the capture node, open since the last try, wakes the loop with its
+		 * source-change event when the signal comes, and warp_apply() claims at once instead of up to RETRY_MS
+		 * later (17.10.2026, HY310: signal 9.06 s, claim 10.14 s, and h713-tv's straight ring on the wall in
+		 * between). POLLPRI alone: a capture queue that does not stream answers POLLIN with POLLERR.
+		 */
+		fds[6].fd = !live && r.on && r.pattern == PATTERN_NONE && !watch_off ? r.source.fd : -1;
+		fds[6].events = POLLPRI;
 		if (live && r.pattern != PATTERN_NONE)
 			timeout = PATTERN_MS;
 		else if (!live && want)
@@ -251,7 +260,7 @@ int main(int argc, char **argv)
 		fds[4].events = POLLIN;
 		if (ctl.cfd >= 0 && (timeout < 0 || control_left(&ctl) < timeout))
 			timeout = control_left(&ctl);
-		if (poll(fds, 6, timeout) < 0) {
+		if (poll(fds, 7, timeout) < 0) {
 			if (errno == EINTR)
 				continue;
 			warn("poll: %s", strerror(errno));
@@ -283,6 +292,15 @@ int main(int argc, char **argv)
 			 * would dequeue from a stopped queue, or restart the capture under the client's claim. */
 			if (r.state != WARP_ON || r.src != SRC_RING)
 				fds[2].revents = 0;
+		}
+		if (fds[6].fd >= 0 && fds[6].revents) {
+			if (fds[6].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+				watch_off = true;
+				warn("capture         %s answers poll with an error while not streaming -- the signal is looked for once a second",
+				     r.source.path);
+			} else {
+				source_geometry_changed(&r.source);	/* takes the events off the queue */
+			}
 		}
 		if (fds[3].fd >= 0 && (fds[3].revents & POLLIN) && !(fds[3].revents & (POLLHUP | POLLERR | POLLNVAL)) &&
 		    !peer_notes(&r.peer))
