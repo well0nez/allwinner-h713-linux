@@ -953,7 +953,7 @@ if has_profile desktop; then
 	for _m in kodi desktop browser; do
 		t "desktop: h713-$_m.service has no [Install]" bash -c '! grep -q "^\[Install\]" "$1"' _ "$TREE/etc/systemd/system/h713-$_m.service"
 		t "desktop: h713-$_m.service takes the VA-API drop-in" test -L "$TREE/etc/systemd/system/h713-$_m.service.d/10-h713-media-env.conf"
-		t "desktop: h713-$_m.service sets source auto" grep -qE '^ExecStartPre=\+?(/usr/local/sbin/h713-tv ctl source auto|/usr/local/sbin/h713-kodi-switch source)$' "$TREE/etc/systemd/system/h713-$_m.service"
+		t "desktop: h713-$_m.service tells h713-tv its source" grep -qE '^ExecStartPre=\+?(/usr/local/sbin/h713-tv ctl source auto|/usr/local/sbin/h713-kodi-switch source)$' "$TREE/etc/systemd/system/h713-$_m.service"
 	done
 	t "desktop: the desktop and the browser conflict with Kodi" bash -c 'for u in desktop browser; do grep -q "^Conflicts=h713-kodi.service" "$1/etc/systemd/system/h713-$u.service" || exit 1; done' _ "$TREE"
 	t "desktop: labwc configuration"       test -f "$TREE/etc/h713/labwc/rc.xml" -a -f "$TREE/etc/h713/labwc/menu.xml" -a -f "$TREE/etc/h713/labwc/autostart" -a -f "$TREE/etc/h713/labwc/environment" -a -f "$TREE/etc/xdg/foot/foot.ini" -a -f "$TREE/etc/h713/labwc-browser/rc.xml"

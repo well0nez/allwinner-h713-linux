@@ -4,7 +4,7 @@
 # h713-desktop.service (the same road): labwc is a Wayland client of h713-warp's server, h713-warp draws its window
 # through the keystone, h713-tv stays the DRM master. What differs: the configuration is /etc/h713/labwc-browser/ (the window
 # maximized without a frame, no menu, no terminal) and labwc starts Firefox as its session client (-S): when Firefox ends, labwc
-# ends, the unit ends, and the HDMI ring is back two seconds later (h713-tv `source auto`, nothing to undo).
+# ends, the unit ends, and the HDMI ring is back two seconds later (h713-warp puts h713-tv's source back to `auto`, nothing to undo).
 # * Why a compositor and not cage alone, which passes a fullscreen client's buffers through without a copy (Kodi): the launcher lets
 #   the press that opens the launcher reach the client like any other (its grab waits for Home's release; Kodi's keymap maps it to nothing; Firefox has no such
 #   layer, and its home-page key would take the page away under the launcher), and the focus keys of the remote are KEY_F4/KEY_F5,

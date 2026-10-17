@@ -5,8 +5,9 @@
 # Wayland backend like cage, so its one output window is the one fullscreen toplevel of h713-warp's server; h713-warp draws it through
 # the keystone onto the video plane while h713-tv stays the DRM master and the only one that commits. The keystone, the overlays
 # (h713-osd) and the volume keys (h713-keys) stay as they are with HDMI.
-# * The start sets h713-tv's source to `auto` (`h713-kodi-switch source`): the client before the ring, and however the unit ends
-#   (a stop, a crash, a SIGKILL of the group) h713-warp gives the panel back two seconds after labwc is gone. Nothing to undo for the source.
+# * The start sets h713-tv's source to `client` (`h713-kodi-switch source`): a program is the mode, never the ring as a filler; and
+#   however the unit ends (a stop, a crash, a SIGKILL of the group) h713-warp gives the panel to the ring two seconds after labwc is
+#   gone, when no other program says it starts (it puts the source back to `auto`). Nothing to undo for the source.
 # * One client at a time: the server keeps one fullscreen toplevel and asks a second one to close. Conflicts= stops Kodi and the
 #   browser when this unit starts; the After= lines make the start wait for their stop. A start of Kodi or the browser while this unit
 #   stands is not ordered the other way (no loop): the launcher stops the old mode first and starts the new one after.

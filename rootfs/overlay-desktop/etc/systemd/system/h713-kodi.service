@@ -5,17 +5,18 @@
 # h713-warp's server (WAYLAND_DISPLAY=/run/h713-warp/wayland, WLR_BACKENDS=wayland,libinput), passes Kodi's pictures
 # through, and h713-warp draws them through the keystone onto the video plane while h713-tv stays the master and the
 # only one that commits. So the keystone, the overlays (h713-osd) and the volume keys stay as they are with HDMI.
-# * The start sets h713-tv's source to `auto` (h713-kodi-switch source): the client before the ring. The ring stays on
-#   the panel while Kodi starts, h713-warp swaps it for cage's first picture, and however Kodi ends - Quit, a crash, a
-#   SIGKILL of the whole unit - h713-warp gives the panel back two seconds after cage is gone and the ring is there
-#   again. No ExecStopPost: `auto` needs no way back (a SIGKILL of the cgroup skipped ExecStopPost, measured).
+# * The start sets h713-tv's source to `client` (h713-kodi-switch source): a program is the mode, the HDMI ring is not drawn
+#   while it starts or between two programs - h713-warp keeps the last picture until cage's first one. However Kodi ends -
+#   Quit, a crash, a SIGKILL of the whole unit - h713-warp sees cage's connection close; when no other program says it
+#   starts within two seconds, it puts the source back to `auto` and the ring is there again. No ExecStopPost: the way back
+#   needs none (a SIGKILL of the cgroup skipped ExecStopPost, measured).
 #   h713-tv does not keep the source across its own restart, so the desktop profile's tv.conf starts it on `auto` as well
 #   (rootfs/build-rootfs.sh): a `systemctl restart h713-tv@...` under a running Kodi leaves Kodi on the panel (h713-warp asks
 #   again once a second), and a start of this unit before h713-tv is up needs no command at all. (A crash of h713-tv ends
 #   Kodi instead - measured with a SIGKILL on the HY310: the first failure already starts OnFailure=h713-tv-rescue.service,
 #   which restarts the display MIPS and h713-warp, and BindsTo= below ends this unit.) h713-tv is not ordered before this unit, for the reason h713-warp.service gives (a template instance has no
-#   name to order after); the unit tolerates its absence instead. `h713-mode hdmi` leaves the source on `hdmi`; the next
-#   start of this unit sets `auto`.
+#   name to order after); the unit tolerates its absence instead. `h713-mode hdmi` sets the source to `hdmi`; the next
+#   start of this unit sets `client`.
 # * BindsTo=h713-warp.service: without the server cage has nothing to draw on; a stop or restart of h713-warp ends Kodi.
 # * A stop asks Kodi to quit first (JSON-RPC Application.Quit, ExecStop=) and waits for cage to end with it: a SIGTERM
 #   to the whole group lets cage close the socket under a running Kodi, which then aborts without saving its state
