@@ -5751,6 +5751,8 @@ static bool cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 	     was_on ? " -- the straight ring off, the first frame turns the plane on" :
 	     " -- the video plane is off and comes on with the first frame", waited);
 	/* claimed under a page: the video plane is off (display_hide above) and stays off; the warp draws from the page's end */
+	if (cover.on)
+		cover.plane_off = true;	/* "ctl status": off under the page (it said "could not go off" for a claim made under it) */
 	if (cover.on && !warp_note("note cover on\n"))
 		warn("warp            \"note cover on\" did not go (%s) -- the warp draws under the page", strerror(errno));
 	return false;
