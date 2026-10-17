@@ -60,7 +60,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-probe.md` | `doku/120` |
 | `docs/tools/h713-settings.md` | `doku/212`, `doku/213` |
 | `docs/tools/h713-tv.md` | `doku/101`, `doku/172`, `doku/174`, `doku/177`, `doku/78`, `doku/86`, `doku/88`, `doku/99` |
-| `docs/tools/h713-warp.md` | `doku/197`, `doku/200`, `doku/201`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214` |
+| `docs/tools/h713-warp.md` | `doku/197`, `doku/200`, `doku/201`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215` |
 | `docs/tools/h713-wifi.md` | `doku/60` |
 | `docs/uboot/README.md` | `doku/10`, `doku/109`, `doku/163`, `doku/170`, `doku/30` |
 | `docs/uboot/commands.md` | `doku/108`, `doku/67`, `doku/70`, `doku/98` |
@@ -270,6 +270,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md`](212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md) | Protokoll | 2026-10-16 | 212 - Das Nebenprojekt Medien, zweiter Teil: Launcher, Einstellungsseite, Desktop und Browser, Kodi als Nutzer, die VE mit 600 MHz, der VA-Treiber `0015` bis `0017`, der Endbau (15. und 16.10.2026) | 13 |
 | [`213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md`](213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md) | Protokoll | 2026-10-16 | 213 - Das Nebenprojekt Medien, dritter Teil: die Bildweiche, die Bedienung beim Start, die RTC am 24-MHz-Quarz (Patch `0320`), Fokus und Bluetooth, das Licht des HY310 (16. und 17.10.2026) | 12 |
 | [`214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md`](214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md) | Protokoll | 2026-10-17 | 214 - Das Nebenprojekt Medien: Bluetooth nach dem Neustart, der Launcher beim Start, der Warp übernimmt das Signal sofort (17.10.2026) | 4 |
+| [`215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md`](215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md) | Protokoll | 2026-10-17 | 215 - Das Nebenprojekt Medien: das Bedienmodell - Rückwege, Pause unter Seiten, HDMI als Modus, Start ohne geraden Ring, EDID ohne Deep Colour, Seite ohne Signal (17.10.2026) | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -426,7 +427,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-51 von 272 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+51 von 273 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)

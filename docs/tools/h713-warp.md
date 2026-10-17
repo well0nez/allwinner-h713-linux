@@ -158,6 +158,9 @@ and left the console). Measured: the host test (`make
 test`, a client against the server with the GPU stubbed); on the device see `doku/211` §10 and, for the user `h713-kodi`, `source auto` surviving a restart of h713-tv (Kodi shown again after 1.7 to 2.0 s)
 and the polkit rule, `doku/212` §4.
 
+Memory, measured once on the HY310 (17.10.2026, `doku/215` §4): with the EGL context open and no claim (under a page) h713-warp's RSS is 26 936 kB,
+with it closed 25 860 kB - the open context costs about 1 MiB.
+
 ## `/etc/h713/warp.conf`
 
 ```

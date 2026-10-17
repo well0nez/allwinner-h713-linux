@@ -311,6 +311,19 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.94 **Startfixe vom 17.10. am HY300PRO-G-EU nachmessen** (`doku/214` §2-3, c89234f, 8d22136, 47a29d9): Launcher beim Start vor dem
       HDMI-Bild (Journal: `launcher open` vor `plane 38 on`), Warp-Claim innerhalb 0,3 s nach `signal`, keine Zeile `drawn again` von
       h713-osd während des Starts; dazu einmal mit `On start: HDMI input` ansehen (der gerade Ring für ~0,14 s, `doku/214` §4).
+- [ ] 2.95 **Bedienmodell am HY300PRO-G-EU nachmessen** (`doku/215`): Rückwege und On start, Pause unter Seiten (dort Warp im Bypass: der NV16-Ring
+      geht unter der Seite aus und an = die getönte Kante, nachmessen), P3 mit `want none` (kein Warten, Ring sofort), EDID ohne Deep Colour (720p-EDID),
+      No-signal-Seite (720p). Je Paket die Zelle aus abnahme.sh, Kamera dort keine: Marcos Auge.
+- [ ] 2.96 **Wand nach dem Wecken** (`doku/215` §6): ~9 s Konsole, weil h713-tv mit der Display-Firmware neu startet. Zusammen mit V1 (Zustand
+      "geparkt" im hdmirx-Treiber) planen: h713-tv übersteht den MIPS-Neustart mit gehaltener Wand, oder die Konsole bleibt verdeckt. Verschoben (Marco 17.10.).
+- [ ] 2.97 **P7: HDMI-Aufnahme parken** (`doku/215` §7): nach 5 min ohne HDMI an der Wand (Programm, Launcher, Settings, kein Signal)
+      `THal_Vp_SetSource(1)`, zurück mit "Switching to HDMI..."; vorher V1, HDCP 2.2 mit Fire TV nach dem Rückweg (mit Marco). Verschoben (Marco 17.10.).
+- [ ] 2.98 Klein, aus den Prüfungen von Mythos: Power über der No-signal-Seite mit Countdown wie über dem Launcher (Entscheidung Aufsicht 17.10.);
+      Start mit `edid =` ohne VIC-Beschnitt prüfen; abnahme.sh-Zelle ns-seite nach der Regel von p5-seiten; h713-osd: eine Einblendung in den
+      0,2 s einer Seitenübergabe bricht sie ab (handover_until); K1 (getöntes Bild an der Kante NV16 -> NV12) nur noch am Dienstschalter `warp ctl on` -
+      Marcos Augentest entscheidet.
+- [ ] 2.99 **Flackern vorher/nachher** (Marco 17.10.): mit Mythos' Licht-Detektor und Marcos Auge Launcher offen, Kodi im Hintergrund, Wechsel -
+      rend5 gegen rend6; Hypothese: unsichtbare Arbeit (Warp unter Seiten, Programme dahinter) war eine Lastquelle für die Lichtkopplung.
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
