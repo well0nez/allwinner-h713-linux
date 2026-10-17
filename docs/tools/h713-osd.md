@@ -21,7 +21,8 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
 - `power TENTHS standby|off [only] [ALPHA%]` - the power key's countdown (h713-power, about ten times a second): large in
   the middle whatever `place` says, a ring with the seconds left (full at 150 tenths), standby left, off right; `only`:
   no standby on this board, the ring alone. Each line keeps it one second. The answer is `ok unseen` when nothing can be
-  seen (no signal, the console; no h713-tv) - h713-power then acts at once.
+  seen (no signal, the console; no h713-tv) - h713-power then acts at once. *Not changed by the page without a signal (17.10.2026):* the
+  countdown still answers `ok unseen` there, because no picture lies under the page.
 - `pair` - "hold Left + Right" for 10 s after the remote was forgotten (h713-panel, TODO 2.54).
 - `launcher SEL;NOW;[>]icon:label;...` - the launcher (h713-keys): an **opaque page** over the whole
   panel, not an overlay over the picture (Marco, 15.10.2026: it must have a ground): the ground `0xff0b0e0d`, the list of "Launcher C" in
@@ -39,6 +40,29 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   otherwise the bilinear sample at its edge sees nothing outside and a seam or a hole shows at every boundary - in an opaque page a
   hole shows the picture. Volume, mute and the power countdown are drawn into the page and ride in the tiles they touch.
   `H713_OSD_TRACE=1` adds a journal line per refresh and prefill with wall-clock times.
+
+## The page without a signal
+
+With no HDMI signal the wall shows an **opaque page** instead of the Linux console: the ground `0xff0b0e0d` like the launcher's, the plug of
+the HDMI symbol, **No signal on HDMI** and, a line below, **HOME: menu** - centred, everything inside the safe margin of 5 %, over the whole
+panel (shown with `osd show N cover`, so it stands over black with no picture at all), pre-distorted with the keystone like the launcher.
+It is three bands (the ground above, the middle one with the symbol and the words, the ground below), so the volume strip and the power
+countdown ride in it like in the launcher's tiles. It needs the same font as the launcher (`H713_OSD_FONT`; without a face the symbol stands
+alone).
+
+[h713-tv](h713-tv.md) decides when it stands. It says on the overlay connection, unasked, `note signal none` - no signal, or one the display
+cannot take - and `note signal TEXT` for anything else (the signal's name; `off` when the console is forced with `ctl off` or a program is
+the mode: under a program the signal does not matter, no page). h713-osd also asks once after every claim (`osd signal` -> `ok signal none|TEXT`),
+so a restart of either daemon, or a standby, finds the page where it belongs; it claims at its start and again as soon as h713-tv is back,
+not only at the first event. A note that comes between a question and its answer is taken on the way.
+
+The launcher and the settings (the page channel) are the user's own and take the page's place - "pages do not lie over one another" -
+and it comes back when they close and there is still no signal: **Home** over the page opens the launcher, **Back** closes it and
+the page is there again; **Settings** over it, Back to the launcher, Back to the page. The word `signal` takes it away at once, also
+while a page stands over it (the wall is then the launcher's until it closes). `launcher close` and `launcher close keep` leave it alone
+(they are for the launcher), and the hand-over between the launcher and the settings never shows it in between: no refresh runs between the
+two halves. `ctl status` says `no-signal page  shown (h713-tv: no signal)`, `wanted, not shown (the launcher or a page is open)` or
+`none`; `launcher` says `open` only for the launcher itself.
 
 ## The page channel (package S)
 

@@ -3,3 +3,4 @@ test_edid
 *.o
 stubs.c
 *-stubs.c
+test_nosig

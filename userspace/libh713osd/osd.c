@@ -846,6 +846,49 @@ void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int t
 	}					/* band n + 2: the ground alone */
 }
 
+/* --- the page without a signal: a ground, the plug, two lines in the middle ------------------------------------------- */
+
+/* the bands' edges in 1080-line units: the ground above, the middle band with the symbol and the words, the ground below */
+static const double NOSIG_EDGE[OSD_NOSIGNAL_TILES + 1] = { 0, 330, 720, 1080 };
+
+int osd_nosignal_bands(const struct osd_canvas *c, int box[][4])
+{
+	double u = c->h / 1080.0;
+
+	for (int k = 0; k < OSD_NOSIGNAL_TILES; k++) {
+		int a = k == 0 ? 0 : (int)floor(NOSIG_EDGE[k] * u + 0.5);
+		int b = k == OSD_NOSIGNAL_TILES - 1 ? c->h : (int)floor(NOSIG_EDGE[k + 1] * u + 0.5);
+
+		box[k][0] = 0, box[k][1] = a, box[k][2] = c->w, box[k][3] = b > a ? b - a : 0;
+	}
+	return OSD_NOSIGNAL_TILES;
+}
+
+void osd_nosignal_draw(struct osd_canvas *c, int tile)
+{
+	static const char TITLE[] = "No signal on HDMI", HINT[] = "HOME: menu";
+	static struct scene s;
+	int box[OSD_NOSIGNAL_TILES][4];
+	double u = c->h / 1080.0, cx = c->w / 2.0, k = 3.0 * u;
+	int tiles = osd_nosignal_bands(c, box);
+
+	if (tile < 0 || tile >= tiles || !box[tile][2] || !box[tile][3])
+		return;
+	fill_box(c, box[tile], OSD_PAGE_GROUND);
+	if (tile != 1)				/* the ground alone */
+		return;
+	/* the plug of the HDMI symbol, 144 units wide, its middle at 450; the strokes are the launcher's, drawn larger */
+	memset(&s, 0, sizeof(s));
+	s.lw = 4.8 * u;
+	s.dim = 0.447;
+	s.panel = 3;
+	s.px = cx - 24 * k, s.py = 450 * u - 26 * k, s.pw = 48 * k, s.ph = 48 * k;
+	micon(&s, OSD_ICON_HDMI, s.px, s.py, k, T_BRIGHT);
+	render(c, &s, u, 1.0, NULL);
+	osd_text(c, TITLE, cx - osd_text_width(TITLE, 70 * u) / 2, 600 * u, 70 * u, 0xfafafa, 0.94f, 0);
+	osd_text(c, HINT, cx - osd_text_width(HINT, 38 * u) / 2, 668 * u, 38 * u, 0xffffff, 0.6f, 0);
+}
+
 void osd_draw(struct osd_canvas *c, const struct osd_style *st, const struct osd_item *it, int box[4])
 {
 	static struct scene s;

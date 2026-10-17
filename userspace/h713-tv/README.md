@@ -789,8 +789,18 @@ wanted and comes back by itself with the picture (ring or warp); `osd show N cov
 launcher, the settings) that needs no picture under it - without one it is shown over black (`ok cover`): the
 master is taken for it and given back, with the console, when the page goes;
 `osd hide` takes it away; `osd picture` answers what lies under the overlay - `warped`, `ring` or `none` (h713-osd
-pre-distorts only over the warp); `osd release` frees the buffers. The connection is the lifetime: a peer that
+pre-distorts only over the warp); `osd signal` answers the word on the signal (`ok signal none` - the page without a signal is wanted -
+or `ok signal TEXT`); `osd release` frees the buffers. The connection is the lifetime: a peer that
 dies leaves a hangup and the overlay goes with it.
+
+**No signal is a page, not the console** (17.10.2026). In the mode HDMI with nothing to show this program does not give the wall to
+the console: it tells h713-osd, unasked, on the same connection - `note signal none` while the page "No signal on HDMI" is wanted,
+`note signal TEXT` (the signal's name, or `off` for `ctl off` and for a program as the mode) when it is not - and h713-osd draws an opaque
+page and shows it with `osd show N cover`. The picture on the wall stays until that page is up (at most `NOSIG_WAIT_MS`, then the
+console after all); with a signal back and a claim of h713-warp to come, the page stays until the claim is made (at most `WARP_HOLD_MS`).
+The state is `struct nosig` (`nosig_defer()` at the three "nothing to show" places of `evaluate()`, `nosig_back()` before its
+cover branch, `nosig_follow()` after every handler of the loop); `ctl status` says `nosignal`. `tests/test_nosig.c` runs the logic
+without a device.
 
 **Over the warp the change rides along.** While h713-warp draws, a show or hide is not committed on its own: it
 waits for the warp's next frame and goes into the same atomic commit (`osd_state_add`). Every commit of this
