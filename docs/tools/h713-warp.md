@@ -89,8 +89,10 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
   stands) or another program has said that it starts (h713-tv repeats `note source client` for every unit's start). Only
   when neither is so two seconds later has the program ended: the warp sets `h713-tv source auto` itself and the ring
   takes over (a program that said it starts and has not connected within 30 s counts as ended). Under `auto` a client that
-  goes is followed by the ring after two seconds, as before; `hdmi` takes the panel to the ring at once. Not measured on
-  the device yet (package bm-p2).
+  goes is followed by the ring after two seconds, as before; `hdmi` takes the panel to the ring at once. Measured on the
+  HY310 on 17.10.2026: Kodi -> launcher -> browser and back, three times each - the claim stayed the client's throughout
+  (no switch to the ring in the journal), the camera saw the page and then the new program, no HDMI picture and no
+  straight ring between them.
 - **A buffer's life:** pending when committed (a newer commit releases an untaken one at once), taken when its
   dma-buf is readable and the previous frame is on the panel (h713-tv's flip fence, sent with the `ok`), the frame
   callbacks done right then, released when the render fence of the frame that read it signals, presented with the
@@ -121,7 +123,12 @@ off` - the page goes, or turns into the settings' slider pill over the picture, 
 drawn at once: the ring's slots that stood are given back and the next one handed on is drawn (a slot handed on less than
 10 ms ago is drawn at once), a client's held picture is drawn, or with none the client's buffer on the panel is committed
 once more. h713-tv lays the end of the page on that frame, so the wall goes from the page to a new picture in one commit.
-`ctl status` says `pause` while it lasts. Not measured on the device yet (package bm-p2).
+`ctl status` says `pause` while it lasts. Measured on the HY310 on 17.10.2026 (1080p60 source): under the launcher and a
+settings page 0 warp frames a second, 0 changes of the video plane's address, the GPU runtime-suspended the whole time,
+0.006 / 0.000 cores without the sampler (HDMI on the wall: 0.156); Kodi under the launcher answers JSON-RPC and ~23 of its
+pictures a second are taken and held, none drawn; the settings' slider pill: the warp at 60 frames a second; from
+`launcher close` to the first new frame 23-36 ms (5 runs), and with the camera no black, straight or tinted picture between
+the page and HDMI (6 runs).
 
 Kodi sees 0 Hz under cage (wlroots' nested output has no rate) and picks the presentation protocol for its video
 sync: leave Kodi's "Sync playback to display" off (the default) - with it on, 1080p60 played at 18 fps and Kodi hung
