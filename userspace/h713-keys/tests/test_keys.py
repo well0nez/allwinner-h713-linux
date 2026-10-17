@@ -844,6 +844,7 @@ class KeysTest(unittest.TestCase):
         self.cgroup("h713-kodi.service", False)
         modes.tick(launcher, {})
         self.assertIsNone(launcher.snap)
+        self.assertIsNone(launcher.reopen)                                     # a page is up: no attempt now (each would be a full open), its Back opens the launcher
         self.ended(launcher)
         launcher.tick({})
         self.assertEqual(self.osds.lines[-1], "launcher 1;HDMI 1080p60;hdmi:HDMI input;sliders:Settings")

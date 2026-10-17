@@ -507,7 +507,7 @@ class Launcher:
         if r and self.entries is not None:
             self.reopen = None                                   # open already (a Home came in between)
         elif r and now >= r["next"]:
-            r["next"] = now + REOPEN_RETRY_S
+            r["next"] = now + (REOPEN_RETRY_S if r.get("fast") and self.snap else 0.5)    # a full open forks: not ten times a second
             if self.open(devices, quiet=True, select=r["select"], fast=r.get("fast", False)):
                 self.reopen = None
                 self.hold(devices)                               # no Home was pressed, so no release to wait for
@@ -628,8 +628,8 @@ class Modes:
         else:
             log("mode %s ended by itself: the launcher opens, HDMI input chosen" % ended)
             self.store("hdmi")
-            if launcher.entries is None:
-                launcher.reopen = {"select": FALLBACK, "until": now + REOPEN_S, "next": 0.0, "fast": launcher.back is None}
+            if launcher.entries is None and not launcher.back:      # (a page over the dead mode: its Back opens the launcher, and anew)
+                launcher.reopen = {"select": FALLBACK, "until": now + REOPEN_S, "next": 0.0, "fast": True}
             elif launcher.starting:
                 launcher.unstart(devices)
 
