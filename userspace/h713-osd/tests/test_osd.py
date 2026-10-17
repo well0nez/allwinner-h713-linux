@@ -25,6 +25,9 @@ class FakeTv(threading.Thread):
     def __init__(self, path, picture="ring"):
         super().__init__(daemon=True)
         self.path, self.picture, self.mute = path, picture, "off"
+        self.signal = "off"                      # what "osd signal" answers: "none" - no signal - or anything else
+        self.knows_signal = True                 # False: an h713-tv of before, "osd signal" is a line it answers with a plain "ok"
+        self.pre_note = None                     # a note sent in the same write as the next "osd picture" answer
         self.show_reply = b"ok\n"                # what "osd show" answers: b"ok waiting\n" when no picture is up
         self.lines, self.shown, self.conn = [], None, None
         self.bufs = []
@@ -59,10 +62,13 @@ class FakeTv(threading.Thread):
                 if line == "osd claim":
                     socket.send_fds(c, [b"ok %d %d %d argb8888\n" % (W, H, PITCH)], self.bufs)
                 elif line == "osd picture":
-                    c.sendall(("ok %s\n" % self.picture).encode())
+                    note, self.pre_note = (self.pre_note + "\n") if self.pre_note else "", None
+                    c.sendall((note + "ok %s\n" % self.picture).encode())
                 elif line.startswith("osd show "):
                     self.shown = int(line.split()[2])
                     c.sendall(self.show_reply)
+                elif line == "osd signal" and self.knows_signal:
+                    c.sendall(("ok signal %s\n" % self.signal).encode())
                 elif line == "mute":
                     c.sendall(("ok mute %s (DSP)\n" % self.mute).encode())
                 elif line == "osd hide":
@@ -70,6 +76,14 @@ class FakeTv(threading.Thread):
                     c.sendall(b"ok\n")
                 else:
                     c.sendall(b"ok\n")
+
+    def hangup(self):
+        """h713-tv goes away under the connection (a restart, a standby)"""
+        self.conn.shutdown(socket.SHUT_RDWR)
+
+    def push(self, line):
+        """a note, unasked, as h713-tv sends it ("note signal none")"""
+        self.conn.sendall((line + "\n").encode())
 
     def stop(self):
         if self.conn:

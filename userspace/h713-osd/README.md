@@ -29,6 +29,12 @@ h713-osd ctl status                  state, channel, matrix, style, and where th
    mode (rear, ceiling: mirrored) are in that one matrix, so the overlay sits in the picture like the picture.
 4. **Show**: "osd show N" to h713-tv; over the warp it goes with the warp's next frame.
 
+**The page without a signal.** h713-tv tells this daemon on the overlay connection, unasked, `note signal none` or `note signal TEXT`, and
+answers `osd signal` once after every claim. With `none` and neither the launcher nor a page of the page channel open, the daemon opens
+the page "No signal on HDMI / HOME: menu" - the launcher's machinery with three tiles of its own (`osd_nosignal_*` in libh713osd), shown with
+`osd show N cover`. The launcher and the settings take its place and give it back; the word `TEXT` takes it away. The daemon claims at its
+start and again whenever h713-tv is back, so the page does not wait for an event (`tests/test_nosignal.py`).
+
 What lies under a shown overlay can change without an event: the signal comes back over the ring and the warp
 takes over a second later, or the warp is switched off and on. So while something is to be seen over a keystone
 (a non-identity matrix), h713-osd asks "osd picture" again every 250 ms and draws anew when the answer no longer

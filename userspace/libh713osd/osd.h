@@ -136,6 +136,20 @@ int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l,
 void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int tile);
 
 /*
+ * The page without a signal: an OPAQUE page over the whole canvas in the launcher's ground - the plug of the HDMI symbol, "No signal
+ * on HDMI" and, a line below, "HOME: menu" - centred, nothing but the ground in the outer 5 %. Cut into OSD_NOSIGNAL_TILES bands (full
+ * width, the ground above, the middle one with the symbol and the words, the ground below) like the launcher's tiles, so a volume strip
+ * over it repaints one band. Needs osd_font_open() for the words (without a face the symbol alone stands).
+ */
+#define OSD_NOSIGNAL_TILES 3
+
+/* the rectangles (x, y, w, h in canvas pixels) of the bands; returns their count, OSD_NOSIGNAL_TILES */
+int osd_nosignal_bands(const struct osd_canvas *c, int box[][4]);
+
+/* repaint one band: the ground REPLACES its pixels, the middle band's content is drawn over it */
+void osd_nosignal_draw(struct osd_canvas *c, int tile);
+
+/*
  * Text (text.c, FreeType - link libfreetype; h713-osd links it statically). The one part of the library that reads
  * a file: the font, opened once by the caller. The package's face on the image is Quicksand Medium
  * (Debian fonts-quicksand, SIL OFL 1.1) at OSD_FONT. A string is UTF-8, drawn left to right on one baseline in one
