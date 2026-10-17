@@ -214,7 +214,7 @@ esac
     "h713-keystone": 'echo "$@" >> "$LOG/keystone.log"; sleep "${JOBTIME:-0.3}"; exit "${JOBEXIT:-0}"\n',
     "h713-autofocus": 'echo "$@" >> "$LOG/autofocus.log"; sleep "${JOBTIME:-0.3}"; exit "${JOBEXIT:-0}"\n',
     "h713-focus": 'echo "$@" >> "$LOG/focus.log"; sleep 0.2\n',
-    "systemctl": 'echo "$@" >> "$LOG/systemctl.log"\n',
+    "systemctl": 'echo "$@" >> "$LOG/systemctl.log"\nif [ "$1" = is-active ]; then grep -qx "$3" "$LOG/active" 2>/dev/null; exit $?; fi\n',
     "iw": 'printf "Connected to aa:bb:cc:dd:ee:ff (on wlan0)\\n\\tSSID: Wohnzimmer\\n\\tfreq: 2437\\n\\tsignal: -52 dBm\\n"\n',
     "ip": 'echo "wlan0            UP             192.168.8.131/24"\n',
 }
@@ -613,26 +613,29 @@ class SoundFocus(Base):
 
 
 class InputPowerWifi(Base):
-    def test_source_choice_is_sent_and_kept(self):
-        b = self.box().start("Input")
-        b.keys("ok", "ok", "up", "ok")                        # Source > Automatic (it stands on HDMI only)
-        d = b.dump()
-        self.assertEqual(b.tv.source, "auto")
-        self.assertIn("source = auto", b.read("tv.conf"))     # h713-tv reads this as the start value
-        self.assertIn("Source choice [*Automatic|HDMI only]", d)
-        b.keys("ok", "ok")                                    # the same again: nothing is sent, nothing written
-        b.dump()
-        self.assertEqual([x for x in b.tv.log if x.startswith("source ")], ["source auto"])
-        b.finish()
+    def modes(self, b, extra=()):
+        """the launcher.d of the image: HDMI input, Kodi, Browser, Desktop (modes: they name a unit), Settings, Standby (they do not)"""
+        d = os.path.join(b.etc, "launcher.d")
+        for name, label, unit in (("10-hdmi", "HDMI input", None), ("20-kodi", "Kodi", "h713-kodi.service"),
+                                  ("25-browser", "Browser", "h713-browser.service"), ("30-desktop", "Desktop", "h713-desktop.service"),
+                                  ("50-settings", "Settings", None), ("90-standby", "Standby", None)) + tuple(extra):
+            with open(os.path.join(d, name + ".conf"), "w") as f:
+                f.write("label = %s\nicon = x\n%s\n" % (label, ("unit = " + unit) if unit else "exec = /x/y"))
+
+    def test_there_is_no_source_row(self):
+        d = self.box().start("Input").dump()
+        self.assertNotIn("Source", d)                          # "Source" went (Marco 17.10.2026): a running program is on the wall, else HDMI
+        self.assertIn("On start choice", d)
+        self.assertIn("On the wall now info", d)
 
     def test_on_start_is_kept_for_h713_keys(self):
         b = self.box()
         b.write("keys.conf", "# keys\nvolume_step = 5\n")
         d = b.start("Input").dump()
-        self.assertIn("On start choice [*Launcher|HDMI input]", d)   # nothing in the file: the launcher, h713-keys' default
-        b.keys("ok", "down", "ok", "down", "ok")                      # On start > HDMI input
+        self.assertIn("On start choice [*Launcher|HDMI input|Last used]", d)   # nothing in the file: the launcher, h713-keys' default
+        b.keys("ok", "ok", "down", "ok")                              # On start > HDMI input
         d = b.dump()
-        self.assertIn("On start choice [Launcher|*HDMI input]", d)
+        self.assertIn("On start choice [Launcher|*HDMI input|Last used]", d)
         self.assertIn("on_start = hdmi", b.read("keys.conf"))
         self.assertIn("volume_step = 5", b.read("keys.conf"))         # the rest of the file stays
         b.keys("ok", "up", "ok")                                      # and back to the launcher
@@ -641,10 +644,74 @@ class InputPowerWifi(Base):
         self.assertIn("on_start = launcher", b.read("keys.conf"))
         b.finish()
 
+    def test_on_start_offers_the_modes_of_launcher_d_and_last_used(self):
+        """Launcher, HDMI input, every entry with a unit in file order (Kodi - and Browser, Desktop with no change here), Last used"""
+        b = self.box()
+        self.modes(b)
+        d = b.start("Input").dump()
+        self.assertIn("On start choice [*Launcher|HDMI input|Kodi|Browser|Desktop|Last used]", d)
+        b.keys("ok", "ok", "down", "down", "ok")                      # On start > Kodi
+        d = b.dump()
+        self.assertIn("On start choice [Launcher|HDMI input|*Kodi|Browser|Desktop|Last used]", d)
+        self.assertIn("on_start = kodi", b.read("keys.conf"))         # the entry's file name (20-kodi.conf), as h713-keys names it
+        b.keys("ok", "down", "down", "down", "down", "ok")            # ... Last used
+        b.dump()
+        self.assertIn("on_start = last", b.read("keys.conf"))
+        b.keys("ok", "up", "up", "ok")                                # ... Browser
+        b.dump()
+        self.assertIn("on_start = browser", b.read("keys.conf"))
+        b.finish()
+
+    def test_a_new_mode_comes_without_a_change_here(self):
+        b = self.box()
+        self.modes(b, extra=(("40-terminal", "Terminal", "h713-terminal.service"),))
+        d = b.start("Input").dump()
+        self.assertIn("[*Launcher|HDMI input|Kodi|Browser|Desktop|Terminal|Last used]", d)
+        b.keys("ok", "ok", *["down"] * 5, "ok")
+        b.dump()
+        self.assertIn("on_start = terminal", b.read("keys.conf"))
+        b.finish()
+
+    def test_every_option_has_its_sentence_for_the_wall(self):
+        b = self.box()
+        self.modes(b)
+        b.start("Input")
+        b.keys("ok", "ok", "down", "down")                            # the choice stands on Kodi
+        d = b.dump()
+        self.assertIn('note "Kodi: Kodi opens by itself when the projector has started."', d)
+        b.keys("down", "down", "down")                                # Last used
+        self.assertIn('note "Last used: what ran when the projector was switched off comes back, the HDMI input or a program."', b.dump())
+        b.keys("up", "up", "up", "up", "up")                          # Launcher
+        self.assertIn('note "Launcher: when the projector has started', b.dump())
+        b.finish()
+
     def test_on_start_shows_what_the_file_holds(self):
         b = self.box()
+        self.modes(b)
         b.write("keys.conf", "on_start = hdmi\n")
-        self.assertIn("On start choice [Launcher|*HDMI input]", b.start("Input").dump())
+        self.assertIn("On start choice [Launcher|*HDMI input|Kodi|Browser|Desktop|Last used]", b.start("Input").dump())
+        b.finish()
+        b = self.box()
+        self.modes(b)
+        b.write("keys.conf", "on_start = last\n")
+        self.assertIn("|*Last used]", b.start("Input").dump())
+        b.finish()
+        b = self.box()
+        self.modes(b)
+        b.write("keys.conf", "on_start = gone\n")                     # an entry that was taken away: h713-keys starts the launcher then
+        self.assertIn("[*Launcher|", b.start("Input").dump())
+        b.finish()
+
+    def test_on_the_wall_now_names_the_mode_that_runs(self):
+        b = self.box()
+        self.modes(b)
+        self.assertIn('On the wall now info "HDMI picture"', b.start("Input").dump())
+        b.finish()
+        b = self.box()
+        self.modes(b)
+        with open(os.path.join(b.log, "active"), "w") as f:
+            f.write("h713-browser.service\n")
+        self.assertIn('On the wall now info "Browser"', b.start("Input").dump())      # not "Kodi" because a client is on the wall
         b.finish()
 
     def test_no_launcher_no_on_start_row(self):
@@ -693,6 +760,39 @@ class Life(Base):
         b = self.box().start()
         b.keys("back")
         self.assertEqual(b.proc.wait(timeout=5), 0)
+
+    def test_how_the_page_ends_is_its_exit_status(self):
+        """h713-keys reads it (launcher.d `return = launcher`): only Back at the top is 0 and brings the launcher back; every other
+        end leaves the wall to the mode below (Marco 17.10.2026: Back goes one level back, Home goes home)."""
+        b = self.box().start()
+        b.keys("back")
+        self.assertEqual(b.proc.wait(timeout=5), 0)                    # Back in the areas: the launcher
+        b = self.box().start()
+        b.keys("home")
+        self.assertEqual(b.proc.wait(timeout=5), 10)                   # Home: everything closes
+        b = self.box().start("Picture")
+        b.keys("ok", "home")
+        self.assertEqual(b.proc.wait(timeout=5), 10)                   # also from inside a row
+        b = self.box().start("Input")
+        b.keys("ok", "ok", "home")                                     # also with a choice open
+        self.assertEqual(b.proc.wait(timeout=5), 10)
+        b = self.box().start()
+        b.keys("power")
+        self.assertEqual(b.proc.wait(timeout=5), 11)                   # Power: h713-power is told
+
+    def test_back_inside_the_page_is_one_level_not_the_end(self):
+        b = self.box().start("Sound")
+        b.keys("ok", "back")                                           # rows -> areas
+        self.assertIn("focus areas", b.dump())
+        self.assertIsNone(b.proc.poll())
+        b.keys("back")                                                 # areas -> out, with 0
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+
+    def test_a_signal_is_not_a_way_back(self):
+        b = self.box().start("Picture")
+        b.dump()
+        b.finish(signal.SIGTERM)
+        self.assertEqual(b.proc.returncode, 15)                        # somebody ended the page: no launcher under it
 
     def test_areas_remember_their_row(self):
         b = self.box().start("Picture")
@@ -765,7 +865,7 @@ class Device(Base):
         self.assertEqual(len(b.osd.log), n)
         self.assertIsNone(b.proc.poll())
         b.press(HOME)
-        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertEqual(b.proc.wait(timeout=5), 10)
 
     def test_both_devices_are_read(self):
         b = self.box().start_device("Sound")
@@ -775,7 +875,7 @@ class Device(Base):
         b.press(RIGHT, device=0)
         self.assertTrue(wait_for(lambda: b.tv.volume == 95, 5))
         b.press(HOME)
-        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertEqual(b.proc.wait(timeout=5), 10)
 
     def test_held_arrows_repeat_but_other_keys_do_not(self):
         b = self.box().start_device("Sound")
@@ -787,7 +887,7 @@ class Device(Base):
         b.press(OK, value=2)                                    # a repeat of OK: nothing (Mute stays off)
         b.press(OK, value=0)                                    # a release: nothing
         b.press(HOME)
-        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertEqual(b.proc.wait(timeout=5), 10)
         self.assertFalse(b.tv.mute)
 
     def test_an_arrow_press_and_its_release_is_one_step(self):
@@ -801,14 +901,14 @@ class Device(Base):
         time.sleep(0.5)
         self.assertEqual(b.tv.volume, 95)                       # not 100
         b.press(HOME)
-        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertEqual(b.proc.wait(timeout=5), 10)
 
     def test_power_is_handed_to_h713_power(self):
         b = self.box().start_device("Sound")
         wait_for(lambda: len(b.osd.log) > 1)
         b.press(POWER)
         self.assertEqual(b.power.recv(32), b"down")
-        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertEqual(b.proc.wait(timeout=5), 11)
         self.assertTrue(wait_for(lambda: b.osd.closed))
 
     def test_volume_mute_and_focus_keys_still_work(self):
@@ -847,7 +947,7 @@ class Device(Base):
     def test_waits_for_the_picture_and_then_closes(self):
         b = self.box(extra_env={"H713_SETTINGS_PATIENCE": "2"}).start_device("Sound", osd_answer="ok waiting")
         t0 = time.time()
-        self.assertEqual(b.proc.wait(timeout=8), 0)
+        self.assertEqual(b.proc.wait(timeout=8), 13)
         self.assertGreaterEqual(time.time() - t0, 1.5)
         self.assertIn("nothing can be seen for 2 s", b.proc.stderr.read())
 
@@ -860,14 +960,14 @@ class Device(Base):
         time.sleep(3.5)
         self.assertIsNone(b.proc.poll())
         b.press(HOME)
-        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.assertEqual(b.proc.wait(timeout=5), 10)
 
     def test_closes_when_h713_osd_is_gone(self):
         b = self.box().start_device("Sound")
         wait_for(lambda: len(b.osd.log) > 1)
         b.osd.drop()
         b.press(OK)                                              # the next drawing finds nobody
-        self.assertEqual(b.proc.wait(timeout=5), 0)              # the page is closed and the remote is given back
+        self.assertEqual(b.proc.wait(timeout=5), 14)              # the page is closed and the remote is given back
         self.assertIn("h713-osd does not answer", b.proc.stderr.read())
 
     def test_no_font_no_page(self):
@@ -887,7 +987,7 @@ class Device(Base):
     def test_closes_by_itself_after_a_while_without_a_key(self):
         b = self.box().start_device("Sound", idle=2)
         t0 = time.time()
-        self.assertEqual(b.proc.wait(timeout=8), 0)
+        self.assertEqual(b.proc.wait(timeout=8), 12)
         self.assertGreaterEqual(time.time() - t0, 1.5)
         self.assertIn("no key for 2 s", b.proc.stderr.read())
 

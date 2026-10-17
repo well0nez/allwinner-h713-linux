@@ -17,10 +17,26 @@
 
 #include "ui.h"
 
+/*
+ * How the page ends is its exit status, and h713-keys reads it (launcher.d/50-settings.conf, `return = launcher`): Back at the top level
+ * ends with 0 and the launcher opens again, Settings chosen - the way back is the way that was come. Every other end leaves the wall to
+ * the mode below, so none of them is 0. 2 to 5 are the page that could not open (usage, h713-osd, remote, font; see main()).
+ */
+enum {
+	EXIT_BACK = 0,		/* Back at the top: one level up, the launcher */
+	EXIT_HOME = 10,		/* Home: everything closes, the mode is on the wall */
+	EXIT_POWER = 11,	/* Power: the page closes, h713-power has the press */
+	EXIT_IDLE = 12,		/* no key for --idle seconds */
+	EXIT_UNSEEN = 13,	/* the picture did not come back in time: nothing to be seen */
+	EXIT_GONE = 14,		/* h713-osd does not answer */
+	EXIT_SIGNAL = 15,	/* SIGTERM or SIGINT: somebody ended the page */
+};
+
 struct view v;
 struct osd_canvas canvas;
 static int row_of[MAXAREA];		/* the row each area was left on */
 volatile sig_atomic_t quit;
+static volatile sig_atomic_t leave = EXIT_BACK;	/* the exit status the page ends with */
 
 /* the canvas as a PAM picture (RGB_ALPHA): the evidence of H713_SETTINGS_SNAP and the host tests' "snap" */
 void snap(const char *path)
@@ -238,14 +254,15 @@ static void keys_areas(int k)
 		v.f = F_ROWS;
 		dirty |= D_AREA(v.area) | D_ROW(v.row) | D_NOTE;
 	} else if (k == KE_BACK) {
-		quit = 1;
+		quit = 1;			/* Back at the top: exit 0, h713-keys opens the launcher again */
 	}
 }
 
 static void handle(int k)
 {
 	if (k == KE_HOME || k == KE_POWER) {
-		quit = 1;			/* Home: the page closes (the launcher is one Home away); Power: and h713-power is told */
+		quit = 1;			/* Home: the page closes and so does everything above the mode; Power: and h713-power is told */
+		leave = k == KE_HOME ? EXIT_HOME : EXIT_POWER;
 		if (k == KE_POWER && !test) {
 			input_close();		/* first: the remote is h713-power's again */
 			input_power();
@@ -288,6 +305,7 @@ static bool idle_test;
 static void on_term(int sig)
 {
 	(void)sig;
+	leave = EXIT_SIGNAL;
 	quit = 1;
 }
 
@@ -400,6 +418,7 @@ int main(int argc, char **argv)
 				}
 			if (shown < 0) {
 				fprintf(stderr, "h713-settings: h713-osd does not answer -- closing\n");
+				leave = EXIT_GONE;
 				break;
 			}
 			if (!test) {
@@ -447,12 +466,14 @@ int main(int argc, char **argv)
 			clock_gettime(CLOCK_MONOTONIC, &t);
 			if (idle > 0 && t.tv_sec - last.tv_sec >= idle) {
 				fprintf(stderr, "h713-settings: no key for %d s -- closing\n", idle);
+				leave = EXIT_IDLE;
 				break;
 			}
 		}
 		/* nothing to be seen for a while (the signal does not come back): the remote is given back */
 		if (unseen_since && now_ms() - unseen_since > patience * 1000) {
 			fprintf(stderr, "h713-settings: nothing can be seen for %d s -- closing\n", patience);
+			leave = EXIT_UNSEEN;
 			break;
 		}
 	}
@@ -463,5 +484,5 @@ int main(int argc, char **argv)
 		input_close();
 		page_close();
 	}
-	return 0;
+	return leave;
 }

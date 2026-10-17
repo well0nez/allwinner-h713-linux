@@ -105,8 +105,9 @@ class KeysTest(unittest.TestCase):
         systemctl = os.path.join(self.root, "systemctl")
         self.systemctl_log = os.path.join(self.root, "systemctl.log")
         with open(systemctl, "w") as f:
-            f.write('#!/bin/sh\necho "$@" >> %s\ncase "$1" in is-active) exit $(cat %s.rc 2>/dev/null || echo 3) ;; esac\nexit 0\n'
-                    % (self.systemctl_log, systemctl))
+            f.write('#!/bin/sh\necho "$@" >> %s\ncase "$1" in is-active) exit $(cat %s.rc 2>/dev/null || echo 3) ;;'
+                    ' is-system-running) cat %s.state 2>/dev/null ;; esac\nexit 0\n'
+                    % (self.systemctl_log, systemctl, systemctl))
         os.chmod(systemctl, 0o755)
         self.power = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)       # h713-power's, for the Power press
         self.power.bind(os.path.join(self.root, "power.sock"))
@@ -723,6 +724,300 @@ class KeysTest(unittest.TestCase):
         self.press("home")
         self.run_once()
         self.assertEqual((calls, self.osds.lines), ([], []))
+
+
+    # --- the ways back (17.10.2026) -------------------------------------------------------------------------
+
+    def settings_launcher(self, rc=0):
+        """HDMI input and a Settings entry that runs a stand-in program and `return = launcher`s; the launcher open, Settings chosen"""
+        prog = self.script("settings-run", rc)
+        self.launcher_d(**{
+            "10-hdmi": "label = HDMI input\nicon = hdmi\nexec = %s/mode hdmi\nnow = HDMI {signal}\nfallback = yes\n" % self.root,
+            "50-settings": "label = Settings\nicon = sliders\nexec = %s\nreturn = launcher\n" % prog})
+        launcher = self.mod.Launcher()
+        launcher.open({})
+        launcher.key(108, 1, {})
+        return launcher
+
+    def ended(self, launcher):
+        """the stand-in program ends; one tick of the launcher sees it"""
+        launcher.back["proc"].wait(timeout=5)
+        launcher.tick({})
+
+    def test_an_entry_has_an_id_and_return_only_on_exec(self):
+        self.launcher_d(**{"20-kodi": "label = Kodi\nicon = film\nunit = h713-kodi.service\nreturn = launcher\n",
+                           "50-settings": "label = Settings\nicon = sliders\nexec = /x/y\nreturn = launcher\n",
+                           "60-other": "label = Other\nicon = sliders\nexec = /x/y\nreturn = home\n"})
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        entries = {e["id"]: e for e in self.mod.launcher_entries()}
+        self.assertEqual(sorted(entries), ["kodi", "other", "settings"])       # "20-kodi.conf" is "kodi"
+        self.assertNotIn("return", entries["kodi"])                            # a unit has the mode watch, not a way back
+        self.assertEqual(entries["settings"]["return"], "launcher")
+        self.assertNotIn("return", entries["other"])
+        self.assertEqual(len([m for m in out if "ignored" in m]), 2)
+
+    def test_back_in_settings_opens_the_launcher_again_with_settings_chosen(self):
+        launcher = self.settings_launcher(rc=0)
+        self.assertTrue(launcher.key(352, 1, {}))                              # OK on Settings: the launcher lets go, the page starts
+        self.assertIsNone(launcher.entries)
+        self.assertEqual(self.osds.lines[-1], "launcher close")
+        self.ended(launcher)                                                   # Back at the top: exit 0
+        launcher.tick({})
+        self.assertIsNotNone(launcher.entries)
+        self.assertEqual((launcher.sel, launcher.entries[launcher.sel]["label"]), (1, "Settings"))     # the way back is the way that was come
+        self.assertEqual(self.osds.lines[-1], "launcher 1;HDMI 1080p60;hdmi:HDMI input;sliders:Settings")  # the header says what runs, not what is chosen
+
+    def test_home_power_idle_and_a_crash_in_settings_open_no_launcher(self):
+        for rc in (10, 11, 12, 13, 14, 15, 1, 127):
+            del self.osds.lines[:]
+            launcher = self.settings_launcher(rc=rc)
+            launcher.key(352, 1, {})
+            self.ended(launcher)
+            launcher.tick({})
+            self.assertIsNone(launcher.entries, rc)
+            self.assertIsNone(launcher.reopen, rc)
+            self.assertEqual([l for l in self.osds.lines if l.startswith("launcher ") and ";" in l][1:], [], rc)   # only the opening of the first round
+
+    def test_the_launcher_comes_back_when_h713_osd_has_seen_the_page_go(self):
+        """h713-osd answers "error the page is open" until it has seen the page's connection end: tried again, 0.1 s apart"""
+        launcher = self.settings_launcher()
+        answers = ["error the page is open\n", "error the page is open\n"]
+        self.osds.answer = lambda line: answers.pop(0) if answers and ";" in line else "ok\n"
+        launcher.key(352, 1, {})
+        self.ended(launcher)
+        for _ in range(5):
+            time.sleep(0.12)
+            launcher.tick({})
+        self.assertIsNotNone(launcher.entries)
+        self.assertIsNone(launcher.reopen)
+
+    def test_the_launcher_does_not_come_back_without_a_page_to_show_it_on(self):
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        launcher = self.settings_launcher()
+        self.osds.answer = lambda line: "ok unseen\n" if ";" in line else "ok\n"
+        launcher.key(352, 1, {})
+        self.ended(launcher)
+        launcher.reopen["until"], launcher.reopen["next"] = 0.0, 0.0
+        launcher.tick({})
+        self.assertIsNone(launcher.entries)
+        self.assertIsNone(launcher.reopen)
+        self.assertIn("launcher: not opened again - h713-osd has no page to show it on", out)
+
+    def test_a_way_back_that_finds_the_launcher_open_does_nothing(self):
+        launcher = self.settings_launcher()
+        launcher.key(352, 1, {})
+        launcher.back["proc"].wait(timeout=5)
+        launcher.tick({})                                                      # the reopen is due ...
+        launcher.close({})
+        launcher.open({})                                                      # ... but a Home came first
+        launcher.reopen = {"select": "settings", "until": time.monotonic() + 5, "next": 0.0}
+        n = len(self.osds.lines)
+        launcher.tick({})
+        self.assertEqual((launcher.reopen, len(self.osds.lines)), (None, n))
+
+    # --- a mode that ends by itself (cgroup of the unit = it is up) ------------------------------------------
+
+    def cgroup(self, unit, up=True):
+        d = os.path.join(self.root, "sys/fs/cgroup/system.slice", unit)
+        if up:
+            os.makedirs(d, exist_ok=True)
+        elif os.path.isdir(d):
+            os.rmdir(d)
+
+    def last_mode(self):
+        try:
+            with open(os.path.join(self.root, "var/lib/h713-keys/last-mode")) as f:
+                return f.read().strip()
+        except OSError:
+            return None
+
+    def watch(self):
+        """the default entries (HDMI input, Kodi, Standby), Kodi up, one look: the mode is Kodi"""
+        self.launcher_d()
+        self.cgroup("h713-kodi.service")
+        self.mod.MODE_GONE_S = 0
+        launcher, modes = self.mod.Launcher(), self.mod.Modes()
+        modes.tick(launcher, {})
+        self.assertEqual((modes.mode, self.last_mode()), ("h713-kodi.service", "h713-kodi.service"))
+        return launcher, modes
+
+    def test_a_mode_that_ends_by_itself_opens_the_launcher_with_hdmi_input_chosen(self):
+        """Kodi's Exit, the browser or the terminal closed, a crash: whoever ends a program has the remote in hand and chooses (Marco)"""
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        launcher, modes = self.watch()
+        self.cgroup("h713-kodi.service", False)
+        modes.tick(launcher, {})
+        self.assertIn("mode h713-kodi.service ended by itself: the launcher opens, HDMI input chosen", out)
+        launcher.tick({})
+        self.assertIsNotNone(launcher.entries)
+        self.assertEqual(launcher.entries[launcher.sel]["label"], "HDMI input")
+        self.assertEqual(self.osds.lines[-1], "launcher 0;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby")
+        self.assertEqual(self.last_mode(), "hdmi")                              # the box is on HDMI now
+        modes.tick(launcher, {})
+        self.assertEqual(len([l for l in self.osds.lines if ";" in l]), 1)      # once
+
+    def test_a_gap_shorter_than_a_moment_is_a_switch_not_an_end(self):
+        launcher, modes = self.watch()
+        self.mod.MODE_GONE_S = 60
+        self.cgroup("h713-kodi.service", False)
+        modes.tick(launcher, {})
+        self.cgroup("h713-kodi.service")                                        # a restart of the unit: back at once
+        modes.tick(launcher, {})
+        self.assertEqual((modes.mode, modes.gone, launcher.reopen), ("h713-kodi.service", None, None))
+
+    def test_the_end_a_launcher_start_brings_is_not_judged(self):
+        launcher, modes = self.watch()
+        launcher.started = time.monotonic()                                     # the launcher has just started the next mode
+        self.cgroup("h713-kodi.service", False)                                 # the old one is down, the new one not up yet
+        modes.tick(launcher, {})
+        self.assertEqual((modes.mode, launcher.reopen), ("h713-kodi.service", None))
+        self.cgroup("h713-desktop.service")
+        modes.units.append("h713-desktop.service")
+        modes.tick(launcher, {})
+        self.assertEqual((modes.mode, self.last_mode(), launcher.reopen), ("h713-desktop.service", "h713-desktop.service", None))
+
+    def test_h713_mode_hdmi_is_the_users_end_and_opens_no_launcher(self):
+        launcher, modes = self.watch()
+        open(os.path.join(self.root, "run/h713-mode.ended"), "w").close()       # h713-mode hdmi touches it before it ends the modes
+        self.cgroup("h713-kodi.service", False)
+        modes.tick(launcher, {})
+        self.assertEqual((modes.mode, launcher.reopen, self.last_mode()), ("hdmi", None, "hdmi"))
+
+    def test_a_stale_mark_of_h713_mode_does_not_hide_a_crash(self):
+        launcher, modes = self.watch()
+        mark = os.path.join(self.root, "run/h713-mode.ended")
+        open(mark, "w").close()
+        os.utime(mark, (time.time() - 600, time.time() - 600))                  # ten minutes ago
+        self.cgroup("h713-kodi.service", False)
+        modes.tick(launcher, {})
+        self.assertEqual(launcher.reopen["select"], self.mod.FALLBACK)
+
+    def test_a_sleep_ends_the_mode_and_the_mode_is_remembered_through_it(self):
+        launcher, modes = self.watch()
+        open(os.path.join(self.root, "run/h713-mode.resume"), "w").write("h713-kodi.service\n")    # h713-mode sleep-pre
+        self.cgroup("h713-kodi.service", False)
+        modes.tick(launcher, {})
+        self.assertEqual((launcher.reopen, self.last_mode()), (None, "h713-kodi.service"))      # not "hdmi": the sleep brings Kodi back
+
+    def test_the_shutdown_ends_the_mode_and_last_mode_stays(self):
+        """the mode that ran when the box went off is the one `last` brings back (the units end because of the shutdown, not the user)"""
+        launcher, modes = self.watch()
+        with open(os.path.join(self.root, "systemctl.state"), "w") as f:
+            f.write("stopping\n")
+        self.cgroup("h713-kodi.service", False)
+        modes.tick(launcher, {})
+        self.assertEqual((launcher.reopen, self.last_mode()), (None, "h713-kodi.service"))
+        self.assertIn("is-system-running", self.systemctl_calls())
+
+    def test_a_mode_that_ends_behind_an_open_launcher_opens_no_second_one(self):
+        launcher, modes = self.watch()
+        launcher.open({})
+        n = len(self.osds.lines)
+        self.cgroup("h713-kodi.service", False)
+        modes.tick(launcher, {})
+        launcher.tick({})
+        self.assertEqual((launcher.reopen, len(self.osds.lines)), (None, n))
+        self.assertEqual(self.last_mode(), "hdmi")
+
+    def test_last_mode_says_hdmi_where_nothing_runs_and_is_not_written_twice(self):
+        self.launcher_d()
+        self.mod.MODE_GONE_S = 0
+        launcher, modes = self.mod.Launcher(), self.mod.Modes()
+        modes.tick(launcher, {})
+        self.assertEqual(self.last_mode(), "hdmi")
+        stamp = os.stat(os.path.join(self.root, "var/lib/h713-keys/last-mode")).st_mtime_ns
+        modes.tick(launcher, {})
+        self.assertEqual(os.stat(os.path.join(self.root, "var/lib/h713-keys/last-mode")).st_mtime_ns, stamp)
+
+    def test_the_mode_watch_costs_no_process(self):
+        launcher, modes = self.watch()
+        before = self.systemctl_calls()
+        for _ in range(20):
+            modes.tick(launcher, {})
+        self.assertEqual(self.systemctl_calls(), before)                        # a stat of the unit's cgroup, nothing is started
+
+    def test_the_watch_waits_for_the_start_to_be_settled(self):
+        """last-mode must still say what ran when the box went off while the start (on_start = last) is under way"""
+        self.launcher_d()
+        self.grabs()
+        os.makedirs(os.path.join(self.root, "var/lib/h713-keys"))
+        with open(os.path.join(self.root, "var/lib/h713-keys/last-mode"), "w") as f:
+            f.write("h713-kodi.service\n")
+        os.remove(self.booted)
+        with open(os.path.join(self.root, "etc/h713/keys.conf"), "w") as f:
+            f.write("on_start = last\n")
+        self.press("mute")
+        self.run_once()                                                        # the start: Kodi is started, nothing runs yet
+        self.assertEqual(self.last_mode(), "h713-kodi.service")
+
+    # --- on_start: launcher, hdmi, an entry, last ------------------------------------------------------------
+
+    def test_on_start_names_launcher_hdmi_last_or_an_entry_with_a_unit(self):
+        self.launcher_d()
+        for value, kept in (("launcher", "launcher"), ("hdmi", "hdmi"), ("last", "last"), ("kodi", "kodi"),
+                            ("standby", "launcher"), ("android", "launcher")):     # an entry without a unit is no mode; unknown: the default
+            with open(os.path.join(self.root, "etc/h713/keys.conf"), "w") as f:
+                f.write("on_start = %s\n" % value)
+            self.mod.log = lambda msg, level="": None
+            self.assertEqual(self.mod.Config().values["on_start"], kept, value)
+
+    def boot_with(self, on_start, last_mode=None, entries=None):
+        self.launcher_d(**(entries or {}))
+        if last_mode:
+            os.makedirs(os.path.join(self.root, "var/lib/h713-keys"), exist_ok=True)
+            with open(os.path.join(self.root, "var/lib/h713-keys/last-mode"), "w") as f:
+                f.write(last_mode + "\n")
+        with open(os.path.join(self.root, "etc/h713/keys.conf"), "w") as f:
+            f.write("on_start = %s\n" % on_start)
+        launcher = self.mod.Launcher()
+        done = self.mod.boot_launcher(launcher, {}, self.mod.Config(), self.start_state())
+        time.sleep(0.2)                                                         # (systemctl is started, not waited for)
+        return launcher, done
+
+    def test_on_start_kodi_starts_kodi_straight_away(self):
+        launcher, done = self.boot_with("kodi")
+        self.assertTrue(done)
+        self.assertEqual(self.osds.lines, ["launcher 1;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby", "launcher 1", "launcher close"])
+        self.assertEqual([c for c in self.systemctl_calls() if c.startswith("start")], ["start --no-block h713-kodi.service"])
+        self.assertIsNone(launcher.entries)                                     # an entry without `wait`: the page goes at the OK
+
+    def test_on_start_with_an_entry_that_waits_keeps_the_page_until_its_first_picture(self):
+        act, ready = self.script("active", 1), self.script("ready", 1)
+        entries = {"10-hdmi": "label = HDMI input\nicon = hdmi\nexec = %s/mode hdmi\nnow = HDMI {signal}\nfallback = yes\n" % self.root,
+                   "25-browser": "label = Browser\nicon = globe\nunit = h713-browser.service\nactive = %s\nwait = %s\n" % (act, ready)}
+        launcher, done = self.boot_with("browser", entries=entries)
+        self.assertTrue(done)
+        self.assertEqual(self.osds.lines[-1], "launcher 1;Starting Browser...;hdmi:HDMI input;globe:Browser")
+        self.assertIsNotNone(launcher.starting)                                 # "Starting Browser..." until the first picture, then it goes
+        self.assertEqual(launcher.entries[launcher.sel]["id"], "browser")
+
+    def test_on_start_last_brings_back_what_ran(self):
+        launcher, done = self.boot_with("last", last_mode="h713-kodi.service")
+        self.assertTrue(done)
+        self.assertEqual([c for c in self.systemctl_calls() if c.startswith("start")], ["start --no-block h713-kodi.service"])
+
+    def test_on_start_last_after_hdmi_is_hdmi(self):
+        launcher, done = self.boot_with("last", last_mode="hdmi")
+        self.assertTrue(done)
+        self.assertEqual((self.osds.lines, launcher.entries), ([], None))      # nothing: the HDMI picture comes by itself
+
+    def test_on_start_last_without_a_memory_or_with_a_gone_entry_is_the_launcher(self):
+        launcher, done = self.boot_with("last")
+        self.assertTrue(done)
+        self.assertEqual(self.osds.lines[0].split(";")[0], "launcher 0")
+        self.assertEqual(launcher.last, float("inf"))                           # it waits for the first key, as the start launcher does
+        del self.osds.lines[:]
+        launcher, done = self.boot_with("last", last_mode="h713-gone.service")
+        self.assertEqual(self.osds.lines[0].split(";")[0], "launcher 0")
+
+    def test_on_start_kodi_without_a_picture_waits_like_the_launcher(self):
+        self.osds.answer = lambda line: "ok unseen\n"
+        launcher, done = self.boot_with("kodi")
+        self.assertFalse(done)                                                  # tried again every BOOT_RETRY_S
+        self.assertEqual([c for c in self.systemctl_calls() if c.startswith("start")], [])   # nothing is started blind
 
 
 if __name__ == "__main__":

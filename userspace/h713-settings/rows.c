@@ -9,6 +9,7 @@
  */
 #define _GNU_SOURCE
 #include <ctype.h>
+#include <dirent.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -515,12 +516,45 @@ static void focus_enter(struct area *a)
 
 /* --- Input --------------------------------------------------------------------------------------------------- */
 
-static void source_apply(struct row *r, int dir)
+/*
+ * What the projector shows when it has started: h713-keys reads `on_start` once, at the start of the box. The options are the
+ * launcher, the HDMI input, every mode - a launcher.d entry that names a `unit`: Kodi, and Browser or Desktop with no change here - and
+ * the one that ran last. A mode is named by its file (20-kodi.conf: kodi), as h713-keys names it.
+ *
+ * There is no "Source" row any more (Marco, 17.10.2026): which of the two the wall shows is not a thing to choose - a program that runs
+ * is on the wall, with none it is the HDMI input. `h713-tv ctl source` stays a tool for tests and the web page.
+ */
+struct mode {
+	char id[24], label[24], unit[64];
+};
+
+static char onstart_note[MAXOPT][128];
+
+/* the modes in file-name order, at most `max`; how many */
+static int modes_read(struct mode *m, int max)
 {
-	(void)dir;
-	if (tv("source %s", r->arg[r->val]))
-		conf_set(etc("tv.conf"), "source", r->arg[r->val]);	/* h713-tv takes it as the start value */
-	choice_read(r, tv, "source", "ok source ");
+	struct dirent **names;
+	int n = scandir(etc("launcher.d"), &names, NULL, alphasort), k = 0;
+
+	for (int i = 0; i < n; i++) {
+		const char *f = names[i]->d_name;
+		size_t len = strlen(f), digits = strspn(f, "0123456789");
+		const char *id = digits && f[digits] == '-' ? f + digits + 1 : f;	/* "20-kodi.conf" is "kodi" */
+		char file[300];
+
+		if (len > 5 && !strcmp(f + len - 5, ".conf") && k < max) {
+			snprintf(file, sizeof(file), "%s/%s", etc("launcher.d"), f);
+			if (conf_get(file, "unit", m[k].unit, sizeof(m[k].unit)) && m[k].unit[0] &&
+			    conf_get(file, "label", m[k].label, sizeof(m[k].label)) && m[k].label[0]) {
+				snprintf(m[k].id, sizeof(m[k].id), "%.*s", (int)(len - 5 - (size_t)(id - f)), id);
+				k++;
+			}
+		}
+		free(names[i]);
+	}
+	if (n >= 0)
+		free(names);
+	return k;
 }
 
 static void onstart_apply(struct row *r, int dir)
@@ -535,23 +569,45 @@ static void onstart_apply(struct row *r, int dir)
 
 static void input_enter(struct area *a)
 {
-	struct row *s = &a->row[0], *st = &a->row[1], *now = &a->row[2];
-	char cur[24] = "hdmi", v[24] = "";
+	struct row *st = &a->row[0], *now = &a->row[1];
+	struct mode m[MAXOPT - 3];
+	const char *name = NULL;
+	char v[24] = "";
+	int n = modes_read(m, MAXOPT - 3);
 
-	if (!s->n) {
-		add_opt(s, "auto", "Automatic");
-		add_opt(s, "hdmi", "HDMI only");
+	if (!st->n) {
 		add_opt(st, "launcher", "Launcher");
 		add_opt(st, "hdmi", "HDMI input");
+		for (int i = 0; i < n; i++)
+			add_opt(st, m[i].id, m[i].label);
+		add_opt(st, "last", "Last used");
+		for (int i = 0; i < st->n; i++) {
+			if (!strcmp(st->arg[i], "launcher"))
+				st->opt_note[i] = "Launcher: when the projector has started, the launcher is on the wall, like the home screen of a phone.";
+			else if (!strcmp(st->arg[i], "hdmi"))
+				st->opt_note[i] = "HDMI input: the HDMI picture, as soon as there is one.";
+			else if (!strcmp(st->arg[i], "last"))
+				st->opt_note[i] = "Last used: what ran when the projector was switched off comes back, the HDMI input or a program.";
+			else {
+				snprintf(onstart_note[i], sizeof(onstart_note[i]), "%s: %s opens by itself when the projector has started.",
+					 st->opt[i], st->opt[i]);
+				st->opt_note[i] = onstart_note[i];
+			}
+		}
 	}
 	conf_get(etc("keys.conf"), "on_start", v, sizeof(v));	/* not in the file: the launcher, h713-keys' default */
 	st->val = opt_find(st, v) < 0 ? 0 : opt_find(st, v);
 	st->hidden = access(etc("launcher.d"), F_OK) != 0;	/* no launcher in this image */
-	s->hidden = now->hidden = !tv("source");
-	sscanf(reply, "ok source %23s", cur);
-	s->val = opt_find(s, cur) < 0 ? 0 : opt_find(s, cur);
+	now->hidden = !tv("source");
+	for (int i = 0; i < n && !name; i++) {
+		const char *argv[] = { "systemctl", "is-active", "--quiet", m[i].unit, NULL };
+		char o[64];
+
+		if (run(argv, o, sizeof(o), 3000) == 0)
+			name = m[i].label;			/* the mode that runs: its own name, Browser is not Kodi */
+	}
 	snprintf(now->text, sizeof(now->text), "%s",
-		 strstr(reply, "Wayland client") ? "Kodi" : "HDMI picture");
+		 name ? name : strstr(reply, "Wayland client") ? "Kodi" : "HDMI picture");
 }
 
 /* --- Power --------------------------------------------------------------------------------------------------- */
@@ -754,14 +810,8 @@ void rows_init(void)
 
 	a = &areas[nareas++];
 	a->name = "Input", a->icon = "hdmi", a->enter = input_enter;
-	r = new_row(a, "Source", R_CHOICE);
-	r->apply = source_apply, r->more = true;
-	r->opt_note[0] = "Automatic: Kodi is on the wall while it runs, the HDMI picture whenever it is not.";
-	r->opt_note[1] = "HDMI only: nothing but the HDMI picture. Starting Kodi switches back to Automatic.";
 	r = new_row(a, "On start", R_CHOICE);
-	r->apply = onstart_apply, r->more = true;
-	r->opt_note[0] = "Launcher: when the projector has started, the launcher is on the wall, like the home screen of a phone.";
-	r->opt_note[1] = "HDMI input: the HDMI picture, as soon as there is one.";
+	r->apply = onstart_apply, r->more = true;		/* the options and their sentences: input_enter, from launcher.d */
 	info(a, "On the wall now");
 
 	a = &areas[nareas++];

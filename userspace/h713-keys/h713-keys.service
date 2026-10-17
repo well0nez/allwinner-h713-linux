@@ -7,6 +7,7 @@ After=h713-features.service
 ExecStart=/usr/local/sbin/h713-keys run
 Restart=always
 RestartSec=2
+StateDirectory=h713-keys
 NoNewPrivileges=yes
 ProtectHome=yes
 PrivateTmp=yes
