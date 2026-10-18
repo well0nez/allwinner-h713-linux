@@ -98,10 +98,15 @@ static void picture_save(void)
 		conf_set(etc("tv.conf"), "preset", "last");
 }
 
+static void turn_settle(void);
+static void turn_start(void);
+
 void rows_flush(void)
 {
 	if (save_at)
 		picture_save();
+	turn_settle();			/* the last value the hand set is applied, though the page ends: its run goes on alone */
+	turn_start();
 }
 
 /* --- a few things the tools print --------------------------------------------------------------------------- */
@@ -462,7 +467,7 @@ static void cm_enter(struct area *a)
 
 static const char *const corner_name[4] = { "tl", "tr", "bl", "br" };
 static int corner_v[4][2];
-static struct row *r_corners, *r_auto, *r_afterfocus;
+static struct row *r_corners, *r_auto, *r_afterfocus, *r_measure, *r_zoom, *r_mode, *r_turn;
 
 static void after_move_set(const char *v)
 {
@@ -497,6 +502,58 @@ static void afterfocus_apply(struct row *r, int dir)
 	after_move_load();
 }
 
+/*
+ * Turn to wall: how far the projector stands turned to the side of the wall, which no accelerometer can see. The value is a
+ * key of keystone.conf (turn_to_wall, degrees, + when the right side of the picture is the higher one) and is judged on the
+ * picture, so it is a pill and the picture follows the keys: every change writes the key and runs `h713-keystone once --apply`,
+ * which takes the tilt from the sensor and the turn from the file and writes the eight corners (the ones set by hand go).
+ * A run takes a good part of a second, so there is never more than one: a press while it runs only changes the key, and the
+ * run that follows takes the last value - presses are not queued, and none is lost.
+ */
+#define TURN_MAX 30			/* degrees to either side: what h713-keystone accepts */
+static bool turn_pending;		/* the file holds a value no run has applied yet */
+
+static void turn_start(void)
+{
+	const char *argv[] = { "h713-keystone", "once", "--apply", NULL };
+
+	if (!turn_pending || job.pid > 0)
+		return;
+	turn_pending = false;
+	job.pid = spawn(argv);
+	job.row = r_turn;
+	job.ok = job.bad = "";
+	if (job.pid < 0)
+		job.pid = 0;
+}
+
+/* a run that is under way is waited for (3 s at most): before the keystone is reset and when the page ends */
+static void turn_settle(void)
+{
+	for (int i = 0; i < 60 && job.pid > 0 && job.row == r_turn; i++) {
+		int status;
+
+		if (waitpid(job.pid, &status, WNOHANG) == job.pid)
+			job.pid = 0;
+		else
+			usleep(50000);
+	}
+}
+
+static void turn_apply(struct row *r, int dir)
+{
+	int v = clampi(r->val + dir * r->step, r->min, r->max);
+	char s[8];
+
+	if (v == r->val)
+		return;
+	r->val = v;
+	snprintf(s, sizeof(s), "%d", v);
+	conf_set(etc("keystone.conf"), "turn_to_wall", s);
+	turn_pending = true;
+	turn_start();
+}
+
 static void measure_apply(struct row *r, int dir)
 {
 	const char *argv[] = { "h713-keystone", "once", "--apply", NULL };
@@ -526,8 +583,12 @@ static void mode_apply(struct row *r, int dir)
 static void keystone_reset(struct row *r, int dir)
 {
 	(void)dir;
+	turn_settle();			/* a run of the automatic that is under way would write its corners after the reset */
+	turn_pending = false;
 	warp("keystone reset");
 	warp("zoom 100");
+	r_turn->val = 0;		/* no turn is part of a reset: the next measurement must not bring it back */
+	conf_set(etc("keystone.conf"), "turn_to_wall", "0");
 	memset(corner_v, 0, sizeof(corner_v));
 	areas[AREA_KEYSTONE].enter(&areas[AREA_KEYSTONE]);
 	snprintf(r->text, sizeof(r->text), "Done");
@@ -535,15 +596,19 @@ static void keystone_reset(struct row *r, int dir)
 
 static void keystone_enter(struct area *a)
 {
-	struct row *z = &a->row[3], *m = &a->row[4];
+	struct row *z = r_zoom, *m = r_mode;
 	static const char *const word[] = { "front", "rear", "ceiling", "rear-ceiling" };
 	static const char *const label[] = { "Front", "Rear", "Ceiling", "Rear ceiling" };
-	char cur[24] = "front";
+	char cur[24] = "front", turn[16];
 
+	(void)a;
 	features();
 	after_move_load();
 	r_auto->hidden = !have_accel;
-	a->row[1].hidden = !have_accel;
+	r_measure->hidden = !have_accel;
+	r_turn->hidden = !have_accel;	/* the automatic needs the sensor's tilt to be run at all */
+	r_turn->val = conf_get(etc("keystone.conf"), "turn_to_wall", turn, sizeof(turn)) ?
+		      clampi((int)lround(atof(turn)), r_turn->min, r_turn->max) : 0;	/* the page works in whole degrees */
 	r_corners->hidden = !warp("zoom");
 	z->hidden = m->hidden = r_corners->hidden;
 	z->val = clampi(num_after(reply, "ok zoom ", 100), z->min, z->max);
@@ -925,9 +990,12 @@ void rows_tick(bool *changed)
 		bool good = WIFEXITED(status) && WEXITSTATUS(status) == 0;
 
 		snprintf(job.row->text, sizeof(job.row->text), "%s", good ? job.ok : job.bad);
+		if (!good && job.row == r_turn)
+			fprintf(stderr, "h713-settings: Turn to wall: h713-keystone once --apply did not succeed\n");
 		job.pid = 0;
 		*changed = true;
 		focus_start();
+		turn_start();		/* a press that came while the run was under way: the last value */
 	}
 	if (save_at && now_s() >= save_at)
 		picture_save();
@@ -1021,13 +1089,17 @@ void rows_init(void)
 	r_auto = r = new_row(a, "Auto keystone", R_SWITCH);
 	r->apply = auto_apply;
 	r->note = "Corrects the picture once after the projector has been moved.";
-	r = new_row(a, "Measure again now", R_ACTION);
+	r_measure = r = new_row(a, "Measure again now", R_ACTION);
 	r->apply = measure_apply, r->more = true;
+	r_turn = r = slider(a, "Turn to wall", "turn", 1, turn_apply);
+	r->min = -TURN_MAX, r->max = TURN_MAX;
+	r->note = "Right if the right side of the picture is higher, Left if the left side is. The picture follows at once and the corners set by hand are replaced.";
+	r->hint = "Left/Right: the side that is higher    Up/Down next slider    OK or Back done";
 	r_corners = r = new_row(a, "Adjust corners by hand", R_CORNERS);
 	r->more = true;
-	r = slider(a, "Zoom", "zoom", 5, zoom_apply);
+	r_zoom = r = slider(a, "Zoom", "zoom", 5, zoom_apply);
 	r->min = 50;
-	r = new_row(a, "Projection", R_CHOICE);
+	r_mode = r = new_row(a, "Projection", R_CHOICE);
 	r->apply = mode_apply, r->more = true;
 	r = new_row(a, "Reset keystone", R_ACTION);
 	r->apply = keystone_reset;

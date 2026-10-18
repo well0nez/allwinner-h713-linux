@@ -38,6 +38,7 @@ struct row {
 	bool hidden;			/* the hardware or the tool is not there */
 	bool more;			/* the mockup's "›": the row opens or starts something */
 	bool over;			/* a slider judged on the picture: adjusted as one pill over the real picture, not on the page */
+	const char *hint;		/* over: the line of keys under its pill, instead of the usual one */
 	void (*load)(struct row *);			/* read the state the tool holds */
 	void (*apply)(struct row *, int dir);		/* slider/switch: a step; choice/action: OK */
 };

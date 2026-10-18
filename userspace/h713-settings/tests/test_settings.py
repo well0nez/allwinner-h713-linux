@@ -247,7 +247,8 @@ status) echo "standby: $STANDBY" ;;
 set) f="$ETC/power.conf"; if grep -q "^$2 *=" "$f"; then sed -i "s/^$2 *=.*/$2 = $3/" "$f"; else echo "$2 = $3" >> "$f"; fi ;;
 esac
 """,
-    "h713-keystone": 'echo "$@" >> "$LOG/keystone.log"; sleep "${JOBTIME:-0.3}"; exit "${JOBEXIT:-0}"\n',
+    # keystone-turn.log: the turn_to_wall the file held when the run started (what the real tool would have used)
+    "h713-keystone": 'echo "$@" >> "$LOG/keystone.log"; sed -n "s/^turn_to_wall *= *//p" "$ETC/keystone.conf" | tail -n 1 >> "$LOG/keystone-turn.log"; sleep "${JOBTIME:-0.3}"; exit "${JOBEXIT:-0}"\n',
     "h713-autofocus": 'echo "$@" >> "$LOG/autofocus.log"; sleep "${JOBTIME:-0.3}"; exit "${JOBEXIT:-0}"\n',
     "h713-focus": 'echo "$@" >> "$LOG/focus.log"; sleep 0.2\n',
     "systemctl": 'echo "$@" >> "$LOG/systemctl.log"\nif [ "$1" = is-active ]; then grep -qx "$3" "$LOG/active" 2>/dev/null; exit $?; fi\n',
@@ -816,7 +817,7 @@ class Keystone(Base):
 
     def test_corners_move_the_way_the_arrow_points(self):
         b = self.box().start("Keystone")
-        b.keys("ok", "down", "down", "ok")                 # Adjust corners by hand: top left, the mask on
+        b.keys("ok", "down", "down", "down", "ok")         # Adjust corners by hand (below Turn to wall): top left, the mask on
         self.assertIn("focus corners", b.dump())
         self.assertEqual(b.warp.pattern, "tl")
         b.keys("right", "down")                            # top left: right and down are inward
@@ -836,7 +837,7 @@ class Keystone(Base):
 
     def test_leaving_while_a_corner_is_marked_clears_the_pattern(self):
         b = self.box().start("Keystone")
-        b.keys("ok", "down", "down", "ok")
+        b.keys("ok", "down", "down", "down", "ok")
         b.dump()
         self.assertEqual(b.warp.pattern, "tl")
         b.finish()
@@ -844,7 +845,7 @@ class Keystone(Base):
 
     def test_zoom_projection_reset(self):
         b = self.box().start("Keystone")
-        b.keys("ok", "down", "down", "down", "left", "left")        # Zoom 100 -> 90: the first press takes the page away
+        b.keys("ok", "down", "down", "down", "down", "left", "left")        # Zoom 100 -> 90: the first press takes the page away
         d = b.dump()
         self.assertIn("focus slider", d)
         self.assertIn("Zoom slider 90 50..100", d)
@@ -867,7 +868,146 @@ class Keystone(Base):
         d = b.start("Keystone").dump()
         self.assertIn("(hidden) Auto keystone", d)
         self.assertIn("(hidden) Measure again now", d)
+        self.assertIn("(hidden) Turn to wall", d)          # `h713-keystone once` needs the sensor's tilt
         self.assertNotIn("(hidden) Zoom", d)               # these need the warp, not the sensor
+        b.finish()
+
+
+class KeystoneTurn(Base):
+    """Turn to wall: the key of keystone.conf, the pill, the run of the automatic that makes the picture follow."""
+
+    CONF = "# keystone\niio_name = sc7a20\nafter_move = off   # the page writes this\nhysteresis_degrees = 1.0\n"
+
+    def open_turn(self, conf=None, **kw):
+        b = self.box(**kw)
+        if conf is not None:
+            b.write("keystone.conf", conf)
+        return b.start("Keystone"), ["ok", "down", "down"]       # the rows; Auto keystone, Measure again now, Turn to wall
+
+    def turns(self, b):
+        return b.tool_log("keystone-turn")
+
+    def test_the_row_stands_between_measure_and_the_corners_and_shows_the_file(self):
+        b, _ = self.open_turn(self.CONF + "turn_to_wall = 12\n")
+        d = b.dump()
+        places = [d.index(name) for name in ("Auto keystone", "Measure again now", "Turn to wall", "Adjust corners by hand", "Zoom")]
+        self.assertEqual(places, sorted(places))
+        self.assertIn("Turn to wall slider 12 -30..30", d)
+        b.finish()
+
+    def test_without_the_key_it_is_zero(self):
+        b, _ = self.open_turn()
+        self.assertIn("Turn to wall slider 0 -30..30", b.dump())
+        b.finish()
+
+    def test_right_is_a_turn_to_the_right_and_the_picture_follows(self):
+        b, go = self.open_turn()
+        b.keys(*go, "right")                                  # the first press moves it and shrinks the page to its pill
+        d = b.dump()
+        self.assertIn("focus slider row 2", d)
+        self.assertIn("Turn to wall slider 1 ", d)
+        conf = b.read("keystone.conf")
+        self.assertIn("turn_to_wall = 1\n", conf)
+        self.assertIn("iio_name = sc7a20\n", conf)           # the rest of the file is as it was
+        self.assertIn("# keystone\n", conf)
+        self.assertTrue(wait_for(lambda: self.turns(b) == ["1"] and b.tool_log("keystone") == ["once --apply"], 3))
+        b.keys("left", "left", "left")                        # Left turns to the left, through 0 to -2: one press is a degree
+        b.dump()
+        self.assertIn("turn_to_wall = -2\n", b.read("keystone.conf"))
+        self.assertIn("Turn to wall slider -2 ", b.dump())
+        b.finish()
+
+    def test_a_burst_of_one_key_is_one_change_and_one_run(self):
+        b, go = self.open_turn()
+        b.keys(*go, *["right"] * 6)                           # a held key arrives as a burst
+        b.dump()
+        self.assertIn("turn_to_wall = 6\n", b.read("keystone.conf"))
+        self.assertTrue(wait_for(lambda: len(self.turns(b)) == 1, 3))
+        self.assertEqual(self.turns(b), ["6"])
+        b.finish()
+
+    def test_it_stops_at_thirty_degrees_to_either_side(self):
+        b, go = self.open_turn()
+        b.keys(*go, *["right"] * 40)
+        b.dump()
+        self.assertIn("turn_to_wall = 30\n", b.read("keystone.conf"))
+        b.keys(*["left"] * 70)
+        b.dump()
+        self.assertIn("turn_to_wall = -30\n", b.read("keystone.conf"))
+        self.assertIn("Turn to wall slider -30", b.dump())
+        b.finish()
+
+    def test_a_press_while_a_run_is_going_is_not_queued_and_not_lost(self):
+        """A run takes 0.5 s here (on the board: about a second). Five presses fall into it: they are not five runs and not four
+        dropped ones - the second run takes the last value."""
+        b, go = self.open_turn(extra_env={"JOBTIME": "0.5"})
+        b.keys(*go, "right")
+        for _ in range(4):
+            b.keys("sleep 60", "right")
+        b.dump()
+        self.assertTrue(wait_for(lambda: len(self.turns(b)) == 2, 4))
+        self.assertEqual(self.turns(b), ["1", "5"])
+        time.sleep(1.3)
+        self.assertEqual(self.turns(b), ["1", "5"])             # and no third run for nothing
+        self.assertEqual(b.tool_log("keystone"), ["once --apply"] * 2)
+        self.assertIn("turn_to_wall = 5\n", b.read("keystone.conf"))
+        b.finish()
+
+    def test_a_press_while_another_job_runs_waits_for_it(self):
+        """Measure again now is under way (the panel and the warp are its): the turn is written and applied when it is over."""
+        b = self.box(extra_env={"JOBTIME": "0.6"})
+        b.write("keystone.conf", self.CONF + "turn_to_wall = 0\n")
+        b.start("Keystone")
+        b.keys("ok", "down", "ok")                              # Measure again now
+        self.assertIn('Measure again now action "Measuring..."', b.dump())
+        b.keys("down", "right")                                 # Turn to wall, one press
+        b.dump()
+        self.assertIn("turn_to_wall = 1\n", b.read("keystone.conf"))
+        self.assertEqual(b.tool_log("keystone"), ["once --apply"])           # one run, the measurement
+        self.assertTrue(wait_for(lambda: len(b.tool_log("keystone")) == 2 and len(self.turns(b)) == 2, 4))
+        self.assertEqual(self.turns(b), ["0", "1"])             # the measurement had the old value, the run after it the new one
+        b.finish()
+
+    def test_a_run_that_fails_is_said(self):
+        b, go = self.open_turn(extra_env={"JOBEXIT": "5"})
+        b.keys(*go, "right")
+        self.assertTrue(wait_for(lambda: b.tool_log("keystone") == ["once --apply"], 3))
+        time.sleep(0.6)
+        b.dump()
+        err = b.finish()
+        self.assertIn("Turn to wall: h713-keystone once --apply did not succeed", err)
+
+    def test_when_the_page_ends_the_last_value_is_still_applied(self):
+        b, go = self.open_turn(extra_env={"JOBTIME": "0.6"})
+        b.keys(*go, "right", "sleep 50", "right", "sleep 50", "right")
+        b.dump()
+        self.assertEqual(self.turns(b), ["1"])                   # the first run is going, two presses wait
+        b.finish()                                               # the page ends: the run is waited for, the last value runs on its own
+        self.assertTrue(wait_for(lambda: len(self.turns(b)) == 2, 4))
+        self.assertEqual(self.turns(b), ["1", "3"])
+        self.assertIn("turn_to_wall = 3\n", b.read("keystone.conf"))
+
+    def test_reset_keystone_takes_the_turn_back_and_does_not_run_the_automatic(self):
+        b, go = self.open_turn(self.CONF + "turn_to_wall = 12\n")
+        b.warp.v["tl_x"] = 40
+        b.keys("ok", *["down"] * 6, "ok")                        # Reset keystone
+        d = b.dump()
+        self.assertIn("Reset keystone action \"Done\"", d)
+        self.assertIn("Turn to wall slider 0 ", d)
+        self.assertIn("turn_to_wall = 0\n", b.read("keystone.conf"))
+        self.assertEqual(b.warp.v["tl_x"], 0)
+        time.sleep(0.3)
+        self.assertEqual(b.tool_log("keystone"), [])             # a reset is corners 0, not a measurement
+        b.finish()
+
+    def test_a_value_with_a_fraction_is_shown_to_the_nearest_degree(self):
+        b, _ = self.open_turn(self.CONF + "turn_to_wall = 7.4\n")
+        self.assertIn("Turn to wall slider 7 ", b.dump())
+        b.finish()
+
+    def test_a_value_out_of_range_is_shown_at_its_end(self):
+        b, _ = self.open_turn(self.CONF + "turn_to_wall = -99\n")
+        self.assertIn("Turn to wall slider -30 ", b.dump())
         b.finish()
 
 
@@ -1534,7 +1674,7 @@ class Look(Base):
         b.keys("back")
         b.finish()
         b = self.box().start("Keystone", size="%dx%d" % (self.W, self.H))
-        b.keys("ok", "down", "down", "ok")                         # the corners: only the hint over the picture
+        b.keys("ok", "down", "down", "down", "ok")                 # the corners: only the hint over the picture
         self.assertIn("focus corners", b.dump())
         self.inside(self.ink(self.snap(b, "k"), False), "the corner hint")
         b.finish()
@@ -1591,14 +1731,28 @@ class Look(Base):
         self.assertIn("focus rows", b.dump())
         b.finish()
 
+    def test_the_turn_pill_stays_inside_the_margin_at_both_ends(self):
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        for key, end in (("right", 40), ("left", 80)):
+            b = self.box().start("Keystone", size="%dx%d" % (self.W, self.H))
+            b.keys("ok", "down", "down", *[key] * end)
+            self.assertIn("focus slider", b.dump())
+            self.inside(self.ink(self.snap(b, "t"), False), "the turn pill at %s" % key)
+            b.finish()
+
     def test_the_zoom_is_such_a_slider_too(self):
         b = self.box().start("Keystone")
-        b.keys("ok", "down", "down", "down", "left")
+        b.keys("ok", "down", "down", "down", "down", "left")
         d = b.dump()
         self.assertIn("focus slider", d)
         self.assertIn("Zoom slider 95", d)
-        b.keys("up")                                                # no slider above it: it stays on Zoom
-        self.assertIn("focus slider row 3", b.dump())
+        self.assertIn("focus slider row 4", d)
+        b.keys("up")                                                # the slider above it is Turn to wall: Up goes there
+        self.assertIn("focus slider row 2", b.dump())
+        b.keys("up")                                                # and no slider above that one: it stays
+        self.assertIn("focus slider row 2", b.dump())
+        self.assertEqual(b.warp.zoom, 95)                           # moving between the two changed nothing
         b.finish()
 
 

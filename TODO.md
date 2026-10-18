@@ -339,6 +339,19 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (+0x36000 HDCP-Schlüssel, +0x37000, +0x37100; `dev_warn`), dazu die falschen Kommentare in 0094/0101 ("three doubles", "white balance is
       already CTM") richtigstellen; h713-tv: den Abschnitt "The firmware's colour" beim nächsten h713-tv-Paket nach `color.c`, dabei die Break-Grenze in `fwc_slot_free()` auf `hn >= off - FWC_SMM_HEAD` (Break genau am Slot-Anfang: die nächste Vergabe nähme ihn; Mythos 18.10.) und den Test "a break exactly at the slot" umkehren; `docs/subsystems/
       cpu-comm.md`: Layout des Heaps und der Messwert (18.10.2026 HY310: eine Seite vergeben, Break 0x4E333000).
+- [ ] 2.103 **Turn to wall: Augentest an der Wand mit Marco** (ks-drehung, `doku` folgt; Frageliste in `arbeit/medien/ks-drehung/BERICHT.md` §6): Beamer
+      10-15° verdreht; Rechts bei rechter Seite höher, Grad an der Pille gegen den Aufbau, Nachlauf (heute erster Wert ~2 s, Salve ~4 s), 1 Grad je
+      Taste, Papierstreifen-Rest, Auto keystone an/aus nach einem Anstoß, Reset keystone; rear/ceiling nur, wenn Marco sie nutzt (Vorzeichen dort nur
+      gegen das Strahlenmodell belegt, Mythos 19.10.: Annahmen richtig).
+- [ ] 2.104 **Turn to wall am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): `once --apply`-Zeit und Sensorlesezeit (HY310 1,93 s / 1,8 s),
+      `turn_to_wall` setzen und `h713-warp ctl status` zurücklesen, ein Warmstart, danach Drehung 0 und die Ecken wie vorgefunden; Frageliste 2.103
+      ohne Kamera.
+- [ ] 2.105 **Neigungssensor über den IIO-Puffer lesen** (Mythos 19.10.: st_accel/sc7a20 schaltet den Sensor je sysfs-Rohwert ein und wartet
+      bootime/odr, ~45 ms je Lesung, 30 Lesungen = 1,8 s; gemessen 90 Lesungen 4,1 s): `buffer/enable` + hrtimer-Trigger, `/dev/iio:deviceN`, Sensor
+      bleibt an - `once --apply` ~0,3 s statt 1,9 s, `watch` gleich mit (seine Startzeile "a reading every ~0.3 s" stimmt heute nicht). Rückfall,
+      falls das nicht geht: die Pille misst die Neigung einmal beim Öffnen. Klein dazu: `rows_flush` in h713-settings wartet auf jeden laufenden
+      Auftrag, nicht nur auf einen Turn-Lauf (sonst bleibt ein in den letzten 2 s gedrückter Wert unangewendet, wenn beim Beenden Measure again now
+      oder der Autofokus läuft); die mitgelieferte `keystone.conf` bekommt die Zeile `turn_to_wall`; `h713-panel` kennt den Schlüssel nicht (nur nach Mockup).
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
