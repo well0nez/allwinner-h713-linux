@@ -40,6 +40,12 @@ threshold has to be sized from the averaged reading, not from the digit.
 The axis map is a config key for the same reason, and its default is the
 three-pose measurement of this device, not a candidate read out of a binary:
 docs-h713-keystone.md says which pose gave which number.
+
+The one thing no accelerometer can see is how far the projector stands turned
+to the side of the wall.  `turn_to_wall` (degrees, - left to + right) is that
+number, set by hand: the side of the picture that is the higher one.  It goes
+into the vendor's chain as du_r, the roll the stock firmware takes from its
+camera, and it stays where it is put until it is changed.
 """
 
 from __future__ import annotations
@@ -79,6 +85,7 @@ EXIT_NOT_PRESENT = 7
 EXIT_CONFIG = EXIT_ERROR        # a configuration value out of its choices (the docs: 2)
 AXES = {"x": 0, "y": 1, "z": 2}
 ZOOM_WIDTH = {0: 1920, 1: 1728, 2: 1440}          # AP2c 3, the aspect selector
+TURN_LIMIT = 30.0     # degrees to either side; the vendor chain is sound to 45, the picture is a third smaller by 30
 # The loop's own pause.  One averaged reading already costs about 0.3 s at
 # 100 Hz, so this is a floor and not the sampling rate.
 POLL_S = 0.1
@@ -170,6 +177,15 @@ def parse_zoom(text):
     return int(text)
 
 
+def parse_turn(text):
+    """The turn to the wall in degrees: positive when the RIGHT side of the
+    picture is the higher one, negative for the left, as the viewer sees it."""
+    value = float(text)
+    if not -TURN_LIMIT <= value <= TURN_LIMIT:
+        raise ValueError("degrees from -%g to %g" % (TURN_LIMIT, TURN_LIMIT))
+    return value
+
+
 def _one_of(*choices):
     def parse(text):
         if text not in choices:
@@ -194,6 +210,7 @@ DEFAULTS = (
     ("axis_vertical", "+z", parse_axis),
     ("throw_ratio", "ini", parse_throw),
     ("zoom_scale", "0", parse_zoom),
+    ("turn_to_wall", "0", parse_turn),
     ("sampling_rate", "100", _above_zero(float, "a rate in Hz above zero")),
     ("average_samples", "10", _above_zero(int, "at least one sample")),
     ("hysteresis_degrees", "1.0", _above_zero(float, "degrees above zero")),
@@ -452,6 +469,25 @@ MODE_PERM = {"front": (0, 1, 2, 3), "rear": (1, 0, 3, 2),
              "ceiling": (3, 2, 1, 0), "rear-ceiling": (2, 3, 0, 1)}
 
 
+# The turn to the wall is said by the viewer: positive when the RIGHT side of
+# the picture is the higher one (the farther one: the projector stands turned
+# to that side).  The vendor's du_r is a yaw of the projector in its OWN frame,
+# so it takes the sign of the mount: the model's du_r < 0 pulls in the panel's
+# right side.  Where the viewer's right is the panel's right (front, and
+# rear-ceiling, which flips the picture twice) that is -turn; where it is the
+# panel's left (rear, and ceiling, which turns the unit over) it is +turn.
+# MODE_PERM then carries the pulled corners to the viewer's side.  Settled
+# against a ray model of the wall in tests/test_turn.py: the corrected picture
+# is a rectangle on the wall only with these four signs.
+TURN_SIGN = {"front": -1.0, "rear": 1.0, "ceiling": 1.0, "rear-ceiling": -1.0}
+
+
+def turn_to_du_r(turn, mode):
+    """du_r, in degrees, for a turn to the wall in the viewer's words.  An
+    unknown mode counts as front here; for_the_mount refuses it."""
+    return TURN_SIGN.get(mode, -1.0) * float(turn)
+
+
 def mount_mode(tool):
     """The projection mode h713-warp reports; front when it says nothing or
     cannot be asked (the older h713-warp has no mode)."""
@@ -462,20 +498,21 @@ def mount_mode(tool):
     return found.group(1) if found else "front"
 
 
-def for_the_mount(tool, permille):
-    """The eight corner values permuted for the mount h713-warp is set to."""
-    mode = mount_mode(tool)
+def for_the_mount(tool, permille, mode=None):
+    """The eight corner values permuted for the mount h713-warp is set to
+    (`mode` when the caller has asked for it already)."""
+    mode = mode or mount_mode(tool)
     order = MODE_PERM.get(mode)
     if order is None:
         raise Error("h713-warp reports the mode %s, which this tool does not know" % mode, EXIT_WARP)
     return tuple(permille[2 * c + i] for c in order for i in (0, 1))
 
 
-def reference_for_mount(tool, reference, note):
+def reference_for_mount(tool, reference, note, mode=None):
     """Upside down the vendor refuses a stored pose (its check wants z >= 0),
     and a pose stored upright doubles the sensor's offset once the model has
     negated the angles: a ceiling mount corrects against the ideal."""
-    if mount_mode(tool) in ("ceiling", "rear-ceiling") and reference is not ak.LEVEL_REFERENCE:
+    if (mode or mount_mode(tool)) in ("ceiling", "rear-ceiling") and reference is not ak.LEVEL_REFERENCE:
         return ak.LEVEL_REFERENCE, "reference ideal (ceiling mount, the stored pose is upright)"
     return reference, note
 
@@ -499,6 +536,39 @@ def read_last_auto(path):
     except ValueError:
         return None
     return values if len(values) == len(WARP_SLOTS) else None
+
+
+def read_turn(path, default):
+    """turn_to_wall as the file says it now.  The settings page changes it
+    while the unit runs, and a move must be corrected with the value the user
+    has set, not with the one the unit started with; what cannot be read or
+    parsed leaves the value the unit has."""
+    try:
+        pairs = _pairs(_read(path))
+    except Error:
+        return default
+    value = default
+    for number, key, raw in pairs:
+        if key == "turn_to_wall" and raw is not None:   # the last line wins
+            try:
+                value = parse_turn(raw)
+            except ValueError as exc:
+                _stderr("warning: %s:%d: turn_to_wall = \"%s\": %s -- kept %g"
+                        % (path, number, raw, exc, value))
+    return value
+
+
+def turn_suffix(conf):
+    """The words a result line gets while the picture is turned: nothing at
+    0, so that the lines of a unit that has never been turned stay as they were."""
+    return "  wall turn %+g degrees" % conf["turn_to_wall"] if conf["turn_to_wall"] else ""
+
+
+def turn_text(turn):
+    if not turn:
+        return "0 degrees (straight to the wall)"
+    return "%g degrees to the %s (the %s side of the picture is the higher one)" % (
+        abs(turn), "right" if turn > 0 else "left", "right" if turn > 0 else "left")
 
 
 def keystone_by(warp_set, last_auto):
@@ -564,20 +634,23 @@ def implausible(raw, sensor):
     return "the accelerometer reads |g| = %.2f (raw %.0f %.0f %.0f), not about 1 g" % ((g,) + tuple(raw))
 
 
-def chain(raw, conf, reference, ini):
+def chain(raw, conf, reference, ini, mode="front"):
+    """The whole AP2h chain for one averaged triple.  The turn to the wall
+    goes in as du_r, with the sign the mount gives it."""
     row = ak.auto_keystone(model_triple(raw, conf), reference=reference,
-                           zoom_scale=conf["zoom_scale"], ini=ini)
+                           zoom_scale=conf["zoom_scale"], ini=ini,
+                           du_r=turn_to_du_r(conf["turn_to_wall"], mode))
     row["raw"] = raw
     return row
 
 
-def reading(sensor, conf, reference, ini):
+def reading(sensor, conf, reference, ini, mode="front"):
     """One averaged sample through the whole AP2h chain."""
     raw = sensor.sample(conf["average_samples"])
     why = implausible(raw, sensor)
     if why:
         raise Error(why + " -- nothing computed", EXIT_NO_SENSOR)
-    return chain(raw, conf, reference, ini)
+    return chain(raw, conf, reference, ini, mode)
 
 
 # --- the commands ---------------------------------------------------------
@@ -619,12 +692,14 @@ def do_reference(args, conf, ini):
 def do_once(args, conf, ini):
     sensor = open_sensor(args, conf)
     reference, note = load_reference(args.reference, conf, args.quiet)
-    reference, note = reference_for_mount(args.warp, reference, note)
-    row = reading(sensor, conf, reference, ini)
-    print("ok once  pitch %.3f  roll %.3f  %s  %s"
-          % (row["gs_y"], row["gs_x"], inset_text(row["permille"]), note))
+    mode = mount_mode(args.warp)
+    reference, note = reference_for_mount(args.warp, reference, note, mode)
+    row = reading(sensor, conf, reference, ini, mode)
+    print("ok once  pitch %.3f  roll %.3f  %s  %s%s"
+          % (row["gs_y"], row["gs_x"], inset_text(row["permille"]), note,
+             turn_suffix(conf)))
     if args.apply:
-        applied = for_the_mount(args.warp, row["permille"])
+        applied = for_the_mount(args.warp, row["permille"], mode)
         warp_apply(args.warp, applied)
         write_last_auto(args.last_auto, applied)
         print("ok applied through %s" % args.warp)
@@ -714,16 +789,20 @@ def do_watch(args, conf, ini):
                     # a reference taken since the start (the page's button)
                     # counts from this apply on; the start said a refusal once
                     reference, note = load_reference(args.reference, conf, True)
-                    reference, note = reference_for_mount(args.warp, reference, note)
-                    row = chain(raw, conf, reference, ini)
+                    mode = mount_mode(args.warp)
+                    reference, note = reference_for_mount(args.warp, reference, note, mode)
+                    # the turn as the page has set it since the unit started
+                    now_conf = dict(conf, turn_to_wall=read_turn(args.config, conf["turn_to_wall"]))
+                    row = chain(raw, now_conf, reference, ini, mode)
                     rest = angles = (row["gs_x"], row["gs_y"])   # re-based on it
                     if not args.dry_run:
-                        applied = for_the_mount(args.warp, row["permille"])
+                        applied = for_the_mount(args.warp, row["permille"], mode)
                         warp_apply(args.warp, applied)
                         write_last_auto(args.last_auto, applied)
-                    print("ok apply  pitch %.3f  roll %.3f  %s%s  %s"
+                    print("ok apply  pitch %.3f  roll %.3f  %s%s  %s%s"
                           % (row["gs_y"], row["gs_x"], inset_text(row["permille"]),
-                             "  (dry run)" if args.dry_run else "", note))
+                             "  (dry run)" if args.dry_run else "", note,
+                             turn_suffix(now_conf)))
                     if conf["after_move"] == "keystone+focus" and not args.dry_run:
                         try:
                             proc = subprocess.run(conf["focus_command"].split(),
@@ -746,7 +825,8 @@ def do_watch(args, conf, ini):
 def do_run(args, conf, ini):
     sensor = open_sensor(args, conf)
     reference, note = load_reference(args.reference, conf, args.quiet)
-    reference, note = reference_for_mount(args.warp, reference, note)
+    mode = mount_mode(args.warp)      # asked once: `run` is for experiments
+    reference, note = reference_for_mount(args.warp, reference, note, mode)
     saved = None if args.dry_run else warp_read_set(args.warp)
     if saved is None and not args.dry_run and not args.quiet:
         _stderr("warning: %s ctl status did not report eight values -- there "
@@ -757,13 +837,14 @@ def do_run(args, conf, ini):
     gate = Hysteresis(conf["hysteresis_degrees"], conf["hold_seconds"])
     try:
         while not stopped:
-            row = reading(sensor, conf, reference, ini)
+            row = reading(sensor, conf, reference, ini, mode)
             if gate.update((row["gs_x"], row["gs_y"]), time.monotonic()):
                 if not args.dry_run:
-                    warp_apply(args.warp, for_the_mount(args.warp, row["permille"]))
-                print("ok apply  pitch %.3f  roll %.3f  %s%s  %s"
+                    warp_apply(args.warp, for_the_mount(args.warp, row["permille"], mode))
+                print("ok apply  pitch %.3f  roll %.3f  %s%s  %s%s"
                       % (row["gs_y"], row["gs_x"], inset_text(row["permille"]),
-                         "  (dry run)" if args.dry_run else "", note))
+                         "  (dry run)" if args.dry_run else "", note,
+                         turn_suffix(conf)))
             deadline = time.monotonic() + POLL_S
             while not stopped and time.monotonic() < deadline:
                 time.sleep(0.02)
@@ -811,6 +892,7 @@ def do_status(args, conf, ini):
                         "camprjspe.ini" if conf["throw_ratio"] is None
                         else "measured, from the configuration",
                         conf["zoom_scale"], ZOOM_WIDTH[conf["zoom_scale"]]))
+    print("wall turn       %s" % turn_text(conf["turn_to_wall"]))
     print("loop            %.2f degrees held for %.2f s, poll %.2f s"
           % (conf["hysteresis_degrees"], conf["hold_seconds"], POLL_S))
     print("after a move    %s (more than %.1f degrees, then %.1f s still)"

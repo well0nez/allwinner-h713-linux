@@ -638,8 +638,10 @@ class Commands(unittest.TestCase):
         sets = [c for c in calls if c[0] == "keystone"]
         self.assertEqual(sets[0], ["keystone", "set", "tl", "x", "60"])
         self.assertEqual(len(sets), 8)
-        # the mount is asked for twice: the reference rule and the permutation
-        self.assertEqual([c for c in calls if c[0] == "status"], [["status"]] * 2)
+        # the mount is asked for once and shared by the reference rule, the
+        # sign of the turn to the wall and the permutation (a status is a
+        # process of its own on the board, and every one of them is time)
+        self.assertEqual([c for c in calls if c[0] == "status"], [["status"]])
         self.assertEqual(ks.read_last_auto(last_auto),
                          (60, 0, 47, 37, 0, 76, 11, 34))
 
