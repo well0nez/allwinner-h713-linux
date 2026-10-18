@@ -59,6 +59,7 @@ class Tv:
 
     def __init__(self):
         self.volume, self.muted, self.mode = 50, False, "auto"
+        self.signal = "signal          1920x1080p59.94, 148.4 MHz (last measured)\n"
 
     def __call__(self, line):
         w = line.split()
@@ -73,8 +74,8 @@ class Tv:
             self.muted = w[1] == "on"
             return "ok mute %s\n" % w[1]
         if line == "status brief":
-            return ("ok status\nmode            %s\nsignal          1920x1080p59.94, 148.4 MHz (last measured)\n"
-                    % ("automatic" if self.mode == "auto" else "off (console forced)"))
+            return ("ok status\nmode            %s\n%s"
+                    % ("automatic" if self.mode == "auto" else "off (console forced)", self.signal))
         if line in ("off", "auto"):
             self.mode = line
             return "ok %s\n" % line
@@ -370,6 +371,22 @@ class KeysTest(unittest.TestCase):
                 return f.read().splitlines()
         except OSError:
             return []
+
+    def test_the_header_follows_the_signal_while_the_launcher_is_open(self):
+        # the start's launcher came before the signal and said "HDMI no signal" over a standing 1080p60 (HY310, 18.10.2026)
+        self.launcher_d()
+        self.tv.signal = "signal          none\n"
+        launcher = self.mod.Launcher()
+        self.assertTrue(launcher.open({}))
+        self.assertTrue(self.osds.lines[-1].startswith("launcher 0;HDMI no signal;"), self.osds.lines)
+        n = len(self.osds.lines)
+        launcher.header_follow()
+        self.assertEqual(len(self.osds.lines), n)                    # the same signal: nothing sent
+        self.tv.signal = "signal          1920x1080p59.94, 148.4 MHz (last measured)\n"
+        launcher.header_follow()
+        self.assertEqual(self.osds.lines[-1], "launcher 0;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby")
+        launcher.header_follow()
+        self.assertEqual(len(self.osds.lines), n + 1)                # and once only
 
     def test_home_opens_the_launcher_and_holds_the_remote(self):
         self.launcher_d()

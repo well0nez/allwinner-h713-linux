@@ -84,6 +84,7 @@ CGROUPS = "sys/fs/cgroup/system.slice"      # a unit that has a cgroup there is 
 LAST_MODE = "var/lib/h713-keys/last-mode"   # "hdmi" or the unit that ran last (StateDirectory=h713-keys)
 REOPEN_S = 5.0                              # how long the launcher is tried again after a way back (h713-osd may still show the page it left)
 REOPEN_RETRY_S = 0.1
+SIGNAL_RECHECK_S = 1.0                      # how often an open launcher asks h713-tv which signal its header names ("status brief": nothing read back)
 FALLBACK = object()                         # select: the entry that is `fallback` (HDMI input)
 SHOWN = {}                                  # command -> (time, answer) of check()
 REPEAT = (500, 125)                         # ms: rc-core's, what the IR receiver repeats with (read 11.10., G-EU)
@@ -381,6 +382,7 @@ class Launcher:
         self.reopen = None                   # the launcher is to open again: {"select", "until", "next"}
         self.started = float("-inf")         # when it last started a mode unit (the mode watch does not judge the switch)
         self.snap = None                     # the entries, the entry that runs and the signal as the last full open found them
+        self.sig_next = 0.0                  # the next look at the signal while the launcher is open (header_follow)
 
     def open(self, devices, quiet=False, select=None, fast=False):
         """The page, with the entry `select` (its id; FALLBACK: HDMI input) chosen - none: the one that runs. The header says what runs.
@@ -412,6 +414,7 @@ class Launcher:
             quiet or log("Home: no launcher - h713-osd says %s" % (answer.strip() or "nothing (not running?)"))
             return False
         self.entries, self.sel, self.last, self.held = entries, cur, time.monotonic(), False
+        self.sig_next = self.last + SIGNAL_RECHECK_S     # not at once: the way back asks h713-tv nothing it does not need
         log("launcher open: %d entries, %s selected" % (len(entries), entries[cur]["label"]))
         return True
 
@@ -526,6 +529,23 @@ class Launcher:
         if self.osd("launcher %d;%s;%s" % (fall, now, self.rows), devices):
             self.sel = fall
 
+    def header_follow(self):
+        """The header names the signal the launcher opened with. At the start the launcher comes before the signal, and over a standing
+        1080p60 it said "HDMI no signal" until it was opened again (HY310, 18.10.2026). A changed signal defines the launcher anew,
+        same rows, same selection; an entry whose header names no signal is left alone."""
+        if not self.snap:
+            return
+        signal = signal_text()
+        if signal == self.snap["signal"]:
+            return
+        e = self.entries[self.snap["act"]]
+        old = e.get("now", e["label"]).replace("{signal}", self.snap["signal"])
+        self.snap["signal"] = signal
+        now = e.get("now", e["label"]).replace("{signal}", signal)
+        if now != old:
+            ctl(OSD_SOCK, "launcher %d;%s;%s" % (self.sel, now, self.rows), quiet=True)
+            log("launcher: the header follows the signal - %s" % now)
+
     def tick(self, devices):
         now, s = time.monotonic(), self.starting
         self.way_back(devices, now)
@@ -534,9 +554,13 @@ class Launcher:
             if now > s["until"] or (check(s["entry"].get("active")) and check(s["entry"]["wait"])):
                 log("launcher: %s %s" % (s["entry"]["label"], "has its picture" if now <= s["until"] else "shows nothing after %d s" % START_WAIT_S))
                 self.close(devices)
-        elif self.entries is not None and now - self.last > LAUNCHER_IDLE_S:
-            log("launcher closed: no key for %d s" % LAUNCHER_IDLE_S)
-            self.close(devices)
+        else:
+            if not s and self.entries is not None and now >= self.sig_next:
+                self.sig_next = now + SIGNAL_RECHECK_S
+                self.header_follow()
+            if self.entries is not None and now - self.last > LAUNCHER_IDLE_S:
+                log("launcher closed: no key for %d s" % LAUNCHER_IDLE_S)
+                self.close(devices)
 
 
 def mode_units():
