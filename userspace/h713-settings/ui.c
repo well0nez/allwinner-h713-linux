@@ -395,11 +395,23 @@ static double row_y(int k)
 static void slider_value(const struct row *r, double x0, double xnum, double y, float a)
 {
 	double f = r->max > r->min ? (double)(r->val - r->min) / (r->max - r->min) : 0;
+	bool turn = r->tag && !strcmp(r->tag, "turn");
 	char t[24];
 
 	stroke(x0, y, x0 + 540, y, 6, BRIGHT, a * 0.5f);
-	stroke(x0, y, x0 + 540 * clampd(f, 0, 1), y, 6, BRIGHT, a);
-	snprintf(t, sizeof(t), r->tag && !strcmp(r->tag, "zoom") ? "%d %%" : "%d", r->val);
+	if (turn) {
+		/* a value on both sides of 0: the track fills from its middle, and the ends say which side of the picture is meant */
+		double mid = x0 + 270, to = x0 + 540 * clampd(f, 0, 1);
+
+		stroke(mid < to ? mid : to, y, mid < to ? to : mid, y, 6, BRIGHT, a);
+		stroke(mid, y - 16, mid, y + 16, 3, BRIGHT, a * 0.7f);
+		text(x0 - 12 - text_w("L", 24), y + 9, 24, a * 0.7f, "L", 0);
+		text(x0 + 540 + 14, y + 9, 24, a * 0.7f, "R", 0);
+		snprintf(t, sizeof(t), "%d\302\260", abs(r->val));
+	} else {
+		stroke(x0, y, x0 + 540 * clampd(f, 0, 1), y, 6, BRIGHT, a);
+		snprintf(t, sizeof(t), r->tag && !strcmp(r->tag, "zoom") ? "%d %%" : "%d", r->val);
+	}
 	text(xnum, y + 12, 32, a, t, 1);
 }
 
@@ -535,8 +547,8 @@ static void draw_slider_pill(const struct view *v)
 
 	foot_pill(920, 508, 60);
 	text(520, 934, 34, 1.0f, r->label, 0);
-	slider_value(r, 780, 1400, 922, 1.0f);
-	foot_line(1004, "Up/Down next slider    Left/Right change    OK or Back done");
+	slider_value(r, 780, r->tag && !strcmp(r->tag, "turn") ? 1432 : 1400, 922, 1.0f);	/* room for the R at the track's end */
+	foot_line(1004, r->hint ? r->hint : "Up/Down next slider    Left/Right change    OK or Back done");
 }
 
 static void draw_corner_hint(const struct view *v)
