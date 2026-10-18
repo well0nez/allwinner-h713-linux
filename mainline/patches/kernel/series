@@ -703,3 +703,4 @@
 0318-arm64-dts-h713-drop-the-av1-node-of-0024-that-no-driver-binds.patch
 0319-arm64-dts-h713-drop-the-iommu-comment-of-august-that-says-there-is-none.patch
 0320-rtc-sun6i-h713-take-the-rtc-s-32-khz-from-the-24-mhz-dcxo-like-the-vendor-kernel.patch
+0321-hid-h713-remote-the-ble-remote-s-focus-keys-are-the-other-way-round.patch
