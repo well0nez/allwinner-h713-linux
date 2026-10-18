@@ -69,8 +69,9 @@ TimeoutStopSec=10s
 ExecReload=/bin/kill -HUP $MAINPID
 
 # The program needs DRM master, the capture device, /dev/tty0 and
-# /sys/class/graphics/fb0/blank (to unblank the console) and -- for
-# "h713-tv ctl rpc" -- the debugfs node of cpu_comm. ProtectSystem=strict
+# /sys/class/graphics/fb0/blank (to unblank the console), /dev/mem and
+# /dev/cpu_comm (the firmware's white balance and colour management) and --
+# for "h713-tv ctl rpc" -- the debugfs node of cpu_comm. ProtectSystem=strict
 # leaves /dev, /proc and /sys writable and everything else read-only;
 # ProtectKernelTunables must therefore NOT be added (it would lock /sys away).
 # No new privileges.

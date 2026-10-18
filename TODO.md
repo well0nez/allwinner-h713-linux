@@ -315,7 +315,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       geht unter der Seite aus und an = die getönte Kante, nachmessen), P3 mit `want none` (kein Warten, Ring sofort), EDID ohne Deep Colour (720p-EDID),
       No-signal-Seite (720p). Je Paket die Zelle aus abnahme.sh, Kamera dort keine: Marcos Auge.
 - [ ] 2.96 **Wand nach dem Wecken** (`doku/215` §6): ~9 s Konsole, weil h713-tv mit der Display-Firmware neu startet. Zusammen mit V1 (Zustand
-      "geparkt" im hdmirx-Treiber) planen: h713-tv übersteht den MIPS-Neustart mit gehaltener Wand, oder die Konsole bleibt verdeckt. Verschoben (Marco 17.10.).
+      "geparkt" im hdmirx-Treiber) planen: h713-tv übersteht den MIPS-Neustart mit gehaltener Wand, oder die Konsole bleibt verdeckt. Verschoben (Marco 17.10.); Marco 18.10.: "kein Release-Hindernis - Kleinigkeit, muss man schauen, evtl. noch vor dem Release" - einplanen, wenn vor dem Release Platz ist, sonst danach.
 - [ ] 2.97 **P7: HDMI-Aufnahme parken** (`doku/215` §7): nach 5 min ohne HDMI an der Wand (Programm, Launcher, Settings, kein Signal)
       `THal_Vp_SetSource(1)`, zurück mit "Switching to HDMI..."; vorher V1, HDCP 2.2 mit Fire TV nach dem Rückweg (mit Marco). Verschoben (Marco 17.10.).
 - [ ] 2.98 Klein, aus den Prüfungen von Mythos: Power über der No-signal-Seite mit Countdown wie über dem Launcher (Entscheidung Aufsicht 17.10., Marco 18.10.: "Power-Taste wie immer, ja"; h713-osd behandelt `lau.nosig` beim Power-Befehl als gesehen - heute antwortet die Seite `ok unseen`, weil `osd picture` unter ihr `none` ist; `handle()`, Zweig "power");
@@ -326,6 +326,19 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       rend5 gegen rend6; Hypothese: unsichtbare Arbeit (Warp unter Seiten, Programme dahinter) war eine Lastquelle für die Lichtkopplung.
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
+- [ ] 2.100 **Weißabgleich und Farbmanagement (bm-wb2): Marcos Wandtest mit diesem Code** (Auflage C aus Mythos' Prüfung, `arbeit/medien/bm-wb2/`):
+      Settings > White balance (Warm - Cool, Green - Magenta), Colour (Gelb Hue/Saturation), ein Bildmoduswechsel mit gesetztem Schritt, Reset. Der
+      Augentest vom 18.10. lief mit der Probe, nicht mit diesem Code; gleiche Register heißt gleiches Bild ist der Schluss, nicht die Messung.
+- [ ] 2.101 **Weißabgleich/Farbmanagement am HY300PRO-G-EU nachmessen** (bm-wb2, nur am HY310 gemessen): Deploy h713-tv + h713-settings (Sicherung
+      vorher); (1) `h713-tv ctl wb`: zeigt es `[not available: ...]`, ist seine display.bin eine andere (Adressen aus `bm-wb/BERICHT.md` §2 neu suchen,
+      `fwc_sig[]` in `main.c`); (2) `bm-wb2/skripte/regs.py`: +0x37100 trägt dort die PWM-Worte (5 1 40000 1 1 100), +0x37200 und +0x37300 leer, der
+      Break des Firmware-Allokators (Kopf +0x2D000, Wort 47 + Wort 45) unter +0x36000; (3) `ctl set wb_g_gain 563` -> `DC[11:0] = 0x8cc`;
+      `ctl set cm_yellow_hue 60` -> Achse 3 = Basis + 60, `cm reset` gibt den Anfang zurück; (4) Warp im Bypass: wirkt der Weißabgleich dort?;
+      (5) Warmstart und Standby mit gespeicherten Werten: Register gleich.
+- [ ] 2.102 Klein, aus Mythos' Prüfung von bm-wb2: der hdmirx-Treiber prüft beim Bind den Break des Firmware-Allokators für seine festen Plätze
+      (+0x36000 HDCP-Schlüssel, +0x37000, +0x37100; `dev_warn`), dazu die falschen Kommentare in 0094/0101 ("three doubles", "white balance is
+      already CTM") richtigstellen; h713-tv: den Abschnitt "The firmware's colour" beim nächsten h713-tv-Paket nach `color.c`; `docs/subsystems/
+      cpu-comm.md`: Layout des Heaps und der Messwert (18.10.2026 HY310: eine Seite vergeben, Break 0x4E333000).
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

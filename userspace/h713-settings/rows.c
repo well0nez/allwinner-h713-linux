@@ -3,12 +3,14 @@
  * The areas and their rows: what each one reads from a tool, and the one command it sends back. The page
  * (main.c, ui.c) knows nothing of h713-tv or h713-warp; this file knows nothing of pixels.
  *
- * What a tool cannot do has no row: no colour temperature or gamma (h713-tv has no runtime control for them),
+ * What a tool cannot do has no row: no colour temperature or gamma (h713-tv has no runtime control for them; the white
+ * balance and the colour by primary are the firmware's own, h713-tv wb / cm),
  * no sound output choice (one output), no autofocus at power-on (nothing runs it), no list of saved Wi-Fi
  * networks (wifi.env holds one). The report lists them.
  */
 #define _GNU_SOURCE
 #include <ctype.h>
+#include <math.h>
 #include <dirent.h>
 #include <signal.h>
 #include <stdio.h>
@@ -271,6 +273,191 @@ static void picture_enter(struct area *a)
 	}
 }
 
+/* --- White balance and Colour: the firmware's own (h713-tv ctl wb, ctl cm) --------------------------------- */
+
+/*
+ * Two sliders for the eye, no instrument: "Warm - Cool" and "Green - Magenta", -50..+50. They only ever LOWER a gain
+ * (so white never clips): cool lowers red, warm lowers blue, magenta lowers green, green lowers red and blue; each end is
+ * 20 % off (s = 0.004 per step). The six values go to h713-tv in one command; the offsets stay as they are.
+ */
+#define WB_S 0.004
+
+static struct row *r_wb_warm, *r_wb_tint, *r_wb_gone;
+static int wb_off[3] = { 512, 512, 512 };	/* the offsets h713-tv holds: the sliders do not touch them */
+
+static void wb_gains(int w, int t, int g[3])
+{
+	double kr = (1 - WB_S * (w > 0 ? w : 0)) * (1 - WB_S * (t < 0 ? -t : 0));
+	double kg = 1 - WB_S * (t > 0 ? t : 0);
+	double kb = (1 - WB_S * (w < 0 ? -w : 0)) * (1 - WB_S * (t < 0 ? -t : 0));
+
+	g[0] = (int)lround(512 * kr);
+	g[1] = (int)lround(512 * kg);
+	g[2] = (int)lround(512 * kb);
+}
+
+/* the sliders a set of gains would have come from (to the nearest step); 0, 0 for gains the sliders cannot make */
+static void wb_positions(const int g[3], int *w, int *t)
+{
+	double r = g[0] / 512.0, gg = g[1] / 512.0, b = g[2] / 512.0, f, tt, ww;
+
+	*w = *t = 0;
+	if (g[0] > 512 || g[1] > 512 || g[2] > 512)
+		return;
+	if (gg < 1) {				/* magenta: green is lowered, red and blue only by the warm/cool slider */
+		tt = (1 - gg) / WB_S;
+		ww = r < 1 ? (1 - r) / WB_S : b < 1 ? -(1 - b) / WB_S : 0;
+	} else {				/* green or none: red and blue share the factor (1 - s|t|) */
+		f = r > b ? r : b;
+		tt = -(1 - f) / WB_S;
+		ww = f > 0 ? (r < b ? (1 - r / f) / WB_S : b < r ? -(1 - b / f) / WB_S : 0) : 0;
+	}
+	*t = clampi((int)lround(tt), -50, 50);
+	*w = clampi((int)lround(ww), -50, 50);
+}
+
+static bool wb_send(void)
+{
+	int g[3];
+
+	wb_gains(r_wb_warm->val, r_wb_tint->val, g);
+	return tv("wb %d %d %d %d %d %d", g[0], g[1], g[2], wb_off[0], wb_off[1], wb_off[2]);
+}
+
+static void wb_slider_apply(struct row *r, int dir)
+{
+	int old = r->val, v = clampi(r->val + dir * r->step, r->min, r->max);
+
+	if (v == old)
+		return;
+	r->val = v;
+	if (!wb_send()) {
+		r->val = old;
+		return;
+	}
+	picture_dirty();
+}
+
+static void wb_reset(struct row *r, int dir)
+{
+	(void)dir;
+	if (tv("wb reset")) {
+		r_wb_warm->val = r_wb_tint->val = 0;
+		wb_off[0] = wb_off[1] = wb_off[2] = 512;
+		picture_save();
+		snprintf(r->text, sizeof(r->text), "Done");
+	} else {
+		snprintf(r->text, sizeof(r->text), "Failed");
+	}
+}
+
+static void wb_enter(struct area *a)
+{
+	int v[6], g[3];
+	bool there = tv("wb") && !strstr(reply, "not available") &&
+		     sscanf(reply, "ok wb %d %d %d %d %d %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6;
+
+	for (int i = 0; i < a->n; i++)
+		a->row[i].hidden = there ? &a->row[i] == r_wb_gone : &a->row[i] != r_wb_gone;
+	if (!there)
+		return;
+	g[0] = v[0], g[1] = v[1], g[2] = v[2];
+	wb_off[0] = v[3], wb_off[1] = v[4], wb_off[2] = v[5];
+	wb_positions(g, &r_wb_warm->val, &r_wb_tint->val);
+	a->row[2].text[0] = '\0';
+}
+
+#ifdef H713_TEST
+/* the host test sweeps the whole range: the lowest gain the sliders make, and the worst distance a position comes back from */
+void test_wb_sweep(int *lowest, int *worst, int *worst_w, int *worst_t)
+{
+	*lowest = 512;
+	*worst = 0;
+	for (int w = -50; w <= 50; w++)
+		for (int t = -50; t <= 50; t++) {
+			int g[3], w2, t2, d;
+
+			wb_gains(w, t, g);
+			for (int i = 0; i < 3; i++)
+				if (g[i] < *lowest)
+					*lowest = g[i];
+			wb_positions(g, &w2, &t2);
+			d = abs(w2 - w) > abs(t2 - t) ? abs(w2 - w) : abs(t2 - t);
+			if (d > *worst) {
+				*worst = d;
+				*worst_w = w;
+				*worst_t = t;
+			}
+		}
+}
+#endif
+
+/*
+ * Colour by primary: one choice of the colour, then its hue and its saturation, as a step on what the picture mode itself
+ * puts there (0 = as the board comes). Six of the firmware's ten axes are offered: the primaries and secondaries.
+ */
+static struct row *r_cm_prim, *r_cm_hue, *r_cm_sat, *r_cm_gone;
+
+static const char *cm_axis(void)
+{
+	return r_cm_prim->arg[r_cm_prim->val];
+}
+
+/* the two sliders as h713-tv holds them for the chosen colour */
+static void cm_load(void)
+{
+	int h = 0, sa = 0;
+	char *p;
+
+	if (tv("cm %s", cm_axis()) && (p = strstr(reply, "hue ")))
+		sscanf(p, "hue %d sat %d", &h, &sa);
+	r_cm_hue->val = clampi(h, r_cm_hue->min, r_cm_hue->max);
+	r_cm_sat->val = clampi(sa, r_cm_sat->min, r_cm_sat->max);
+}
+
+static void cm_prim_apply(struct row *r, int dir)
+{
+	(void)r;
+	(void)dir;
+	cm_load();
+}
+
+static void cm_slider_apply(struct row *r, int dir)
+{
+	int old = r->val, v = clampi(r->val + dir * r->step, r->min, r->max);
+
+	if (v == old)
+		return;
+	r->val = v;
+	if (!tv("set cm_%s_%s %d", cm_axis(), r->tag, v)) {
+		r->val = old;
+		return;
+	}
+	picture_dirty();
+}
+
+static void cm_reset(struct row *r, int dir)
+{
+	(void)dir;
+	if (tv("cm reset")) {
+		r_cm_hue->val = r_cm_sat->val = 0;
+		picture_save();
+		snprintf(r->text, sizeof(r->text), "Done");
+	} else {
+		snprintf(r->text, sizeof(r->text), "Failed");
+	}
+}
+
+static void cm_enter(struct area *a)
+{
+	bool there = tv("wb") && !strstr(reply, "not available");	/* the same machinery as the white balance */
+
+	for (int i = 0; i < a->n; i++)
+		a->row[i].hidden = there ? &a->row[i] == r_cm_gone : &a->row[i] != r_cm_gone;
+	if (there)
+		cm_load();
+}
+
 /* --- Keystone ------------------------------------------------------------------------------------------------ */
 
 static const char *const corner_name[4] = { "tl", "tr", "bl", "br" };
@@ -342,7 +529,7 @@ static void keystone_reset(struct row *r, int dir)
 	warp("keystone reset");
 	warp("zoom 100");
 	memset(corner_v, 0, sizeof(corner_v));
-	areas[1].enter(&areas[1]);
+	areas[AREA_KEYSTONE].enter(&areas[AREA_KEYSTONE]);
 	snprintf(r->text, sizeof(r->text), "Done");
 }
 
@@ -779,6 +966,43 @@ void rows_init(void)
 	r->apply = aspect_apply, r->more = true;
 	r = new_row(a, "Reset picture", R_ACTION);
 	r->apply = picture_reset;
+
+	a = &areas[nareas++];
+	a->name = "White balance", a->icon = "pic", a->enter = wb_enter;
+	r_wb_warm = r = slider(a, "Warm - Cool", "wb_warm", 2, wb_slider_apply);
+	r->min = -50, r->max = 50;
+	r->note = "Left: warmer, less blue. Right: cooler, less red. Judged on the picture.";
+	r_wb_tint = r = slider(a, "Green - Magenta", "wb_tint", 2, wb_slider_apply);
+	r->min = -50, r->max = 50;
+	r->note = "Left: greener. Right: more magenta. Judged on the picture.";
+	r = new_row(a, "Reset", R_ACTION);
+	r->apply = wb_reset;
+	r_wb_gone = r = info(a, "White balance");
+	snprintf(r->text, sizeof(r->text), "Not available");
+	r->hidden = true;
+
+	a = &areas[nareas++];
+	a->name = "Colour", a->icon = "pic", a->enter = cm_enter;
+	r_cm_prim = r = new_row(a, "Primary colour", R_CHOICE);
+	r->apply = cm_prim_apply, r->more = true;
+	add_opt(r, "red", "Red");
+	add_opt(r, "yellow", "Yellow");
+	add_opt(r, "green", "Green");
+	add_opt(r, "cyan", "Cyan");
+	add_opt(r, "blue", "Blue");
+	add_opt(r, "purple", "Purple");
+	r->val = 1;				/* Yellow: the one that is judged most often */
+	r_cm_hue = r = slider(a, "Hue", "hue", 5, cm_slider_apply);
+	r->min = -100, r->max = 100;
+	r->note = "Turns this colour towards its neighbour on one side or the other. Other colours and white stay.";
+	r_cm_sat = r = slider(a, "Saturation", "sat", 5, cm_slider_apply);
+	r->min = -100, r->max = 100;
+	r->note = "Makes this colour paler or stronger. Other colours and white stay.";
+	r = new_row(a, "Reset", R_ACTION);
+	r->apply = cm_reset;
+	r_cm_gone = r = info(a, "Colour");
+	snprintf(r->text, sizeof(r->text), "Not available");
+	r->hidden = true;
 
 	a = &areas[nareas++];
 	a->name = "Keystone", a->icon = "trap", a->enter = keystone_enter;

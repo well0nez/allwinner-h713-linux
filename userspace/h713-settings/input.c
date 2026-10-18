@@ -82,7 +82,9 @@ static void discover(void)
 		closedir(d);
 }
 
-/* the devices to hold: H713_SETTINGS_INPUT = a comma-separated list of files (the tests: FIFOs, which cannot be grabbed) */
+/* the devices to hold: H713_SETTINGS_INPUT = a comma-separated list of files (the tests: FIFOs, which cannot be grabbed).
+ * Opened read-write: a FIFO without a writer reports POLLHUP for ever, and the loop would spin between two keys (12 s of
+ * CPU in 40 s, Mythos 18.10.2026); holding a writer ourselves keeps poll() asleep until the next key. */
 int input_open(void)
 {
 	const char *list = getenv("H713_SETTINGS_INPUT");
@@ -92,7 +94,7 @@ int input_open(void)
 
 		snprintf(buf, sizeof(buf), "%s", list);
 		for (char *p = strtok_r(buf, ",", &save); p && nfd < MAXDEV; p = strtok_r(NULL, ",", &save))
-			if ((fd[nfd] = open(p, O_RDONLY | O_NONBLOCK | O_CLOEXEC)) >= 0)
+			if ((fd[nfd] = open(p, O_RDWR | O_NONBLOCK | O_CLOEXEC)) >= 0)
 				nfd++;
 		return nfd;
 	}

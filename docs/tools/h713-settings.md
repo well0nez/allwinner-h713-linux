@@ -4,7 +4,7 @@ The page Android calls "Settings", in the style of the overlays: the areas on th
 right, white lines on an **opaque**, calm, dark ground (over a picture a translucent page cannot be read), driven by the remote.
 Everything is inside a safe margin of 5 % on each side (96 px left and right, 54 px top and bottom at 1080p; a test measures
 every page against it). While a value that is judged on the picture is adjusted - Brightness, Contrast, Colour, Tint, Sharpness,
-Zoom, the corners by hand - the page is **one pill at the foot over the real picture** (the mockup v1's S2), so that the effect can be seen. The launcher's entry "Settings" opens it
+the white balance and the colour of a primary, Zoom, the corners by hand - the page is **one pill at the foot over the real picture** (the mockup v1's S2), so that the effect can be seen. The launcher's entry "Settings" opens it
 (`/etc/h713/launcher.d/50-settings.conf`, which starts it as the transient unit `h713-settings` - its journal is kept and a second OK
 cannot start a second page), Back at the top level closes it and **the launcher opens again, Settings chosen** (Home closes everything: the mode is on the wall). Everything the box can do from a shell with
 `h713-... ctl` is reachable here, and **every row is one existing command or one `key = value` of a file in `/etc/h713`**:
@@ -77,6 +77,10 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | | Picture mode | `ctl preset` without a name lists this device's presets; `ctl status` says the current one | `ctl preset NAME`, then the sliders are read again | as above |
 | | Aspect ratio | `ctl aspect` (the list without `zoom`, which the firmware refuses) | `ctl aspect NAME` | `ctl save` |
 | | Reset picture | | `ctl preset standard`, `ctl aspect auto`, `ctl save` | |
+| White balance | Warm - Cool, Green - Magenta (-50..+50, steps of 2) | `ctl wb`: the six values; where they are not the ones the two sliders make, both show 0 | `ctl wb R G B 512 512 512`, all six in one call (the offsets as `h713-tv` holds them) | `ctl save` once the hand has rested for 1.5 s and when the page closes |
+| | Reset | | `ctl wb reset`, `ctl save` | |
+| Colour | Primary colour (Red, Yellow, Green, Cyan, Blue, Purple), Hue, Saturation (-100..+100, steps of 5) | `ctl cm AXIS` | `ctl set cm_AXIS_hue N` / `cm_AXIS_sat N`: a step on the picture mode's own value | as above |
+| | Reset | | `ctl cm reset` (every colour), `ctl save` | |
 | Keystone | Auto keystone | `after_move` in `keystone.conf` | `after_move = keystone \| off`, then `systemctl restart h713-keystone-auto` | the file |
 | | Measure again now | | `h713-keystone once --apply` | |
 | | Adjust corners by hand | `warp.conf` | `h713-warp ctl keystone nudge CORNER AXIS ±10`, `ctl test mask CORNER` while it is open | h713-warp itself (it rewrites `warp.conf` at every change) |
@@ -94,13 +98,17 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | Wi-Fi | Mode, Network, Signal, Address | `wifi.env` (never the password), `iw dev wlan0 link`, `ip -4 addr` | nothing: shown only | |
 
 Rows of hardware the board does not have (`h713-features status`: camera, accelerometer, focus motor) are hidden, not
-greyed out.
+greyed out. So are the White balance and Colour rows where `ctl wb` says `[not available: ...]` (another display firmware, or no
+`/dev/mem`): the area then shows one line, "Not available". There are nine areas since 18.10.2026; the left column keeps the pitch
+of the rows (94 design pixels) and the key hint at the foot stands under the note, so that the last area's pill stays clear of it.
+The white balance sliders only ever lower a gain (cool lowers red, warm lowers blue, magenta lowers green, green lowers red and
+blue), 0.4 % per step, so white never clips; at one end that is 20 % off, with both sliders at the same end up to 36 %.
 
 ## What is not here, and why
 
 | Wanted | Why not |
 |---|---|
-| Colour temperature, Gamma | `h713-tv` has no runtime control for either (the curve is loaded once at the start) |
+| Colour temperature, Gamma | `h713-tv` has no runtime control for either (the curve is loaded once at the start); the white balance rows are the firmware's own gains, not a colour temperature preset |
 | Sound output | the box has one sound path; `h713-tv ctl audio auto \| on \| off` is a policy, not an output |
 | Autofocus after switching on | nothing runs the autofocus at power-on; "after a move" is what exists |
 | Source (Automatic / HDMI only) | no row since 17.10.2026 (the owner): which of the two is on the wall is not a thing to choose - a program that runs is on the wall, with none it is the HDMI input. "HDMI only" undid itself with the next Kodi start, and "Automatic" read as if it had to do with the start. `h713-tv ctl source` stays a tool for tests and the web page |

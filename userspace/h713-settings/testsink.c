@@ -2,7 +2,7 @@
 /*
  * The host's sink, compiled in only with -DH713_TEST (never into the board's binary): keys as lines on stdin (up down left
  * right ok back home power volup voldown mute focusup focusdown), and the commands of the tests - "dump" (the model as text,
- * ending with "--"), "snap FILE" (the canvas as PAM), "sleep MS". A command is an event of its own, so that it runs after
+ * ending with "--"), "snap FILE" (the canvas as PAM), "sleep MS", "wbsweep" (the white balance mapping over its whole range). A command is an event of its own, so that it runs after
  * the keys before it have been carried out.
  */
 #define _GNU_SOURCE
@@ -16,6 +16,8 @@
 #include "ui.h"
 
 extern long test_outside;			/* main.c: pixels changed outside the reported pieces */
+
+void test_wb_sweep(int *lowest, int *worst, int *worst_w, int *worst_t);	/* rows.c */
 
 extern struct view v;
 extern struct osd_canvas canvas;
@@ -102,4 +104,11 @@ void test_command(void)
 		snap(cmdline + 5);
 	else if (!strncmp(cmdline, "sleep ", 6))
 		usleep((useconds_t)atoi(cmdline + 6) * 1000);
+	else if (!strcmp(cmdline, "wbsweep")) {
+		int lowest, worst, ww = 0, wt = 0;
+
+		test_wb_sweep(&lowest, &worst, &ww, &wt);
+		printf("wbsweep lowest %d worst %d at %d %d\n--\n", lowest, worst, ww, wt);
+		fflush(stdout);
+	}
 }
