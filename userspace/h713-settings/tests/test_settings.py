@@ -647,6 +647,25 @@ class WhiteBalance(Base):
         self.assertEqual(b.tv.saved, 1)                             # and kept: a reset is a decision
         b.finish()
 
+    def test_done_goes_with_the_area(self):
+        # Marco 18.10.2026: "Reset done" stayed after a change of area (Colour and Picture; White balance cleared it itself)
+        b = self.box().start("Colour")
+        b.keys("ok", "down", "down", "down", "ok")                  # Reset
+        self.assertIn('Reset action "Done"', b.dump())
+        b.keys("back", "down", "up")                                # the area list, the next area, Colour again
+        d = b.dump()
+        self.assertIn("Primary colour", d)
+        self.assertNotIn('Reset action "Done"', d)
+        b.finish()
+        b.start("Picture")
+        b.keys("ok", *["down"] * 7, "ok")                           # Reset picture
+        self.assertIn('Reset picture action "Done"', b.dump())
+        b.keys("back", "down", "up")
+        d = b.dump()
+        self.assertIn("Brightness slider", d)
+        self.assertNotIn('Reset picture action "Done"', d)
+        b.finish()
+
     def test_what_was_moved_is_kept_when_the_hand_rests(self):
         b = self.box().start("White balance")
         b.keys("ok", "right")

@@ -887,6 +887,18 @@ static void wifi_enter(struct area *a)
 
 void rows_enter(int i)
 {
+	/*
+	 * What an action said after it ran ("Done", "Failed") belongs to that visit of its area: leaving the area clears it
+	 * (Marco 18.10.2026: "Reset done" was still there after a change of area). A job that still runs keeps its line; one
+	 * that ends while its area is not open shows its result on the next visit, once.
+	 */
+	if (active >= 0 && active != i)
+		for (int k = 0; k < areas[active].n; k++) {
+			struct row *r = &areas[active].row[k];
+
+			if (r->kind == R_ACTION && !(job.pid > 0 && job.row == r))
+				r->text[0] = 0;
+		}
 	active = i;
 	if (areas[i].enter)
 		areas[i].enter(&areas[i]);
