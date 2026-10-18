@@ -8,6 +8,9 @@ boards that somebody has actually tested. No vendor source
 code, no vendor Android: the boards' own firmware was reverse-engineered until the display, the HDMI input,
 the sound and the motor could be driven from Linux.
 
+> **Disclaimer:** this code was written mainly in collaboration with AI and needs a complete review and refactor.
+> Please keep that in mind at this stage.
+
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/well0nez)
 
 > **Working on this repository, as a person or as an agent?** Start at [AGENTS.md](AGENTS.md): where which kind of knowledge lives, which tools are mandatory, which gates have to be green, and what to do with a new finding.

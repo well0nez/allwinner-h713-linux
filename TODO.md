@@ -18,7 +18,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
    **e (Lizenzhinweise und Quelltextangebot im Abbild) ist für jedes verteilte Abbild Pflicht**, unabhängig von cstenger (Kernel/U-Boot
    GPL, mesa MIT, TF-A/crust BSD). Nachgeprüft 17.10.: cstengers Repo hat weiter keine Lizenz für seine eigenen Dateien (kein LICENSE,
    README ohne Lizenz; `PROVENANCE.md` dort nennt nur die Lizenzen der Fremdteile und unsere Kernel-Patches als GPL-2.0).
-5. **Doku-Runde 7.19 als komplette Überarbeitung - macht Mythos ganz (Marco 17.10.2026):** alles Neue und Geänderte seit v0.96 (Einblendungen/OSD, Launcher, Einstellungen,
+5. **Doku-Runde 7.19 als komplette Überarbeitung - macht Mythos ganz (Marco 17.10.2026):** der Hinweis oben in `README.md` ("Disclaimer: ... written mainly in collaboration with AI and needs a complete review and refactor", Marco 19.10.2026) bleibt stehen; alles Neue und Geänderte seit v0.96 (Einblendungen/OSD, Launcher, Einstellungen,
    Kodi, Desktop/Browser, Warp-Server, Standby/crust, RTC), fehlende Seiten (`h713-remote-pair`, `h713-cpufreq`), README, STATUS,
    known-issues; zum Schluss die Release-Seite aus Fremdensicht.
 6. **Die übrigen Release-Punkte:** 1.2a (Journal persistent), 1.2b (Installer übernimmt `/etc/h713`), 1.3 (ins Abbild), 1.9.
