@@ -337,7 +337,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (5) Warmstart und Standby mit gespeicherten Werten: Register gleich.
 - [ ] 2.102 Klein, aus Mythos' Prüfung von bm-wb2: der hdmirx-Treiber prüft beim Bind den Break des Firmware-Allokators für seine festen Plätze
       (+0x36000 HDCP-Schlüssel, +0x37000, +0x37100; `dev_warn`), dazu die falschen Kommentare in 0094/0101 ("three doubles", "white balance is
-      already CTM") richtigstellen; h713-tv: den Abschnitt "The firmware's colour" beim nächsten h713-tv-Paket nach `color.c`; `docs/subsystems/
+      already CTM") richtigstellen; h713-tv: den Abschnitt "The firmware's colour" beim nächsten h713-tv-Paket nach `color.c`, dabei die Break-Grenze in `fwc_slot_free()` auf `hn >= off - FWC_SMM_HEAD` (Break genau am Slot-Anfang: die nächste Vergabe nähme ihn; Mythos 18.10.) und den Test "a break exactly at the slot" umkehren; `docs/subsystems/
       cpu-comm.md`: Layout des Heaps und der Messwert (18.10.2026 HY310: eine Seite vergeben, Break 0x4E333000).
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
