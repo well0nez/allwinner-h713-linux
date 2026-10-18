@@ -318,7 +318,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       "geparkt" im hdmirx-Treiber) planen: h713-tv übersteht den MIPS-Neustart mit gehaltener Wand, oder die Konsole bleibt verdeckt. Verschoben (Marco 17.10.).
 - [ ] 2.97 **P7: HDMI-Aufnahme parken** (`doku/215` §7): nach 5 min ohne HDMI an der Wand (Programm, Launcher, Settings, kein Signal)
       `THal_Vp_SetSource(1)`, zurück mit "Switching to HDMI..."; vorher V1, HDCP 2.2 mit Fire TV nach dem Rückweg (mit Marco). Verschoben (Marco 17.10.).
-- [ ] 2.98 Klein, aus den Prüfungen von Mythos: Power über der No-signal-Seite mit Countdown wie über dem Launcher (Entscheidung Aufsicht 17.10.);
+- [ ] 2.98 Klein, aus den Prüfungen von Mythos: Power über der No-signal-Seite mit Countdown wie über dem Launcher (Entscheidung Aufsicht 17.10., Marco 18.10.: "Power-Taste wie immer, ja"; h713-osd behandelt `lau.nosig` beim Power-Befehl als gesehen - heute antwortet die Seite `ok unseen`, weil `osd picture` unter ihr `none` ist; `handle()`, Zweig "power");
       Start mit `edid =` ohne VIC-Beschnitt prüfen; abnahme.sh-Zelle ns-seite nach der Regel von p5-seiten; h713-osd: eine Einblendung in den
       0,2 s einer Seitenübergabe bricht sie ab (handover_until); K1 (getöntes Bild an der Kante NV16 -> NV12) nur noch am Dienstschalter `warp ctl on` -
       Marcos Augentest entscheidet.
