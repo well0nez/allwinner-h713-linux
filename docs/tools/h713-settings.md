@@ -4,7 +4,7 @@ The page Android calls "Settings", in the style of the overlays: the areas on th
 right, white lines on an **opaque**, calm, dark ground (over a picture a translucent page cannot be read), driven by the remote.
 Everything is inside a safe margin of 5 % on each side (96 px left and right, 54 px top and bottom at 1080p; a test measures
 every page against it). While a value that is judged on the picture is adjusted - Brightness, Contrast, Colour, Tint, Sharpness,
-the white balance and the colour of a primary, Zoom, the corners by hand - the page is **one pill at the foot over the real picture** (the mockup v1's S2), so that the effect can be seen. The launcher's entry "Settings" opens it
+the white balance and the colour of a primary, Zoom, Turn to wall, the corners by hand - the page is **one pill at the foot over the real picture** (the mockup v1's S2), so that the effect can be seen. The launcher's entry "Settings" opens it
 (`/etc/h713/launcher.d/50-settings.conf`, which starts it as the transient unit `h713-settings` - its journal is kept and a second OK
 cannot start a second page), Back at the top level closes it and **the launcher opens again, Settings chosen** (Home closes everything: the mode is on the wall). Everything the box can do from a shell with
 `h713-... ctl` is reachable here, and **every row is one existing command or one `key = value` of a file in `/etc/h713`**:
@@ -83,10 +83,11 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | | Reset | | `ctl cm reset` (every colour), `ctl save` | |
 | Keystone | Auto keystone | `after_move` in `keystone.conf` | `after_move = keystone \| off`, then `systemctl restart h713-keystone-auto` | the file |
 | | Measure again now | | `h713-keystone once --apply` | |
+| | Turn to wall (-30..+30 degrees) | `turn_to_wall` in `keystone.conf` | the key, then `h713-keystone once --apply`; one run at a time, a press during a run only changes the key and the run after it takes the last value | the file |
 | | Adjust corners by hand | `warp.conf` | `h713-warp ctl keystone nudge CORNER AXIS ±10`, `ctl test mask CORNER` while it is open | h713-warp itself (it rewrites `warp.conf` at every change) |
 | | Zoom (50-100 %) | `h713-warp ctl zoom` | `ctl zoom N` (and `ctl on` below 100, as the web page does) | h713-warp |
 | | Projection | `ctl mode` | `ctl mode front \| rear \| ceiling \| rear-ceiling` | h713-warp |
-| | Reset keystone | | `ctl keystone reset`, `ctl zoom 100` | h713-warp |
+| | Reset keystone | | `ctl keystone reset`, `ctl zoom 100`, `turn_to_wall = 0` | h713-warp, the file |
 | Sound | Volume, Mute | `h713-tv ctl volume`, `ctl mute` | `ctl volume N` (steps of 5), `ctl mute on \| off` | the sound card's own state; the volume survives a restart, mute does not (by decision: the box is audible after a start; `doku/212` §2) |
 | Focus | Autofocus now | | `h713-autofocus -q run` (the panel is the autofocus's for the length of the run) | |
 | | Autofocus after a move | `after_move` | `after_move = keystone+focus` (turns the automatic keystone on too) | the file |
@@ -103,6 +104,10 @@ greyed out. So are the White balance and Colour rows where `ctl wb` says `[not a
 of the rows (94 design pixels) and the key hint at the foot stands under the note, so that the last area's pill stays clear of it.
 The white balance sliders only ever lower a gain (cool lowers red, warm lowers blue, magenta lowers green, green lowers red and
 blue), 0.4 % per step, so white never clips; at one end that is 20 % off, with both sliders at the same end up to 36 %.
+
+## Turn to wall
+
+The sensor cannot see how far the projector stands turned to the side of the wall, so the row is a number set by eye: Right if the right side of the picture is the higher one, Left if the left side is (the pill shows L and R at the ends of its track, the middle is 0, and the number is the angle without a sign); one press is one degree, up to 30 each way. Every change writes `turn_to_wall` and runs `h713-keystone once --apply`, which takes the tilt from the sensor and the turn from the file and writes all eight corners, so the picture follows the keys, and the corners set by hand are replaced; it works with "Auto keystone" off as well, and with it on the automatic uses the value after every move. A run takes about two seconds on the HY310 (the sensor's reading, measured 19.10.2026), so there is never more than one: a press while one runs only changes the key, and the run after it takes the last value; when the page ends the last value is still applied. A run that fails is a line in the journal; "Reset keystone" sets the turn to 0, and the row is hidden on a board without an accelerometer. Not measured on the HY300PRO-G-EU.
 
 ## What is not here, and why
 
