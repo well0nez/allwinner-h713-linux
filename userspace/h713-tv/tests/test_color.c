@@ -159,6 +159,8 @@ static void machine_reset(void)
 	unlink(base_file);	/* the firmware's own values of the last run are not this machine's */
 	put(FWC_SHM_BASE + FWC_SHM_MAGIC1, FWC_SHM_MAGIC);
 	put(FWC_SHM_BASE + FWC_SHM_MAGIC2, FWC_SHM_MAGIC);
+	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 47, FWC_SHM_BASE + FWC_SMM_HEAD);	/* the HY310 18.10.2026: break at +0x33000 */
+	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, 0x6000);
 	for (i = 0; i < sizeof(fwc_sig) / sizeof(fwc_sig[0]); i++)
 		put_text(fwc_sig[i].phys, fwc_sig[i].text);
 	put(FWC_REG_WB_D4, 0);
@@ -433,6 +435,26 @@ int main(void)
 	fwc_set(&r, fwc_key("cm_yellow_hue"), "20");
 	check(r.failed && strstr(r.buf, "somebody else's") && calls_cm == 0 && nwlog == 0 && fwc.cm[9] == 0,
 	      "the same for the colour management slot");
+
+	/* the firmware's allocator has grown up to a slot */
+	machine_reset();
+	program_starts();
+	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, FWC_SHM_WB - FWC_SMM_HEAD + 0x100);
+	reply_clear(&r);
+	fwc_set(&r, 1, "600");
+	check(r.failed && strstr(r.buf, "grown over the slot") && calls_wb == 0 && nwlog == 0 && fwc.wb[1] == 512,
+	      "an allocator whose break is past the slot: not written, no call, the old value stays");
+	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, FWC_SHM_WB - FWC_SMM_HEAD);
+	reply_clear(&r);
+	fwc_set(&r, 1, "600");
+	check(!r.failed && calls_wb == 1, "a break exactly at the slot leaves it free");
+	machine_reset();
+	program_starts();
+	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 47, 0);
+	reply_clear(&r);
+	fwc_set(&r, 1, "600");
+	check(r.failed && strstr(r.buf, "not where it was read") && calls_wb == 0 && nwlog == 0,
+	      "an allocator that is not where it was read: refused");
 
 	/* the backlight PWM block of the receiver is never touched */
 	machine_reset();
