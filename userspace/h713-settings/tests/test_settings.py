@@ -59,6 +59,9 @@ class FakeTv(Ctl):
         self.preset, self.aspect, self.volume, self.mute, self.source = "standard", "auto", 90, False, "hdmi"
         self.saved, self.refuse_43 = 0, False
         self.nosignal = False                          # the page "No signal on HDMI" is on the wall (h713-tv's status line)
+        self.wb = [512] * 6                            # the firmware's white balance: R G B gain, R G B offset
+        self.cm = {}                                   # (axis, "hue"|"sat"|"value") -> step; 0 = not there
+        self.fw_color = True                           # False: "not available" (another firmware)
         super().__init__(path)
 
     def answer(self, line):
@@ -66,6 +69,37 @@ class FakeTv(Ctl):
         if w[0] == "list":
             rows = "".join("  %-26s %d  (0..100)\n" % (k, v) for k, v in self.c.items())
             return "ok controls\n" + rows + "  mode                       1 (standard)  menu 0..5\n"
+        if w[0] == "wb":
+            if len(w) == 1:
+                if not self.fw_color:
+                    return "ok wb %s [not available: not the display firmware these addresses were read from]\n" % " ".join(map(str, self.wb))
+                return "ok wb %s -- R G B gain, R G B offset; 512 is neutral\n" % " ".join(map(str, self.wb))
+            if not self.fw_color:
+                return "error wb: not the display firmware these addresses were read from\n"
+            if w[1] == "reset":
+                self.wb = [512] * 6
+            elif len(w) == 7 and all(x.isdigit() and 0 <= int(x) <= 1023 for x in w[1:]):
+                self.wb = [int(x) for x in w[1:]]
+            else:
+                return "error wb needs six numbers\n"
+            return "ok wb %s (registers read back, 0 ms)\n" % " ".join(map(str, self.wb))
+        if w[0] == "cm":
+            if not self.fw_color:
+                return "error cm: not the display firmware these addresses were read from\n"
+            if w[1:] == ["reset"]:
+                self.cm = {}
+                return "ok cm all neutral (registers read back, 0 ms)\n"
+            if len(w) == 2:
+                return "ok cm %s hue %d sat %d value %d\n" % (w[1], *[self.cm.get((w[1], c), 0) for c in ("hue", "sat", "value")])
+            return "error cm AXIS needs hue, saturation and value\n"
+        if w[0] == "set" and len(w) == 3 and w[1].startswith("cm_"):
+            if not self.fw_color:
+                return "error %s: not the display firmware these addresses were read from\n" % w[1]
+            axis, _, comp = w[1][3:].rpartition("_")
+            if comp not in ("hue", "sat", "value") or not -255 <= int(w[2]) <= 255:
+                return "error %s: %s is outside -255..255\n" % (w[1], w[2])
+            self.cm[(axis, comp)] = int(w[2])
+            return "ok %s = %s (registers read back, 0 ms)\n" % (w[1], w[2])
         if w[0] == "set" and len(w) == 3:
             if w[1] not in self.c:
                 return 'error no control "%s" (h713-tv ctl list)\n' % w[1]
@@ -472,6 +506,264 @@ class Picture(Base):
         b.finish()
 
 
+def wb_gains(w, t):
+    """The mapping written down once more here, independently of rows.c: the sliders only lower a gain, 0.4 % per step."""
+    ks = 0.004
+    kr = (1 - ks * max(w, 0)) * (1 - ks * max(-t, 0))
+    kg = 1 - ks * max(t, 0)
+    kb = (1 - ks * max(-w, 0)) * (1 - ks * max(-t, 0))
+    return [int(512 * k + 0.5) for k in (kr, kg, kb)]
+
+
+class WhiteBalance(Base):
+    """18.10.2026: the firmware's white balance (h713-tv ctl wb) as two sliders for the eye, and the colour by primary
+    (h713-tv ctl cm / set cm_AXIS_hue|sat). The sliders only ever lower a gain, 0.4 % per step: cool lowers red, warm blue,
+    magenta green, green red and blue."""
+
+    def test_the_area_and_its_rows(self):
+        b = self.box().start("White balance")
+        d = b.dump()
+        self.assertIn("area White balance focus areas", d)
+        self.assertIn("Warm - Cool slider 0 -50..50", d)
+        self.assertIn("Green - Magenta slider 0 -50..50", d)
+        self.assertIn("Reset action", d)
+        self.assertIn("(hidden) White balance info", d)
+        b.finish()
+
+    def test_it_sits_under_picture(self):
+        b = self.box().start("Picture")
+        b.keys("down")
+        self.assertIn("area White balance", b.dump())
+        b.keys("down")
+        self.assertIn("area Colour", b.dump())
+        b.keys("down")
+        self.assertIn("area Keystone", b.dump())
+        b.finish()
+
+    def test_a_step_sends_all_six(self):
+        b = self.box().start("White balance")
+        b.keys("ok", "right")                                       # Warm - Cool: one step (2) towards cool
+        d = b.dump()
+        self.assertIn("focus slider", d)
+        self.assertIn("Warm - Cool slider 2 -50..50", d)
+        self.assertEqual(b.tv.log[-1], "wb %d %d %d 512 512 512" % tuple(wb_gains(2, 0)))
+        self.assertEqual(b.tv.log[-1], "wb 508 512 512 512 512 512")
+        b.keys("down", "right", "right", "right")                   # Green - Magenta: three steps towards magenta
+        b.dump()
+        self.assertEqual(b.tv.log[-1], "wb %d %d %d 512 512 512" % tuple(wb_gains(2, 6)))
+        self.assertEqual(b.tv.wb, wb_gains(2, 6) + [512] * 3)
+        b.finish()
+
+    def test_every_command_carries_six_numbers_and_never_fffff(self):
+        b = self.box().start("White balance")
+        b.keys("ok", "right", "right", "left", "down", "left", "left", "left", "up", "left")
+        b.dump()
+        sent = [l for l in b.tv.log if l.startswith("wb ") and l != "wb"]
+        self.assertGreaterEqual(len(sent), 3)             # (a run of presses the same way is one command)
+        for line in sent:
+            words = line.split()[1:]
+            self.assertEqual(len(words), 6, line)
+            self.assertTrue(all(w.isdigit() and 0 <= int(w) <= 1023 for w in words), line)
+        b.finish()
+
+    def test_the_other_end_lowers_the_other_gains(self):
+        b = self.box().start("White balance")
+        b.keys("ok", *["left"] * 10)                                # warm: blue goes down
+        b.dump()
+        self.assertEqual(b.tv.wb[:3], wb_gains(-20, 0))
+        self.assertEqual(b.tv.wb[:3], [512, 512, 471])
+        b.keys("down", *["left"] * 5)                               # green: red and blue go down together
+        b.dump()
+        self.assertEqual(b.tv.wb[:3], wb_gains(-20, -10))
+        self.assertLess(b.tv.wb[0], 512)
+        self.assertEqual(b.tv.wb[1], 512)
+        b.finish()
+
+    def test_the_example_of_too_much_yellow_comes_back_as_its_sliders(self):
+        # "too much yellow": w = +15, t = +10 gives R 481, G 492, B 512 - and 481 492 512 shows as 15 and 10
+        b = self.box()
+        b.tv.wb = [481, 492, 512, 512, 512, 512]
+        b.start("White balance")
+        d = b.dump()
+        self.assertIn("Warm - Cool slider 15 ", d)
+        self.assertIn("Green - Magenta slider 10 ", d)
+        b.finish()
+
+    def test_the_positions_come_back_from_the_gains(self):
+        for w, t in ((0, 0), (-50, -50), (50, 50), (-50, 50), (50, -50), (20, -30), (-30, 20), (-8, 0), (0, -12)):
+            b = self.box()
+            b.tv.wb = wb_gains(w, t) + [512] * 3
+            b.start("White balance")
+            d = b.dump()
+            got = [int(x) for x in (l.split()[-2] for l in d.splitlines() if l.strip().startswith(("Warm - Cool", "Green - Magenta")))]
+            self.assertLessEqual(abs(got[0] - w), 1, (w, t, got))
+            self.assertLessEqual(abs(got[1] - t), 1, (w, t, got))
+            b.finish()
+
+    def test_the_mapping_over_its_whole_range(self):
+        # the real functions of rows.c over all 101 x 101 positions: a position comes back within one step, and no gain is
+        # lowered by more than 36 % (both sliders at the same end: 0.8 x 0.8)
+        b = self.box().start("White balance")
+        b.keys("wbsweep")
+        line = ""
+        for line in b.proc.stdout:
+            if line.startswith("wbsweep"):
+                break
+        words = line.split()
+        self.assertEqual(words[1], "lowest")
+        self.assertGreaterEqual(int(words[2]), 327)
+        self.assertEqual(words[3], "worst")
+        self.assertLessEqual(int(words[4]), 1, line)
+        b.finish()
+
+    def test_gains_the_sliders_cannot_make_show_as_zero(self):
+        b = self.box()
+        b.tv.wb = [600, 512, 512, 512, 512, 512]
+        b.start("White balance")
+        d = b.dump()
+        self.assertIn("Warm - Cool slider 0 ", d)
+        self.assertIn("Green - Magenta slider 0 ", d)
+        b.finish()
+
+    def test_the_offsets_are_not_touched(self):
+        b = self.box()
+        b.tv.wb = [512, 512, 512, 530, 500, 512]                    # somebody set offsets with ctl set
+        b.start("White balance")
+        b.keys("ok", "right")
+        b.dump()
+        self.assertEqual(b.tv.log[-1], "wb 508 512 512 530 500 512")
+        b.finish()
+
+    def test_reset(self):
+        b = self.box().start("White balance")
+        b.keys("ok", "right", "right", "back")                      # Warm - Cool 4, back on the page
+        b.dump()
+        self.assertNotEqual(b.tv.wb[:3], [512] * 3)
+        b.keys("down", "down", "ok")                                # Reset (the second slider, then Reset)
+        d = b.dump()
+        self.assertEqual(b.tv.wb, [512] * 6)
+        self.assertIn("Warm - Cool slider 0 ", d)
+        self.assertIn('Reset action "Done"', d)
+        self.assertEqual(b.tv.saved, 1)                             # and kept: a reset is a decision
+        b.finish()
+
+    def test_what_was_moved_is_kept_when_the_hand_rests(self):
+        b = self.box().start("White balance")
+        b.keys("ok", "right")
+        b.dump()
+        self.assertEqual(b.tv.saved, 0)
+        b.finish(signal.SIGTERM)
+        self.assertEqual(b.tv.saved, 1)
+
+    def test_a_refused_command_leaves_the_slider(self):
+        b = self.box()
+        b.tv.fw_color = False
+        b.start("White balance")
+        d = b.dump()
+        self.assertIn("(hidden) Warm - Cool", d)
+        self.assertNotIn("(hidden) White balance info", d)           # the line that says why is the one that shows
+        self.assertIn('White balance info "Not available"', d)
+        b.keys("ok", "right")
+        b.dump()
+        self.assertEqual([l for l in b.tv.log if l.startswith("wb ")], [])     # nothing is sent
+        b.finish()
+
+    def test_no_h713_tv_no_rows_and_nothing_breaks(self):
+        b = self.box()
+        b.env["H713_SETTINGS_TV"] = os.path.join(b.dir, "nobody.sock")     # nobody listens there
+        b.start("White balance")
+        d = b.dump()
+        self.assertIn("(hidden) Warm - Cool", d)
+        self.assertIn('White balance info "Not available"', d)
+        b.keys("down")
+        self.assertIn("area Colour", b.dump())
+        b.finish()
+
+
+class ColourByPrimary(Base):
+    def test_the_rows(self):
+        b = self.box().start("Colour")
+        d = b.dump()
+        self.assertIn("Primary colour choice [Red|*Yellow|Green|Cyan|Blue|Purple]", d)
+        self.assertIn("Hue slider 0 -100..100", d)
+        self.assertIn("Saturation slider 0 -100..100", d)
+        self.assertIn("Reset action", d)
+        b.finish()
+
+    def test_yellow_hue_60_is_one_command(self):
+        # the wall test of 18.10.: yellow, hue 60 - the Settings reach it with twelve presses of five
+        b = self.box().start("Colour")
+        b.keys("ok", "down", *["right"] * 12)
+        d = b.dump()
+        self.assertIn("Hue slider 60 -100..100", d)
+        self.assertEqual(b.tv.log[-1], "set cm_yellow_hue 60")
+        self.assertEqual(b.tv.cm[("yellow", "hue")], 60)
+        b.finish()
+
+    def test_saturation_and_the_other_end(self):
+        b = self.box().start("Colour")
+        b.keys("ok", "down", "down", "left", "left")                # Saturation -10
+        d = b.dump()
+        self.assertIn("Saturation slider -10 ", d)
+        self.assertEqual(b.tv.cm[("yellow", "sat")], -10)
+        b.finish()
+
+    def test_choosing_another_colour_loads_its_values(self):
+        b = self.box()
+        b.tv.cm[("green", "hue")] = 20
+        b.tv.cm[("green", "sat")] = -35
+        b.start("Colour")
+        b.keys("ok", "ok", "down", "ok")                            # the options of the colour, Green, take it
+        d = b.dump()
+        self.assertIn("Primary colour choice [Red|Yellow|*Green|Cyan|Blue|Purple]", d)
+        self.assertIn("Hue slider 20 ", d)
+        self.assertIn("Saturation slider -35 ", d)
+        b.keys("down", "right")
+        b.dump()
+        self.assertEqual(b.tv.log[-1], "set cm_green_hue 25")
+        b.finish()
+
+    def test_the_yellow_values_come_from_h713_tv(self):
+        b = self.box()
+        b.tv.cm[("yellow", "hue")] = 42
+        b.start("Colour")
+        d = b.dump()
+        self.assertIn("Hue slider 42 ", d)
+        b.finish()
+
+    def test_reset_is_one_command_and_kept(self):
+        b = self.box().start("Colour")
+        b.keys("ok", "down", *["right"] * 4, "back")
+        b.dump()
+        self.assertEqual(b.tv.cm[("yellow", "hue")], 20)
+        b.keys("down", "down", "ok")
+        d = b.dump()
+        self.assertEqual(b.tv.cm, {})
+        self.assertEqual(b.tv.log[-1], "save")
+        self.assertIn("Hue slider 0 ", d)
+        self.assertIn('Reset action "Done"', d)
+        b.finish()
+
+    def test_not_available(self):
+        b = self.box()
+        b.tv.fw_color = False
+        b.start("Colour")
+        d = b.dump()
+        self.assertIn("(hidden) Primary colour", d)
+        self.assertIn('Colour info "Not available"', d)
+        b.finish()
+
+    def test_a_refused_step_leaves_the_slider(self):
+        b = self.box().start("Colour")
+        self.assertIn("Hue slider 0 ", b.dump())                    # (the page has read h713-tv: it is there)
+        b.tv.fw_color = False                                       # and now the firmware refuses
+        b.keys("ok", "down", "right")
+        d = b.dump()
+        self.assertIn("Hue slider 0 ", d)
+        self.assertIn("set cm_yellow_hue 5", b.tv.log)              # it was asked
+        b.finish()
+
+
 class Keystone(Base):
     def test_auto_keystone_writes_the_key_and_restarts_the_unit(self):
         b = self.box().start("Keystone")
@@ -835,7 +1127,7 @@ class Life(Base):
         b.start()
         d = b.dump()
         self.assertIn("area Picture focus areas", d)
-        b.keys(*["down"] * 6)
+        b.keys(*["down"] * 8)
         self.assertIn("area Wi-Fi", b.dump())
         b.keys("back")
         self.assertEqual(b.proc.wait(timeout=5), 0)
@@ -1138,7 +1430,7 @@ class Look(Base):
         if not any(f and os.path.exists(f) for f in FONTS):
             self.skipTest("no font")
         seen = 0
-        for area in ("Picture", "Keystone", "Sound", "Focus", "Input", "Power", "Wi-Fi"):
+        for area in ("Picture", "White balance", "Colour", "Keystone", "Sound", "Focus", "Input", "Power", "Wi-Fi"):
             b = self.box().start(area, size="%dx%d" % (self.W, self.H))
             self.inside(self.ink(self.snap(b, "a"), True), "%s, the areas" % area)         # the areas and the rows, nothing lit
             b.keys("ok")
@@ -1158,7 +1450,7 @@ class Look(Base):
             self.skipTest("no font")
         walk = ["ok"] + ["down", "right", "left", "ok", "back"] * 3 + ["down", "right", "right", "left", "left", "ok", "up", "back", "back",
                                                                            "down", "ok", "down", "down", "ok", "down", "ok", "back", "up"]
-        for area in ("Picture", "Keystone", "Sound", "Focus", "Input", "Power", "Wi-Fi"):
+        for area in ("Picture", "White balance", "Colour", "Keystone", "Sound", "Focus", "Input", "Power", "Wi-Fi"):
             b = self.box().start(area, size="%dx%d" % (self.W, self.H))
             for key in walk + ["down", "up", "ok", "down", "up", "ok"]:
                 if key == "back" and "focus areas" in b.dump().splitlines()[0]:
@@ -1185,16 +1477,31 @@ class Look(Base):
 
     def test_the_last_area_pill_is_whole(self):
         # owner, 15.10.: the pill round Wi-Fi, the last area, was cut off at the bottom (the note's clear box began inside it)
+        # 18.10.2026: nine areas, pitch 94: Wi-Fi is the ninth (centre 950, half height 44), and the hint is no longer under the areas
         if not any(f and os.path.exists(f) for f in FONTS):
             self.skipTest("no font")
         b = self.box().start("Wi-Fi", size="%dx%d" % (self.W, self.H))
         for step in ("areas", "rows"):
             page = self.snap(b, step)
             pill = lambda x, y: page[(y * self.W + x) * 4:][:4]
-            for y in (440, 446, 449):                              # design y 880..898: the lower part of the pill (centre 858, half height 48)
+            for y in (480, 486, 492):                              # design y 960..984: the lower part of the pill (centre 950, half height 44)
                 self.assertEqual(pill(165, y), bytes((0x1c, 0x23, 0x21, 255)), "%s: y %d" % (step, y))
+            self.assertEqual(pill(165, 499), bytes((11, 14, 13, 255)), "%s: the ground below the pill" % step)
             b.keys("ok")
         b.finish()
+
+    def test_nine_areas_stand_apart(self):
+        # every area's pill is whole and touches none of its neighbours: the first and the last one, and the one in the middle
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        for name, centre in (("Picture", 198), ("Sound", 198 + 94 * 4), ("Wi-Fi", 198 + 94 * 8)):
+            b = self.box().start(name, size="%dx%d" % (self.W, self.H))
+            page = self.snap(b, "a")
+            pill = lambda x, y: page[(y * self.W + x) * 4:][:4]
+            self.assertEqual(pill(165, centre // 2), bytes((0x1c, 0x23, 0x21, 255)), name)
+            self.assertEqual(pill(165, (centre - 44) // 2 + 2), bytes((0x1c, 0x23, 0x21, 255)), "%s: the top of the pill" % name)
+            self.assertEqual(pill(165, (centre + 47) // 2 + 1), bytes((11, 14, 13, 255)), "%s: the ground between two areas" % name)
+            b.finish()
 
     def test_the_choice_lists_and_the_hint_stay_inside_too(self):
         if not any(f and os.path.exists(f) for f in FONTS):

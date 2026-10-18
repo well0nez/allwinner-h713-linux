@@ -19,9 +19,10 @@ enum kind { R_SLIDER, R_SWITCH, R_CHOICE, R_ACTION, R_INFO, R_CORNERS, R_STEPPER
 
 #define MAXOPT	10
 #define MAXROW	10
-#define MAXAREA	7
-#define AREA_SOUND	2
-#define AREA_WIFI	6
+#define MAXAREA	9
+#define AREA_KEYSTONE	3
+#define AREA_SOUND	4
+#define AREA_WIFI	8
 
 struct row {
 	const char *label;

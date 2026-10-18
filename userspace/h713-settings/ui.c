@@ -366,9 +366,10 @@ static void draw_icon(const char *name, double cx, double cy, double size, float
 
 /* --- the areas ----------------------------------------------------------------------------------------------- */
 
+/* nine areas fit between the top margin and the foot: the pitch of the rows (94), the first one on the first row's line */
 static double area_y(int i)
 {
-	return 198 + 110 * i;
+	return 198 + 94 * i;
 }
 
 static void draw_area(const struct view *v, int i)
@@ -376,9 +377,9 @@ static void draw_area(const struct view *v, int i)
 	bool sel = i == v->area, active = v->f == F_AREAS;
 	double y = area_y(i);
 
-	clear_box(80, y - 56, 584, y + 56, GROUND);
+	clear_box(80, y - 47, 584, y + 47, GROUND);
 	if (sel)
-		rrect(331, y, 235, 48, 48, PAGEPILL, 1.0f, BRIGHT, active ? 1.0f : 0.5f, active ? 3 : 2);
+		rrect(331, y, 235, 44, 44, PAGEPILL, 1.0f, BRIGHT, active ? 1.0f : 0.5f, active ? 3 : 2);
 	draw_icon(areas[i].icon, 156, y, 64, sel ? 1.0f : 0.42f);
 	text(214, y + 13, 34, sel ? 1.0f : 0.42f, areas[i].name, 0);
 }
@@ -488,8 +489,7 @@ static void draw_note(const struct view *v, const struct row *sel)
 
 	note_shown = n;
 	foot_shown = v->f < F_CORNERS ? v->f : 0;
-	clear_box(690, 890, 1840, 1020, GROUND);	/* the note's room ... */
-	clear_box(80, 914, 690, 1020, GROUND);		/* ... and the hint's: below the last area's pill (Wi-Fi, to y 909), not into it */
+	clear_box(690, 890, 1840, 1020, GROUND);	/* the note's room and the hint's: the left column belongs to the nine areas */
 	if (n) {
 		char first[160];
 		size_t cut = strlen(n);
@@ -511,7 +511,7 @@ static void draw_note(const struct view *v, const struct row *sel)
 			text(752, 952, 26, 0.7f, n, 0);
 		}
 	}
-	text(SAFE_X0, 1000, 26, 0.42f, foot[v->f < F_CORNERS ? v->f : 0], 0);
+	text(752, 1000, 26, 0.42f, foot[v->f < F_CORNERS ? v->f : 0], 0);
 }
 
 /* --- over the picture: one pill at the foot --------------------------------------------------------------------- */
