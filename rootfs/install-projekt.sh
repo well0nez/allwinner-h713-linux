@@ -588,6 +588,8 @@ import sys
 from importlib.machinery import SourceFileLoader
 m = SourceFileLoader("h713_keystone", sys.argv[1]).load_module()
 for name, default, _ in m.DEFAULTS:
+    if name == "turn_to_wall":
+        print("# degrees, -30..30: + when the RIGHT side of the picture is the higher one; the settings page writes it")
     print("%s = %s" % (name, default))
 PY
 	} > "$TREE/etc/h713/keystone.conf"
