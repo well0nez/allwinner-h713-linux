@@ -6,7 +6,7 @@ directory is the source.
 ```
 main.c      the keys and the page's state machine (areas, rows, a choice, the pill, the corners)
 ui.c        the page drawn into an ARGB canvas (the mockup), a row alone when only it changed
-rows.c      the areas and their rows: what each reads from a tool and the one command it sends back
+rows.c      the areas and their rows: what each reads from a tool and the one command it sends back (Gamma and Colour temperature: sliders with named stops)
 backend.c   the ways to the tools: a ctl socket, a program run or started, a "key = value" file changed in place
 input.c     the remote's devices, held alone while the page is open
 page.c      h713-osd's page channel: one memfd to draw into, "page show X Y W H"

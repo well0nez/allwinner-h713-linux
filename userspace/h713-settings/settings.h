@@ -28,10 +28,10 @@ struct row {
 	const char *label;
 	enum kind kind;
 	int min, max, step, val;	/* slider: value; switch: 0/1; choice: index into opt */
-	int n;				/* choice: number of options */
+	int n;				/* choice: number of options; slider: number of named stops (opt, opt_note), 0: a plain slider */
 	char opt[MAXOPT][24];		/* choice: what the page shows ... */
 	char arg[MAXOPT][24];		/* ... and what the tool is told */
-	char text[64];			/* info: the value; action: what it says while it runs / after */
+	char text[64];			/* info: the value; action: what it says while it runs / after; stops: the value if not opt[val] */
 	const char *note;		/* a sentence under the page while this row is selected */
 	const char *opt_note[MAXOPT];	/* choice: a sentence for each value, instead of note */
 	const char *tag;		/* slider: the control's name; action: what it runs */

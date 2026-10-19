@@ -386,10 +386,15 @@ static void draw_area(const struct view *v, int i)
 
 /* --- the rows ------------------------------------------------------------------------------------------------ */
 
+/* a page of more than eight rows (the room above the note holds eight at the pitch of 94) takes a smaller pitch and a smaller lit pill */
+static double pitch = 94, phh = 52;
+
 static double row_y(int k)
 {
-	return 202 + 94 * k;
+	return 202 + pitch * k;
 }
+
+static bool stop_names;		/* in the pill, the stops of a slider with named stops carry their words under the track */
 
 /* the slider's own track and number: in a row of the page (x 1110..1650, the number at 1760) or in the pill (at x0..x0+520) */
 static void slider_value(const struct row *r, double x0, double xnum, double y, float a)
@@ -398,6 +403,23 @@ static void slider_value(const struct row *r, double x0, double xnum, double y, 
 	bool turn = r->tag && !strcmp(r->tag, "turn");
 	char t[24];
 
+	if (r->n) {
+		/* named stops: a short track with a dot at each stop, the lit ones up to the value, the word of the stop as the number; in the pill
+		 * the track is 20 px shorter, so that "Warm: Normal" (a board that has no warm curve) does not touch its last dot */
+		double w = stop_names ? 280 : 300;
+
+		stroke(x0, y, x0 + w, y, 6, BRIGHT, a * 0.5f);
+		stroke(x0, y, x0 + w * clampd(f, 0, 1), y, 6, BRIGHT, a);
+		for (int i = 0; i < r->n; i++) {
+			double x = x0 + w * i / (r->n - 1);
+
+			stroke(x, y, x, y, i == r->val ? 24 : 13, BRIGHT, i <= r->val ? a : a * 0.5f);
+			if (stop_names)
+				text(x - text_w(r->opt[i], 20) / 2, y + 42, 20, i == r->val ? a * 0.9f : a * 0.5f, r->opt[i], 0);
+		}
+		text(xnum, y + 12, 32, a, r->text[0] ? r->text : r->opt[r->val], 1);
+		return;
+	}
 	stroke(x0, y, x0 + 540, y, 6, BRIGHT, a * 0.5f);
 	if (turn) {
 		/* a value on both sides of 0: the track fills from its middle, and the ends say which side of the picture is meant */
@@ -456,9 +478,9 @@ static void draw_option(const struct view *v, const struct row *r, int k)
 {
 	double y = row_y(k);
 
-	clear_box(690, y - 54, 1830, y + 54, GROUND);	/* the pill reaches past the pitch of 94: the lit one is drawn last */
+	clear_box(690, y - phh - 2, 1830, y + phh + 2, GROUND);	/* the pill reaches past the pitch of 94: the lit one is drawn last */
 	if (k == v->choice)
-		rrect(1260, y, 560, 52, 52, PAGEPILL, 1.0f, BRIGHT, 1.0f, 3);
+		rrect(1260, y, 560, phh, phh, PAGEPILL, 1.0f, BRIGHT, 1.0f, 3);
 	if (k == r->val)
 		stroke(734, y, 734, y, 16, BRIGHT, k == v->choice ? 1.0f : 0.5f);
 	text(776, y + 12, 32, k == v->choice ? 1.0f : 0.42f, r->opt[k], 0);
@@ -470,19 +492,19 @@ static void draw_row(const struct view *v, struct row *r, int k)
 	float a = sel ? 1.0f : 0.42f;
 	double y = row_y(k);
 
-	clear_box(690, y - 54, 1830, y + 54, GROUND);
+	clear_box(690, y - phh - 2, 1830, y + phh + 2, GROUND);
 	if (sel)
-		rrect(1260, y, 560, 52, 52, PAGEPILL, 1.0f, BRIGHT, 1.0f, 3);
+		rrect(1260, y, 560, phh, phh, PAGEPILL, 1.0f, BRIGHT, 1.0f, 3);
 	text(752, y + 12, 32, a, r->label, 0);
 	draw_value(r, y, a);
 }
 
 /* the sentence under the rows: the row's own, or for a choice the one of the value it stands on */
-static const char *note_of(const struct view *v, const struct row *sel)
+const char *ui_note(const struct view *v, const struct row *sel)
 {
 	const char *n = sel && v->f != F_AREAS ? sel->note : NULL;
 
-	if (sel && v->f != F_AREAS && sel->kind == R_CHOICE && sel->opt_note[sel->val])
+	if (sel && v->f != F_AREAS && (sel->kind == R_CHOICE || (sel->kind == R_SLIDER && sel->n)) && sel->opt_note[sel->val])
 		n = sel->opt_note[sel->val];
 	return n;
 }
@@ -490,9 +512,27 @@ static const char *note_of(const struct view *v, const struct row *sel)
 static const char *note_shown;		/* what the note area shows now: the sentence and the line of keys under it */
 static int foot_shown = -1;
 
+/* where a sentence of 26 px breaks to fit w design px: `first` holds the first line, the result is its length (the whole sentence fits when
+ * that is the sentence's length) */
+static size_t wrap26(const char *n, double w, char *first, size_t nfirst)
+{
+	size_t cut = strlen(n);
+
+	snprintf(first, nfirst, "%s", n);
+	if (cut >= nfirst)
+		cut = nfirst - 1;
+	while (cut && text_w(first, 26) > w) {
+		while (cut && first[cut - 1] != ' ')
+			cut--;
+		if (cut)
+			first[--cut] = '\0';
+	}
+	return cut;
+}
+
 static void draw_note(const struct view *v, const struct row *sel)
 {
-	const char *n = note_of(v, sel);
+	const char *n = ui_note(v, sel);
 	static const char *const foot[] = {
 		"Up/Down select    OK open    Back close",
 		"Up/Down select    Left/Right change    Back to the areas",
@@ -504,16 +544,10 @@ static void draw_note(const struct view *v, const struct row *sel)
 	clear_box(690, 890, 1840, 1020, GROUND);	/* the note's room and the hint's: the left column belongs to the nine areas */
 	if (n) {
 		char first[160];
-		size_t cut = strlen(n);
+		size_t cut;
 
 		/* one line from x 752 to the safe margin; a longer sentence goes on a second line, broken at a space */
-		snprintf(first, sizeof(first), "%s", n);
-		while (cut && text_w(first, 26) > SAFE_X1 - 752) {
-			while (cut && first[cut - 1] != ' ')
-				cut--;
-			if (cut)
-				first[--cut] = '\0';
-		}
+		cut = wrap26(n, SAFE_X1 - 752, first, sizeof(first));
 		if (cut && cut < strlen(n)) {
 			text_max = SAFE_X1 - 752;
 			text(752, 922, 26, 0.7f, first, 0);
@@ -545,6 +579,30 @@ static void draw_slider_pill(const struct view *v)
 {
 	struct row *r = visible_row(&areas[v->area], v->row);
 
+	if (r->n) {
+		/* named stops: under the track, what the stop it is on means - one line, or two when the sentence is longer than the pill's 880 */
+		const char *n = r->opt_note[r->val];
+		char first[160] = "";
+		size_t cut = n ? wrap26(n, 880, first, sizeof(first)) : 0;
+		bool two = n && cut && cut < strlen(n);
+		double top = 982 - (two ? 198 : 168);		/* the pill grows upwards: its foot and the line of keys stay where they are */
+
+		foot_pill(top + (two ? 99 : 84), 508, two ? 99 : 84);
+		text(520, top + 60, 34, 1.0f, r->label, 0);
+		stop_names = true;
+		slider_value(r, 890, 1432, top + 48, 1.0f);
+		stop_names = false;
+		if (two) {
+			text_max = 880;
+			text(520, top + 136, 26, 0.7f, first, 0);
+			text(520, top + 166, 26, 0.7f, n + cut + 1, 0);	/* what does not fit on the second line is cut, not drawn out of the pill */
+			text_max = 0;
+		} else if (n) {
+			text(520, top + 136, 26, 0.7f, n, 0);
+		}
+		foot_line(1004, r->hint ? r->hint : "Up/Down next slider    Left/Right change    OK or Back done");
+		return;
+	}
 	foot_pill(920, 508, 60);
 	text(520, 934, 34, 1.0f, r->label, 0);
 	slider_value(r, 780, r->tag && !strcmp(r->tag, "turn") ? 1432 : 1400, 922, 1.0f);	/* room for the R at the track's end */
@@ -569,6 +627,8 @@ int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[
 	int n = visible_rows(a);
 
 	cv = c;
+	pitch = v->f != F_CHOICE && n > 8 ? floor(658.0 / (n - 1)) : 94;
+	phh = pitch < 94 ? floor((pitch + 15) / 2) : 52;
 	U = c->h / 1080.0;
 	XOFF = (c->w - 1920 * U) / 2;
 	bx0 = c->w, by0 = c->h, bx1 = by1 = 0;
@@ -617,7 +677,7 @@ int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[
 			if (!all && (dirty & D_RIGHT)) {
 				clear_box(690, 70, 1830, 140, GROUND);	/* and the line a choice's options stood under */
 				seal();
-				clear_box(690, row_y(n) - 54, 1830, 890, GROUND);
+				clear_box(690, row_y(n) - phh - 2, 1830, 890, GROUND);
 				seal();
 			}
 			for (int pass = 0; pass < 2; pass++)
@@ -635,7 +695,7 @@ int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[
 			 * about half of what a row move costs through the keystone - unless a piece of this drawing reached into their room */
 			for (int i = 0; i < nbox; i++)
 				low |= rbox[i][1] + rbox[i][3] > (int)(890 * U);
-			if (all || low || note_of(v, sel) != note_shown || (int)(v->f < F_CORNERS ? v->f : 0) != foot_shown) {
+			if (all || low || ui_note(v, sel) != note_shown || (int)(v->f < F_CORNERS ? v->f : 0) != foot_shown) {
 				draw_note(v, sel);
 				seal();
 			}

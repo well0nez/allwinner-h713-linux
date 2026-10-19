@@ -385,10 +385,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       h713-osd-Neustart (Deploy, Absturz) steht dort "closed" -> h713-osd öffnet ihn. Fix ~5 Zeilen: vor dem Neudefinieren `ctl status` lesen, bei
       "closed" entries/snap aufgeben; allgemein den Launcher-Zustand abgleichen, wenn der Socket von h713-osd neu entsteht. Kosmetisch: nosig_sync
       setzt lau.quiet beim Öffnen nicht zurück.
-- [ ] 2.115 **Gamma und Farbtemperatur (gamma-kern, Marco 19.10. Variante B):** h713-tv rechnet die Kurve wie Stock (bm-gamma, bitgenau); offen:
-      gamma-ui (Settings: Colour temperature mit Auto oben in White balance, Gamma in Picture; Panel genauso), Marcos Blick an der Wand, der
+- [ ] 2.115 **Gamma und Farbtemperatur (gamma-kern + gamma-ui, Marco 19.10. Variante B, beide in medien):** h713-tv rechnet die Kurve wie Stock (bm-gamma, bitgenau); offen:
+      Marcos Blick an der Wand (Stufen, Auto mit Bildmodus, ob die zweizeiligen Sätze in der Pille zu viel sind), der
       blockierende LUT-Commit im Warp-Thread (<=40 ms) - erst messen, ob er ein Bild kostet, dann ggf. NONBLOCK (Mythos 19.10.).
       G-EU: - [ ] **G-EU: Gamma und Farbtemperatur nachmessen** (gamma-kern, am HY310 gemessen am 19.10.2026, nicht am HY300PRO-G-EU; Memory "HY310-Messung braucht G-EU-Nachmessung"): h713-tv und h713-pq aus `medien-gamma-kern` aufspielen (Sicherung zuerst: h713-tv, `h713_pq/{cli,output,tse}.py`, `werte`, `tv.conf`). (1) Die TSE des G-EU lesen: `h713-pq --data /etc/h713/tvconfig gamma --export-slots /tmp/s.bin --project 0x34 --tse /boot/mips/ProjectID_0x0034.TSE` - welche Zustände (erwartet normal, cool, warm), die Endpunkte je Kanal (HY300 Pro: 4087/3863/3459 bei warm), und `bm-gamma/emu/pow_abstand.py
+- [ ] 2.116 Klein (Mythos 19.10., aus gamma-ui): h713-settings, F_CHOICE-Zweig von ui_draw löscht die Zeilenplätze ab r->n nicht - beim Öffnen einer
+      Optionsliste bleiben die Zeilen darunter stehen (Geisterzeilen wie 35e9d19, nur für Listen; mit neun Zeilen zusätzlich im anderen Raster).
+      Fix ~3 Zeilen (clear_box ab row_y(r->n) bei all||D_RIGHT) plus Pixeltest.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

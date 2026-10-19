@@ -42,7 +42,7 @@ static void dump(void)
 			printf(" %d", r->val);
 		if (r->kind == R_SLIDER)
 			printf(" %d..%d", r->min, r->max);
-		if (r->kind == R_CHOICE) {
+		if (r->kind == R_CHOICE || (r->kind == R_SLIDER && r->n)) {		/* a slider with named stops lists them like a choice */
 			printf(" [");
 			for (int k = 0; k < r->n; k++)
 				printf("%s%s%s", k ? "|" : "", k == r->val ? "*" : "", r->opt[k]);
@@ -53,6 +53,12 @@ static void dump(void)
 		if (r->text[0])
 			printf(" \"%s\"", r->text);
 		printf("\n");
+	}
+	if (v.f != F_AREAS && visible_rows(a)) {		/* the sentence the wall shows under the rows */
+		const char *n = ui_note(&v, visible_row(a, v.row));
+
+		if (n)
+			printf("sentence \"%s\"\n", n);
 	}
 	printf("outside %ld\n", test_outside);
 	printf("--\n");
