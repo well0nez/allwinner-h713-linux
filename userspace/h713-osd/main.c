@@ -1317,6 +1317,16 @@ static void refresh(void)
 	bool skew;
 	double t0;
 
+	/*
+	 * A page that was handed over stands on the wall until its successor is drawn (HANDOVER_S at most). Only a refresh that draws
+	 * the successor - the launcher or a page of the page channel is open - or the end of that second decides what is on the wall.
+	 * Any other cause (a volume strip, the mute badge, the power countdown, a note on the signal, a new keystone) draws into the
+	 * buffer that is not shown and shows it: the page would go and the picture under it stand on the wall for the 0.2 s the
+	 * successor needs (found reading the hand-over, 17.10.2026; a rare window, not seen on the wall). What they want stays in
+	 * `want` and is drawn with the successor, or when the second is over.
+	 */
+	if (handover_until > now_s() && !page.open && !(lau.open && !lau.nosig))
+		return;
 	osd_waiting = true;
 	handover_until = 0;		/* whatever was handed over: this refresh decides what is on the wall */
 	if (!tv_claim())

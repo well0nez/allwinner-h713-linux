@@ -110,3 +110,58 @@ class HandoverTest(PageBase):
         n = len(self.tv.lines)
         self.launcher("close", wait=0.3)
         self.assertEqual(self.lines_since(n), ["osd hide"])
+
+    def test_an_overlay_in_the_hand_over_does_not_break_it(self):
+        """a volume strip in the 0.2 s between the settings page and the drawn launcher (the remote is in the user's hand just then): the
+        refresh for the strip took the hand-over away - the page went, the strip stood alone over the picture under it for the time the
+        launcher needed. The page stays; the strip is drawn with its successor"""
+        self.start()
+        c = self.opaque_page()
+        page = self.shown()
+        n = len(self.tv.lines)
+        c.sock.sendall(b"page handover\n")
+        c.close()
+        self.clients.remove(c)
+        time.sleep(0.1)
+        self.ctl("volume", "40")
+        self.assertEqual(self.lines_since(n), [], "the handed-over page stays on the wall, the strip waits")
+        self.assertEqual(self.shown(), page)
+        self.assertIn("handed over", self.ctl("status"))
+        self.launcher(line(1))
+        shows = self.lines_since(n)
+        self.assertNotIn("osd hide", shows)
+        self.assertTrue(shows and all(l.startswith("osd show") and l.endswith(" cover") for l in shows), shows)
+        self.assertNotEqual(self.shown(), page, "the launcher is on the wall now")
+
+    def test_an_overlay_in_the_launchers_hand_over_does_not_break_it(self):
+        """the other way: the launcher closed "keep" for a page, a power countdown line comes before the page is drawn"""
+        self.start()
+        self.launcher(line(1))
+        lau = self.shown()
+        n = len(self.tv.lines)
+        self.launcher("close", "keep", wait=0.1)
+        self.ctl("power", "100", "standby")
+        self.assertEqual(self.lines_since(n), [], "the launcher stays on the wall until the page is drawn")
+        self.assertEqual(self.shown(), lau)
+        c = self.opaque_page()
+        shows = self.lines_since(n)
+        self.assertTrue(shows and "osd hide" not in shows and all(l.endswith(" cover") for l in shows), shows)
+        self.assertEqual(self.shown(), bytes(c.map))
+
+    def test_what_an_overlay_wanted_in_the_hand_over_is_shown_when_it_ends(self):
+        """nobody takes the hand-over: after the second the wall shows what is wanted - here a strip that is still due - and not less"""
+        self.write("osd.conf", "seconds = 3\n")
+        self.start()
+        c = self.opaque_page()
+        n = len(self.tv.lines)
+        c.sock.sendall(b"page handover\n")
+        c.close()
+        self.clients.remove(c)
+        time.sleep(0.5)
+        self.ctl("volume", "40")
+        self.assertEqual(self.lines_since(n), [])
+        time.sleep(0.6)                                         # the second is over (1.25 s after the word)
+        shows = self.lines_since(n)
+        self.assertEqual(len(shows), 1, shows)
+        self.assertTrue(shows[0].startswith("osd show") and not shows[0].endswith(" cover"), shows)
+        self.assertIsNotNone(self.tv.bbox(), "the strip stands over the picture")

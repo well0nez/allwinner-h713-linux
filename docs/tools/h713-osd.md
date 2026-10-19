@@ -108,7 +108,10 @@ second, so that the word follows a signal that goes or comes.
 channel before its connection ends (h713-settings on Back at the top, which brings the launcher back), `launcher close keep`
 (h713-keys on OK on an entry whose program is a page) - and stays on the wall until its successor is drawn into the other buffer
 and shown in its place, at most a second. Before, the first page went with `osd hide` and the HDMI picture stood on the wall for
-the 0.19-0.20 s the second took to draw through the keystone. Without the word (Home, Power, a crash) a page goes at once. `ctl
+the 0.19-0.20 s the second took to draw through the keystone. Without the word (Home, Power, a crash) a page goes at once. A strip,
+the mute badge or a power countdown line that comes in those 0.2 s does not end the hand-over (it would take the page from the wall and
+stand alone over the picture): only the successor being drawn, or the end of the second, decides what is on the wall, and what was
+wanted meanwhile is drawn with the successor or then (19.10.2026). `ctl
 status` says `closed (handed over ...)` meanwhile; `H713_OSD_TRACE=1` names per refresh the buffer drawn, whether the other one
 is on the wall, what lies under it and what was wiped. Host tests: `tests/test_handover.py`.
 
