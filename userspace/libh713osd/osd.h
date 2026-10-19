@@ -140,14 +140,19 @@ void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int t
  * on HDMI" and, a line below, "HOME: menu" - centred, nothing but the ground in the outer 5 %. Cut into OSD_NOSIGNAL_TILES bands (full
  * width, the ground above, the middle one with the symbol and the words, the ground below) like the launcher's tiles, so a volume strip
  * over it repaints one band. Needs osd_font_open() for the words (without a face the symbol alone stands).
+ *
+ * While a choice stands over it (the power countdown's ring) the caller draws the middle band QUIET: the ground alone, no symbol and
+ * no words, so that the ring stands by itself on the ground exactly as it does over the launcher.
  */
 #define OSD_NOSIGNAL_TILES 3
+#define OSD_NOSIGNAL_MIDDLE 1		/* the band with the symbol and the words */
 
 /* the rectangles (x, y, w, h in canvas pixels) of the bands; returns their count, OSD_NOSIGNAL_TILES */
 int osd_nosignal_bands(const struct osd_canvas *c, int box[][4]);
 
-/* repaint one band: the ground REPLACES its pixels, the middle band's content is drawn over it */
-void osd_nosignal_draw(struct osd_canvas *c, int tile);
+/* repaint one band: the ground REPLACES its pixels, the middle band's content is drawn over it - unless quiet is set, then the
+ * middle band is the ground alone like the other two (the caller repaints that band when it flips, see above) */
+void osd_nosignal_draw(struct osd_canvas *c, int tile, int quiet);
 
 /*
  * Text (text.c, FreeType - link libfreetype; h713-osd links it statically). The one part of the library that reads
