@@ -281,6 +281,7 @@ static void conf_load(void)
 static struct warp_conf geom = { 0 };
 static double m[16], hinv[9];
 static bool m_valid, m_identity = true;
+static bool moved[2];			/* per buffer: a new matrix since it was last put - what it holds stands where the old one put it */
 
 static void geom_load(void)
 {
@@ -300,7 +301,7 @@ static void geom_load(void)
 	if (warp_inverse(k, hinv)) {
 		memcpy(m, k, sizeof(m));
 		m_valid = true;
-		lau.wipe[0] = lau.wipe[1] = true;	/* the launcher's footprint on the panel moved */
+		moved[0] = moved[1] = true;	/* the footprint of the launcher, of a page, on the panel moved */
 	}
 }
 
@@ -406,7 +407,7 @@ static void tv_drop(void)
 		tv.dmabuf[i] = -1;
 		memset(tv.box[i], 0, sizeof(tv.box[i]));
 		memset(lau.held[i], 0, sizeof(lau.held[i]));
-		lau.live[i] = lau.wipe[i] = false;
+		lau.live[i] = lau.wipe[i] = moved[i] = false;
 		page.live[i] = false;
 		rows_set(page.dirty[i], 0, page.open ? canvas.h : 0);	/* the next claim puts the whole page */
 	}
@@ -1170,14 +1171,16 @@ static void buf_wipe(int b)
 }
 
 /* why buffer b is to be cleared before a put (NULL: it need not be): it holds pixels that nothing puts again - the launcher's or the
- * page's, closed or for a picture that turned warped or straight, the launcher's of another launcher or matrix. Asked by every put,
- * the refresh's and the idle time's alike. */
+ * page's, closed, drawn through another matrix, or for a picture that turned warped or straight. Asked by every put, the refresh's and
+ * the idle time's alike. */
 static const char *buf_stale(int b, bool skew)
 {
 	if (!lau.live[b] && !page.live[b])
 		return NULL;
+	if (moved[b])
+		return "a new geometry";
 	if (lau.live[b] && (lau.wipe[b] || !lau.open))
-		return lau.open ? "another launcher, or a new geometry" : "the launcher closed";
+		return lau.open ? "another launcher" : "the launcher closed";
 	if (page.live[b] && !page.open)
 		return "the page closed";
 	if ((lau.live[b] && lau.skew[b] != skew) || (page.live[b] && page.skew[b] != skew))
@@ -1263,6 +1266,7 @@ static void lau_prefill(void)
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE);
 	if (buf_stale(b, skew))
 		buf_wipe(b);	/* the closed page's pixels too: the next key must not find them (and wipe the launcher with them) */
+	moved[b] = false;
 	px = lau_put(b, skew);
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE);
 	if (trace)
@@ -1343,6 +1347,7 @@ static void refresh(void)
 		     answer, skew ? "pre-distorted" : "straight", last.cover ? "cover" : "no cover", why ? ", wiped: " : "", why ? why : "");
 	if (why)
 		buf_wipe(b);
+	moved[b] = false;	/* what is put now goes through the matrix of now */
 	for (int r = 0; r < 2; r++)	/* what this buffer showed before */
 		for (int y = tv.box[b][r][1]; y < tv.box[b][r][1] + tv.box[b][r][3]; y++)
 			memset((char *)tv.map[b] + (size_t)y * tv.pitch + (size_t)tv.box[b][r][0] * 4, 0,

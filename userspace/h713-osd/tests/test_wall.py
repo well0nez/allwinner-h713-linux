@@ -319,6 +319,12 @@ class WallTest(OsdBase):
         time.sleep(0.2)
         return shot
 
+    def keystone(self, insets):
+        """warp.conf rewritten and renamed over, as h713-warp does it (config.c): the daemon reads it again"""
+        self.write("warp.conf.new", WARP_CONF % insets)
+        os.rename(os.path.join(self.tmp.name, "warp.conf.new"), os.path.join(self.tmp.name, "warp.conf"))
+        self.settle()
+
     def check(self, keystone):
         self.write("warp.conf", WARP_CONF % keystone)
         self.tv.picture = "warped"
@@ -355,6 +361,76 @@ class WallTest(OsdBase):
 
     def test_turned_right_30_pitched_down(self):
         self.check(KEYSTONES["turned right 30, pitched down"])
+
+    def test_a_new_keystone_under_an_open_page_puts_it_whole(self):
+        """The keystone changes while a page is open: the corners and the turn to the wall are set on the settings page itself (a pill
+        over the picture), and the automatic after a move rewrites warp.conf under any page. Every pixel the page had through the old
+        matrix is stale: after the next key the wall is the page put whole through the new one - the opaque page and the pill alike."""
+        pill = bytearray(PITCH * H)                          # the slider's pill over the picture: a clear canvas, a pill at the foot
+        for y in range(px(860), px(980, True)):
+            pill[y * PITCH + 4 * px(452):y * PITCH + 4 * px(1468, True)] = bytes((0x10, 0x11, 0x0e, 184)) * (px(1468, True) - px(452))
+        piece = [(px(432), px(850), px(1488, True) - px(432), px(1026, True) - px(850))]
+
+        def number(n):                                       # the slider's value: a few pixels of ink in the pill
+            img = bytearray(pill)
+            for y in range(px(900), px(940, True)):
+                img[y * PITCH + 4 * px(1300):y * PITCH + 4 * px(1300 + 8 * n)] = WHITE * (px(1300 + 8 * n) - px(1300))
+            return bytes(img)
+
+        self.write("warp.conf", WARP_CONF % KEYSTONES["hy310"])
+        self.tv.picture = "warped"
+        self.start()
+        bad = []
+
+        def against_whole(name, shot, image):
+            page = PageClient(self.env["H713_OSD_SOCKET"])
+            page.show(image, [(0, 0, W, H)])
+            self.settle()
+            whole = self.shot()
+            page.close()
+            time.sleep(0.2)
+            n_holes, (n_diff, _) = holes(shot, whole), differing(shot, whole)
+            if n_holes or n_diff:
+                bad.append("%s: %d holes, %d pixels not as the whole put" % (name, n_holes, n_diff))
+
+        self.launcher("1;HDMI 1080p60;" + LAUNCHER)          # the launcher: the automatic after a move turns the picture under it
+        self.keystone(KEYSTONES["turned left 30, pitched up"])
+        shots = [(self.shot(), 1)]
+        self.launcher("2")
+        shots.append((self.shot(), 2))
+        for i, (shot, sel) in enumerate(shots):
+            self.launcher("%d;HDMI 1080p60;%s" % (sel, LAUNCHER))
+            whole = self.shot()
+            n_holes, (n_diff, _) = holes(shot, whole), differing(shot, whole)
+            if n_holes or n_diff:
+                bad.append("the launcher, %s after the new keystone: %d holes, %d pixels not as the whole put"
+                           % (("at once", "a move")[i], n_holes, n_diff))
+        self.launcher("close")
+
+        s = Settings(area=3, focus="rows")                   # the opaque page; the automatic after a move turns the picture
+        self.open_page(s, handover_from_launcher=False)
+        self.keystone(KEYSTONES["turned right 30"])
+        shots = []
+        for r in (1, 2):
+            self.key(s, row=r, name="row %d" % r)
+            shots.append((self.shot(), s.render()))
+        self.close_page(handover=False)
+        for i, (shot, image) in enumerate(shots):
+            against_whole("the opaque page, key %d after the new keystone" % (i + 1), shot, image)
+
+        self.page = PageClient(self.env["H713_OSD_SOCKET"])  # the pill of Turn to wall: the step turns the picture under it
+        self.page.show(number(1), [(0, 0, W, H)])
+        self.settle()
+        self.keystone(KEYSTONES["turned right 30, pitched down"])
+        shots = []
+        for i in range(2):                                   # the pill's new number, into both buffers
+            self.page.show(number(2), piece)
+            self.settle()
+            shots.append((self.shot(), number(2)))
+        self.close_page(handover=False)
+        for i, (shot, image) in enumerate(shots):
+            against_whole("the pill, show %d after the new keystone" % (i + 1), shot, image)
+        self.assertEqual(bad, [], "\n  ".join(bad))
 
 
 if __name__ == "__main__":
