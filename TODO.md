@@ -395,6 +395,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.117 Klein (Mythos 20.10., aus pille): eine Auswahlliste mit 8 oder mehr Optionen ("Start with" ist datengetrieben, bis 10) hätte dieselbe
       abgeschnittene Pille - die Pitch-Schleife aus ui_draw auch im F_CHOICE-Zweig mit r->n, oder die Modi kappen; Test mit 8 Optionen. Kosmetik:
       Kommentar in ui.c ("more than eight rows") nachziehen.
+- [ ] 2.118 **Der Farbmanager (Grundfarben Hue/Saturation) wirkt auf dem HY310 nicht** (Mythos 20.10.2026, `arbeit/medien/cm-diagnose/MYTHOS-BERICHT.md`):
+      Register 0x05140300..440 werden geschrieben und gelesen, Kamera zeigt in 14 Zuständen Effekt null; der Chroma-Gain 0x05140508[23:16] im selben
+      Block wirkt. RE und Einbau sind richtig, der Augentest vom 18.10. trug nicht (vorformulierte Antwort). Entscheidung Marco: Hue/Saturation
+      in Settings und Panel ausblenden bis geklärt (ctl set cm_* bleibt, Doku-Satz) - Mythos' Empfehlung. Offen: wirkt er unter Stock (HY350-
+      Werksmenü + Kamera, nur mit Marcos Ja)? Takt-/Blockfreigabe unterhalb der Firmware (TVTOP/CCU, ~halber Tag RE). Der Weißabgleich wirkt.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
