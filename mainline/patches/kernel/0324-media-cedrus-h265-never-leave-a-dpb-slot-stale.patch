@@ -1,0 +1,114 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: h265: never leave a DPB slot stale
+
+cedrus_h265_frame_info_write_dpb() wrote only the active DPB entries
+whose reference buffer it could find, and skipped the rest. A skipped
+slot keeps the addresses an earlier job, or an earlier process, put
+there. The reference lists can name such a slot: a reference the client
+no longer holds, or an index past num_active_dpb_entries, both of which
+a damaged stream produces, especially when the client keeps decoding
+after a failed frame.
+
+On the H713 the bit-flipped HEVC stream b03-h, decoded through
+GStreamer va, logged 2-11 missing references per run, each one a slot
+the VE could have followed into a buffer freed long ago.
+
+This is hardening, not the cause of that stream's IOMMU page faults.
+Those continued with this patch at the same rate: logging every address
+cedrus programs showed all buffers, DPB slots and reference-list indices
+valid, while the faulting addresses were scattered across the whole
+32-bit space. They track damaged slice payload, so the VE most likely
+computes reference fetches from corrupt motion vectors without clamping
+them; kernel 0158 is what makes the VE recover from them.
+
+Write all 16 slots on every job. A slot with no reference behind it
+gets the picture being decoded, as hantro does: its prediction is
+garbage, which a damaged stream's is anyway, but every address the
+engine can follow is mapped. Missing references are reported,
+ratelimited.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/a4d6d5f38832ddee2e4619607bf3ba925dd7012d/patches/kernel/0159-media-cedrus-h265-never-leave-a-dpb-slot-stale.patch (0159-media-cedrus-h265-never-leave-a-dpb-slot-stale.patch, commit aae688d)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
+@@ -139,28 +139,53 @@
+ 	cedrus_h265_sram_write_data(dev, &frame_info, sizeof(frame_info));
+ }
+ 
++/*
++ * Write every DPB slot the reference lists can index, not only the active
++ * ones with a buffer behind them. A slot left alone keeps the addresses of
++ * whatever an earlier job (or an earlier process) put there, and the
++ * reference lists of a damaged stream - or of the frames a client keeps
++ * decoding after one failed - name missing references and inactive slots,
++ * which would send the VE into buffers freed long ago. A slot
++ * with no reference gets the picture being decoded, as hantro does: the
++ * prediction is garbage, which a damaged stream is anyway, but every address
++ * the engine can follow is mapped.
++ */
+ static void cedrus_h265_frame_info_write_dpb(struct cedrus_ctx *ctx,
+ 					     const struct v4l2_hevc_dpb_entry *dpb,
+-					     u8 num_active_dpb_entries)
++					     u8 num_active_dpb_entries,
++					     struct vb2_buffer *fallback)
+ {
+ 	struct vb2_queue *vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx,
+ 					       V4L2_BUF_TYPE_VIDEO_CAPTURE);
+-	unsigned int i;
++	unsigned int i, missing = 0;
++
++	for (i = 0; i < V4L2_HEVC_DPB_ENTRIES_NUM_MAX; i++) {
++		struct vb2_buffer *buf = NULL;
++		u32 pic_order_cnt[2] = { 0, 0 };
++		bool field_pic = false;
++
++		if (i < num_active_dpb_entries) {
++			buf = vb2_find_buffer(vq, dpb[i].timestamp);
++			pic_order_cnt[0] = dpb[i].pic_order_cnt_val;
++			pic_order_cnt[1] = dpb[i].pic_order_cnt_val;
++			field_pic = dpb[i].field_pic;
++			if (!buf)
++				missing++;
++		}
+ 
+-	for (i = 0; i < num_active_dpb_entries; i++) {
+-		struct vb2_buffer *buf = vb2_find_buffer(vq, dpb[i].timestamp);
+-		u32 pic_order_cnt[2] = {
+-			dpb[i].pic_order_cnt_val,
+-			dpb[i].pic_order_cnt_val
+-		};
+-
+-		if (!buf)
+-			continue;
+-
+-		cedrus_h265_frame_info_write_single(ctx, i, dpb[i].field_pic,
+-						    pic_order_cnt,
+-						    buf);
++		if (!buf) {
++			buf = fallback;
++			field_pic = false;
++		}
++
++		cedrus_h265_frame_info_write_single(ctx, i, field_pic,
++						    pic_order_cnt, buf);
+ 	}
++
++	if (missing)
++		dev_warn_ratelimited(ctx->dev->dev,
++				     "h265: %u of %u references not found, using the output picture\n",
++				     missing, num_active_dpb_entries);
+ }
+ 
+ static void cedrus_h265_ref_pic_list_write(struct cedrus_dev *dev,
+@@ -755,7 +781,8 @@
+ 
+ 	/* Write decoded picture buffer in pic list. */
+ 	cedrus_h265_frame_info_write_dpb(ctx, decode_params->dpb,
+-					 decode_params->num_active_dpb_entries);
++					 decode_params->num_active_dpb_entries,
++					 &run->dst->vb2_buf);
+ 
+ 	/* Output frame. */
+ 
