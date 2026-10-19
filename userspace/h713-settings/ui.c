@@ -627,7 +627,15 @@ int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[
 	int n = visible_rows(a);
 
 	cv = c;
-	pitch = v->f != F_CHOICE && n > 8 ? floor(658.0 / (n - 1)) : 94;
+	/*
+	 * The rows' pitch: 94, or less as soon as the pill of the last row would reach the room of the note at 890 - the note is drawn
+	 * after the rows and cleared the pill's lower edge (Marco 20.10.2026: "Reset picture" cut off, with nine rows and, unnoticed, with
+	 * eight). A choice keeps 94: its lists are seven options at most.
+	 */
+	pitch = 94;
+	if (v->f != F_CHOICE)
+		while (pitch > 40 && 202 + pitch * (n - 1) + (pitch < 94 ? floor((pitch + 15) / 2) : 52) + 2 > 890)
+			pitch--;
 	phh = pitch < 94 ? floor((pitch + 15) / 2) : 52;
 	U = c->h / 1080.0;
 	XOFF = (c->w - 1920 * U) / 2;

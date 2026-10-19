@@ -1947,6 +1947,24 @@ class Look(LookKit):
     """What the owner asked for on 15.10.: everything inside a safe margin of 5 %, an opaque calm page, one pill over the picture
     while a value that is judged on the picture is adjusted. The picture of every state is the canvas of --test as PAM."""
 
+    def test_the_last_row_s_pill_is_whole(self):
+        # Marco 20.10.2026: the pill of "Reset picture" was cut off at the bottom - the note under the rows cleared its lower edge
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        bright = lambda px: px[0] > 200 and px[1] > 200 and px[2] > 200     # the pill's outline (the text is not in the band looked at)
+        for curves in (False, True):                                  # eight rows, and nine with Gamma
+            box = self.box()
+            box.tv.curves = curves
+            b = box.start("Picture", size="%dx%d" % (self.W, self.H))
+            b.keys("ok", *["down"] * 10)                              # to the last row: Reset picture
+            data = self.snap(b, "last%d" % curves)
+            rows = [y for y in range(self.H) for x in (self.W * 3 // 4,) if bright(data[(y * self.W + x) * 4:(y * self.W + x) * 4 + 3])]
+            self.assertGreaterEqual(len(rows), 2, "no outline of the pill found (curves %s)" % curves)
+            top, bottom = rows[0], rows[-1]
+            self.assertLess(bottom, int(890 * self.H / 1080), "the pill reaches the note (curves %s)" % curves)
+            self.assertGreater(bottom - top, 20, "only one edge of the pill is there, the other is cut (curves %s)" % curves)
+            b.finish()
+
     def test_a_choice_leaves_nothing_of_the_rows_below_it(self):
         # Mythos 19.10.2026 (gamma-ui): opening Picture mode's five options left the rows below them (Aspect ratio, Reset picture)
         if not any(f and os.path.exists(f) for f in FONTS):
