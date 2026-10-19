@@ -258,6 +258,13 @@ CONFIG_SUN50I_H713_TVCAP=y
 CONFIG_IIO=y
 CONFIG_IIO_ST_ACCEL_3AXIS=m
 CONFIG_IIO_ST_ACCEL_I2C_3AXIS=m
+# The accelerometer of the auto keystone has no interrupt line, so its buffer
+# is clocked by a high resolution timer trigger (h713-keystone makes it through
+# configfs). The sensor then stays on while it is read, instead of being
+# switched on and waited for at every sysfs value (about 45 ms each).
+CONFIG_IIO_BUFFER=y
+CONFIG_IIO_SW_TRIGGER=y
+CONFIG_IIO_HRTIMER_TRIGGER=y
 CONFIG_AXP20X_ADC=y
 CONFIG_SUN20I_GPADC=y
 CONFIG_SUN50I_H713_LRADC=y
