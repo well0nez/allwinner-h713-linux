@@ -661,6 +661,12 @@ int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[
 				text(752, 120, 26, 0.7f, r->label, 0);	/* which row these options are for */
 				seal();
 			}
+			/* below the last option down to the note: the rows the list was opened over (Mythos 19.10.2026, the same class as the
+			 * change of area in the branch below; the option above is drawn again after it) */
+			if (!all && (dirty & D_RIGHT)) {
+				clear_box(690, row_y(r->n) - phh - 2, 1830, 890, GROUND);
+				seal();
+			}
 			/* the highlighted one last: its pill reaches 5 px into the room of its neighbours */
 			for (int pass = 0; pass < 2; pass++)
 				for (int k = 0; k < r->n; k++)
