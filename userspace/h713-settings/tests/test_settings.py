@@ -7,6 +7,7 @@ python3 -m unittest discover -s tests -v   (from userspace/h713-settings, after 
 """
 
 import os
+import re
 import shutil
 import signal
 import socket
@@ -62,13 +63,62 @@ class FakeTv(Ctl):
         self.wb = [512] * 6                            # the firmware's white balance: R G B gain, R G B offset
         self.cm = {}                                   # (axis, "hue"|"sat"|"value") -> step; 0 = not there
         self.fw_color = True                           # False: "not available" (another firmware)
+        self.curves = False                            # True: h713-tv has the board's gamma curves (ctl get/set gamma, colour_temperature)
+        self.gamma_level, self.ctemp, self.missing = 3, "auto", set()   # level 0..4; auto|normal|cool|warm; the temperatures this board has no curve for
+        self.refuse = set()                            # "gamma" / "colour_temperature": the CRTC refuses a new curve for it
+        self.saved_look = None                         # (gamma level, colour temperature) as of the last save
         super().__init__(path)
+
+    GAMMA_NAMES = ("1.8", "2.0", "2.1", "2.2", "2.4")
+    TEMP_OF_MODE = {"cinema": "warm", "hdr": "warm", "vivid": "cool"}      # what auto comes to (h713-tv: from the device data)
+
+    def temp_text(self):
+        want = self.ctemp if self.ctemp != "auto" else self.TEMP_OF_MODE.get(self.preset, "normal")
+        got = "normal" if want in self.missing else want
+        if self.ctemp == "auto":
+            return "auto (%s)" % got
+        return self.ctemp if got == self.ctemp else "%s (%s: this board has no %s curve)" % (self.ctemp, got, self.ctemp)
+
+    def look_answer(self, key):
+        if key == "gamma":
+            return "ok gamma = %d (%s)\n" % (self.gamma_level, self.GAMMA_NAMES[self.gamma_level])
+        return "ok colour_temperature = %s\n" % self.temp_text()
+
+    def look(self, w):
+        """ctl get|set gamma|colour_temperature, answered the way h713-tv's gamma.c does (the answer to a set is the answer to a get)"""
+        key = w[1]
+        if not self.curves:
+            return "error %s is not available: the board's curves were not read\n" % key
+        if w[0] == "set":
+            if len(w) != 3:
+                return "error set needs a name and a value\n"
+            if key == "gamma":
+                if w[2] in self.GAMMA_NAMES:
+                    level = self.GAMMA_NAMES.index(w[2])
+                elif w[2].isdigit() and int(w[2]) < 5:
+                    level = int(w[2])
+                else:
+                    return 'error gamma does not know "%s" - possible: 0..4 or 1.8 2.0 2.1 2.2 2.4\n' % w[2]
+                if "gamma" in self.refuse:
+                    return "error gamma = %s: the CRTC refused the curve\n" % w[2]
+                self.gamma_level = level
+            else:
+                if w[2] not in ("auto", "normal", "cool", "warm"):
+                    return 'error colour_temperature does not know "%s" - possible: auto normal cool warm\n' % w[2]
+                if "colour_temperature" in self.refuse:
+                    return "error colour_temperature = %s: the CRTC refused the curve\n" % w[2]
+                self.ctemp = w[2]
+        return self.look_answer(key)
 
     def answer(self, line):
         w = line.split()
         if w[0] == "list":
             rows = "".join("  %-26s %d  (0..100)\n" % (k, v) for k, v in self.c.items())
-            return "ok controls\n" + rows + "  mode                       1 (standard)  menu 0..5\n"
+            more = "  %-26s %d (%s)  menu 0..4\n  %-26s %s  menu auto|normal|cool|warm\n" % (
+                "gamma", self.gamma_level, self.GAMMA_NAMES[self.gamma_level], "colour_temperature", self.temp_text()) if self.curves else ""
+            return "ok controls\n" + rows + "  mode                       1 (standard)  menu 0..5\n" + more
+        if w[0] in ("get", "set") and len(w) >= 2 and w[1] in ("gamma", "colour_temperature"):
+            return self.look(w)
         if w[0] == "wb":
             if len(w) == 1:
                 if not self.fw_color:
@@ -136,6 +186,7 @@ class FakeTv(Ctl):
             return "ok source %s\n" % self.source
         if w[0] == "save":
             self.saved += 1
+            self.saved_look = (self.gamma_level, self.ctemp)
             return "ok saved in x: preset=%s\n" % self.preset
         return "error unknown: %s\n" % w[0]
 
@@ -356,6 +407,11 @@ class Box:
     def keys(self, *keys):
         for k in keys:
             self.proc.stdin.write(k + "\n")
+        self.proc.stdin.flush()
+
+    def hold(self, key, n):
+        """a held key: n presses that reach the program in one piece, so that it sums them into one command"""
+        self.proc.stdin.write((key + "\n") * n)
         self.proc.stdin.flush()
 
     def dump(self):
@@ -781,6 +837,293 @@ class ColourByPrimary(Base):
         d = b.dump()
         self.assertIn("Hue slider 0 ", d)
         self.assertIn("set cm_yellow_hue 5", b.tv.log)              # it was asked
+        b.finish()
+
+
+class Gamma(Base):
+    """19.10.2026: Gamma (Picture) and Colour temperature (White balance) as sliders with named stops, judged on the picture: one pill over
+    the real picture. Both are h713-tv's own (ctl set gamma N, ctl set colour_temperature NAME); a row shows what h713-tv answers."""
+
+    def box(self, **kw):
+        b = super().box(**kw)
+        b.tv.curves = True
+        return b
+
+    GAMMA = ["ok"] + ["down"] * 5               # Picture: Brightness Contrast Colour Tint Sharpness [Gamma] Picture mode Aspect ratio Reset picture
+    RESET = ["ok"] + ["down"] * 8 + ["ok"]
+
+    def test_gamma_stands_between_sharpness_and_the_picture_mode(self):
+        d = self.box().start("Picture").dump()
+        lines = [l.strip() for l in d.splitlines()]
+        names = [l.split(" slider")[0].split(" choice")[0].split(" action")[0] for l in lines[1:10]]
+        self.assertEqual(names, ["Brightness", "Contrast", "Colour", "Tint", "Sharpness", "Gamma", "Picture mode", "Aspect ratio", "Reset picture"])
+        self.assertIn("Gamma slider 3 0..4 [1.8|2.0|2.1|*2.2|2.4]", d)
+        self.assertNotIn("(hidden) Gamma", d)
+
+    def test_a_step_is_one_command_and_the_page_is_the_pill(self):
+        b = self.box().start("Picture")
+        b.keys(*self.GAMMA, "right")
+        d = b.dump()
+        self.assertIn("focus slider row 5", d)
+        self.assertIn("Gamma slider 4 0..4 [1.8|2.0|2.1|2.2|*2.4]", d)
+        self.assertEqual([x for x in b.tv.log if x.startswith("set ")], ["set gamma 4"])
+        self.assertEqual(b.tv.gamma_level, 4)
+        b.hold("left", 2)
+        self.assertIn("Gamma slider 2 0..4 [1.8|2.0|*2.1|2.2|2.4]", b.dump())
+        self.assertEqual(b.tv.gamma_level, 2)
+        b.finish()
+
+    def test_ok_opens_the_pill_without_moving_it(self):
+        b = self.box().start("Picture")
+        b.keys(*self.GAMMA, "ok")
+        d = b.dump()
+        self.assertIn("focus slider row 5", d)
+        self.assertIn("Gamma slider 3", d)
+        self.assertEqual([x for x in b.tv.log if x.startswith("set ")], [])
+        b.finish()
+
+    def test_a_held_key_is_one_command_and_the_ends_hold(self):
+        b = self.box().start("Picture")
+        b.keys(*self.GAMMA)
+        b.hold("right", 3)                                      # 3 -> 4 once; the press past the end is no second command
+        self.assertIn("Gamma slider 4", b.dump())
+        self.assertEqual([x for x in b.tv.log if x.startswith("set ")], ["set gamma 4"])
+        b.hold("left", 6)                                       # 4 -> 0 in one command, then nothing more
+        self.assertIn("Gamma slider 0", b.dump())
+        self.assertEqual([x for x in b.tv.log if x.startswith("set ")], ["set gamma 4", "set gamma 0"])
+        b.keys("left")                                          # at the end: nothing is sent
+        b.dump()
+        self.assertEqual([x for x in b.tv.log if x.startswith("set ")], ["set gamma 4", "set gamma 0"])
+        b.finish()
+
+    def test_gamma_is_kept_like_the_other_picture_values(self):
+        b = self.box().start("Picture")
+        b.keys(*self.GAMMA, "right")
+        b.dump()
+        self.assertEqual(b.tv.saved, 0)
+        self.assertTrue(wait_for(lambda: b.tv.saved == 1, 4.0))                 # when the hand has rested, once
+        self.assertEqual(b.tv.saved_look, (4, "auto"))
+        b.finish()
+        self.assertIn("preset = last", b.read("tv.conf"))
+
+    def test_a_refused_curve_shows_what_the_tool_holds(self):
+        b = self.box()
+        b.tv.refuse.add("gamma")
+        b.start("Picture")
+        b.dump()                                                                 # the page has read the tool
+        b.tv.gamma_level = 1                                                     # somebody else moved it since the page opened
+        b.keys(*self.GAMMA, "right")                                             # 2.4 is asked for and refused: the row shows what the tool holds
+        self.assertIn("Gamma slider 1 0..4 [1.8|*2.0|2.1|2.2|2.4]", b.dump())
+        b.finish()
+        self.assertEqual(b.tv.saved, 0)                                          # nothing changed here, so nothing is kept
+
+    def test_the_row_reads_what_the_tool_holds(self):
+        b = self.box()
+        b.tv.gamma_level = 1                                                     # the tool holds 2.0 when the page opens
+        b.start("Picture")
+        self.assertIn("Gamma slider 1 0..4 [1.8|*2.0|2.1|2.2|2.4]", b.dump())
+        b.finish()
+
+    def test_a_board_without_the_curves_has_no_gamma_row(self):
+        b = self.box()
+        b.tv.curves = False
+        d = b.start("Picture").dump()
+        self.assertIn("(hidden) Gamma slider", d)
+        b.keys("ok", *["down"] * 5)
+        self.assertIn("focus rows row 5", b.dump())                              # Picture mode is the sixth visible row
+        b.keys("ok", "down", "ok")                                               # and it works as before
+        b.dump()
+        self.assertIn("preset cinema", b.tv.log)
+        b.finish()
+
+    def test_reset_picture_brings_gamma_back_and_leaves_the_colour_temperature(self):
+        b = self.box()
+        b.tv.gamma_level, b.tv.ctemp = 4, "cool"
+        b.start("Picture")
+        b.keys(*self.RESET)
+        d = b.dump()
+        self.assertIn("preset standard", b.tv.log)
+        self.assertEqual(b.tv.gamma_level, 3)
+        self.assertEqual(b.tv.ctemp, "cool")                                     # it has its own Reset, on White balance
+        self.assertIn("Gamma slider 3", d)
+        self.assertEqual(b.tv.saved, 1)
+        self.assertEqual(b.tv.saved_look, (3, "cool"))
+        b.finish()
+
+    def test_reset_picture_without_curves_sends_no_gamma(self):
+        b = self.box()
+        b.tv.curves = False
+        b.start("Picture")
+        b.keys("ok", *["down"] * 7, "ok")
+        self.assertIn('Reset picture action "Done"', b.dump())
+        self.assertEqual([x for x in b.tv.log if x.startswith("set ")], [])             # no row, nothing is sent: only the asking
+        b.finish()
+
+    # -- White balance: Colour temperature on top
+
+    def test_colour_temperature_is_the_first_row_of_white_balance(self):
+        d = self.box().start("White balance").dump()
+        lines = [l.strip() for l in d.splitlines()]
+        self.assertEqual([l.split(" slider")[0].split(" action")[0] for l in lines[1:5]], ["Colour temperature", "Warm - Cool", "Green - Magenta", "Reset"])
+        self.assertIn("Colour temperature slider 0 0..3 [*Auto|Warm|Normal|Cool]", d)
+        self.assertIn('"Auto: Normal"', d)                                       # Auto says what it comes to
+
+    def test_auto_says_what_the_picture_mode_brings(self):
+        b = self.box()
+        b.tv.preset = "cinema"
+        self.assertIn('"Auto: Warm"', b.start("White balance").dump())
+        b.tv.preset = "vivid"
+        b.keys("down", "up")                                                     # the area is read again when it is opened
+        self.assertIn('"Auto: Cool"', b.dump())
+        b.finish()
+
+    def test_a_stop_is_one_command_and_a_set_one_has_no_second_word(self):
+        b = self.box().start("White balance")
+        b.keys("ok", "right")
+        d = b.dump()
+        self.assertIn("focus slider row 0", d)
+        self.assertIn("Colour temperature slider 1 0..3 [Auto|*Warm|Normal|Cool]", d)
+        self.assertNotIn('"Warm', d)                                             # Warm is its own: no "Auto: ..." and no second word
+        b.keys("right")
+        b.dump()
+        b.keys("right")
+        self.assertIn("slider 3 0..3 [Auto|Warm|Normal|*Cool]", b.dump())
+        b.hold("left", 3)                                                        # held: all the way back, one command
+        self.assertIn("Colour temperature slider 0 0..3 [*Auto|Warm|Normal|Cool] note", b.dump())
+        self.assertEqual([x for x in b.tv.log if x.startswith("set ")],
+                         ["set colour_temperature warm", "set colour_temperature normal", "set colour_temperature cool", "set colour_temperature auto"])
+        b.finish()
+
+    def test_a_chosen_temperature_stays_when_the_picture_mode_changes(self):
+        b = self.box().start("White balance")
+        b.keys("ok")
+        b.hold("right", 3)
+        b.keys("back", "back")                                                   # Cool, then out to the areas
+        b.dump()
+        self.assertEqual(b.tv.ctemp, "cool")
+        b.tv.preset = "cinema"
+        b.keys("up", "down")
+        d = b.dump()
+        self.assertIn("slider 3 0..3 [Auto|Warm|Normal|*Cool]", d)
+        self.assertNotIn('"Auto', d)
+        b.finish()
+
+    def test_a_board_without_the_curve_says_so(self):
+        b = self.box()
+        b.tv.missing = {"warm"}
+        b.start("White balance")
+        b.keys("ok", "right")
+        self.assertIn('Colour temperature slider 1 0..3 [Auto|*Warm|Normal|Cool] note "', b.dump())
+        self.assertIn('"Warm: Normal"', b.dump())                                # chosen: what it comes to
+        b.finish()
+
+    def test_up_and_down_go_on_to_the_fine_tuning_in_the_same_pill(self):
+        b = self.box().start("White balance")
+        b.keys("ok", "right", "down")
+        self.assertIn("focus slider row 1", b.dump())                            # Warm - Cool, no stop between
+        b.keys("down", "up", "up")
+        self.assertIn("focus slider row 0", b.dump())
+        b.keys("up")                                                             # no slider above: it stays
+        self.assertIn("focus slider row 0", b.dump())
+        b.finish()
+
+    def test_a_refused_temperature_shows_what_the_tool_holds(self):
+        b = self.box()
+        b.tv.refuse.add("colour_temperature")
+        b.start("White balance")
+        b.dump()
+        b.tv.ctemp = "normal"                                                    # somebody else set it since the page opened
+        b.keys("ok", "right")                                                    # Warm is asked for and refused: the tool holds Normal
+        self.assertIn("Colour temperature slider 2 0..3 [Auto|Warm|*Normal|Cool]", b.dump())
+        b.finish()
+        self.assertEqual(b.tv.saved, 0)                                          # nothing changed, so nothing is kept
+
+    def test_a_temperature_is_kept_like_the_other_picture_values(self):
+        b = self.box().start("White balance")
+        b.keys("ok", "right", "right")
+        b.dump()
+        self.assertTrue(wait_for(lambda: b.tv.saved == 1, 4.0))
+        self.assertEqual(b.tv.saved_look, (3, "normal"))
+        b.finish()
+
+    def test_reset_gives_the_whole_page_back_the_temperature_too(self):
+        b = self.box()
+        b.tv.ctemp = "cool"
+        b.start("White balance")
+        b.keys("ok", "down", "right", "right", "back")                           # Warm - Cool 4
+        b.dump()
+        self.assertNotEqual(b.tv.wb[:3], [512] * 3)
+        b.keys("down", "down", "ok")                                             # Green - Magenta, Reset
+        d = b.dump()
+        self.assertEqual(b.tv.wb, [512] * 6)
+        self.assertEqual(b.tv.ctemp, "auto")
+        self.assertIn('Reset action "Done"', d)
+        self.assertIn("Colour temperature slider 0 0..3 [*Auto", d)
+        self.assertEqual(b.tv.saved, 1)
+        self.assertEqual(b.tv.saved_look, (3, "auto"))
+        b.finish()
+
+    def test_reset_on_auto_sends_no_temperature(self):
+        b = self.box().start("White balance")
+        b.keys("ok", "down", "right", "back", "down", "down", "ok")
+        self.assertIn('Reset action "Done"', b.dump())
+        self.assertEqual([x for x in b.tv.log if x.startswith("set colour_temperature")], [])
+        b.finish()
+
+    def test_without_the_curves_reset_is_what_it_was(self):
+        b = self.box()
+        b.tv.curves = False
+        b.start("White balance")
+        b.keys("ok", "right", "back", "down", "down", "ok")                      # only Warm - Cool, Green - Magenta, Reset are there
+        d = b.dump()
+        self.assertIn('Reset action "Done"', d)
+        self.assertIn("(hidden) Colour temperature", d)
+        self.assertEqual([x for x in b.tv.log if x.startswith("set ")], [])
+        b.finish()
+
+    def test_the_colour_temperature_does_not_wait_for_the_firmware_s_white_balance(self):
+        b = self.box()
+        b.tv.fw_color = False                                                    # another display firmware: no sliders, but the curves are h713-tv's
+        d = b.start("White balance").dump()
+        self.assertNotIn("(hidden) Colour temperature", d)
+        self.assertIn("(hidden) Warm - Cool", d)
+        self.assertIn('White balance info "Not available"', d)
+        b.keys("ok", "right")
+        self.assertIn("Colour temperature slider 1", b.dump())
+        b.finish()
+
+    def test_the_sentence_under_the_page_says_what_the_stop_is_and_what_the_mode_brings(self):
+        b = self.box().start("Picture")
+        b.keys("ok", *["down"] * 5)
+        self.assertIn('sentence "The standard for video. Start here."', b.dump())
+        b.keys("down")                                                           # Picture mode
+        self.assertIn('sentence "Also sets the colour temperature (White balance) while that is on Auto."', b.dump())
+        b.finish()
+        b = self.box()
+        b.tv.curves = False                                                      # nothing to say about a colour temperature that is not there
+        b.start("Picture")
+        b.keys("ok", *["down"] * 5)
+        self.assertNotIn("sentence", b.dump())
+        b.finish()
+
+    def test_the_curves_are_the_makers_and_the_sliders_sit_on_top(self):
+        b = self.box().start("White balance")
+        b.keys("ok", "right")
+        self.assertRegex(b.dump(), r'sentence "Redder whites\. The maker\'s measured warm curve for this panel; it stays when the picture mode changes\."')
+        b.keys("right")
+        b.dump()
+        b.keys("right")
+        self.assertRegex(b.dump(), r'sentence "Bluer whites\. The maker\'s measured cool curve')
+        b.keys("back", "up")                                                     # no row above Colour temperature: stays
+        b.finish()
+
+    def test_what_a_sentence_may_be(self):
+        # a sentence of a stop is at most two lines of the pill (880 design px at 26 px, about 70 characters each): not more than 140
+        b = self.box().start("White balance")
+        for k in range(4):
+            b.keys(*(["ok", "right"] if k == 0 else ["right"]))
+            note = re.search(r'note "([^"]*)"', [l for l in b.dump().splitlines() if l.strip().startswith("Colour temperature")][0]).group(1)
+            self.assertLessEqual(len(note), 142, note)
         b.finish()
 
 
@@ -1557,9 +1900,8 @@ class Device(Base):
         b.proc.wait(timeout=5)
 
 
-class Look(Base):
-    """What the owner asked for on 15.10.: everything inside a safe margin of 5 %, an opaque calm page, one pill over the picture
-    while a value that is judged on the picture is adjusted. The picture of every state is the canvas of --test as PAM."""
+class LookKit(Base):
+    """The picture of a state: the canvas of --test as PAM, and where its ink is."""
 
     W, H = 960, 540                     # u = 1/2: the margins are 48 px left and right, 27 px top and bottom
 
@@ -1599,6 +1941,11 @@ class Look(Base):
         self.assertLessEqual(x1, self.W - 48, what)
         self.assertGreaterEqual(y0, 26, what)
         self.assertLessEqual(y1, self.H - 27, what)
+
+
+class Look(LookKit):
+    """What the owner asked for on 15.10.: everything inside a safe margin of 5 %, an opaque calm page, one pill over the picture
+    while a value that is judged on the picture is adjusted. The picture of every state is the canvas of --test as PAM."""
 
     def test_a_shorter_area_leaves_nothing_of_the_longer_one(self):
         # Marco 19.10.2026: Reset in Colour, then White balance showed two "Reset" rows - the fourth was Colour's, never cleared
@@ -1782,6 +2129,148 @@ class Look(Base):
         self.assertIn("focus slider row 2", b.dump())
         self.assertEqual(b.warp.zoom, 95)                           # moving between the two changed nothing
         b.finish()
+
+
+class LookGamma(LookKit):
+    """19.10.2026: a page of nine rows (Picture with Gamma) has a narrower pitch, a stop slider has its own pill. Pages of up to eight rows
+    are the same as before (the pitch of 94): the pictures of all nine areas were compared byte for byte with the build without the change."""
+
+    PILL = (28, 35, 33, 255)
+    GROUND = (11, 14, 13, 255)
+
+    def box(self, **kw):
+        b = super().box(**kw)
+        b.tv.curves = True
+        return b
+
+    def at(self, page, x, y):
+        return tuple(page[(y * self.W + x) * 4:][:4])
+
+    def need_font(self):
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+
+    def test_nine_rows_take_the_narrow_pitch_and_eight_keep_the_old_one(self):
+        self.need_font()
+        size = "%dx%d" % (self.W, self.H)
+        s = self.W / 1920.0
+        b = self.box().start("Picture", size=size)
+        b.keys("ok", "down", "down")                                  # the third of nine rows: lit at 202 + 82 * 2
+        page = self.snap(b, "nine")
+        self.assertEqual(self.at(page, int(1000 * s), int(366 * s)), self.PILL)
+        self.assertEqual(self.at(page, int(1000 * s), int(426 * s)), self.GROUND)        # below the pill: the next row is not lit
+        b.finish()
+        b = self.box().start("Picture", size=size)
+        b.keys("ok", *["down"] * 6, "ok", "down", "down")             # the options of Picture mode keep the pitch of 94, whatever the page below had
+        page = self.snap(b, "options")
+        self.assertEqual(self.at(page, int(1000 * s), int(434 * s)), self.PILL)          # the third option, lit at 202 + 94 * 2, down to 442
+        b.finish()
+        b = self.box()
+        b.tv.curves = False
+        b.start("Picture", size=size)
+        b.keys("ok", "down", "down")                                  # the third of eight rows: lit at 202 + 94 * 2
+        page = self.snap(b, "eight")
+        self.assertEqual(self.at(page, int(1000 * s), int(390 * s)), self.PILL)
+        self.assertEqual(self.at(page, int(1000 * s), int(366 * s)), self.PILL)          # (the lit pill is 104 px high, down to 442)
+        self.assertEqual(self.at(page, int(1000 * s), int(450 * s)), self.GROUND)
+        b.finish()
+
+    def test_every_row_of_nine_stays_inside_the_margin_and_above_the_note(self):
+        self.need_font()
+        b = self.box().start("Picture", size="%dx%d" % (self.W, self.H))
+        b.keys("ok")
+        for row in range(9):
+            page = self.snap(b, "r")
+            self.inside(self.ink(page, True), "row %d" % row)
+            # the last row's pill (centre 860) ends before the note's text begins (its first line is at 922, 26 px high)
+            if row == 8:
+                self.assertEqual(self.at(page, 300, int(905 * self.W / 1920.0)), self.GROUND)
+            b.keys("down")
+        b.finish()
+
+    def test_a_longer_page_and_a_shorter_one_leave_nothing_of_each_other(self):
+        self.need_font()
+        size = "%dx%d" % (self.W, self.H)
+        fresh = {}
+        for area in ("Picture", "White balance", "Colour", "Sound"):
+            b = self.box().start(area, size=size)
+            fresh[area] = self.snap(b, "fresh")
+            b.finish()
+        b = self.box().start("Picture", size=size)                    # nine rows, then the areas below it
+        b.keys("ok", *["down"] * 8, "back")
+        for step, area in enumerate(("White balance", "Colour"), 1):
+            b.keys("down")
+            self.assertEqual(self.snap(b, "after"), fresh[area], "%s after Picture" % area)
+        b.keys("down", "down")                                          # Keystone, Sound
+        self.assertEqual(self.snap(b, "sound"), fresh["Sound"], "Sound after Picture")
+        b.keys("up", "up", "up", "up")                                  # and back up to Picture, nine rows again
+        self.assertEqual(self.snap(b, "back"), fresh["Picture"], "Picture after the shorter ones")
+        b.finish()
+
+    def test_the_stop_pill_stays_inside_the_margin_and_the_pill(self):
+        self.need_font()
+        s = self.W / 1920.0
+        for area, steps in (("Picture", ["ok"] + ["down"] * 5), ("White balance", ["ok"])):
+            for stop in range(5 if area == "Picture" else 4):
+                b = self.box()
+                b.tv.preset = "cinema"
+                b.start(area, size="%dx%d" % (self.W, self.H))
+                b.keys(*steps, "ok")                                    # the pill, on the stop the tool holds (Gamma 2.2, Auto)
+                if stop:
+                    b.hold("right", stop)                               # held: all the way to the stop, one command
+                self.assertIn("focus slider", b.dump())
+                box = self.ink(self.snap(b, "pill"), False)
+                self.inside(box, "%s stop %d" % (area, stop))
+                self.assertGreaterEqual(box[0], int(452 * s) - 1, "%s stop %d: the pill's left edge" % (area, stop))
+                self.assertLessEqual(box[2], int(1468 * s) + 1, "%s stop %d: the pill's right edge" % (area, stop))
+                self.assertGreaterEqual(box[1], int(780 * s), "%s stop %d: the pill stays at the foot" % (area, stop))
+                b.finish()
+
+    def test_the_pill_names_its_stops_under_the_track(self):
+        self.need_font()
+        s = self.W / 1920.0
+        for area, keys, track in (("Picture", ["ok"] + ["down"] * 5 + ["ok"], 862), ("White balance", ["ok", "ok"], 832)):    # the track's y in the design
+            b = self.box().start(area, size="%dx%d" % (self.W, self.H))
+            b.keys(*keys)
+            page = self.snap(b, "names")
+            bright = sum(1 for y in range(int((track + 24) * s), int((track + 48) * s)) for x in range(int(870 * s), int(1210 * s))
+                         if self.at(page, x, y)[0] > 200 and self.at(page, x, y)[3] > 200)
+            self.assertGreater(bright, 5, "%s: the words of the stops" % area)
+            b.finish()
+
+    def test_a_long_sentence_makes_the_pill_two_lines_and_taller(self):
+        self.need_font()
+        tops = {}
+        for name, area, keys in (("gamma", "Picture", ["ok"] + ["down"] * 5 + ["ok"]), ("ctemp", "White balance", ["ok", "ok"])):
+            b = self.box().start(area, size="%dx%d" % (self.W, self.H))
+            b.keys(*keys)
+            tops[name] = self.ink(self.snap(b, name), False)[1]
+            b.finish()
+        self.assertLess(tops["ctemp"], tops["gamma"] - 10)             # Auto's sentence is two lines: the pill grows upwards, by 30 design px
+
+    def test_the_stop_pills_report_all_they_changed(self):
+        # h713-osd puts the columns of a "page show" only: a pixel changed outside the reported pieces is stale on the wall
+        self.need_font()
+        walk = ["ok", "down", "right", "left", "up", "ok", "down", "ok", "back", "down", "right", "right", "left", "ok", "up", "back"]
+        for area in ("Picture", "White balance"):
+            b = self.box().start(area, size="%dx%d" % (self.W, self.H))
+            for key in walk + ["down"] * 5 + ["right", "left", "up", "ok", "down", "ok", "up", "up", "back"]:
+                if key == "back" and "focus areas" in b.dump().splitlines()[0]:
+                    continue
+                b.keys(key)
+            dump = b.dump().splitlines()
+            self.assertIn("outside 0", dump, "%s: %s" % (area, dump[:1]))
+            b.finish()
+
+    def test_the_stops_row_is_drawn_the_same_again(self):
+        self.need_font()
+        for area, down in (("Picture", 5), ("White balance", 0)):
+            b = self.box().start(area, size="%dx%d" % (self.W, self.H))
+            b.keys("ok", *["down"] * down)
+            first = self.snap(b, "first")
+            b.keys("down", "up")
+            self.assertEqual(self.snap(b, "again"), first, area)
+            b.finish()
 
 
 OSD_DIR = os.path.join(HERE, "..", "..", "h713-osd")

@@ -32,6 +32,9 @@ struct view {
  * the pixel); returns how many */
 int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[][4]);
 
+/* the sentence under the rows for the selected one: its own, or for a choice or a slider with named stops the one of the value it stands on; NULL: none */
+const char *ui_note(const struct view *v, const struct row *sel);
+
 int visible_rows(const struct area *a);
 struct row *visible_row(struct area *a, int i);
 

@@ -3,10 +3,9 @@
  * The areas and their rows: what each one reads from a tool, and the one command it sends back. The page
  * (main.c, ui.c) knows nothing of h713-tv or h713-warp; this file knows nothing of pixels.
  *
- * What a tool cannot do has no row: no colour temperature or gamma (h713-tv has no runtime control for them; the white
- * balance and the colour by primary are the firmware's own, h713-tv wb / cm),
- * no sound output choice (one output), no autofocus at power-on (nothing runs it), no list of saved Wi-Fi
- * networks (wifi.env holds one). The report lists them.
+ * What a tool cannot do has no row: no gamma or colour temperature on a board whose curves h713-tv could not read (it says
+ * so in its status), no sound output choice (one output), no autofocus at power-on (nothing runs it), no list of saved
+ * Wi-Fi networks (wifi.env holds one). The report lists them.
  */
 #define _GNU_SOURCE
 #include <ctype.h>
@@ -170,7 +169,11 @@ static bool job_start(struct row *r, const char *const *argv, const char *runnin
 
 /* --- Picture ------------------------------------------------------------------------------------------------- */
 
-static struct row *r_preset, *r_aspect;
+#define GAMMA_STANDARD	3		/* the stop of 2.2, the standard for video (h713-tv's level 3) */
+
+static struct row *r_preset, *r_aspect, *r_gamma, *r_ctemp;
+
+static bool stops_read(struct row *r);
 
 static void slider_load_from(struct row *r, const char *list)
 {
@@ -235,6 +238,8 @@ static void picture_reset(struct row *r, int dir)
 	(void)dir;
 	tv("preset standard");
 	tv("aspect auto");
+	if (!r_gamma->hidden)
+		tv("set gamma %d", GAMMA_STANDARD);	/* the standard for video, 2.2; the colour temperature has its own Reset (White balance) */
 	picture_save();
 	areas[0].enter(&areas[0]);
 	snprintf(r->text, sizeof(r->text), "Done");
@@ -247,8 +252,11 @@ static void picture_enter(struct area *a)
 	tv("list");
 	snprintf(out, sizeof(out), "%s", reply);
 	for (int i = 0; i < a->n; i++)
-		if (a->row[i].kind == R_SLIDER)
+		if (a->row[i].kind == R_SLIDER && !a->row[i].n)		/* a slider with named stops is not one of the tool's list */
 			slider_load_from(&a->row[i], out);
+	/* gamma has no row on a board whose curves h713-tv could not read; the colour temperature goes with it (the same curves) */
+	r_gamma->hidden = !stops_read(r_gamma);
+	r_preset->note = r_gamma->hidden ? NULL : "Also sets the colour temperature (White balance) while that is on Auto.";
 	/* the presets: asking without a name makes h713-tv list the ones this device has */
 	r_preset->n = 0;
 	tv("preset");
@@ -278,6 +286,98 @@ static void picture_enter(struct area *a)
 	}
 }
 
+/* --- Gamma and Colour temperature: h713-tv's own curves (ctl set gamma N, ctl set colour_temperature NAME) ----- */
+
+/*
+ * Both are judged on the picture, so both are sliders with named stops that adjust as one pill over the real picture.
+ * Gamma: five stops, 1.8 / 2.0 / 2.1 / 2.2 / 2.4 (h713-tv's levels 0..4, the standard 2.2 is the fourth). Colour
+ * temperature: Auto / Warm / Normal / Cool, the track reads warm to cool like the Warm - Cool slider; Auto is "not set by hand":
+ * the picture mode brings the value (cinema and hdr warm, vivid cool, the others normal), the other three stay whatever the
+ * picture mode is. What a row shows is what h713-tv answers, not what was asked for: its answer to a set is the same line as
+ * the answer to a get ("ok gamma = 3 (2.2)", "ok colour_temperature = auto (normal)"), and a refusal shows what it holds.
+ */
+/* "Normal" and so on, from the first word of "(normal: this board has no warm curve)" or "(normal)" */
+static bool stops_parse(struct row *r, const char *line)
+{
+	char key[48], word[24] = "", eff[24] = "";
+	const char *p;
+	int at;
+
+	snprintf(key, sizeof(key), "ok %s = ", r->tag);
+	if (strncmp(line, key, strlen(key)))
+		return false;
+	p = line + strlen(key);
+	sscanf(p, "%23s", word);
+	at = opt_find(r, word);
+	if (at < 0)
+		return false;
+	r->val = at;
+	r->text[0] = '\0';
+	p += strcspn(p, "(\n");
+	if (*p == '(' && r->tag && !strcmp(r->tag, "colour_temperature") && sscanf(p + 1, "%23[a-z]", eff) == 1 && opt_find(r, eff) >= 0)
+		snprintf(r->text, sizeof(r->text), "%s: %s", r->opt[at], r->opt[opt_find(r, eff)]);	/* "Auto: Warm": what it comes to */
+	return true;
+}
+
+static bool stops_read(struct row *r)
+{
+	return tv("get %s", r->tag) && stops_parse(r, reply);
+}
+
+static void stops_apply(struct row *r, int dir)
+{
+	int old = r->val, v = clampi(r->val + dir, 0, r->n - 1);
+
+	if (v == old)
+		return;
+	if (tv("set %s %s", r->tag, r->arg[v]) && stops_parse(r, reply)) {
+		picture_dirty();
+		return;
+	}
+	stops_read(r);			/* refused: the row shows what the tool holds */
+}
+
+static struct row *stops_row(struct area *a, const char *label, const char *tag)
+{
+	struct row *r = new_row(a, label, R_SLIDER);
+
+	r->tag = tag;
+	r->min = 0;
+	r->step = 1;
+	r->over = true;
+	r->hidden = true;		/* until h713-tv has said it has the curves */
+	r->apply = stops_apply;
+	return r;
+}
+
+static void stops_add(struct row *r, const char *arg, const char *label, const char *note)
+{
+	r->opt_note[r->n] = note;
+	add_opt(r, arg, label);
+	r->max = r->n - 1;
+}
+
+static void gamma_row(struct area *a)
+{
+	r_gamma = stops_row(a, "Gamma", "gamma");
+	r_gamma->val = GAMMA_STANDARD;
+	stops_add(r_gamma, "0", "1.8", "Lifts shadows and midtones. For a bright room.");
+	stops_add(r_gamma, "1", "2.0", "A little lifted in the shadows.");
+	stops_add(r_gamma, "2", "2.1", "A touch lighter than the standard.");
+	stops_add(r_gamma, "3", "2.2", "The standard for video. Start here.");
+	stops_add(r_gamma, "4", "2.4", "Deeper shadows, more contrast. For a dark room.");
+}
+
+static void ctemp_row(struct area *a)
+{
+	r_ctemp = stops_row(a, "Colour temperature", "colour_temperature");
+	stops_add(r_ctemp, "auto", "Auto", "Follows the picture mode: Cinema and HDR are Warm, Vivid is Cool, the rest Normal. Pick a stop to keep it whatever the mode.");
+	/* Warm, Normal and Cool are curves the maker measured for this panel; the Warm - Cool and Green - Magenta sliders are set on top of them */
+	stops_add(r_ctemp, "warm", "Warm", "Redder whites. The maker's measured warm curve for this panel; it stays when the picture mode changes.");
+	stops_add(r_ctemp, "normal", "Normal", "Neutral whites. The maker's measured normal curve for this panel; it stays when the picture mode changes.");
+	stops_add(r_ctemp, "cool", "Cool", "Bluer whites. The maker's measured cool curve for this panel; it stays when the picture mode changes.");
+}
+
 /* --- White balance and Colour: the firmware's own (h713-tv ctl wb, ctl cm) --------------------------------- */
 
 /*
@@ -287,7 +387,7 @@ static void picture_enter(struct area *a)
  */
 #define WB_S 0.004
 
-static struct row *r_wb_warm, *r_wb_tint, *r_wb_gone;
+static struct row *r_wb_warm, *r_wb_tint, *r_wb_gone, *r_wb_reset;
 static int wb_off[3] = { 512, 512, 512 };	/* the offsets h713-tv holds: the sliders do not touch them */
 
 static void wb_gains(int w, int t, int g[3])
@@ -343,17 +443,23 @@ static void wb_slider_apply(struct row *r, int dir)
 	picture_dirty();
 }
 
+/* Reset gives back everything the page holds: the white balance neutral, and the colour temperature to Auto (the picture mode's) */
 static void wb_reset(struct row *r, int dir)
 {
+	bool ok = tv("wb reset");
+
 	(void)dir;
-	if (tv("wb reset")) {
+	if (ok) {
 		r_wb_warm->val = r_wb_tint->val = 0;
 		wb_off[0] = wb_off[1] = wb_off[2] = 512;
-		picture_save();
-		snprintf(r->text, sizeof(r->text), "Done");
-	} else {
-		snprintf(r->text, sizeof(r->text), "Failed");
 	}
+	if (!r_ctemp->hidden && r_ctemp->val) {		/* Auto is the first stop; already on it: nothing to send */
+		stops_apply(r_ctemp, -r_ctemp->val);
+		ok = ok && !r_ctemp->val;
+	}
+	if (ok)
+		picture_save();
+	snprintf(r->text, sizeof(r->text), "%s", ok ? "Done" : "Failed");
 }
 
 static void wb_enter(struct area *a)
@@ -363,13 +469,15 @@ static void wb_enter(struct area *a)
 		     sscanf(reply, "ok wb %d %d %d %d %d %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6;
 
 	for (int i = 0; i < a->n; i++)
-		a->row[i].hidden = there ? &a->row[i] == r_wb_gone : &a->row[i] != r_wb_gone;
-	if (!there)
-		return;
-	g[0] = v[0], g[1] = v[1], g[2] = v[2];
-	wb_off[0] = v[3], wb_off[1] = v[4], wb_off[2] = v[5];
-	wb_positions(g, &r_wb_warm->val, &r_wb_tint->val);
-	a->row[2].text[0] = '\0';
+		if (&a->row[i] != r_ctemp)			/* the colour temperature is the curves' (h713-tv), not the firmware's registers */
+			a->row[i].hidden = there ? &a->row[i] == r_wb_gone : &a->row[i] != r_wb_gone;
+	if (there) {
+		g[0] = v[0], g[1] = v[1], g[2] = v[2];
+		wb_off[0] = v[3], wb_off[1] = v[4], wb_off[2] = v[5];
+		wb_positions(g, &r_wb_warm->val, &r_wb_tint->val);
+		r_wb_reset->text[0] = '\0';
+	}
+	r_ctemp->hidden = !stops_read(r_ctemp);
 }
 
 #ifdef H713_TEST
@@ -1044,6 +1152,7 @@ void rows_init(void)
 	slider(a, "Colour", "saturation", 5, slider_apply);
 	slider(a, "Tint", "hue", 5, slider_apply);
 	slider(a, "Sharpness", "sharpness", 5, slider_apply);
+	gamma_row(a);
 	r_preset = r = new_row(a, "Picture mode", R_CHOICE);
 	r->apply = preset_apply, r->more = true;
 	r_aspect = r = new_row(a, "Aspect ratio", R_CHOICE);
@@ -1053,13 +1162,14 @@ void rows_init(void)
 
 	a = &areas[nareas++];
 	a->name = "White balance", a->icon = "pic", a->enter = wb_enter;
+	ctemp_row(a);
 	r_wb_warm = r = slider(a, "Warm - Cool", "wb_warm", 2, wb_slider_apply);
 	r->min = -50, r->max = 50;
 	r->note = "Left: warmer, less blue. Right: cooler, less red. Judged on the picture.";
 	r_wb_tint = r = slider(a, "Green - Magenta", "wb_tint", 2, wb_slider_apply);
 	r->min = -50, r->max = 50;
 	r->note = "Left: greener. Right: more magenta. Judged on the picture.";
-	r = new_row(a, "Reset", R_ACTION);
+	r_wb_reset = r = new_row(a, "Reset", R_ACTION);
 	r->apply = wb_reset;
 	r_wb_gone = r = info(a, "White balance");
 	snprintf(r->text, sizeof(r->text), "Not available");
