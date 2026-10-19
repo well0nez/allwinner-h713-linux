@@ -110,7 +110,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       wiederholen (Gedächtnis "Identität in veröffentlichten Repos"). Erst dann gilt der Push als fertig
 - [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel - darin die Fernbedienung und die Einblendungen (`h713-keys`,
       `h713-osd`, `doku/193`/`195`) statt "nothing acts on the remote's keys yet except Power" (7.18)
-- [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto
+- [x] 1.9 ~~`docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto~~ **entfällt** (Marco 19.10.2026: es kommt kein Foto, der Besitzer von Issue #1 wartet auf das nächste Testabbild, 4.1; zum Testen hat Marco selbst einen HY300 Pro = HY300PRO-G-EU). Die Zeile "The HY300 Pro of issue #1" zieht die Doku-Runde (Schritt 5) nach dem G-EU-Stand nach (heute: "test10 follows after v0.96-beta" ist überholt).
 
 - [ ] 1.10 **Vor dem Release: was cstengers Zweig `h713-letterbox` uns zeigt** (Abgleich 19.10.2026, Bericht
       `arbeit/cstenger-letterbox-20261019/BERICHT.md`; Marco: "das sollten wir vor Release auschecken"; seine Kernel- und
