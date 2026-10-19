@@ -527,10 +527,14 @@ static void turn_start(void)
 		job.pid = 0;
 }
 
-/* a run that is under way is waited for (3 s at most): before the keystone is reset and when the page ends */
+/*
+ * a job that is under way is waited for (3 s at most), whichever it is: before the keystone is reset and when the page ends.
+ * Measure again now and the autofocus have read the configuration at their start, so a turn pressed in the last seconds
+ * would stand in the file and wait for the next run if the page left while one of them was going.
+ */
 static void turn_settle(void)
 {
-	for (int i = 0; i < 60 && job.pid > 0 && job.row == r_turn; i++) {
+	for (int i = 0; i < 60 && job.pid > 0; i++) {
 		int status;
 
 		if (waitpid(job.pid, &status, WNOHANG) == job.pid)
