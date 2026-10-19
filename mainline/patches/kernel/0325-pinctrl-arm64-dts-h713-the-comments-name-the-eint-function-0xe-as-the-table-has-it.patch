@@ -1,24 +1,39 @@
 From: well0nez <8986239+well0nez@users.noreply.github.com>
-Subject: [PATCH] pinctrl: sunxi: h713-r: the header names the EINT function as fn14, as the table has it
+Subject: [PATCH] pinctrl: sunxi: h713-r, arm64: dts: h713: the comments name the EINT function 0xe, as the table has it
 
 0140 moved every R_PIO pin's interrupt function from mux 0x6 to 0xe
 (SUNXI_FUNCTION_IRQ_BANK(0xe, ...)), the value the stock kernel's
 SUNXI_PCTL_HW_TYPE_1 tables carry and the one that raised EINT4 for the
-power key on the HY310 (09.09.2026). The comment block at the top of the
-file still listed "PL_EINTn (fn6)" for all sixteen PL pins and the PM
-bank, the H616 value that disconnects the input on this SoC. Comments
-only; no table entry, no register write changes.
+power key on the HY310 (09.09.2026). Two comments still said 0x6, the H616
+value that disconnects the input on this SoC: the block at the top of
+pinctrl-sun50i-h713-r.c ("PL_EINTn (fn6)" for all sixteen PL pins and the
+PM bank) and the power key's note in sun50i-h713.dtsi ("re-muxes it to
+PL_EINT4 (mux 6)"). Comments only; no table entry, no register write and
+no DTB byte changes.
 
-The same correction is in cstenger's 0171 (commit 73ee74a, 07.10.2026),
-which also notes that the other alternate functions in this comment
-disagree with stock in places (PL4: s_twi1 fn2, s_jtag0 fn3). Those are
-left as they are here: not checked against our own dumps.
+The same correction of the pinctrl comment is in cstenger's 0171 (commit
+73ee74a, 07.10.2026), which also notes that the other alternate functions
+in that comment disagree with stock in places (PL4: s_twi1 fn2, s_jtag0
+fn3). Those are left as they are here: not checked against our own dumps.
 
 Signed-off-by: well0nez <8986239+well0nez@users.noreply.github.com>
 ---
- drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c | 37 ++++++++++++++-------------
- 1 file changed, 19 insertions(+), 18 deletions(-)
+ arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi |  2 +-
+ drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c  | 37 +++++++++++++-------------
+ 2 files changed, 20 insertions(+), 19 deletions(-)
 
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2630,7 +2630,7 @@ motor_ctr: motor-ctr {
+ 	 *
+ 	 * No pinctrl state on purpose: gpiolib muxes the pin to gpio_in when
+ 	 * the driver claims it, and the irq path re-muxes it to PL_EINT4
+-	 * (mux 6, see pinctrl-sun50i-h713-r.c). A pinctrl-0 on this node
++	 * (mux 0xe, see pinctrl-sun50i-h713-r.c). A pinctrl-0 on this node
+ 	 * would only claim the same pin a second time.
+ 	 *
+ 	 * `wakeup-source` keeps the key armed across suspend; the R_PIO
 diff --git a/drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c b/drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c
 --- a/drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c
 +++ b/drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c
