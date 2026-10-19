@@ -137,6 +137,19 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (`0166`), HDMI-Ton über DSP-Route 0x8f (Bluetooth), AV1-Punkte mit 9.3b, A/V-Versatz ohne Kamera (`av-sync-probe` als Methode).
 ## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
 
+      **Stand 19.10.2026 abends** (tiefe Prüfung je Patch seit `a861df2`, Berichte `arbeit/cstenger-letterbox-20261019/tief-kernel/`,
+      `tief-userspace/`, Messung `mess/`): a) und b) Kernel als `0322` (seine 0156), `0323` (0157), `0324` (0159), `0325` (Kommentare) auf
+      `versuch/cstenger-kernel`; am HY310 gemessen (Kontrollarm e8c68904): keine Verschlechterung (Matrix 20/20 bitgenau, Schadsätze hevc8,
+      hevc10, H.264 je 10/10, keine Stalls/Watchdogs), `0323` wirkt (REQBUFS 64 statt 32), Wirkung von `0322`/`0324` nicht auslösbar
+      (auch der Kontrollarm ohne skip-bits-Timeout und ohne 9.3c-(a)-Fault); Mythos liest gegen, Merge durch die Haupt-Aufsicht. libva
+      `0010`: nein (mpv/GStreamer spielen weiter, nur ffmpeg-CLI bricht ab). Offen: Kodi/mpv-Pufferzahl, lange 9.3c-Reihe, G-EU.
+      c) U-Boot-Fassung seines `0001` (bestromtes Panel vor dem Logo aus, PF6-Zustand im Startlog) gebaut für G-EU und HY310
+      (`tief-userspace/patches/uboot/0001`), braucht vor der Messung Fork-Commit, Spiegel `uboot-h713/` und Zeiger; Registerlesen nach
+      MIPS-Neustart und Warmstart-Zählung weiter offen. d) offen (erst messen; sein mpv-Patch nur, wenn es uns trifft). e) Haken gebaut
+      (`versuch/cstenger-userspace` 5bda56c, systemd-sleep, nur bei `mode=ap`), Messung mit Marco und Handy als Client. f) g) h) offen.
+      Für später vorgemerkt: libva `0018`-`0020` (AV1, be0712d) und Kernel `0160` mit 9.3b, `0162`/`0167` (VP9-Skalierer) mit 9.3d.
+      Wissen: der 32-kHz-Takt der RTC ist 24 MHz/750 = 32 000 Hz, `0320` meldet 32 768 - die Uhrzeit ist gemessen richtig (doku/213 §5),
+      betroffen wären nur Verbraucher, die aus dem Nennwert Zeiten rechnen.
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
       (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
       Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
