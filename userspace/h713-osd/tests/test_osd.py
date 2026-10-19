@@ -22,9 +22,11 @@ PITCH = W * 4
 class FakeTv(threading.Thread):
     """h713-tv's overlay channel: claim, picture, show N, hide, release."""
 
-    def __init__(self, path, picture="ring"):
+    def __init__(self, path, picture="ring", size=(W, H)):
         super().__init__(daemon=True)
         self.path, self.picture, self.mute = path, picture, "off"
+        self.w, self.h = size                    # the panel: the tests' small one, or the box's 1920x1080 (test_wall.py)
+        self.pitch = self.w * 4
         self.signal = "off"                      # what "osd signal" answers: "none" - no signal - or anything else
         self.knows_signal = True                 # False: an h713-tv of before, "osd signal" is a line it answers with a plain "ok"
         self.post_note = None                    # a note sent in the same write BEHIND the next "osd show" or "osd hide" answer
@@ -34,7 +36,7 @@ class FakeTv(threading.Thread):
         self.bufs = []
         for i in range(2):
             fd = os.memfd_create("osd%d" % i)
-            os.ftruncate(fd, PITCH * H)
+            os.ftruncate(fd, self.pitch * self.h)
             self.bufs.append(fd)
         self.sock = socket.socket(socket.AF_UNIX, socket.SOCK_STREAM)
         self.sock.bind(path)
@@ -61,7 +63,7 @@ class FakeTv(threading.Thread):
             for line in data.decode().splitlines():
                 self.lines.append(line)
                 if line == "osd claim":
-                    socket.send_fds(c, [b"ok %d %d %d argb8888\n" % (W, H, PITCH)], self.bufs)
+                    socket.send_fds(c, [b"ok %d %d %d argb8888\n" % (self.w, self.h, self.pitch)], self.bufs)
                 elif line == "osd picture":
                     note, self.pre_note = (self.pre_note + "\n") if self.pre_note else "", None
                     c.sendall((note + "ok %s\n" % self.picture).encode())
@@ -102,13 +104,13 @@ class FakeTv(threading.Thread):
         """The rectangle of the shown buffer's pixels with alpha, (x0, y0, x1, y1), or None."""
         if self.shown is None:
             return None
-        data = os.pread(self.bufs[self.shown], PITCH * H, 0)
+        data = os.pread(self.bufs[self.shown], self.pitch * self.h, 0)
         box = None
-        for y in range(H):
-            alpha = data[y * PITCH:(y + 1) * PITCH][3::4]
-            if alpha.count(0) == W:
+        for y in range(self.h):
+            alpha = data[y * self.pitch:(y + 1) * self.pitch][3::4]
+            if alpha.count(0) == self.w:
                 continue
-            x0 = W - len(alpha.lstrip(b"\0"))
+            x0 = self.w - len(alpha.lstrip(b"\0"))
             x1 = len(alpha.rstrip(b"\0")) - 1
             box = (x0, y, x1, y) if box is None else (min(box[0], x0), box[1], max(box[2], x1), y)
         return box
@@ -116,6 +118,7 @@ class FakeTv(threading.Thread):
 
 class OsdBase(unittest.TestCase):
     """the daemon, the fake h713-tv, the helpers (test_launcher.py builds on it)"""
+    SIZE = (W, H)                                # the fake panel; test_wall.py takes the box's
 
     def setUp(self):
         self.tmp = tempfile.TemporaryDirectory()
@@ -123,7 +126,7 @@ class OsdBase(unittest.TestCase):
         self.env = dict(os.environ, H713_OSD_SOCKET=os.path.join(d, "osd.sock"), H713_OSD_TV=os.path.join(d, "tv.sock"),
                         H713_OSD_WARP_CONF=os.path.join(d, "warp.conf"), H713_OSD_CONF=os.path.join(d, "osd.conf"))
         self.write("osd.conf", "seconds = 0.6\n")
-        self.tv = FakeTv(self.env["H713_OSD_TV"])
+        self.tv = FakeTv(self.env["H713_OSD_TV"], size=self.SIZE)
         self.tv.start()
         self.osd = None
 
@@ -253,7 +256,7 @@ class OsdTest(OsdBase):
         self.mute("on")
         self.tv.stop()
         time.sleep(0.2)
-        self.tv = FakeTv(self.env["H713_OSD_TV"])
+        self.tv = FakeTv(self.env["H713_OSD_TV"], size=self.SIZE)
         self.tv.mute = "on"                                              # h713-tv comes back muted (saved)
         self.tv.start()
         time.sleep(1.6)                                                  # the retry, once a second
