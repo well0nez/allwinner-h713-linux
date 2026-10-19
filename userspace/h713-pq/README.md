@@ -162,6 +162,22 @@ Two more facts that belong here. Nothing programs the LUT before Android does - 
 gamma path is dead code (AP3r 1.3) - and Android programs nothing until both a gamma factor and a colour
 temperature have arrived (AP3t 2.1). So at first picture the vendor shows the raw TSE curve of the state
 `UI_ColourTemp_Normal`, which is slot 0 on both boards: `./h713-pq gamma --from-tse normal`.
+*Corrected 19.10.2026:* that holds only between the library's gamma factor call and the knots it sends right after
+(`PQControl::loadCurrentSettings` sends them at every start and every resume, all 0 on the HY310). From then on every
+curve is the Bezier form through twelve knots of the power law, not the power law over all 1024 samples: at level 3 up
+to 5 of 4095 away, at level 0 (1.8) up to 31 in the dark. `h713-tv` computes that form (`gamma.c`).
+
+### `gamma --export-slots`: the raw curves for h713-tv
+
+```bash
+./h713-pq gamma --export-slots slots.bin --tse /boot/mips/ProjectID_0x0030.TSE --project 0x30
+```
+
+writes the board's raw curves, 3 x 1024 samples of 12 bit for every colour temperature state the TSE holds (a state two
+entries claim goes to the first), and nothing else: no exponent, no power law. The file is 16 bytes of head (`H7GS`,
+version 1, the list of states as a bit mask, the ProjectID the TSE names, all little endian words) followed by, for each
+state in the list and lowest first, the red, green and blue bank as 1024 little endian 16-bit samples. `h713-tv` reads
+it at every start and computes the gamma level and the colour temperature itself (`userspace/h713-tv/gamma.c`).
 
 ## What is proven and what is not
 

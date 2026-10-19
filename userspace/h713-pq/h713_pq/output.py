@@ -10,6 +10,7 @@ from __future__ import annotations
 import hashlib
 import json
 import os
+import struct
 from pathlib import Path
 
 from . import model, sources
@@ -376,6 +377,49 @@ def sha256_file(path: Path) -> str:
         for piece in iter(lambda: f.read(65536), b""):
             h.update(piece)
     return h.hexdigest()
+
+
+#: The file ``gamma --export-slots`` writes and h713-tv reads (gamma.c).
+SLOTS_MAGIC = b"H7GS"
+SLOTS_VERSION = 1
+
+
+def slots_bytes(curves: dict, project: int) -> bytes:
+    """The board's raw curves: head, then the slots in the head's mask.
+
+    16 bytes: ``H7GS``, version 1, the mask of the slots that follow (bit n =
+    slot n), the board's ProjectID, all little endian 32-bit words. Then for
+    every slot in the mask, lowest first, the red, green and blue bank as 1024
+    little endian 16-bit samples of 12 bit.
+    """
+    mask = 0
+    body = bytearray()
+    for slot in sorted(curves):
+        if not 0 <= slot < 9:
+            raise ValueError(f"slot {slot} is not one of the nine")
+        mask |= 1 << slot
+        banks = curves[slot]
+        if len(banks) != 3:
+            raise ValueError("three banks expected")
+        for bank in banks:
+            if len(bank) != model.LUT_ENTRIES:
+                raise ValueError(f"{model.LUT_ENTRIES} samples expected, got {len(bank)}")
+            body += struct.pack(f"<{model.LUT_ENTRIES}H", *bank)
+    if not mask:
+        raise ValueError("no slot to write")
+    return SLOTS_MAGIC + struct.pack("<III", SLOTS_VERSION, mask, project) + bytes(body)
+
+
+def write_slots(path: Path, curves: dict, project: int) -> int:
+    """Write the file next to its name and rename it, as write_lut does."""
+    data = slots_bytes(curves, project)
+    neighbour = path.with_name(path.name + ".neu")
+    with neighbour.open("wb") as f:
+        f.write(data)
+        f.flush()
+        os.fsync(f.fileno())
+    os.replace(neighbour, path)
+    return len(data)
 
 
 def write_lut(path: Path, result: model.GammaResult, channel: str) -> int:
