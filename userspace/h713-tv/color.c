@@ -478,7 +478,9 @@ static bool fwc_slot_free(uint32_t off, unsigned int words, uint32_t mark, char 
 	/*
 	 * The firmware's allocator lies below the slots and grows upwards; a slot it has reached may be handed out by it
 	 * (measured on the HY310 18.10.2026: one page given, the break at +0x33000, the slots three pages above). Read at
-	 * every write, not once: the break moves while the firmware runs.
+	 * every write, not once: the break moves while the firmware runs. The break is the first byte not given out yet:
+	 * one exactly at the slot's first byte means the next allocation would take the slot, so the slot is free only
+	 * while the break is below it.
 	 */
 	if (!fwc.io->rd(fwc.shm + FWC_SMM_HEAD + 4 * 47, &hs) || !fwc.io->rd(fwc.shm + FWC_SMM_HEAD + 4 * 45, &hn)) {
 		snprintf(why, n, "/dev/mem: cannot read the firmware's allocator at %#x", fwc.shm + FWC_SMM_HEAD);
@@ -488,7 +490,7 @@ static bool fwc_slot_free(uint32_t off, unsigned int words, uint32_t mark, char 
 		snprintf(why, n, "the firmware's allocator is not where it was read (start %#x) -- nothing written", hs);
 		return false;
 	}
-	if (hn > off - FWC_SMM_HEAD) {
+	if (hn >= off - FWC_SMM_HEAD) {
 		snprintf(why, n, "the firmware's allocator has grown over the slot at %#x (break %#x) -- nothing written", a, hs + hn);
 		return false;
 	}
