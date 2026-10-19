@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * h713-tv's white balance and colour management, on the host: main.c is compiled into this file and the machinery
- * that reaches the hardware (/dev/mem, /dev/cpu_comm, the board file) is replaced by a made-up display firmware that
- * does what the real one was measured to do (BERICHT of the media side project, parts 1 and 2):
+ * h713-tv's white balance and colour management, on the host: main.c and color.c are compiled into this file and
+ * the machinery that reaches the hardware (/dev/mem, /dev/cpu_comm, the board file) is replaced by a made-up display
+ * firmware that does what the real one was measured to do (BERICHT of the media side project, parts 1 and 2):
  *
  *   SetWhiteBalance      one word, the block of six; every word that is not 0xFFFF goes through the curve of
  *                        pq_custom.TSE into its register field
@@ -21,6 +21,7 @@
 #define main h713_tv_main
 #include "../main.c"
 #undef main
+#include "../color.c"
 
 static int failed;
 

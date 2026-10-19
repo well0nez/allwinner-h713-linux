@@ -43,10 +43,13 @@ SYSROOT   ?= /srv/h713-rootfs
 TARGET    ?= aarch64-linux-gnu
 CROSS_CC  ?= clang
 
+# main.c is the program; color.c is the display firmware's white balance and colour management (interface: color.h)
+SRCS      = main.c color.c
+
 all: h713-tv
 
-h713-tv: main.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
+h713-tv: $(SRCS) color.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $(SRCS) $(LDLIBS)
 
 cross: h713-tv.$(TARGET)
 
@@ -55,10 +58,10 @@ cross: h713-tv.$(TARGET)
 # clones of the same commit give two different binaries (E1 of v0.96-beta).
 REPRO_CFLAGS = -ffile-prefix-map=$(abspath .)=. -ffile-prefix-map=$(abspath $(SYSROOT))=/sysroot
 
-h713-tv.$(TARGET): main.c
+h713-tv.$(TARGET): $(SRCS) color.h
 	$(CROSS_CC) --target=$(TARGET) --sysroot=$(SYSROOT) -fuse-ld=lld \
 	    $(CFLAGS) $(REPRO_CFLAGS) $(LDFLAGS) -isystem $(SYSROOT)/usr/include/libdrm \
-	    -L$(SYSROOT)/usr/lib/$(TARGET) -o $@ $< -ldrm -lasound
+	    -L$(SYSROOT)/usr/lib/$(TARGET) -o $@ $(SRCS) -ldrm -lasound
 
 install: h713-tv
 	install -D -m 0755 h713-tv $(DESTDIR)$(SBINDIR)/h713-tv

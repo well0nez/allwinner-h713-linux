@@ -2,7 +2,8 @@
 #
 # The host tests of h713-tv: main.c compiled natively into each test, every libdrm and ALSA function stubbed with an
 # abort() (the stubs are made from the object's undefined symbols; the tests call none of them). No device, no DRM, no
-# capture: evaluate() itself is not run.
+# capture: evaluate() itself is not run. color.c (the firmware's colour) is linked as an object into the tests that only
+# need it to link, and compiled into test_color itself, which reaches its statics.
 #
 #   test_want   the want link and the straight ring's wait for the warp's claim (P3 of the media side project): what
 #               want_hold() asks, h713-warp's side over a socketpair
@@ -24,11 +25,16 @@ TESTS    = test_want test_edid test_nosig test_color
 
 all: $(TESTS)
 
-$(TESTS): %: %.c ../main.c
-	$(CC) $(CFLAGS) $(INC) -c -o $@.o $<
+color.o: ../color.c ../color.h
+	$(CC) $(CFLAGS) -c -o $@ ../color.c
+
+test_want test_edid test_nosig: color.o
+
+$(TESTS): %: %.c ../main.c ../color.c ../color.h
+	$(CC) $(CFLAGS) $(INC) -c -o $@.o $@.c
 	{ echo '#include <stdlib.h>'; nm -u $@.o | awk '$$2 ~ /^(drm|snd)/ { print "void " $$2 "(void); void " $$2 "(void) { abort(); }" }'; } > $@-stubs.c
 	$(CC) $(CFLAGS) -c -o $@-stubs.o $@-stubs.c
-	$(CC) -o $@ $@.o $@-stubs.o
+	$(CC) -o $@ $@.o $@-stubs.o $(if $(filter test_color,$@),,color.o)
 
 run: $(TESTS)
 	./test_want
