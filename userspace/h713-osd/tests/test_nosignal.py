@@ -227,6 +227,46 @@ class NoSignalTest(PageBase):
         self.assertEqual(out, "ok\n")
         self.assertNotEqual(self.shown(), lau, "the countdown is in the launcher")
 
+    def open_settings_page(self, alpha):
+        """h713-settings' page over the page without a signal (it takes its place): opaque (alpha 255) or a pill (a clear canvas)"""
+        c = self.page()
+        c.paint(0, H, a=alpha)
+        c.show(0, H)
+        time.sleep(0.4)
+        return c
+
+    def test_the_power_countdown_is_offered_over_an_open_settings_page_without_a_signal(self):
+        """the same hole for the page channel: under an open settings page without a signal the claim is back too, "osd picture" says "none",
+        the page without a signal is not due (a page of the channel stands) and the launcher is not open - and the page is on the wall. The rule is
+        not "which page" but "does anything of ours stand on the wall"; with a signal the answer was "ok" there all along"""
+        self.tv.picture = "none"
+        self.start_none()
+        self.open_settings_page(255)
+        self.assertIn("page            open", self.status())
+        out = self.ctl("power", "100", "standby")
+        self.assertEqual(out, "ok\n")
+
+    def test_the_power_countdown_is_offered_over_the_settings_pill_without_a_signal(self):
+        """a page with transparent pixels over no picture is shown with "cover" all the same (over black): it is on the wall"""
+        self.tv.picture = "none"
+        self.start_none()
+        self.open_settings_page(0)
+        self.assertIn("transparent pixels", self.status())
+        out = self.ctl("power", "100", "off")
+        self.assertEqual(out, "ok\n")
+
+    def test_the_power_countdown_is_still_unseen_when_only_a_waiting_strip_stands(self):
+        """the control for "shown": a strip on the console is "shown" for h713-osd (the show was accepted) but h713-tv answers "ok waiting" - there is
+        no picture to lay it over, nothing is on the wall. That is not a page of ours that is seen"""
+        self.tv.picture = "none"
+        self.tv.show_reply = b"ok waiting\n"
+        self.start()
+        time.sleep(0.3)
+        self.ctl("volume", "40")
+        self.assertIn("channel         claimed, shown", self.status())
+        out = self.ctl("power", "100", "standby")
+        self.assertEqual(out, "ok unseen\n")
+
     def test_the_power_countdown_is_still_unseen_on_the_console(self):
         """the control: no page (the console is forced, a program is the mode: h713-tv says "off", not "none") and no picture - nobody sees a
         countdown, h713-power acts at once"""

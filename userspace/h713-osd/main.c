@@ -1541,11 +1541,14 @@ static bool handle(const char *line, char *reply, size_t n)
 		 * The power key's countdown (TODO 2.38), sent by h713-power about ten times a second: "power TENTHS
 		 * standby|off [only] [ALPHA%]". Each line keeps it a second, so a dead h713-power leaves nothing
 		 * behind. "ok unseen" when nothing can be seen (the console; no h713-tv): then h713-power does not
-		 * wait for a choice nobody sees. A page of ours that stands on the wall can be seen, though no picture
-		 * lies under it ("osd picture" says "none": the warp gives its claim back under the page without a
-		 * signal, and the launcher opened over no signal has none either) - it carries the countdown in its
-		 * tiles, so "none" is unseen only when neither is on the wall (Marco 18.10.2026: "Power key as always,
-		 * yes").
+		 * wait for a choice nobody sees. Anything of ours that stands on the wall and is seen can carry it, though
+		 * no picture lies under it ("osd picture" says "none": without a signal the warp gives its claim back
+		 * under the page without a signal, the launcher, the settings page and its pill; none of them has one):
+		 * "none" is unseen only when nothing of ours is seen. Seen means h713-tv took the overlay and did not
+		 * answer "ok waiting" (a strip with no picture to lie over is accepted and not on the wall), or the page
+		 * without a signal is due and the refresh that follows this line puts it up (Marco 18.10.2026: "Power
+		 * key as always, yes"). Over an open page of the page channel nothing is drawn (compose), with a signal
+		 * as without; h713-settings ends on the Power key before h713-power asks.
 		 */
 		const char *opt[2] = { d, e };
 
@@ -1562,7 +1565,7 @@ static bool handle(const char *line, char *reply, size_t n)
 		}
 		stay = 1.0;
 		if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) ||
-		    (!strcmp(answer, "ok none") && !nosig_due() && !(lau.open && tv.shown))) {
+		    (!strcmp(answer, "ok none") && !nosig_due() && !(tv.shown && !osd_waiting))) {
 			want.until = 0;
 			snprintf(reply, n, "ok unseen\n");
 			return true;

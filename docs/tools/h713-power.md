@@ -5,7 +5,7 @@ seconds, standby on its left, off on its right, the choice bright and underlined
 OK or a second press of the power key carries the choice out at once, Back cancels and the projector stays on; when the
 time is up the choice is carried out. It starts on `default` of `/etc/h713/power.conf` - `poweroff`, the owner's choice.
 Standby is offered only where it can happen (an image built with `--standby`, `[deep]` in `/sys/power/mem_sleep`,
-crust `ready=1`); elsewhere the ring stands alone and ends in a power-off. Without a picture - no signal, no h713-osd -
+crust `ready=1`); elsewhere the ring stands alone and ends in a power-off. Without a page or picture of ours on the wall (the console, no h713-osd)
 nobody would see a countdown, and the default happens at once. The overlay is drawn by [h713-osd](h713-osd.md); each of
 its frames keeps it one second, so a dead h713-power leaves nothing on the wall.
 
