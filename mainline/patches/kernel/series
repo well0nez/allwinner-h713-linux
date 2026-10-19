@@ -704,3 +704,8 @@
 0319-arm64-dts-h713-drop-the-iommu-comment-of-august-that-says-there-is-none.patch
 0320-rtc-sun6i-h713-take-the-rtc-s-32-khz-from-the-24-mhz-dcxo-like-the-vendor-kernel.patch
 0321-hid-h713-remote-the-ble-remote-s-focus-keys-are-the-other-way-round.patch
+# 19.10.2026: the deep review of cstenger's h713-letterbox (a861df2..a4d6d5f, arbeit/cstenger-letterbox-20261019/tief-kernel/
+#   BERICHT.md). 0322-0324 are his 0156, 0157, 0159, byte-identical (message and diff; From: and Origin: added); 0325 is ours.
+#   0322 (his 0156): the H.264 bit reader's skip waits at most 1 ms per 32 bits, as H.265's does since 0308; an engine whose VLD
+#   never goes idle fails the job (cedrus_recover follows) instead of spinning a CPU in the request ioctl until a power cycle.
+0322-media-cedrus-h264-bound-the-skip-bits-wait.patch
