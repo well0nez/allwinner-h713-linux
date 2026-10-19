@@ -392,6 +392,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [x] 2.116 (erledigt 20.10.2026, 8e15e3c, Mythos go) Klein (Mythos 19.10., aus gamma-ui): h713-settings, F_CHOICE-Zweig von ui_draw löscht die Zeilenplätze ab r->n nicht - beim Öffnen einer
       Optionsliste bleiben die Zeilen darunter stehen (Geisterzeilen wie 35e9d19, nur für Listen; mit neun Zeilen zusätzlich im anderen Raster).
       Fix ~3 Zeilen (clear_box ab row_y(r->n) bei all||D_RIGHT) plus Pixeltest.
+- [ ] 2.117 Klein (Mythos 20.10., aus pille): eine Auswahlliste mit 8 oder mehr Optionen ("Start with" ist datengetrieben, bis 10) hätte dieselbe
+      abgeschnittene Pille - die Pitch-Schleife aus ui_draw auch im F_CHOICE-Zweig mit r->n, oder die Modi kappen; Test mit 8 Optionen. Kosmetik:
+      Kommentar in ui.c ("more than eight rows") nachziehen.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
