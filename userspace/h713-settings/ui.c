@@ -609,6 +609,17 @@ int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[
 						seal();
 					}
 		} else {
+			/*
+			 * Below the last row of this area down to the note, and the line above the rows: what a longer area or a choice's
+			 * options left there (Marco 19.10.2026: Reset in Colour, then White balance showed two "Reset" rows - the fourth
+			 * was Colour's). The row above is drawn again after it, so the overlap of the pills does not matter.
+			 */
+			if (!all && (dirty & D_RIGHT)) {
+				clear_box(690, 70, 1830, 140, GROUND);	/* and the line a choice's options stood under */
+				seal();
+				clear_box(690, row_y(n) - 54, 1830, 890, GROUND);
+				seal();
+			}
 			for (int pass = 0; pass < 2; pass++)
 				for (int k = 0; k < n; k++)
 					if ((v->f != F_AREAS && k == v->row) == pass && (all || (dirty & (D_RIGHT | D_ROW(k))))) {

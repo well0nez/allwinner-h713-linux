@@ -1585,6 +1585,19 @@ class Look(Base):
         self.assertGreaterEqual(y0, 26, what)
         self.assertLessEqual(y1, self.H - 27, what)
 
+    def test_a_shorter_area_leaves_nothing_of_the_longer_one(self):
+        # Marco 19.10.2026: Reset in Colour, then White balance showed two "Reset" rows - the fourth was Colour's, never cleared
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        size = "%dx%d" % (self.W, self.H)
+        fresh = self.snap(self.box().start("White balance", size=size), "fresh")
+        b = self.box().start("Colour", size=size)
+        b.keys("ok", "down", "down", "down", "ok", "back", "up")  # Reset, the areas, White balance (three rows)
+        self.assertEqual(self.snap(b, "after"), fresh, "the page after the change differs from White balance opened fresh")
+        b = self.box().start("Colour", size=size)
+        b.keys("ok", "ok", "back", "back", "up")                    # Primary colour's six options, back, White balance
+        self.assertEqual(self.snap(b, "options"), fresh, "what a choice's options left stays on the page")
+
     def test_every_page_stays_inside_the_safe_margin(self):
         if not any(f and os.path.exists(f) for f in FONTS):
             self.skipTest("no font")
