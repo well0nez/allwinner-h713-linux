@@ -1530,8 +1530,12 @@ static bool handle(const char *line, char *reply, size_t n)
 		/*
 		 * The power key's countdown (TODO 2.38), sent by h713-power about ten times a second: "power TENTHS
 		 * standby|off [only] [ALPHA%]". Each line keeps it a second, so a dead h713-power leaves nothing
-		 * behind. "ok unseen" when nothing can be seen (no signal: the console; no h713-tv): then h713-power
-		 * does not wait for a choice nobody sees.
+		 * behind. "ok unseen" when nothing can be seen (the console; no h713-tv): then h713-power does not
+		 * wait for a choice nobody sees. A page of ours that stands on the wall can be seen, though no picture
+		 * lies under it ("osd picture" says "none": the warp gives its claim back under the page without a
+		 * signal, and the launcher opened over no signal has none either) - it carries the countdown in its
+		 * tiles, so "none" is unseen only when neither is on the wall (Marco 18.10.2026: "Power key as always,
+		 * yes").
 		 */
 		const char *opt[2] = { d, e };
 
@@ -1547,7 +1551,8 @@ static bool handle(const char *line, char *reply, size_t n)
 				it.alpha = pct < 0 ? 0 : pct > 100 ? 1 : pct / 100.0f;
 		}
 		stay = 1.0;
-		if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none")) {
+		if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) ||
+		    (!strcmp(answer, "ok none") && !nosig_due() && !(lau.open && tv.shown))) {
 			want.until = 0;
 			snprintf(reply, n, "ok unseen\n");
 			return true;

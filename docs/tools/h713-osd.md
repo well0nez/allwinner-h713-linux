@@ -21,8 +21,11 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
 - `power TENTHS standby|off [only] [ALPHA%]` - the power key's countdown (h713-power, about ten times a second): large in
   the middle whatever `place` says, a ring with the seconds left (full at 150 tenths), standby left, off right; `only`:
   no standby on this board, the ring alone. Each line keeps it one second. The answer is `ok unseen` when nothing can be
-  seen (no signal, the console; no h713-tv) - h713-power then acts at once. *Not changed by the page without a signal (17.10.2026):* the
-  countdown still answers `ok unseen` there, because no picture lies under the page.
+  seen (the console; no h713-tv) - h713-power then acts at once. A page of ours on the wall is seen: over [the page without a signal](#the-page-without-a-signal)
+  and over the launcher opened without a signal the countdown rides in the page's tiles and the choice is offered as over the picture
+  (19.10.2026). *Overtaken (19.10.2026):* "the countdown still answers `ok unseen` over the page without a signal, because no picture
+  lies under the page" (17.10.2026) - the warp's claim is given back under the page, so `osd picture` says `none` there, but the page
+  stands on the wall and somebody sees the choice.
 - `pair` - "hold Left + Right" for 10 s after the remote was forgotten (h713-panel, TODO 2.54).
 - `launcher SEL;NOW;[>]icon:label;...` - the launcher (h713-keys): an **opaque page** over the whole
   panel, not an overlay over the picture (Marco, 15.10.2026: it must have a ground): the ground `0xff0b0e0d`, the list of "Launcher C" in

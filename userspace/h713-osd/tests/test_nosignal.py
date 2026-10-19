@@ -197,6 +197,47 @@ class NoSignalTest(PageBase):
         time.sleep(0.9)                                         # the strip's seconds (0.6) are over
         self.assertEqual(self.shown(), page, "nothing of the strip is left in the page")
 
+    def test_the_power_countdown_is_shown_in_the_page_though_no_picture_lies_under_it(self):
+        """h713-power asks h713-osd before it counts down: "ok unseen" means nobody would see the choice and it acts at once. Under the
+        page without a signal the warp's claim is given back, so h713-tv answers "osd picture" with "none" - and the page is on the wall all
+        the same: the countdown rides in it like over the launcher (Marco 18.10.2026: "Power key as always, yes")"""
+        self.tv.picture = "none"
+        self.start_none()
+        page = self.shown()
+        out = self.ctl("power", "100", "standby")
+        self.assertEqual(out, "ok\n", "the countdown is wanted, not unseen")
+        with_count = self.shown()
+        self.assertNotEqual(with_count, page, "the countdown is in the page")
+        diff = [(x, y) for y in range(H) for x in range(W) if self.px(with_count, x, y) != self.px(page, x, y)]
+        self.assertTrue(diff)
+        self.assertTrue(H * 0.25 < min(y for _, y in diff) and max(y for _, y in diff) < H * 0.75, "large, in the middle of the panel")
+        self.assertTrue(all(self.px(with_count, x, y)[3] == 255 for y in range(H) for x in range(0, W, 7)), "the page stays opaque")
+        self.assertIn("no-signal page  shown", self.status())
+        time.sleep(1.0)                                         # each line keeps it one second
+        self.assertEqual(self.shown(), page, "nothing of the countdown is left in the page")
+
+    def test_the_power_countdown_is_shown_in_the_launcher_opened_over_no_signal(self):
+        """the same question over the launcher that took the page's place: no signal, no claim, "osd picture" says "none" - the launcher is on the wall"""
+        self.tv.picture = "none"
+        self.start_none()
+        self.launcher(line(1))
+        lau = self.shown()
+        self.assertIn("launcher        open", self.status())
+        out = self.ctl("power", "100", "off")
+        self.assertEqual(out, "ok\n")
+        self.assertNotEqual(self.shown(), lau, "the countdown is in the launcher")
+
+    def test_the_power_countdown_is_still_unseen_on_the_console(self):
+        """the control: no page (the console is forced, a program is the mode: h713-tv says "off", not "none") and no picture - nobody sees a
+        countdown, h713-power acts at once"""
+        self.tv.picture = "none"
+        self.start()
+        time.sleep(0.3)
+        out = self.ctl("power", "100", "standby")
+        self.assertEqual(out, "ok unseen\n")
+        self.assertIsNone(self.tv.shown)
+        self.assertIn("no-signal page  none", self.status())
+
     def test_a_note_between_the_question_and_its_answer_is_taken(self):
         """h713-tv's note comes in the same write as the answer to "osd picture": the page opens, the volume rides in it"""
         self.start()
