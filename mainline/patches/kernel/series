@@ -718,3 +718,8 @@
 0324-media-cedrus-h265-never-leave-a-dpb-slot-stale.patch
 #   0325 (ours, after his 0171): the R_PIO header comment and the power key note in the dtsi name the EINT function 0xe, as 0140's table has it; comments only.
 0325-pinctrl-arm64-dts-h713-the-comments-name-the-eint-function-0xe-as-the-table-has-it.patch
+#   0326 (ours): the hdmirx driver reads the break of the firmware's allocator (Trid_SMM, header at +0x2d000 of the shared memory) before it
+#   writes the HDCP 2.2 key (+0x36000), the Wce_SetWindow structures (+0x37000) and the backlight PWM words (+0x37100); a block whose page the
+#   break has reached is not written and its step is left out, with a warning. Nothing changes while the break is below them. Also corrects
+#   two comments of 0094/0101 (SetWhiteBalance takes six words, not three doubles; white balance is not the display CRTC's CTM).
+0326-media-h713-hdmirx-leave-out-a-block-whose-page-the-firmware-s-allocator-has-reached.patch

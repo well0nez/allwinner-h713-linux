@@ -335,7 +335,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Break des Firmware-Allokators (Kopf +0x2D000, Wort 47 + Wort 45) unter +0x36000; (3) `ctl set wb_g_gain 563` -> `DC[11:0] = 0x8cc`;
       `ctl set cm_yellow_hue 60` -> Achse 3 = Basis + 60, `cm reset` gibt den Anfang zurück; (4) Warp im Bypass: wirkt der Weißabgleich dort?;
       (5) Warmstart und Standby mit gespeicherten Werten: Register gleich.
-- [ ] 2.102 Klein, aus Mythos' Prüfung von bm-wb2 (h713-tv-Teil erledigt 19.10.: `color.c`, Grenze gegen den Seitenanfang des Slots, weil der Break
+- [x] 2.102 Klein, aus Mythos' Prüfung von bm-wb2 (erledigt 19.10.2026: Kernel 0326 meidet erreichte Seiten, cpu-comm.md, `arbeit/medien/hdmirx-break/`; Rest 2.112; h713-tv-Teil erledigt 19.10.: `color.c`, Grenze gegen den Seitenanfang des Slots, weil der Break
       seitenbündig wächst - Paket `arbeit/medien/h713tv-color/`; offen bleiben Kernel und cpu-comm.md): der hdmirx-Treiber prüft beim Bind den Break des Firmware-Allokators (gegen den Seitenanfang) für seine festen Plätze
       (+0x36000 HDCP-Schlüssel, +0x37000, +0x37100; `dev_warn`), dazu die falschen Kommentare in 0094/0101 ("three doubles", "white balance is
       already CTM") richtigstellen; h713-tv: den Abschnitt "The firmware's colour" beim nächsten h713-tv-Paket nach `color.c`, dabei die Break-Grenze in `fwc_slot_free()` auf `hn >= off - FWC_SMM_HEAD` (Break genau am Slot-Anfang: die nächste Vergabe nähme ihn; Mythos 18.10.) und den Test "a break exactly at the slot" umkehren; `docs/subsystems/
@@ -372,6 +372,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       heute / (b) die Seite nimmt Symbol und Worte zurück, solange der Countdown läuft (`arbeit/medien/klein-298/mockup/vergleich-a-b.png`, ~10 Zeilen);
       K1 (getöntes Bild am Dienstschalter `warp ctl on`); die echte Power-Taste über der No-signal-Seite einmal drücken (Countdown, dann abbrechen).
       G-EU: Power über No-signal/Settings/Pille und die Übergabe mit Einblendung nachmessen (Zeile in klein-298/BERICHT).
+- [ ] 2.112 Klein, aus hdmirx-break (Mythos 19.10.): den Meide-Weg von 0326 einmal messen, ohne selbst in den Firmware-Speicher zu schreiben -
+      drei Seiten per `IOCTL_MALLOC` holen, hdmirx neu binden, `dev_warn` und `hdcp` "skipped" lesen, `IOCTL_FREE`, Warmstart (eigener Slot; was ohne
+      Wce im Fenster steht, ist nicht gemessen); den Break in `h713-tv ctl status` zeigen. G-EU: 0326 nachmessen - dort steht bei +0x37100 der PWM-Block,
+      Info-Zeile im dmesg, keine Warnung, PWM-Schritt läuft.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

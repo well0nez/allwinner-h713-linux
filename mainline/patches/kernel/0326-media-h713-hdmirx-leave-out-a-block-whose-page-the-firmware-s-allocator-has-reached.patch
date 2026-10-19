@@ -1,0 +1,281 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: [PATCH] media: h713-hdmirx: leave out a block whose page the firmware's allocator has reached, and two comments corrected
+
+The driver keeps its blocks at fixed offsets in the cpu_comm shared memory:
+the HDCP 2.2 key at +0x36000, the Wce_SetWindow structures at +0x37000, the
+backlight PWM words at +0x37100 (only with allwinner,backlight-pwm-info) and,
+far above, the staging area of THal_Vp_Init at +0x400000. Below them the
+display firmware's allocator (Trid_SMM) grows upwards and does not know that
+the places exist. Its header lies at +0x2d000 (word 47 the heap's start, word
+45 the break as an offset from it); the break is always page aligned, because
+a large block takes whole pages and a class of small blocks takes a page of
+its own, so the smallest thing the firmware ever gives out is a page. On a
+HY310 (18.10.2026, after a boot, a standby and a session of colour work) it
+has given out one page: the break stands at +0x33000, three pages below the
+key. Nothing in our Linux calls the allocator, so nothing moves it, but
+nothing would have said so either if it had: the driver wrote its blocks
+without looking, and a block written into a page the firmware has taken is
+a crashed display firmware or a key overwritten, with no line in the log.
+
+The driver now reads the break before it writes a block. All three blocks are
+written in the init sequence, once per bind, so that is where the reads are,
+one before each: if the break stands at or above the first byte of the
+block's page, the page is the allocator's next block or already given out,
+and the step is left out with a warning that names the step, the break and
+the place. Nothing is written into the page and the call that would have read
+it is not made. The way out is one the driver already has: the key step is
+left out as if there were no key file (the hdcp attribute says "skipped" and
+why), the PWM words as on a board without the property, and the window call
+is not made, which leaves the firmware with the window it booted with (not
+measured). Warning only was the
+other choice. It was not taken because a block in a page the allocator owns
+can corrupt the firmware's heap, which is a worse and harder to find failure
+than a missing HDCP 2.2 key, and because it is the rule h713-tv already
+follows for its own blocks in the same window. The places themselves are not
+moved: the firmware may keep the pointers it was given, and h713-tv's blocks
+sit behind these. The test is against the page, not the byte, for the reason
+the break is page aligned: a break standing exactly at the start of the
+block's page means the very next allocation takes it.
+
+While the break is below the places nothing changes except one info line at
+bind, which says where the break is and where the lowest place is. If the
+allocator's header is not where the cpu_comm driver puts it, nothing is known
+and the driver does what it did, with one warning. THal_Vp_Init's staging
+area is not checked: the driver writes nothing into it, and it lies 4 MiB up.
+
+Two comments in the same driver are corrected, both found wrong when the
+white balance was brought up (the messages of 0094 and 0101 keep the old
+wording; the tree has the right one). The table's note on SetWhiteBalance
+said the call takes a pointer to three factory-calibrated doubles that are
+not available. It takes one word, the physical address of a block of six
+32-bit words, {R, G, B gain, R, G, B offset + 512}, each 0..1023, and six
+times 512 is neutral, which is also what the registers hold with the stock
+firmware: no factory data is missing. The note on the controls that are
+absent said gamma and white balance were already GAMMA_LUT and CTM on the
+display CRTC. For gamma that is right (the vendor's HAL computes its curves
+on the ARM and writes the same stage). White balance is not: CTM only folds a
+gain into the gamma LUT, while the firmware has a gain and an offset per
+channel of its own, which the stock firmware uses and h713-tv now sets.
+
+Signed-off-by: well0nez <8986239+well0nez@users.noreply.github.com>
+---
+ .../sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c  |  139 ++++++++++++++++++--
+ 1 file changed, 127 insertions(+), 12 deletions(-)
+
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -564,6 +564,23 @@ static const phys_addr_t h713_hdmirx_slot_c[H713_HDMIRX_SLOTS] = {
+ #define H713_MAP_WCE		(H713_SHM_WCE - H713_SHM_HDCP22)
+ #define H713_MAP_BLPWM		(H713_SHM_BLPWM - H713_SHM_HDCP22)
+ 
++/*
++ * The firmware's allocator (Trid_SMM) owns the rest of the shared memory, the
++ * places above included, and it does not know of them. Its header lies at
++ * SHMEM_OFF_SMM_HEAP (0x2ccf0) rounded up to a page; the page table follows,
++ * then the data, which grows upwards a page at a time (the break is always
++ * page aligned, and a class of small blocks takes a page of its own). Word 47
++ * of the header is the heap's start, a physical address; word 45 is the break
++ * as an offset from it. A page the break has reached may be given out by the
++ * firmware at any moment, or already is. Measured on the HY310 (18.10.2026):
++ * one page given, the break at +0x33000, the lowest place three pages above.
++ * h713-tv makes the same test before it writes its own blocks in this window.
++ */
++#define H713_SMM_HEAD		0x0002d000
++#define H713_SMM_BRK_WORD	45
++#define H713_SMM_START_WORD	47
++#define H713_SMM_PAGE		0x1000
++
+ #define H713_HDCP22_SIZE	912
+ #define H713_FW_HDCP22		"hy310-hdcp22.bin"
+ 
+@@ -678,10 +695,12 @@ struct h713_hdmirx_step {
+  * session numbers below) by way of analyse/hdmi-seq/hdmi_seq.py, which has run
+  * this sequence on the device.
+  *
+- * Stock session 16, SetWhiteBalance, is missing on purpose: it takes a pointer
+- * to three factory-calibrated doubles that this project does not have. The
+- * userspace tool skips it for the same reason and the sequence works without
+- * it.
++ * Stock session 16, SetWhiteBalance, is not in the table. Its one argument is
++ * the physical address of a block of six 32-bit words, {R, G, B gain, R, G, B
++ * offset + 512}, each 0..1023, and six times 512 is neutral -- the state the
++ * white balance registers hold with the stock firmware as well. No factory
++ * data is missing, and the sequence works without the call; the white balance
++ * is set from userspace, by h713-tv.
+  */
+ static const struct h713_hdmirx_step h713_hdmirx_init_seq[] = {
+ 	/* ---- phase 2: init and callback wiring ---------------------- */
+@@ -852,14 +871,23 @@ static const struct h713_hdmirx_step h713_hdmirx_init_seq[] = {
+  *
+  * Deliberately absent, each for its own reason:
+  *
+- *  - Gamma and white balance. Both exist twice on this chip, and the half
+- *    that is known to work is not this one: the DE2 gamma stage is offered
+- *    as GAMMA_LUT and CTM on the display CRTC (patch 0095) and is measured
+- *    to invert the picture on the console and on the video path alike
+- *    (doku/87-gamma-ctm-kms.md section 0), while the firmware announces
+- *    "Can not get MP GAMMAModuleID" for its own gamma module at every
+- *    start. A V4L2_CID_GAMMA here would be a second owner of one visible
+- *    quantity with no defined precedence between them.
++ *  - Gamma. It exists twice on this chip, and the half that is known to
++ *    work is not this one: the DE2 gamma stage is offered as GAMMA_LUT on the
++ *    display CRTC (patch 0095; the vendor's HAL computes its curves on the
++ *    ARM and writes this same stage) and is measured to invert the picture
++ *    on the console and on the video path alike (doku/87-gamma-ctm-kms.md
++ *    section 0), while the firmware announces "Can not get MP GAMMAModuleID"
++ *    for its own gamma module at every start. A V4L2_CID_GAMMA here would be
++ *    a second owner of one visible quantity with no defined precedence
++ *    between them.
++ *
++ *  - White balance. The CTM of the display CRTC does not stand in for it:
++ *    CTM can only fold a gain into the gamma LUT, while the firmware has a
++ *    white balance of its own, a gain and an offset for each of R, G and B
++ *    in registers it writes itself, and the stock firmware uses it
++ *    (THal_Vp_SetWhiteBalance). It is no V4L2 control because what matters
++ *    is a step on the base of the picture mode, which userspace keeps;
++ *    h713-tv sends the call.
+  *
+  *  - The backlight. The lamp already has a driver, pwm-backlight on
+  *    PWM2/PB4, and a class device to go with it. Whether
+@@ -1269,6 +1297,7 @@ struct h713_hdmirx_plane {
+ enum h713_hdcp22_key_state {
+ 	H713_HDCP22_KEY_NOT_RUN,	/* the sequence has not reached the step */
+ 	H713_HDCP22_KEY_SKIPPED,	/* no key file: the step was left out */
++	H713_HDCP22_KEY_NO_PLACE,	/* the firmware's allocator had reached the key's page: left out */
+ 	H713_HDCP22_KEY_SENT,		/* THal_Vp_SetHDCP22Key accepted the key */
+ };
+ 
+@@ -1442,6 +1471,73 @@ static int h713_hdmirx_call(struct h713_hdmirx *rx, const char *name,
+ 	return 0;
+ }
+ 
++/*
++ * The break of the firmware's allocator as a physical address (see
++ * H713_SMM_HEAD). The page with the header is mapped for the two reads only:
++ * this driver's own window starts nine pages higher, and the header is the
++ * firmware's, not a place of ours. Uncached, like cpu_comm's own mapping.
++ */
++static int h713_hdmirx_smm_break(struct h713_hdmirx *rx, u64 *brk)
++{
++	void __iomem *head;
++	u32 start, size;
++
++	head = ioremap(rx->shm_base + H713_SMM_HEAD, H713_SMM_PAGE);
++	if (!head)
++		return -ENOMEM;
++	start = readl(head + 4 * H713_SMM_START_WORD);
++	size = readl(head + 4 * H713_SMM_BRK_WORD);
++	iounmap(head);
++	if (start != rx->shm_base + H713_SMM_HEAD)
++		return -ENXIO;
++	*brk = (u64)start + size;
++
++	return 0;
++}
++
++/*
++ * May this step write its block at the place? What counts is the page of the
++ * place, not its first byte: the break only moves in whole pages, so once it
++ * stands at the start of that page the allocator's next block is that page,
++ * and above it the page is the firmware's already. In both cases nothing is
++ * written, and the step is left out: the firmware reads the block through the
++ * address it is handed, and a block written into a page it may have taken for
++ * something else can break the firmware's heap; a step that is not sent only
++ * costs what the step does (the same way out as a missing key file or a
++ * missing PWM property). The driver cannot move a place, the firmware may keep
++ * the pointers and h713-tv's blocks sit behind them. Checked at every step
++ * that writes, because the break moves while the firmware runs. Where the
++ * allocator cannot be found the answer is yes, as it always was: nothing is
++ * known then, and the driver does what it did.
++ *
++ * THal_Vp_Init's staging area at H713_SHM_VP_INIT is not checked: the driver
++ * writes nothing there (the firmware copies its own data into it), and it lies
++ * 4 MiB up, behind a heap that would have to give out three quarters of the
++ * shared memory first.
++ */
++static bool h713_hdmirx_place_free(struct h713_hdmirx *rx, u32 place,
++				   unsigned int step, const char *name)
++{
++	u64 brk;
++	int ret;
++
++	ret = h713_hdmirx_smm_break(rx, &brk);
++	if (ret) {
++		dev_warn_once(rx->dev,
++			      "the firmware's allocator cannot be read (%d): its break is not checked against the places of this driver\n",
++			      ret);
++		return true;
++	}
++	if (brk < rx->shm_base + ALIGN_DOWN(place, H713_SMM_PAGE))
++		return true;
++
++	dev_warn(rx->dev,
++		 "step %u %s skipped: the firmware's allocator has reached the page of its block (break +%#llx, block +%#x), nothing is written there\n",
++		 step, name, brk - rx->shm_base, place);
++
++	return false;
++}
++
+ /*
+  * Write the two window rectangles and the aspect selector into shared memory
+  * and hand back their addresses. The shared memory is mapped write combining;
+@@ -1504,8 +1600,14 @@ static int h713_hdmirx_load_hdcp_key(struct h713_hdmirx *rx, u32 *args)
+ static int h713_hdmirx_run_init_seq(struct h713_hdmirx *rx)
+ {
+ 	unsigned int i;
++	u64 brk;
+ 	int ret;
+ 
++	if (!h713_hdmirx_smm_break(rx, &brk))
++		dev_info(rx->dev,
++			 "the firmware's allocator ends at +%#llx of the shared memory, the lowest place of this driver is at +%#x\n",
++			 brk - rx->shm_base, H713_SHM_HDCP22);
++
+ 	for (i = 0; i < ARRAY_SIZE(h713_hdmirx_init_seq); i++) {
+ 		const struct h713_hdmirx_step *s = &h713_hdmirx_init_seq[i];
+ 		u32 args[6] = { 0, 0, 0, 0, 0, 0 };
+@@ -1529,6 +1631,8 @@ static int h713_hdmirx_run_init_seq(struct h713_hdmirx *rx)
+ 			dev_info(rx->dev,
+ 				 "backlight PWM: channel %u polarity %u freq %u vs_lock %u min %u max %u\n",
+ 				 pwm[0], pwm[1], pwm[2], pwm[3], pwm[4], pwm[5]);
++			if (!h713_hdmirx_place_free(rx, H713_SHM_BLPWM, i, s->name))
++				continue;
+ 			/* one argument: the address of the six words (see H713_SHM_BLPWM) */
+ 			for (w = 0; w < ARRAY_SIZE(pwm); w++)
+ 				writel(pwm[w], rx->shm + H713_MAP_BLPWM + w * 4);
+@@ -1539,9 +1643,15 @@ static int h713_hdmirx_run_init_seq(struct h713_hdmirx *rx)
+ 			args[2] = rx->shm_base + H713_SHM_VP_INIT;
+ 			break;
+ 		case H713_STEP_WCE:
++			if (!h713_hdmirx_place_free(rx, H713_SHM_WCE, i, s->name))
++				continue;
+ 			h713_hdmirx_wce_args(rx, args);
+ 			break;
+ 		case H713_STEP_HDCP:
++			if (!h713_hdmirx_place_free(rx, H713_SHM_HDCP22, i, s->name)) {
++				rx->hdcp22_key = H713_HDCP22_KEY_NO_PLACE;
++				continue;
++			}
+ 			ret = h713_hdmirx_load_hdcp_key(rx, args);
+ 			if (ret) {
+ 				dev_warn(rx->dev,
+@@ -4978,6 +5088,8 @@ static const char *h713_hdmirx_hdcp_key22(const struct h713_hdmirx *rx)
+ 		return "handed over";
+ 	case H713_HDCP22_KEY_SKIPPED:
+ 		return "skipped";
++	case H713_HDCP22_KEY_NO_PLACE:
++		return "skipped (the firmware's allocator had reached the place)";
+ 	default:
+ 		return "not yet";
+ 	}
+@@ -5088,6 +5200,9 @@ static ssize_t hdcp_show(struct device *dev, struct device_attribute *attr,
+ 		at += sysfs_emit_at(buf, at, "key-2.2:       skipped at probe (%s not loadable, %d): no 2.2 this boot\n",
+ 				    H713_FW_HDCP22, rx->hdcp22_key_err);
+ 		break;
++	case H713_HDCP22_KEY_NO_PLACE:
++		at += sysfs_emit_at(buf, at, "key-2.2:       skipped at probe (the firmware's allocator had reached the page of the key's place): no 2.2 this boot\n");
++		break;
+ 	default:
+ 		at += sysfs_emit_at(buf, at, "key-2.2:       the init sequence has not reached the step\n");
+ 		break;

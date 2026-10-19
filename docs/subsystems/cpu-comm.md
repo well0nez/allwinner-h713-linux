@@ -97,6 +97,71 @@ That lock then read "free" to its own unlock, stayed held by the ARM for ever, a
 net reloaded the MIPS (one warm start in twenty, traced step by step in `doku/206`). The word is now
 `tgid << 8 | 1`; 50 warm starts without the net since.
 
+## The shared memory and the firmware's allocator
+
+The 5 MiB region behind the transport (`0x4E300000` on the HY310) is two things. The first `0x2D000` bytes
+are the transport's own structures: the software spinlocks at the start, the record lists, the routine table
+at `0x75C0`, the component pool at `0x240E8` and the message pool at `0x2C068` (`cpu_comm.h`). Everything
+above belongs to the display firmware's allocator, the vendor's `Trid_SMM`, which both processors use and
+which our driver sets up when it loads (`Trid_SMM_Init`, `cpu_comm_mem.c`). The layout, with the offsets
+from the region's base:
+
+| Offset | What |
+| --- | --- |
+| `+0x2D000` | the allocator's header page (`SHMEM_OFF_SMM_HEAP`, `0x2CCF0`, rounded up to a page) |
+| `+0x2E000` | its page table: 12 bytes per page of the heap, four pages here (1236 pages in all) |
+| `+0x32000` | the first data page |
+| `+0x36000` | the HDCP 2.2 key, 912 bytes (the HDMI receiver's driver) |
+| `+0x37000` | the `Wce_SetWindow` structures, `0x48` bytes (the receiver's driver) |
+| `+0x37100` | the six backlight PWM words, 24 bytes (the receiver's driver, only with `allwinner,backlight-pwm-info`) |
+| `+0x37200`, `+0x37300` | the white balance block and the colour management block (`h713-tv`, [its page](../tools/h713-tv.md)) |
+| `+0x400000` | the staging block of `THal_Vp_Init`, 55296 bytes (written by the firmware) |
+| `+0x500000` | the end of the region |
+
+The header words that matter are 45, 46 and 47 (a 32-bit word each, counted from the header): **47** is the
+heap's start, the physical address of the header itself; **45** is the break, an offset from that start,
+which begins at `4096 + page table` (`0x5000` here) and only ever moves up; **46** is the capacity the break
+may not pass (`0x4D330F`, so the heap reaches the end of the region). The break as an address is word 47 plus
+word 45. A request of more than 2048 bytes takes whole pages from the break. One of 8 to 2048 bytes comes from
+a free list of its power-of-two class, and when that list is empty the allocator takes **one whole page**
+from the break and cuts it into blocks of that class. So the break is always a multiple of 4 KiB, and the
+smallest thing the firmware ever takes from it is a page. A free block keeps its list links in its own first
+two words, which means a stray write into a page of small blocks does not damage one block, it damages the
+list; the vendor's allocator checks the links and treats a bad one as a fault.
+
+The places in the table above are fixed offsets. The stock userspace used addresses of the same kind (its
+HDCP key at `0x4E336000`, which is our key's place; its white balance block at `0x4E333000`, the page our
+allocator would give out next today), while our drivers and `h713-tv` take theirs without asking the
+allocator. Nothing reserves them, and the allocator does not know they exist: a page it has reached may be
+given out to the firmware at any moment.
+
+Measured on the HY310 (18.10.2026, after a boot, a standby and a session of colour work): the allocator had
+given out **one page**. Header `0x4E32D000`, page table `0x4E32E000`, data from `0x4E332000`, break at
+`0x4E333000` (word 45 = `0x6000`); that page was a page of 64-byte blocks with one block in use (`0x40` bytes
+given, `0xFC0` free), and the page table had a single entry. The pages of the places (`0x4E336000` to
+`0x4E338000`) lay three pages above the break and were null in the table. Nothing in our Linux calls the
+allocator (no `IOCTL_MALLOC`), so the firmware's own take of one page after the start is all there is. Not
+measured: the break on the HY300PRO-G-EU, and whether any long run or any firmware feature moves it.
+
+Both writers test the break before they write. `h713-tv` reads words 47 and 45 before every write of its
+blocks and refuses once the break has reached the page of the block (`color.c`, `fwc_slot_free`: the break
+offset against the block's page start, minus `0x2D000`). The HDMI receiver's driver (kernel `0326`) reads
+the same two words before each of the three blocks it writes in its init sequence and, when the break stands
+at or above the block's page, writes nothing there and leaves the step out with a warning in the kernel log
+(`step N THal_Vp_... skipped: the firmware's allocator has reached the page of its block (break +..., block +...)`);
+the `hdcp` attribute then reports the key as skipped for that reason, and the board runs without HDCP 2.2
+that boot. The test is against the **page**, not the byte: a break standing exactly at the start of the
+block's page means the very next allocation takes that page. While the break is below the places the driver
+changes nothing; at every bind it logs where it is (`the firmware's allocator ends at +0x33000 of the shared
+memory, the lowest place of this driver is at +0x36000`). THal_Vp_Init's staging block is not tested: the
+driver writes nothing into it and it lies 4 MiB up. If the allocator's header is not where the transport
+puts it, nothing can be tested and the driver writes as it always did, with one warning.
+
+What would need to change if the break ever reached a place for real is the places, not the tests: the
+blocks would have to come from the allocator (the vendor's own way, `IOCTL_MALLOC`), and since the firmware
+keeps the pointer to the colour management block for good, that would have to be done for all of them at
+once, in one mechanism.
+
 ## Callbacks
 
 The MIPS calls back into the ARM for events such as a signal change; a registered handler receives

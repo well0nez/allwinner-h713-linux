@@ -14,6 +14,7 @@ calls into the firmware - noise reduction, picture mode, HDCP key, port map, and
 `cpu_comm` link, then brings up EDID and hot-plug through the ARISC co-processor. Measured on the
 09:02 boot: the whole sequence, including EDID, finished **17.65 s** after power-on (`doku/88`,
 07.09.2026). Every bind of the driver runs this probe again, which a standby restart does (below).
+Three of the calls need a block of memory the firmware reads: the HDCP 2.2 key, the window structures and, on a board whose device tree has `allwinner,backlight-pwm-info`, the lamp's PWM words. They are written at fixed places in the `cpu_comm` shared memory, below which the firmware's own allocator grows upwards ([cpu_comm](cpu-comm.md#the-shared-memory-and-the-firmwares-allocator)). Before each write the driver reads where the allocator stands; if it has reached the block's page, nothing is written and the step is left out with a warning (the `hdcp` attribute says so for the key). Below the places, which is where it stands (one page given out, measured on the HY310), nothing changes.
 The EDID the device advertises is fixed: HDMI 1.4 + HDMI 2.0 blocks concatenated into one
 512-byte image, of which a source is served one 256-byte block. The firmware rewrites exactly two
 bytes of it - the HDMI vendor block's physical-address byte and the extension checksum that follows
