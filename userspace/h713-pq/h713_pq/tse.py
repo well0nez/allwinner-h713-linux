@@ -165,6 +165,21 @@ def picture_features(path) -> list:
     return out
 
 
+def slot_curves(states: list) -> dict:
+    """The raw curve of every colour temperature slot the file has.
+
+    slot -> three banks of 1024 samples. A slot that two states claim goes to
+    the first one, the way the vendor's library fills its table. This is what
+    ``gamma --export-slots`` hands to h713-tv, which computes the gamma level
+    and the colour temperature from it.
+    """
+    table = {}
+    for state in states:
+        for slot in state.slots:
+            table.setdefault(slot, state.samples)
+    return table
+
+
 def slot_of(selector: str) -> int:
     """Colour-temperature name or slot number -> slot index 0..8."""
     key = str(selector).strip().lower()

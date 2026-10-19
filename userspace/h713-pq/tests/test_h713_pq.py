@@ -14,6 +14,7 @@ from __future__ import annotations
 import contextlib
 import io
 import math
+import struct
 import subprocess
 import sys
 import tempfile
@@ -753,6 +754,76 @@ class TestTseGamma(unittest.TestCase):
                              "--from-tse", "cool",
                              "--tse", str(self.path.parent / "no.TSE")])
         self.assertEqual(code, 2)
+
+
+    # -- the raw curves for h713-tv (gamma --export-slots) --------------------
+
+    def test_export_slots_is_the_raw_curves_in_the_agreed_layout(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "slots.bin"
+            buf = io.StringIO()
+            with contextlib.redirect_stdout(buf):
+                code = cli.main(["--data", self.tvconfig, "gamma", "--export-slots", str(out),
+                                 "--tse", str(self.path), "--project", "0x30"])
+            self.assertEqual(code, 0)
+            raw = out.read_bytes()
+            self.assertEqual(raw[:4], b"H7GS")
+            self.assertEqual(struct.unpack("<III", raw[4:16]), (1, 0b111, 0x30))
+            self.assertEqual(len(raw), 16 + 3 * 6144)
+            self.assertIn("normal, cool, warm", buf.getvalue())
+            self.assertFalse(Path(str(out) + ".neu").exists())
+            # the file order of the fixture is warm, cool, normal; the export is by slot: normal, cool, warm
+            for slot, state in ((0, 2), (1, 1), (2, 0)):
+                for c in range(3):
+                    off = 16 + slot * 6144 + c * 2048
+                    self.assertEqual(list(struct.unpack("<1024H", raw[off:off + 2048])),
+                                     self.banks[state][c], f"slot {slot} channel {c}")
+            # nothing but the head differs between two runs: no clock, no path inside
+            out2 = Path(d) / "again.bin"
+            with contextlib.redirect_stdout(io.StringIO()):
+                cli.main(["--data", self.tvconfig, "gamma", "--export-slots", str(out2),
+                          "--tse", str(self.path), "--project", "0x30"])
+            self.assertEqual(raw, out2.read_bytes())
+
+    def test_export_slots_names_the_board_the_file_names(self):
+        # --project only picks the file in a directory; the head carries what the file itself says
+        with tempfile.TemporaryDirectory() as d:
+            other = Path(d) / "ProjectID_0x0034.TSE"
+            make_tse_fixture.build(other, 0x0034)
+            out = Path(d) / "slots.bin"
+            with contextlib.redirect_stdout(io.StringIO()):
+                code = cli.main(["--data", self.tvconfig, "gamma", "--export-slots", str(out),
+                                 "--tse", d, "--project", "0x34"])
+            self.assertEqual(code, 0)
+            self.assertEqual(struct.unpack("<I", out.read_bytes()[12:16])[0], 0x34)
+
+    def test_export_slots_without_a_file_writes_nothing_and_says_so(self):
+        with tempfile.TemporaryDirectory() as d:
+            out = Path(d) / "slots.bin"
+            err = io.StringIO()
+            with contextlib.redirect_stderr(err):
+                code = cli.main(["--data", self.tvconfig, "gamma", "--export-slots", str(out),
+                                 "--tse", str(Path(d) / "no.TSE")])
+            self.assertEqual(code, 2)
+            self.assertFalse(out.exists())
+            self.assertIn("not found", err.getvalue())
+
+    def test_slot_curves_gives_a_slot_two_states_claim_to_the_first(self):
+        first = tse.GammaState("a", 0x30, "m", 0, (), (0, 1), ((1,) * 1024,) * 3)
+        second = tse.GammaState("a", 0x30, "m", 1, (), (1, 2), ((2,) * 1024,) * 3)
+        table = tse.slot_curves([first, second])
+        self.assertEqual(sorted(table), [0, 1, 2])
+        self.assertEqual(table[1][0][0], 1)
+        self.assertEqual(table[2][0][0], 2)
+
+    def test_slots_bytes_refuses_what_h713_tv_could_not_read(self):
+        ok = ((0,) * 1024,) * 3
+        self.assertEqual(len(output.slots_bytes({0: ok}, 0x30)), 16 + 6144)
+        for bad in ({}, {9: ok}, {0: ((0,) * 1023,) * 3}, {0: ok[:2]}):
+            with self.assertRaises(ValueError, msg=str(list(bad))):
+                output.slots_bytes(bad, 0x30)
+        with self.assertRaises(struct.error):
+            output.slots_bytes({0: (((1 << 16),) + (0,) * 1023,) * 3}, 0x30)
 
 
 # ---------------------------------------------------------------------------
