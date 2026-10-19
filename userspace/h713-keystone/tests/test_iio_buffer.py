@@ -20,6 +20,7 @@ import struct
 import sys
 import tempfile
 import threading
+import time
 import unittest
 from contextlib import redirect_stderr, redirect_stdout
 from unittest import mock
@@ -323,16 +324,32 @@ class Commands(unittest.TestCase):
                 self.assertEqual(ks.main([a for a in self.base if a != "--quiet"] + flags + ["read"]), 0)
             self.assertEqual("no IIO buffer" in err.getvalue(), said, err.getvalue())
 
+    def test_watch_takes_a_burst_every_half_second_and_not_every_tenth(self):
+        """The sensor is on for a burst and the CPU busy for it only: between two readings watch waits WATCH_PAUSE_S."""
+        with open(os.path.join(self.dir, "keystone.conf"), "w") as fh:
+            fh.write("average_samples = 1\n")
+        self.k.feed(JUNK + [t.REST] * 40)
+        calls = []
+        real = ks.Sensor._buffer_sample
+
+        def spy(sensor, count):
+            calls.append(time.monotonic())
+            return real(sensor, count)
+        with mock.patch.object(ks.Sensor, "_buffer_sample", spy):
+            self.assertEqual(self.run_tool("watch", "--dry-run", "--for", "1.4")[0], 0)
+        self.assertTrue(2 <= len(calls) <= 4, calls)
+        self.assertGreaterEqual(min(b - a for a, b in zip(calls, calls[1:])), ks.WATCH_PAUSE_S)
+
     def test_the_start_line_of_watch_says_how_the_readings_come(self):
-        buffered = self.k.sensor().cadence(10, ks.POLL_S)
+        buffered = self.k.sensor().cadence(10, ks.WATCH_PAUSE_S)
         self.assertEqual(buffered[1], "through the IIO buffer")
-        self.assertAlmostEqual(buffered[0], 0.26, places=2)                 # 13 triples at 100 Hz, the setup, the pause
+        self.assertAlmostEqual(buffered[0], 0.66, places=2)                 # 13 triples at 100 Hz, the setup, the pause
         shutil.rmtree(os.path.join(self.k.device, "buffer"))
-        sysfs = self.k.sensor().cadence(10, ks.POLL_S)
+        sysfs = self.k.sensor().cadence(10, ks.WATCH_PAUSE_S)
         self.assertIn("through sysfs", sysfs[1])
-        self.assertAlmostEqual(sysfs[0], 1.9, places=1)                     # what the unit measured on the HY310
+        self.assertAlmostEqual(sysfs[0], 2.3, places=1)                     # thirty values at 60 ms, the pause
         code, out = self.run_tool("watch", "--dry-run", "--for", "0.2")
-        self.assertIn("a reading every ~1.90 s through sysfs", out)
+        self.assertIn("a reading every ~2.30 s through sysfs", out)
 
 
 if __name__ == "__main__":

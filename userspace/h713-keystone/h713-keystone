@@ -108,6 +108,9 @@ SCAN_TYPE = re.compile(r"(le|be):([su])(\d+)/(\d+)(?:X\d+)?>>(\d+)$")   # le:s12
 # The loop's own pause.  One averaged reading already costs about 0.3 s at
 # 100 Hz, so this is a floor and not the sampling rate.
 POLL_S = 0.1
+# What `watch` waits between two readings.  A move is a change of 3 degrees that then stands still for 2 seconds, so a reading
+# every ~0.6 s finds it as well as one every 0.3 s; and the sensor is on, and the CPU busy, only for the 0.14 s of each reading.
+WATCH_PAUSE_S = 0.5
 # The eight insets in the APP order of AP2h (LT.x LT.y RT.x RT.y LB.x LB.y
 # RB.x RB.y) against the words h713-warp takes (KS4): `ctl keystone set CORNER
 # AXIS VALUE`, CORNER in tl tr bl br, AXIS in x y, per-mille inward.
@@ -929,7 +932,7 @@ def do_watch(args, conf, ini):
     moving_since = None  # when the move began
     still_since = None   # when the readings became still again
     last = None
-    every, how = sensor.cadence(conf["average_samples"], POLL_S)
+    every, how = sensor.cadence(conf["average_samples"], WATCH_PAUSE_S)
     print("ok watch  after_move = %s, move %.1f degrees, settle %.1f s within %.1f degrees, a reading every ~%.2f s %s  %s"
           % (conf["after_move"], conf["move_degrees"], conf["settle_seconds"],
              conf["settle_degrees"], every, how, note))
@@ -1005,7 +1008,7 @@ def do_watch(args, conf, ini):
                         except (OSError, subprocess.TimeoutExpired) as exc:
                             _stderr("warning: the focus command failed: %s" % exc)
         last = angles
-        deadline = time.monotonic() + POLL_S
+        deadline = time.monotonic() + WATCH_PAUSE_S
         while not stopped and time.monotonic() < deadline:
             time.sleep(0.02)
     return stop_code(stopped)
