@@ -1,8 +1,8 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 /*
- * h713-tv's white balance and colour management, on the host: main.c is compiled into this file and the machinery
- * that reaches the hardware (/dev/mem, /dev/cpu_comm, the board file) is replaced by a made-up display firmware that
- * does what the real one was measured to do (BERICHT of the media side project, parts 1 and 2):
+ * h713-tv's white balance and colour management, on the host: main.c and color.c are compiled into this file and
+ * the machinery that reaches the hardware (/dev/mem, /dev/cpu_comm, the board file) is replaced by a made-up display
+ * firmware that does what the real one was measured to do (BERICHT of the media side project, parts 1 and 2):
  *
  *   SetWhiteBalance      one word, the block of six; every word that is not 0xFFFF goes through the curve of
  *                        pq_custom.TSE into its register field
@@ -21,6 +21,7 @@
 #define main h713_tv_main
 #include "../main.c"
 #undef main
+#include "../color.c"
 
 static int failed;
 
@@ -444,10 +445,19 @@ int main(void)
 	fwc_set(&r, 1, "600");
 	check(r.failed && strstr(r.buf, "grown over the slot") && calls_wb == 0 && nwlog == 0 && fwc.wb[1] == 512,
 	      "an allocator whose break is past the slot: not written, no call, the old value stays");
-	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, FWC_SHM_WB - FWC_SMM_HEAD);
+	machine_reset();
+	program_starts();
+	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, (FWC_SHM_WB & ~0xfffu) - FWC_SMM_HEAD);
 	reply_clear(&r);
 	fwc_set(&r, 1, "600");
-	check(!r.failed && calls_wb == 1, "a break exactly at the slot leaves it free");
+	check(r.failed && strstr(r.buf, "grown over the slot") && calls_wb == 0 && nwlog == 0 && fwc.wb[1] == 512,
+	      "a break at the start of the slot's page refuses it: the next allocation (a page) would take it");
+	machine_reset();
+	program_starts();
+	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, (FWC_SHM_WB & ~0xfffu) - FWC_SMM_HEAD - 0x1000);
+	reply_clear(&r);
+	fwc_set(&r, 1, "600");
+	check(!r.failed && calls_wb == 1, "a break one page below the slot's page leaves it free");
 	machine_reset();
 	program_starts();
 	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 47, 0);

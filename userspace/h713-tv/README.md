@@ -164,7 +164,7 @@ way:
 
 ```bash
 # from the workstation (the main session does this):
-cp userspace/h713-tv/main.c userspace/h713-tv/Makefile /srv/h713-rootfs/root/h713-tv/
+cp userspace/h713-tv/main.c userspace/h713-tv/color.c userspace/h713-tv/color.h userspace/h713-tv/Makefile /srv/h713-rootfs/root/h713-tv/
 ssh root@192.168.8.141 'make -C /root/h713-tv'
 ```
 

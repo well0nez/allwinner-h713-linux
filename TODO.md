@@ -331,11 +331,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Augentest vom 18.10. lief mit der Probe, nicht mit diesem Code; gleiche Register heißt gleiches Bild ist der Schluss, nicht die Messung.
 - [ ] 2.101 **Weißabgleich/Farbmanagement am HY300PRO-G-EU nachmessen** (bm-wb2, nur am HY310 gemessen): Deploy h713-tv + h713-settings (Sicherung
       vorher); (1) `h713-tv ctl wb`: zeigt es `[not available: ...]`, ist seine display.bin eine andere (Adressen aus `bm-wb/BERICHT.md` §2 neu suchen,
-      `fwc_sig[]` in `main.c`); (2) `bm-wb2/skripte/regs.py`: +0x37100 trägt dort die PWM-Worte (5 1 40000 1 1 100), +0x37200 und +0x37300 leer, der
+      `fwc_sig[]` in `color.c`); (2) `bm-wb2/skripte/regs.py`: +0x37100 trägt dort die PWM-Worte (5 1 40000 1 1 100), +0x37200 und +0x37300 leer, der
       Break des Firmware-Allokators (Kopf +0x2D000, Wort 47 + Wort 45) unter +0x36000; (3) `ctl set wb_g_gain 563` -> `DC[11:0] = 0x8cc`;
       `ctl set cm_yellow_hue 60` -> Achse 3 = Basis + 60, `cm reset` gibt den Anfang zurück; (4) Warp im Bypass: wirkt der Weißabgleich dort?;
       (5) Warmstart und Standby mit gespeicherten Werten: Register gleich.
-- [ ] 2.102 Klein, aus Mythos' Prüfung von bm-wb2: der hdmirx-Treiber prüft beim Bind den Break des Firmware-Allokators für seine festen Plätze
+- [ ] 2.102 Klein, aus Mythos' Prüfung von bm-wb2 (h713-tv-Teil erledigt 19.10.: `color.c`, Grenze gegen den Seitenanfang des Slots, weil der Break
+      seitenbündig wächst - Paket `arbeit/medien/h713tv-color/`; offen bleiben Kernel und cpu-comm.md): der hdmirx-Treiber prüft beim Bind den Break des Firmware-Allokators (gegen den Seitenanfang) für seine festen Plätze
       (+0x36000 HDCP-Schlüssel, +0x37000, +0x37100; `dev_warn`), dazu die falschen Kommentare in 0094/0101 ("three doubles", "white balance is
       already CTM") richtigstellen; h713-tv: den Abschnitt "The firmware's colour" beim nächsten h713-tv-Paket nach `color.c`, dabei die Break-Grenze in `fwc_slot_free()` auf `hn >= off - FWC_SMM_HEAD` (Break genau am Slot-Anfang: die nächste Vergabe nähme ihn; Mythos 18.10.) und den Test "a break exactly at the slot" umkehren; `docs/subsystems/
       cpu-comm.md`: Layout des Heaps und der Messwert (18.10.2026 HY310: eine Seite vergeben, Break 0x4E333000).
