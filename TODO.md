@@ -368,7 +368,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.110 **cstenger-Kernel 0322-0325: Wirkung vor `main` messen** (Mythos 19.10.: go für medien; Messung am HY310 19.10. ohne Fehlerbild im
       Kontrollarm, `arbeit/cstenger-letterbox-20261019/mess/BERICHT.md`): 9.3c (a)/(b) und der Dauerlauf-Block aus mess/BERICHT §7 mit dem Kernel
       aus dem Merge (IIO + 0322-0325); 0323 (64 CAPTURE-Puffer) bei 4K gegen den CMA beobachten (9.3d c). G-EU: dieselbe Matrix nachmessen.
-- [ ] 2.111 **Mit Marcos Auge, aus klein-298:** der Countdown-Ring über der Seite "No signal on HDMI" liegt über Symbol und Worten - Mockup (a) wie
+- [ ] 2.111 **Mit Marcos Auge, aus klein-298:** (Ring: Marco wählte 19.10. Variante (b), gebaut in countdown-b, medien-Merge 19.10.; ob die Worte nach dem Countdown einblenden statt springen sollen, ~20 Zeilen, entscheidet sein Auge) der Countdown-Ring über der Seite "No signal on HDMI" lag über Symbol und Worten - Mockup (a) wie
       heute / (b) die Seite nimmt Symbol und Worte zurück, solange der Countdown läuft (`arbeit/medien/klein-298/mockup/vergleich-a-b.png`, ~10 Zeilen);
       K1 (getöntes Bild am Dienstschalter `warp ctl on`); die echte Power-Taste über der No-signal-Seite einmal drücken (Countdown, dann abbrechen).
       G-EU: Power über No-signal/Settings/Pille und die Übergabe mit Einblendung nachmessen (Zeile in klein-298/BERICHT).
@@ -380,6 +380,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Stellungen in der Antwort von `ctl wb`), dann fallen die Kopien in h713-settings (rows.c) und h713-panel (Python) weg und die Offset-Lücke
       (Offsets lesen, sechs Zahlen schreiben) ist zu - beim nächsten Anfassen von color.c. Marcos Blick auf den Reiter Colour im Panel (:8080, Handy
       und PC); G-EU: Reiter Colour nachmessen (Zeile in panel-farbe/BERICHT §6).
+- [ ] 2.114 **Launcher öffnet sich nach einem Neustart von h713-osd beim nächsten Signalwechsel von selbst** (Mythos 19.10., aus countdown-b, Ursache
+      gelesen): header_follow() in h713-keys definiert den Launcher bei einem Signalwechsel neu, solange h713-keys ihn für offen hält; nach einem
+      h713-osd-Neustart (Deploy, Absturz) steht dort "closed" -> h713-osd öffnet ihn. Fix ~5 Zeilen: vor dem Neudefinieren `ctl status` lesen, bei
+      "closed" entries/snap aufgeben; allgemein den Launcher-Zustand abgleichen, wenn der Socket von h713-osd neu entsteht. Kosmetisch: nosig_sync
+      setzt lau.quiet beim Öffnen nicht zurück.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

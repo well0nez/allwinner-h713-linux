@@ -278,6 +278,149 @@ class NoSignalTest(PageBase):
         self.assertIsNone(self.tv.shown)
         self.assertIn("no-signal page  none", self.status())
 
+    # --- the page takes back its symbol and words while the power countdown runs (Marco, 19.10.2026) --------------------------
+
+    def countdown(self, lines=6, alpha="100%", choice="standby"):
+        """h713-power's lines: one about every 0.1 s, "power TENTHS standby|off ALPHA%", each keeps the entry a second"""
+        for i in range(lines):
+            r = subprocess.run([BIN, "ctl", "power", str(100 - i), choice, alpha], env=self.env, capture_output=True, text=True, timeout=5)
+            self.assertEqual(r.stdout, "ok\n")
+            time.sleep(0.1)
+
+    def inked(self, data, x0, x1, y0=0, y1=H):
+        """how many pixels of the box are not the ground"""
+        return sum(1 for y in range(y0, y1) for x in range(x0, x1) if self.px(data, x, y) != GROUND)
+
+    def test_the_page_takes_back_its_symbol_and_words_while_the_power_countdown_runs(self):
+        """Over the page "No signal on HDMI" the ring lay over the HDMI symbol and the words and crossed them out (Marco 19.10.2026, variant b): the
+        page keeps nothing of them while a power entry stands, the ring is alone on the ground as over the launcher. The entry is asked at no
+        strength (ALPHA 0%): it stands, and what is on the wall is what the page keeps in its middle band"""
+        self.tv.picture = "none"
+        self.start_none()
+        page = self.shown()
+        self.assertGreater(self.inked(page, 0, W, H // 3, H * 2 // 3), 300, "the page has its symbol and words")
+        self.assertEqual(self.ctl("power", "100", "standby", "0%"), "ok\n")
+        quiet = self.shown()
+        self.assertTrue(quiet == GROUND * (W * H), "the ground alone: no symbol, no words - from the first line on")
+        self.countdown(3, alpha="0%")
+        self.assertTrue(self.shown() == quiet, "and it stays so")
+        time.sleep(1.1)
+        self.assertTrue(self.shown() == page, "the symbol and the words are back")
+
+    def test_the_ring_stands_alone_on_the_ground_as_over_the_launcher(self):
+        """the ring is not changed by this: right of the launcher's column (35 % of the panel, the ring starts at 36.4 %) the launcher's
+        page is the ground alone, and the ring over it is the same pixels as over the page - while at the left of the ring, where the page's
+        title reached out beyond it, there is nothing but the ground"""
+        self.tv.picture = "none"
+        self.start_none()
+        page = self.shown()
+        x0 = W * 35 // 100
+        self.assertGreater(self.inked(page, 0, x0), 0, "the page's title reaches out to the left of the ring")
+        self.countdown(3)
+        ring = self.shown()
+        self.assertTrue(ring != page, "the countdown is on the wall")
+        self.assertEqual(self.inked(ring, 0, x0), 0, "nothing of the page's words at the left of the ring")
+        self.assertGreater(self.inked(ring, x0, W), 300, "the ring is there")
+        time.sleep(1.1)
+        self.launcher(line(1))
+        self.countdown(3)
+        over_launcher = self.shown()
+        self.assertTrue([over_launcher[y * PITCH + 4 * x0:(y + 1) * PITCH] for y in range(H)] ==
+                        [ring[y * PITCH + 4 * x0:(y + 1) * PITCH] for y in range(H)], "the ring, pixel for pixel, and nothing else right of x0")
+
+    def test_the_page_comes_back_whole_when_the_countdown_runs_out(self):
+        """no hole, no stale pixel, and the wall never goes to the picture in between: the page after the countdown is the page drawn fresh"""
+        self.tv.picture = "none"
+        self.start_none()
+        page = self.shown()
+        n = len(self.tv.lines)
+        for _ in range(2):                                      # twice: both buffers have been the one on the wall
+            self.countdown(6)
+            self.assertTrue(self.shown() != page, "the countdown is on the wall")
+            self.assertEqual(self.inked(self.shown(), 0, W * 35 // 100), 0, "no word of the page at the left of the ring")
+            time.sleep(1.2)                                     # the last line's second is over
+            self.assertTrue(self.shown() == page, "the page, the same pixels")
+        shows = self.shows(n)
+        self.assertNotIn("osd hide", shows)
+        self.assertTrue(all(l.endswith(" cover") for l in shows), shows)
+
+    def test_the_page_comes_back_whole_when_the_countdown_is_cancelled(self):
+        """h713-power ends a cancelled countdown with two fading lines and "hide" (Countdown.close)"""
+        self.tv.picture = "none"
+        self.start_none()
+        page = self.shown()
+        n = len(self.tv.lines)
+        self.countdown(6)
+        self.assertEqual(self.inked(self.shown(), 0, W * 35 // 100), 0, "no word of the page at the left of the ring")
+        for a in ("60%", "30%"):
+            subprocess.run([BIN, "ctl", "power", "50", "standby", a], env=self.env, capture_output=True, text=True, timeout=5)
+            time.sleep(0.06)
+        self.assertEqual(self.ctl("hide"), "ok hidden\n")
+        self.assertTrue(self.shown() == page, "the page, the same pixels, at once")
+        shows = self.shows(n)
+        self.assertNotIn("osd hide", shows)
+        self.assertTrue(all(l.endswith(" cover") for l in shows), shows)
+
+    def test_a_volume_strip_in_the_countdown_does_not_leave_the_page_without_its_words_afterwards(self):
+        """the strip replaces the power entry as the overlay of the moment: the words come back with it, and go with the strip's end"""
+        self.tv.picture = "none"
+        self.start_none()
+        page = self.shown()
+        self.countdown(3)
+        self.ctl("volume", "40")
+        strip = self.shown()
+        self.assertTrue(strip != page, "the strip is on the wall")
+        self.assertTrue(strip[:H * 7 // 10 * PITCH] == page[:H * 7 // 10 * PITCH], "the page's words are back, the strip is at the foot")
+        time.sleep(0.9)
+        self.assertTrue(self.shown() == page, "the page, the same pixels")
+
+    def test_over_a_keystone_the_page_after_the_countdown_is_the_page_drawn_fresh(self):
+        """the same through the matrix (test_wall.py has the strong keystones at the box's panel): the band that changes twice is put with its
+        neighbours' rows around it, and the page stays opaque over the whole of it, in the countdown and after it. The entry at no strength
+        shows what the page keeps in its band: not what the page showed before"""
+        self.write("warp.conf", "bl_x = 90\nbl_y = 60\nbr_x = 90\nbr_y = 60\nwarp = on\n")
+        self.tv.picture = "none"
+        self.start_none()
+        page = self.shown()
+        self.assertEqual(self.px(page, W // 2, H // 2)[3], 255)
+        for alpha in ("100%", "0%"):
+            for _ in range(2):
+                self.countdown(6, alpha=alpha)
+                during = self.shown()
+                self.assertTrue(during != page, "the countdown is on the wall (%s)" % alpha)
+                self.assertEqual(during[3::4].count(255), page[3::4].count(255), "no pixel of the page is lost to the ring")
+                time.sleep(1.2)
+                self.assertTrue(self.shown() == page, "the page put whole")
+
+    def test_the_launcher_opened_over_no_signal_is_not_changed_by_the_countdown(self):
+        """only the page without a signal gives up its middle band: the launcher's rows stay"""
+        self.tv.picture = "none"
+        self.start_none()
+        self.launcher(line(1))
+        lau = self.shown()
+        self.countdown(3)
+        x0 = W * 35 // 100                                      # (the ring starts at 36.4 %)
+        self.assertEqual(self.inked(self.shown(), 0, x0), self.inked(lau, 0, x0), "the column is as it was")
+        time.sleep(1.1)
+        self.assertTrue(self.shown() == lau, "the launcher, the same pixels")
+
+    def test_the_page_that_opens_while_the_countdown_stands_is_quiet_from_its_first_picture(self):
+        """the launcher closes under a standing countdown and the page without a signal takes its place (the entry has most of its second to
+        go): its first picture is drawn without the words, and they come when the entry ends. The flag is compared at every drawing, so what
+        an earlier page left of it does not matter"""
+        self.tv.picture = "none"
+        self.start_none()
+        page = self.shown()
+        self.launcher(line(1))
+        self.countdown(3)
+        self.launcher("close", wait=0.3)
+        quiet = self.shown()
+        self.assertEqual(self.inked(quiet, 0, W * 35 // 100), 0, "no word of the page at the left of the ring")
+        self.assertGreater(self.inked(quiet, W * 35 // 100, W), 300, "the ring is still there")
+        self.assertIn("no-signal page  shown", self.status())
+        time.sleep(1.1)
+        self.assertTrue(self.shown() == page, "the page, the same pixels")
+
     def test_a_note_between_the_question_and_its_answer_is_taken(self):
         """h713-tv's note comes in the same write as the answer to "osd picture": the page opens, the volume rides in it"""
         self.start()

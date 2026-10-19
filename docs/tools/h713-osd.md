@@ -28,7 +28,8 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   countdown rides in the tiles; an open page of [the page channel](#the-page-channel-package-s) takes no overlays, with a signal as without (h713-settings
   ends on the Power key before h713-power asks). *Overtaken (19.10.2026):* "the countdown still answers `ok unseen` over the page without a signal,
   because no picture lies under the page" (17.10.2026) - the warp's claim is given back under the page, so `osd picture` says `none` there, but the
-  page stands on the wall and somebody sees the choice.
+  page stands on the wall and somebody sees the choice. Over the page without a signal the page takes back its symbol and its words while the
+  countdown stands, so the ring is alone on the ground as over the launcher (below).
 - `pair` - "hold Left + Right" for 10 s after the remote was forgotten (h713-panel, TODO 2.54).
 - `launcher SEL;NOW;[>]icon:label;...` - the launcher (h713-keys): an **opaque page** over the whole
   panel, not an overlay over the picture (Marco, 15.10.2026: it must have a ground): the ground `0xff0b0e0d`, the list of "Launcher C" in
@@ -57,7 +58,12 @@ With no HDMI signal the wall shows an **opaque page** instead of the Linux conso
 the HDMI symbol, **No signal on HDMI** and, a line below, **HOME: menu** - centred, everything inside the safe margin of 5 %, over the whole
 panel (shown with `osd show N cover`, so it stands over black with no picture at all), pre-distorted with the keystone like the launcher.
 It is three bands (the ground above, the middle one with the symbol and the words, the ground below), so the volume strip and the power
-countdown ride in it like in the launcher's tiles. It needs the same font as the launcher (`H713_OSD_FONT`; without a face the symbol stands
+countdown ride in it like in the launcher's tiles. **While a power countdown stands (its line is the overlay of the moment: every line of
+h713-power keeps it a second, the end or `hide` takes it away) the middle band is drawn without the symbol and the words**: the ring then stands
+alone on the ground, the same size and place as over the launcher, and does not cross out "No signal on HDMI". The band is painted again when the
+countdown starts and when it ends (it runs out, or is cancelled); nothing else of the page changes, and over a keystone the page after the
+countdown is the page drawn fresh (host tests `tests/test_nosignal.py`, and `tests/test_wall.py` through the strong keystones). A volume strip or
+another overlay that replaces the countdown's line gives the words back with it. It needs the same font as the launcher (`H713_OSD_FONT`; without a face the symbol stands
 alone).
 
 [h713-tv](h713-tv.md) decides when it stands. It says on the overlay connection, unasked, `note signal none` - no signal, or one the display

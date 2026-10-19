@@ -118,6 +118,8 @@ static struct {
  * and neither the launcher nor a page of the page channel is open, `lau` stands open with `nosig` set and three tiles of its own
  * (libh713osd osd_nosignal_*) - the volume strip and the power countdown ride in them like in the launcher's, a closed launcher gives the
  * wall back to it, the launcher and the settings take its place. Everything that asks "is the launcher open" asks lau.open && !lau.nosig.
+ * While a power countdown stands (power_stands) its middle band is painted quiet - no symbol, no words (lau.quiet) - so that the ring is alone
+ * on the ground like over the launcher; compose() paints that band again when the countdown starts and when it ends.
  */
 #define BANDS (OSD_LAUNCHER_ROWS + 3)
 #define TILES (2 * BANDS)
@@ -125,6 +127,7 @@ static struct {
 static struct {
 	bool open;
 	bool nosig;			/* ... and what stands open is the page without a signal, not the launcher (nosig_sync) */
+	bool quiet;			/* ... and its middle band is drawn without the symbol and the words: a power entry stands (power_stands) */
 	struct osd_launcher l;
 	char now[48], head[80], label[OSD_LAUNCHER_ROWS][48];
 	unsigned counter, gen[TILES], cgen[TILES], ver[TILES], held[2][TILES];
@@ -622,7 +625,7 @@ static int lau_bands(int box[][4])
 static void lau_draw(int tile)
 {
 	if (lau.nosig)
-		osd_nosignal_draw(&canvas, tile);
+		osd_nosignal_draw(&canvas, tile, lau.quiet);
 	else
 		osd_launcher_draw(&canvas, &lau.l, tile);
 }
@@ -688,6 +691,13 @@ static void lau_paint(void)
 		}
 }
 
+/* the power countdown's entry is the overlay of the moment (each line of h713-power keeps it a second; after the last one, or after
+ * "hide", this is false again) */
+static bool power_stands(void)
+{
+	return want.until > now_s() && want.popup.kind == OSD_POWER;
+}
+
 /* what is to be seen, drawn: region 0 the overlay, region 1 the mute badge, each with its own rectangle - kept
  * apart, because together they span most of the panel and the pre-distortion would walk all of it (227 ms).
  * The two never overlap (the badge sits in the corner the overlays leave free, libh713osd), which put_warped()
@@ -702,6 +712,10 @@ static bool compose(int box[2][4])
 		lau_rect(cbox[1], true);
 		if (!lau.nosig)
 			lau_clock();
+		else if (lau.quiet != power_stands()) {	/* the page without a signal gives its symbol and words back to the ring, and takes them again */
+			lau.quiet = !lau.quiet;
+			lau_dirty(OSD_NOSIGNAL_MIDDLE);
+		}
 		lau_paint();
 	} else {
 		osd_clear_box(&canvas, cbox[0]);

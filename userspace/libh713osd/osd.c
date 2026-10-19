@@ -864,7 +864,7 @@ int osd_nosignal_bands(const struct osd_canvas *c, int box[][4])
 	return OSD_NOSIGNAL_TILES;
 }
 
-void osd_nosignal_draw(struct osd_canvas *c, int tile)
+void osd_nosignal_draw(struct osd_canvas *c, int tile, int quiet)
 {
 	static const char TITLE[] = "No signal on HDMI", HINT[] = "HOME: menu";
 	static struct scene s;
@@ -875,7 +875,7 @@ void osd_nosignal_draw(struct osd_canvas *c, int tile)
 	if (tile < 0 || tile >= tiles || !box[tile][2] || !box[tile][3])
 		return;
 	fill_box(c, box[tile], OSD_PAGE_GROUND);
-	if (tile != 1)				/* the ground alone */
+	if (tile != OSD_NOSIGNAL_MIDDLE || quiet)	/* the ground alone */
 		return;
 	/* the plug of the HDMI symbol, 144 units wide, its middle at 450; the strokes are the launcher's, drawn larger */
 	memset(&s, 0, sizeof(s));

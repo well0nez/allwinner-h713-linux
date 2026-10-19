@@ -362,6 +362,67 @@ class WallTest(OsdBase):
     def test_turned_right_30_pitched_down(self):
         self.check(KEYSTONES["turned right 30, pitched down"])
 
+    # --- the page without a signal, and the power countdown over it (19.10.2026) -----------------------------------------------------------
+
+    def countdown(self, lines, alpha="100%"):
+        """h713-power's lines, one about every 0.1 s, each keeps the entry a second"""
+        for i in range(lines):
+            r = subprocess.run([BIN, "ctl", "power", str(100 - i), "standby", alpha], env=self.env, capture_output=True, text=True, timeout=5)
+            self.assertEqual(r.stdout, "ok\n")
+            time.sleep(0.1)
+
+    def check_countdown(self, keystone):
+        """While the power countdown runs the page "No signal on HDMI" draws its middle band without the symbol and the words, and draws it
+        again when the countdown ends (it runs out, or h713-power cancels it with "hide"). Held against the page as it was drawn first, into
+        a buffer that held nothing: through a strong keystone no hole in what is opaque, no pixel that is not the same - in either buffer."""
+        self.write("warp.conf", WARP_CONF % keystone)
+        self.tv.picture = "none"
+        self.tv.signal = "none"
+        self.start()
+        time.sleep(0.6)
+        page = self.shot()
+        mask = page[3::4].count(255)
+        self.assertGreater(mask, W * H // 3, "the page stands on the wall")
+        bad = []
+
+        def against_page(name, shot):
+            n_holes, (n_diff, rows) = holes(shot, page), differing(shot, page)
+            if n_holes or n_diff:
+                bad.append("%s: %d holes, %d pixels not as the page drawn first (rows %d..%d)" % (name, n_holes, n_diff, rows[0] if rows else -1, rows[-1] if rows else -1))
+
+        # (strength, how it ends): the ring at no strength shows what the page keeps in its middle band - the symbol and the words must be gone
+        # from it and back after it; the buffers alternate, each has been the one on the wall with and without the ring
+        for rnd, (alpha, ends) in enumerate((("0%", "out"), ("100%", "hide"), ("100%", "out"), ("0%", "hide"))):
+            self.countdown(1, alpha=alpha)      # the first line: the words are gone from the very first picture of the countdown
+            first = self.shot()
+            self.assertTrue(first != page, "round %d (%s), first line: the wall is not as it was while the countdown stands" % (rnd, alpha))
+            if alpha == "0%":
+                self.assertTrue(differing(first, page)[0] > 0 and holes(first, page) == 0, "the page without its words is still opaque")
+            self.countdown(4, alpha=alpha)
+            during = self.shot()
+            self.assertTrue(during != page, "round %d (%s): the wall is not as it was while the countdown stands" % (rnd, alpha))
+            self.assertIn("pre-distort", self.ctl("status"), "it goes through the keystone")
+            if holes(during, page):
+                bad.append("round %d, during the countdown: %d holes" % (rnd, holes(during, page)))
+            if ends == "hide":                  # cancelled: h713-power ends it with "hide"
+                self.assertEqual(self.ctl("hide"), "ok hidden\n")
+            else:
+                time.sleep(1.2)                 # run out: the last line's second is over
+            against_page("round %d (%s, %s), after the countdown" % (rnd, alpha, ends), self.shot())
+        self.assertEqual(bad, [], "\n  ".join(bad))
+
+    def test_the_page_without_a_signal_after_a_countdown_hy310(self):
+        self.check_countdown(KEYSTONES["hy310"])
+
+    def test_the_page_without_a_signal_after_a_countdown_turned_right_30(self):
+        self.check_countdown(KEYSTONES["turned right 30"])
+
+    def test_the_page_without_a_signal_after_a_countdown_turned_left_30_pitched_up(self):
+        self.check_countdown(KEYSTONES["turned left 30, pitched up"])
+
+    def test_the_page_without_a_signal_after_a_countdown_turned_right_30_pitched_down(self):
+        self.check_countdown(KEYSTONES["turned right 30, pitched down"])
+
     def test_a_new_keystone_under_an_open_page_puts_it_whole(self):
         """The keystone changes while a page is open: the corners and the turn to the wall are set on the settings page itself (a pill
         over the picture), and the automatic after a move rewrites warp.conf under any page. Every pixel the page had through the old
