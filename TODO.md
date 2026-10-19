@@ -376,6 +376,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       drei Seiten per `IOCTL_MALLOC` holen, hdmirx neu binden, `dev_warn` und `hdcp` "skipped" lesen, `IOCTL_FREE`, Warmstart (eigener Slot; was ohne
       Wce im Fenster steht, ist nicht gemessen); den Break in `h713-tv ctl status` zeigen. G-EU: 0326 nachmessen - dort steht bei +0x37100 der PWM-Block,
       Info-Zeile im dmesg, keine Warnung, PWM-Schritt läuft.
+- [ ] 2.113 Klein, aus panel-farbe (Mythos 19.10.): die Abbildung der zwei Weißabgleich-Schieber gehört in h713-tv (`ctl wb sliders COOL MAGENTA`,
+      Stellungen in der Antwort von `ctl wb`), dann fallen die Kopien in h713-settings (rows.c) und h713-panel (Python) weg und die Offset-Lücke
+      (Offsets lesen, sechs Zahlen schreiben) ist zu - beim nächsten Anfassen von color.c. Marcos Blick auf den Reiter Colour im Panel (:8080, Handy
+      und PC); G-EU: Reiter Colour nachmessen (Zeile in panel-farbe/BERICHT §6).
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

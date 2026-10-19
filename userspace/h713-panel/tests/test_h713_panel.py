@@ -28,6 +28,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 import urllib.error
 import urllib.request
 
@@ -514,7 +515,7 @@ class PlainTest(unittest.TestCase):
             self.assertIsNotNone(tag, anchor)
             self.assertIn('data-needs="%s"' % needs, tag.group(0), anchor)
         for needs in re.findall(r'data-needs="([^"]*)"', page):
-            self.assertTrue(set(needs.split()) <= set(panel.FEATURE_NAMES), needs)
+            self.assertTrue(set(needs.split()) <= set(panel.FEATURE_NAMES) | set(panel.FIRMWARE_FEATURES), needs)
         for needed in ('id="absent"', "FEAT = c.features || {}; features();",
                        "[hidden] { display: none !important; }", 'has("accelerometer")'):
             self.assertIn(needed, page)
@@ -1131,13 +1132,199 @@ class PasswordTest(unittest.TestCase):
         self.assertFalse(panel.Panel(etc=self.tmp).call({"verb": "panel_password", "args": ["a", "b" * 9]})["ok"])
 
 
+ROWS_C = os.path.join(PACKAGE, "..", "h713-settings", "rows.c")
+CC = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+GAIN_GRID = (0, 1, 100, 255, 256, 400, 471, 480, 500, 511, 512, 513, 600, 1023)   # gains the sliders cannot make too
+
+# a stand-in h713-tv with a memory: `ctl wb` and `ctl cm` as color.c answers them (docs/tools/h713-tv.md)
+TV_COLOUR = r"""
+dir="DIR"
+case "$*" in
+  "ctl wb")
+    if [ -f "$dir/absent" ]; then echo "ok wb $(cat "$dir/wb") [not available: not the display firmware]"
+    else echo "ok wb $(cat "$dir/wb") -- R G B gain, R G B offset; 512 is neutral"; fi ;;
+  "ctl wb reset") echo "512 512 512 512 512 512" > "$dir/wb"; echo "ok wb 512 512 512 512 512 512 (registers read back, 0 ms)" ;;
+  "ctl wb "*) set -- $*; shift 2; echo "$*" > "$dir/wb"; echo "ok wb $* (registers read back, 0 ms)" ;;
+  "ctl cm") if [ -s "$dir/cm" ]; then echo "ok cm"; cat "$dir/cm"; else echo "ok cm all neutral (0 = as the picture mode has it)"; fi ;;
+  "ctl cm reset") : > "$dir/cm"; echo "ok cm all neutral (registers read back, 0 ms)" ;;
+  "ctl set cm_"*) set -- $*; grep -v "^  $3 = " "$dir/cm" > "$dir/cm.new"; [ "$4" = 0 ] || echo "  $3 = $4" >> "$dir/cm.new"
+    mv "$dir/cm.new" "$dir/cm"; echo "ok $3 = $4 (registers read back, 0 ms)" ;;
+  *) echo "ok h713-tv $*" ;;
+esac
+"""
+
+
+class ColourTest(Bench):
+    """The Colour tab: the white balance as two sliders and the hue and saturation of one primary.  h713-settings
+    (rows.c) does the same on the projector's own screen, and the numbers have to be the same."""
+
+    def setUp(self):
+        super().setUp()
+        self.fake.script("h713-tv", TV_COLOUR.replace("DIR", self.fake.dir))
+        self.state([512] * 6, "")
+
+    def state(self, wb, cm):
+        for name, text in (("wb", " ".join(str(n) for n in wb)), ("cm", cm)):
+            with open(os.path.join(self.fake.dir, name), "w") as handle:
+                handle.write(text + "\n" if text else "")
+
+    def held(self, name="wb"):
+        with open(os.path.join(self.fake.dir, name)) as handle:
+            return handle.read().strip() if name == "cm" else [int(n) for n in handle.read().split()]
+
+    def tv(self):
+        return [c for c in self.fake.calls() if c.startswith("h713-tv")]
+
+    def test_a_slider_sends_all_six_numbers_and_keeps_the_offsets(self):
+        # the numbers of rows.c (compiled below as well): 12 towards warm and 6 towards magenta lower blue and green
+        self.state([512, 512, 512, 530, 500, 490], "")
+        answer = self.call("wb_tune", [-12, 6])
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(self.tv(), ["h713-tv ctl wb", "h713-tv ctl wb 512 500 487 530 500 490"])
+        self.assertEqual(self.held(), [512, 500, 487, 530, 500, 490])
+        for (cool, magenta), gains in {(12, -6): [476, 512, 500], (50, 50): [410, 410, 512], (-50, -50): [410, 512, 328],
+                                       (50, -50): [328, 512, 410], (-50, 50): [512, 410, 410], (2, 0): [508, 512, 512],
+                                       (0, -2): [508, 512, 508], (0, 0): [512, 512, 512]}.items():
+            self.assertEqual(self.call("wb_tune", [cool, magenta])["ok"], True)
+            self.assertEqual(self.held()[:3], gains, (cool, magenta))
+
+    @unittest.skipUnless(CC and os.path.exists(ROWS_C), "needs a C compiler and h713-settings/rows.c")
+    def test_the_mapping_is_the_one_of_the_c_code_over_the_whole_range(self):
+        # rows.c's own wb_gains and wb_positions, cut out of the file and compiled: all 101 x 101 positions, and the
+        # positions of a grid of gains, the ones the sliders cannot make included
+        with open(ROWS_C, encoding="utf-8") as handle:
+            source = handle.read()
+
+        def piece(start):
+            return source[source.index(start):source.index("\n}\n", source.index(start)) + 3]
+        program = "\n".join(["#include <math.h>", "#include <stdio.h>", re.search(r"#define WB_S .*", source).group(0),
+                             piece("static int clampi("), piece("static void wb_gains("), piece("static void wb_positions("),
+                             "int main(void) { int g[3], w, t, w2, t2, i, j, k, grid[] = {%s};" % ", ".join(map(str, GAIN_GRID)),
+                             "for (w = -50; w <= 50; w++) for (t = -50; t <= 50; t++) { wb_gains(w, t, g);",
+                             "  wb_positions(g, &w2, &t2); printf(\"S %d %d %d %d %d %d %d\\n\", w, t, g[0], g[1], g[2], w2, t2); }",
+                             "for (i = 0; i < %d; i++) for (j = 0; j < %d; j++) for (k = 0; k < %d; k++) {" % ((len(GAIN_GRID),) * 3),
+                             "  g[0] = grid[i]; g[1] = grid[j]; g[2] = grid[k]; wb_positions(g, &w2, &t2);",
+                             "  printf(\"G %d %d %d %d %d\\n\", g[0], g[1], g[2], w2, t2); } return 0; }"])
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "wb.c"), "w") as handle:
+                handle.write(program)
+            subprocess.run([CC, "-O2", "-o", os.path.join(tmp, "wb"), os.path.join(tmp, "wb.c"), "-lm"], check=True)
+            out = subprocess.run([os.path.join(tmp, "wb")], stdout=subprocess.PIPE, universal_newlines=True, check=True).stdout
+        sweep = [[int(n) for n in line.split()[1:]] for line in out.splitlines() if line.startswith("S ")]
+        grid = [[int(n) for n in line.split()[1:]] for line in out.splitlines() if line.startswith("G ")]
+        self.assertEqual((len(sweep), len(grid)), (101 * 101, len(GAIN_GRID) ** 3))
+        for w, t, *rest in sweep:
+            self.assertEqual((panel.wb_gains(w, t), list(panel.wb_positions(rest[:3]))), (rest[:3], rest[3:]), (w, t))
+        for *gains, w, t in grid:
+            self.assertEqual(list(panel.wb_positions(gains)), [w, t], gains)
+        self.assertEqual(min(min(g[2:5]) for g in sweep), 328)          # no gain is lowered by more than 36 %
+
+    def test_every_position_of_the_page_comes_back_from_its_gains(self):
+        for cool in range(-50, 51, 2):
+            for magenta in range(-50, 51, 2):
+                gains = panel.wb_gains(cool, magenta)
+                self.assertLessEqual(max(gains), 512)
+                self.assertEqual(panel.wb_slider_positions(gains), (cool, magenta), gains)
+
+    def test_a_value_outside_its_range_starts_nothing(self):
+        for verb, args in (("wb_tune", [52, 0]), ("wb_tune", [0, -52]), ("wb_tune", [1, 0]), ("wb_tune", [0, 3]),
+                           ("wb_tune", ["2; reboot", 0]), ("wb_tune", [True, 0]), ("wb_tune", [0]), ("wb_tune", [0, 0, 0]),
+                           ("cm_set", ["yellow", "hue", 101]), ("cm_set", ["yellow", "sat", -105]), ("cm_set", ["yellow", "hue", 7]),
+                           ("cm_set", ["yellow", "hue", "5; reboot"]), ("cm_set", ["yellow", "hue", True]),
+                           ("cm_set", ["skintone", "hue", 5]), ("cm_set", ["yellow_green", "hue", 5]), ("cm_set", ["lips", "sat", 5]),
+                           ("cm_set", ["yellow", "value", 5]), ("cm_set", ["yellow", "saturation", 5]),
+                           ("cm_set", ["yellow; reboot", "hue", 5]), ("cm_set", ["yellow", "hue"]),
+                           ("cm_set", ["yellow", "hue", 5, 5]), ("cm_set", [["yellow"], "hue", 5])):
+            answer = self.call(verb, args)
+            self.assertFalse(answer["ok"], (verb, args, answer))
+            self.assertTrue(answer["line"].startswith("error"), answer)
+        self.assertEqual(self.fake.calls(), [])
+        self.assertEqual((self.held(), self.held("cm")), ([512] * 6, ""))
+
+    def test_a_colour_step_is_one_ctl_set_of_a_fixed_word(self):
+        for axis in panel.PRIMARIES:
+            for part in panel.CM_PARTS:
+                self.fake.forget()
+                self.assertTrue(self.call("cm_set", [axis, part, -35])["ok"])
+                self.assertEqual(self.fake.calls(), ["h713-tv ctl set cm_%s_%s -35" % (axis, part)])
+        self.assertTrue(self.call("cm_set", ["red", "hue", 100])["ok"])
+        self.assertTrue(self.call("cm_set", ["red", "sat", -100])["ok"])
+        self.assertEqual(self.fake.calls()[-2:], ["h713-tv ctl set cm_red_hue 100", "h713-tv ctl set cm_red_sat -100"])
+
+    def test_the_resets_are_one_command_each(self):
+        self.state([480, 500, 512, 512, 512, 512], "  cm_red_hue = 5")
+        for verb, expected in (("wb_reset", "h713-tv ctl wb reset"), ("cm_reset", "h713-tv ctl cm reset")):
+            self.fake.forget()
+            self.assertTrue(self.call(verb)["ok"], verb)
+            self.assertEqual(self.fake.calls(), [expected])
+        self.assertEqual((self.held(), self.held("cm")), ([512] * 6, ""))
+
+    def test_without_the_calibration_nothing_is_set(self):
+        # another display firmware: h713-tv says so in its own words, and the tool sends nothing
+        open(os.path.join(self.fake.dir, "absent"), "w").close()
+        answer = self.call("wb_tune", [10, 0])
+        self.assertFalse(answer["ok"])
+        self.assertIn("not available (not the display firmware)", answer["line"])
+        self.assertEqual(self.tv(), ["h713-tv ctl wb"])
+        self.assertFalse(self.call("colour")["ok"])
+        self.fake.forget()
+        # h713-tv not there at all: it is named, and still nothing is sent
+        gone = panel.Panel(tools=os.path.join(self.fake.dir, "nothing"), etc=self.etc)
+        for request in ({"verb": "wb_tune", "args": [10, 0]}, {"verb": "colour"}):
+            answer = gone.call(request)
+            self.assertFalse(answer["ok"], answer)
+            self.assertIn("h713-tv did not say what the white balance is", answer["line"])
+        self.assertEqual(self.fake.calls(), [])
+
+    def test_colour_gives_the_sliders_and_the_steps_of_the_six_primaries(self):
+        self.state(panel.wb_gains(-12, 6) + [512] * 3, "  cm_yellow_hue = 10\n  cm_yellow_sat = -15\n  cm_red_sat = 5\n"
+                   "  cm_skintone_hue = 40\n  cm_blue_value = 3")        # a colour the page does not offer, a part it does not
+        answer = self.call("colour")
+        steps = dict((axis, {"hue": 0, "sat": 0}) for axis in panel.PRIMARIES)
+        steps["yellow"], steps["red"]["sat"] = {"hue": 10, "sat": -15}, 5
+        self.assertEqual(answer, {"ok": True, "line": "ok colour", "wb": {"cool": -12, "magenta": 6}, "wb_other": False, "cm": steps})
+        self.assertEqual(self.tv(), ["h713-tv ctl wb", "h713-tv ctl cm"])
+        self.state([512] * 6, "")
+        self.assertEqual(self.call("colour")["cm"], dict((axis, {"hue": 0, "sat": 0}) for axis in panel.PRIMARIES))
+
+    def test_gains_the_sliders_cannot_make_are_said_so(self):
+        for gains, shown, other in (([600, 512, 512], (0, 0), True), ([481, 492, 512], (15, 10), False),
+                                    ([410, 512, 396], (-8, -50), False), ([300, 300, 300], (50, 50), True)):
+            self.state(gains + [512] * 3, "")
+            answer = self.call("colour")
+            self.assertEqual((answer["wb"]["cool"], answer["wb"]["magenta"], answer["wb_other"]), shown + (other,), gains)
+
+    def test_what_a_slider_set_is_what_colour_reads(self):
+        for cool, magenta in ((-12, 6), (50, -50), (-50, 50), (0, 0), (8, -50)):
+            self.assertTrue(self.call("wb_tune", [cool, magenta])["ok"])
+            answer = self.call("colour")
+            self.assertEqual((answer["wb"]["cool"], answer["wb"]["magenta"], answer["wb_other"]), (cool, magenta, False))
+
+    def test_colour_only_reads_and_does_not_wait_for_the_lock(self):
+        self.assertTrue(self.panel.lock.acquire(False))        # a command is running
+        try:
+            self.assertTrue(self.call("colour")["ok"])
+            with unittest.mock.patch.object(panel, "LOCK_WAIT_S", 0.1):
+                self.assertTrue(self.call("wb_tune", [0, 0])["busy"])      # a command waits, and gives up
+            self.assertEqual(self.tv(), ["h713-tv ctl wb", "h713-tv ctl cm"])
+        finally:
+            self.panel.lock.release()
+
+    def test_controls_say_whether_the_firmware_has_the_calibration(self):
+        self.assertTrue(self.call("controls")["features"]["colour"])
+        open(os.path.join(self.fake.dir, "absent"), "w").close()
+        self.assertFalse(self.call("controls")["features"]["colour"])
+        self.fake.tool("h713-tv")                                   # h713-tv answers, but not with a white balance: unknown
+        self.assertNotIn("colour", self.call("controls")["features"])
+
+
 class PageTest(unittest.TestCase):
     def setUp(self):
         with open(PAGE, "rb") as handle:
             self.page = handle.read().decode("utf-8")
 
-    def test_six_tabs_and_their_sections(self):
-        for name in ("projection", "picture", "sound", "remote", "network", "system"):
+    def test_seven_tabs_and_their_sections(self):
+        for name in ("projection", "picture", "colour", "sound", "remote", "network", "system"):
             self.assertIn('id="tab-%s"' % name, self.page)
             self.assertIn('class="screen%s" id="%s"' % (" on" if name == "projection" else "", name), self.page)
             self.assertIn('"%s"' % name, self.page.split("function show(")[1].split("}")[0])
@@ -1156,6 +1343,35 @@ class PageTest(unittest.TestCase):
         for word in ("focus_command", "rpc", "block1", "authorized", "ssh-"):
             self.assertNotIn(word, self.page)
         self.assertIn('"X-Requested-With": "h713-panel"', self.page)
+
+    def test_the_colour_tab_asks_what_the_tool_checks(self):
+        def slider(name):
+            return re.search(r'id="%s" min="(-?\d+)" max="(-?\d+)" step="(\d+)"' % name, self.page).groups()
+        for name, check in (("wb-warm", panel.WB_SLIDER), ("wb-tint", panel.WB_SLIDER),
+                            ("cm-hue", panel.CM_SLIDER), ("cm-sat", panel.CM_SLIDER)):
+            self.assertEqual(tuple(int(n) for n in slider(name)), check.spec[1:], name)
+        self.assertEqual([p[0] for p in json.loads(re.search(r"var PRIMS = (\[\[.*?\]\]);", self.page, re.S).group(1))],
+                         list(panel.PRIMARIES))
+        self.assertEqual(re.findall(r"cmSend\('(\w+)'\)", self.page), list(panel.CM_PARTS))
+        # a slider sends when it is let go, not on every pixel of the drag
+        for name in ("wb-warm", "wb-tint", "cm-hue", "cm-sat"):
+            tag = re.search(r'<input[^>]*id="%s"[^>]*>' % name, self.page).group(0)
+            self.assertRegex(tag, r'onchange="(wb|cm)Send\(')
+            self.assertNotRegex(re.search(r'oninput="([^"]*)"', tag).group(1), r"Send\(|act\(|api\(")
+
+    def test_the_colour_tab_sends_its_arguments_in_the_order_the_tool_checks(self):
+        # the page is not run here, so the order is read from its source: wb_tune takes cool, magenta; cm_set colour, part, step
+        self.assertIn('act("wb_tune", [WB.cool, WB.magenta])', self.page)
+        self.assertIn('act("cm_set", [PRIM, comp, s[comp]])', self.page)
+        self.assertIn("s[comp] = +id(\"cm-\" + comp).value;", self.page)
+        for verb in ("wb_reset", "cm_reset"):
+            self.assertEqual(len(re.findall(r"act\(['\"]%s['\"]\)\.then\(loadColour\)" % verb, self.page)), 1, verb)
+
+    def test_the_colour_tab_goes_with_the_calibration(self):
+        for anchor in ('id="tab-colour"', 'class="screen" id="colour"'):
+            self.assertIn('data-needs="colour"', re.search(r"<[^<>]*" + anchor + r"[^<>]*>", self.page).group(0), anchor)
+        self.assertIn('if (name === "colour" && READY) { loadColour(); }', self.page)
+        self.assertIn('if (id("colour").hidden && id("colour").classList.contains("on")) { show("projection"); }', self.page)
 
     def test_no_dash_characters(self):
         for path in (PAGE, TOOL, os.path.join(HERE, "test_h713_panel.py")):
