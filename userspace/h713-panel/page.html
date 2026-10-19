@@ -161,6 +161,32 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
 .corners button.sel, .corners button.sel b { color: var(--accent); border-color: var(--accent); }
 .grab.sel { fill: var(--accent); stroke: var(--accent); } .tag.sel { fill: var(--accent); }
 
+
+/* colour: white balance and colour by primary */
+.ends { display: flex; justify-content: space-between; font-size: 11.5px; color: var(--faint); margin-top: -5px; }
+/* a slider with its zero in the middle: the amber part runs from the middle to the thumb */
+input[type=range].bi { -webkit-appearance: none; appearance: none; --lo: .5; --hi: .5; }
+input[type=range].bi::-webkit-slider-runnable-track { height: 6px; border-radius: 3px; background:
+  linear-gradient(#8a8478, #8a8478) center / 2px 100% no-repeat,
+  linear-gradient(to right, #333 calc(10px + (100% - 20px) * var(--lo)), var(--accent) 0 calc(10px + (100% - 20px) * var(--hi)), #333 0); }
+input[type=range].bi::-moz-range-track { height: 6px; border-radius: 3px; background:
+  linear-gradient(#8a8478, #8a8478) center / 2px 100% no-repeat,
+  linear-gradient(to right, #333 calc(10px + (100% - 20px) * var(--lo)), var(--accent) 0 calc(10px + (100% - 20px) * var(--hi)), #333 0); }
+input[type=range].bi::-webkit-slider-thumb { -webkit-appearance: none; width: 20px; height: 20px; margin-top: -7px;
+  border-radius: 50%; background: #f2e9dc; border: 2px solid var(--accent); }
+input[type=range].bi::-moz-range-thumb { width: 16px; height: 16px; border-radius: 50%; background: #f2e9dc;
+  border: 2px solid var(--accent); }
+.prim { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; margin-top: 4px; }
+@media (min-width: 640px) { .prim { grid-template-columns: repeat(6, 1fr); } }
+.prim button { display: flex; align-items: center; gap: 8px; justify-content: flex-start;
+               padding: 0 10px; position: relative; }
+.prim .dot { flex: none; width: 14px; height: 14px; border-radius: 50%; background: var(--c);
+             box-shadow: inset 0 0 0 1px rgba(255, 255, 255, .22); }
+.prim + .sliders { margin-top: 8px; }
+.prim .ed { position: absolute; top: 6px; right: 6px; width: 6px; height: 6px;
+            border-radius: 50%; background: var(--accent); }
+.prim button[aria-pressed="true"] .ed { background: #f2c896; }
+
 @media (min-width: 900px) {
   body { display: grid; grid-template-columns: 220px 1fr; grid-template-rows: auto 1fr auto;
          min-height: 100vh; }
@@ -192,6 +218,8 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
     <svg viewBox="0 0 24 24"><rect x="4" y="6" width="16" height="12" rx="2"/><path d="M12 18v3M8 21h8"/></svg>Projection</button>
   <button onclick="show('picture')" id="tab-picture" aria-pressed="false">
     <svg viewBox="0 0 24 24"><circle cx="12" cy="12" r="8"/><path d="M12 4v16M4 12h16"/></svg>Picture</button>
+  <button onclick="show('colour')" id="tab-colour" aria-pressed="false" data-needs="colour">
+    <svg viewBox="0 0 24 24"><path d="M12 3.5s6 6.3 6 10.5a6 6 0 0 1-12 0c0-4.2 6-10.5 6-10.5z"/></svg>Colour</button>
   <button onclick="show('sound')" id="tab-sound" aria-pressed="false">
     <svg viewBox="0 0 24 24"><path d="M4 10v4h4l5 4V6l-5 4H4z"/><path d="M16 9a4 4 0 0 1 0 6"/></svg>Sound</button>
   <button onclick="show('remote')" id="tab-remote" aria-pressed="false">
@@ -327,6 +355,62 @@ footer.ok { color: var(--ink); } footer.bad { color: var(--warn); }
         hardware, not a lamp control - on bright content you will see nothing move; the lamp is not
         adjustable.</p>
     </details>
+  </div>
+</section>
+
+<!-- ============ colour ============ -->
+<section class="screen" id="colour" data-needs="colour">
+  <div class="card">
+    <h2>White balance</h2>
+    <p class="help">Warms or cools the whole picture, or leans it towards green or magenta. Judge it on the
+      picture, not on the numbers. The sliders only ever lower a colour, so white never clips.</p>
+    <div class="sliders">
+      <div class="sfield">
+        <label for="wb-warm">Warm - Cool <b id="wb-warm-v">0</b></label>
+        <input type="range" class="bi" id="wb-warm" min="-50" max="50" step="2" value="0" oninput="wbShow()" onchange="wbSend()">
+        <div class="ends"><span>Warm</span><span>Cool</span></div>
+      </div>
+      <div class="sfield">
+        <label for="wb-tint">Green - Magenta <b id="wb-tint-v">0</b></label>
+        <input type="range" class="bi" id="wb-tint" min="-50" max="50" step="2" value="0" oninput="wbShow()" onchange="wbSend()">
+        <div class="ends"><span>Green</span><span>Magenta</span></div>
+      </div>
+    </div>
+    <p class="help" id="wb-other" hidden>The white balance now is not one these sliders make (it was set another
+      way), so they show 0. Moving a slider replaces it; Reset gives the neutral one back.</p>
+    <div class="btnrow">
+      <button onclick="act('wb_reset').then(loadColour)">Reset white balance</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Colour</h2>
+    <p class="help">Tune one primary colour at a time: its hue and its saturation. The other colours and white
+      stay. A dot marks a colour you have changed.</p>
+    <h3>Primary colour</h3>
+    <div class="prim" id="prims"></div>
+    <div class="sliders">
+      <div class="sfield">
+        <label for="cm-hue"><span id="cm-hue-n">Yellow hue</span> <b id="cm-hue-v">0</b></label>
+        <input type="range" class="bi" id="cm-hue" min="-100" max="100" step="5" value="0" oninput="cmShow()" onchange="cmSend('hue')">
+      </div>
+      <div class="sfield">
+        <label for="cm-sat"><span id="cm-sat-n">Yellow saturation</span> <b id="cm-sat-v">0</b></label>
+        <input type="range" class="bi" id="cm-sat" min="-100" max="100" step="5" value="0" oninput="cmShow()" onchange="cmSend('sat')">
+        <div class="ends"><span>Paler</span><span>Stronger</span></div>
+      </div>
+    </div>
+    <div class="btnrow">
+      <button onclick="act('cm_reset').then(loadColour)">Reset all colours</button>
+    </div>
+  </div>
+
+  <div class="card">
+    <h2>Save</h2>
+    <p class="help">White balance and colour are kept with the other picture settings, so they come back after a reboot.</p>
+    <div class="btnrow">
+      <button class="primary" onclick="act('save')">Save picture settings</button>
+    </div>
   </div>
 </section>
 
@@ -517,6 +601,7 @@ var AFTER_NAME = {off: "Off", keystone: "Keystone", "keystone+focus": "Keystone 
 var ST = {}, KS = {}, CORNER = "tl", STEP = 10, BUSY = false;
 var DRAG = null, LAST = 0, FLYING = false, PENDING = null;
 var FEAT = {};      /* h713-features through "controls": false = not present on this board */
+var READY = false;  /* "controls" has been read, so what this board has is known (a #colour address waits for it) */
 var CONF = {};      /* the form specs of keys.conf, osd.conf, tv.conf, out of "controls" */
 var PEND_UNTIL = 0; /* the Wi-Fi trial: wall clock when it ends, 0 when none waits */
 var PAIR_TIMER = null, PEND_TIMER = null;
@@ -575,10 +660,11 @@ function press(name, on) {
 }
 function show(name) {
   /* the section names here, one per section, are the switch itself */
-  ["projection", "picture", "sound", "remote", "network", "system"].forEach(function (n) {
+  ["projection", "picture", "colour", "sound", "remote", "network", "system"].forEach(function (n) {
     id(n).classList.toggle("on", n === name);
     press("tab-" + n, n === name);
   });
+  if (name === "colour" && READY) { loadColour(); }
   if (name === "network") { loadNetwork(); }
   if (name === "remote") { loadRemote(); }
   if (name === "system") { loadSystem(); }
@@ -607,6 +693,9 @@ function features() {
   Array.prototype.forEach.call(document.querySelectorAll("[data-needs]"), function (e) {
     e.hidden = !e.getAttribute("data-needs").split(" ").every(has);
   });
+  READY = true;
+  if (id("colour").hidden && id("colour").classList.contains("on")) { show("projection"); }
+  if (id("colour").classList.contains("on") && !id("colour").hidden) { loadColour(); }
   id("absent").hidden = !gone.length;
   id("absent").textContent = "Not present on this board: " +
     gone.join(", ").replace("focus-motor", "focus motor") + ". What needs it is hidden.";
@@ -923,6 +1012,67 @@ function build() {     /* the page draws itself from the tool's own lists */
       return '<option value="' + n + '">' + n + "</option>"; }).join("");
     setStep(ST.steps.indexOf(10) >= 0 ? 10 : ST.steps[0]);
   });
+}
+
+
+/* Colour: the white balance as two sliders for the eye, and the hue and saturation of one primary.
+   The page decides nothing: "wb_tune" and "cm_set" are verbs of the tool, "colour" reads the state. */
+var PRIMS = [["red", "Red", "#e5484d"], ["yellow", "Yellow", "#e9c53b"], ["green", "Green", "#3fae5a"],
+             ["cyan", "Cyan", "#2fb6c9"], ["blue", "Blue", "#3f72e0"], ["purple", "Purple", "#9b5cd6"]];
+var WB = {cool: 0, magenta: 0, other: false}, CM = {}, PRIM = "yellow";
+function signed(n) { return n > 0 ? "+" + n : String(n); }
+function wbWord(n, low, high) { return n ? (n < 0 ? low : high) + " " + Math.abs(n) : "0"; }
+function cmStep(name) { return CM[name] || {hue: 0, sat: 0}; }
+function cmChanged(name) { return cmStep(name).hue !== 0 || cmStep(name).sat !== 0; }
+function primName() { return PRIMS.filter(function (p) { return p[0] === PRIM; })[0][1]; }
+function fillBi(el) {      /* the amber part of a slider with its zero in the middle */
+  var p = (el.value - el.min) / (el.max - el.min);
+  el.style.setProperty("--lo", Math.min(p, .5)); el.style.setProperty("--hi", Math.max(p, .5));
+}
+function wbShow() {
+  fillBi(id("wb-warm")); fillBi(id("wb-tint"));
+  id("wb-warm-v").textContent = wbWord(+id("wb-warm").value, "warm", "cool");
+  id("wb-tint-v").textContent = wbWord(+id("wb-tint").value, "green", "magenta");
+}
+function cmShow() {
+  ["hue", "sat"].forEach(function (c) { fillBi(id("cm-" + c)); id("cm-" + c + "-v").textContent = signed(+id("cm-" + c).value); });
+}
+function colourDraw() {
+  var s = cmStep(PRIM);
+  id("wb-warm").value = WB.cool; id("wb-tint").value = WB.magenta; wbShow();
+  id("wb-other").hidden = !WB.other;
+  id("cm-hue").value = s.hue; id("cm-sat").value = s.sat; cmShow();
+  id("cm-hue-n").textContent = primName() + " hue";
+  id("cm-sat-n").textContent = primName() + " saturation";
+  primDraw();
+}
+function loadColour() {
+  return api("colour").then(function (c) {
+    if (!c.ok) { say(c.line, "bad"); return; }
+    WB = {cool: c.wb.cool, magenta: c.wb.magenta, other: c.wb_other}; CM = c.cm; colourDraw();
+  });
+}
+/* A slider lets go: one command.  When it did not go through, the sliders show what the projector holds. */
+function settled(a) { return a && a.ok ? primDraw() : loadColour(); }
+function wbSend() {
+  WB = {cool: +id("wb-warm").value, magenta: +id("wb-tint").value, other: false};
+  id("wb-other").hidden = true;
+  act("wb_tune", [WB.cool, WB.magenta]).then(settled);
+}
+function cmSend(comp) {
+  var s = CM[PRIM] = cmStep(PRIM);
+  s[comp] = +id("cm-" + comp).value;
+  act("cm_set", [PRIM, comp, s[comp]]).then(settled);
+}
+function primPick(name) { PRIM = name; colourDraw(); }
+
+/* the six primaries as one row of buttons; a dot marks a colour that has been changed */
+function primDraw() {
+  id("prims").innerHTML = PRIMS.map(function (p) {
+    return '<button style="--c:' + p[2] + '" aria-pressed="' + (p[0] === PRIM) +
+      '" onclick="primPick(\'' + p[0] + '\')"><span class="dot"></span>' + p[1] +
+      (cmChanged(p[0]) ? '<i class="ed"></i>' : "") + "</button>";
+  }).join("");
 }
 
 build().then(function () { refresh(); loadSettings(); });
