@@ -365,6 +365,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       einen gemischten Modulbaum (rend6 + vier IIO-Module zum FIT e8c68904) - rend7 aus build-all von vorn.
 - [ ] 2.109 **IIO-Puffer am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): Kernel mit 5d32cbc, `h713-keystone read`/`once --apply`-Zeiten,
       Journal ohne sysfs-Rückfall, `watch` nach einer Bewegung; ohne Beschleunigungssensor dort (falls keiner): Einheit übersprungen, nichts geändert.
+- [ ] 2.110 **cstenger-Kernel 0322-0325: Wirkung vor `main` messen** (Mythos 19.10.: go für medien; Messung am HY310 19.10. ohne Fehlerbild im
+      Kontrollarm, `arbeit/cstenger-letterbox-20261019/mess/BERICHT.md`): 9.3c (a)/(b) und der Dauerlauf-Block aus mess/BERICHT §7 mit dem Kernel
+      aus dem Merge (IIO + 0322-0325); 0323 (64 CAPTURE-Puffer) bei 4K gegen den CMA beobachten (9.3d c). G-EU: dieselbe Matrix nachmessen.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

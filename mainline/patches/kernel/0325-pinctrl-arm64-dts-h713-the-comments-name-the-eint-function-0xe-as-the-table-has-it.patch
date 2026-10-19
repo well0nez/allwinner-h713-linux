@@ -1,0 +1,85 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: [PATCH] pinctrl: sunxi: h713-r, arm64: dts: h713: the comments name the EINT function 0xe, as the table has it
+
+0140 moved every R_PIO pin's interrupt function from mux 0x6 to 0xe
+(SUNXI_FUNCTION_IRQ_BANK(0xe, ...)), the value the stock kernel's
+SUNXI_PCTL_HW_TYPE_1 tables carry and the one that raised EINT4 for the
+power key on the HY310 (09.09.2026). Two comments still said 0x6, the H616
+value that disconnects the input on this SoC: the block at the top of
+pinctrl-sun50i-h713-r.c ("PL_EINTn (fn6)" for all sixteen PL pins and the
+PM bank) and the power key's note in sun50i-h713.dtsi ("re-muxes it to
+PL_EINT4 (mux 6)"). Comments only; no table entry, no register write and
+no DTB byte changes.
+
+The same correction of the pinctrl comment is in cstenger's 0171 (commit
+73ee74a, 07.10.2026), which also notes that the other alternate functions
+in that comment disagree with stock in places (PL4: s_twi1 fn2, s_jtag0
+fn3). Those are left as they are here: not checked against our own dumps.
+
+Signed-off-by: well0nez <8986239+well0nez@users.noreply.github.com>
+---
+ arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi |  2 +-
+ drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c  | 37 +++++++++++++-------------
+ 2 files changed, 20 insertions(+), 19 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2630,7 +2630,7 @@ motor_ctr: motor-ctr {
+ 	 *
+ 	 * No pinctrl state on purpose: gpiolib muxes the pin to gpio_in when
+ 	 * the driver claims it, and the irq path re-muxes it to PL_EINT4
+-	 * (mux 6, see pinctrl-sun50i-h713-r.c). A pinctrl-0 on this node
++	 * (mux 0xe, see pinctrl-sun50i-h713-r.c). A pinctrl-0 on this node
+ 	 * would only claim the same pin a second time.
+ 	 *
+ 	 * `wakeup-source` keeps the key armed across suspend; the R_PIO
+diff --git a/drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c b/drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c
+--- a/drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c
++++ b/drivers/pinctrl/sunxi/pinctrl-sun50i-h713-r.c
+@@ -15,26 +15,27 @@
+  * - Live register dumps from HY310 hardware
+  * - Comparison with H6 R_PIO (similar architecture)
+  *
+- * PL bank functions (from stock DTS + register analysis):
+- *   PL0:  gpio, s_rsb_scl/s_twi_scl (fn2/fn3), PL_EINT0 (fn6)
+- *   PL1:  gpio, s_rsb_sda/s_twi_sda (fn2/fn3), PL_EINT1 (fn6)
+- *   PL2:  gpio, s_uart_tx (fn2), PL_EINT2 (fn6)
+- *   PL3:  gpio, s_uart_rx (fn2), PL_EINT3 (fn6)
+- *   PL4:  gpio, s_jtag_ms (fn2), PL_EINT4 (fn6)
+- *   PL5:  gpio, s_jtag_ck (fn2), PL_EINT5 (fn6)
+- *   PL6:  gpio, s_pwm0 (fn2), s_jtag_do (fn3), PL_EINT6 (fn6)
+- *   PL7:  gpio, s_pwm1 (fn2), s_jtag_di (fn3), PL_EINT7 (fn6)
+- *   PL8:  gpio, s_pwm2 (fn2), PL_EINT8 (fn6)
+- *   PL9:  gpio, s_cir (fn3), PL_EINT9 (fn6)
+- *   PL10: gpio, s_twi0_scl (fn2), PL_EINT10 (fn6)
+- *   PL11: gpio, s_twi0_sda (fn2), PL_EINT11 (fn6)
+- *   PL12: gpio, s_twi1_scl (fn2), PL_EINT12 (fn6)
+- *   PL13: gpio, s_twi1_sda (fn2), PL_EINT13 (fn6)
+- *   PL14: gpio, s_twi2_scl (fn2), PL_EINT14 (fn6)
+- *   PL15: gpio, s_twi2_sda (fn2), PL_EINT15 (fn6)
++ * PL bank functions (from stock DTS + register analysis; the EINT function is
++ * mux 0xe = fn14, as the table below has it since 0140):
++ *   PL0:  gpio, s_rsb_scl/s_twi_scl (fn2/fn3), PL_EINT0 (fn14)
++ *   PL1:  gpio, s_rsb_sda/s_twi_sda (fn2/fn3), PL_EINT1 (fn14)
++ *   PL2:  gpio, s_uart_tx (fn2), PL_EINT2 (fn14)
++ *   PL3:  gpio, s_uart_rx (fn2), PL_EINT3 (fn14)
++ *   PL4:  gpio, s_jtag_ms (fn2), PL_EINT4 (fn14)
++ *   PL5:  gpio, s_jtag_ck (fn2), PL_EINT5 (fn14)
++ *   PL6:  gpio, s_pwm0 (fn2), s_jtag_do (fn3), PL_EINT6 (fn14)
++ *   PL7:  gpio, s_pwm1 (fn2), s_jtag_di (fn3), PL_EINT7 (fn14)
++ *   PL8:  gpio, s_pwm2 (fn2), PL_EINT8 (fn14)
++ *   PL9:  gpio, s_cir (fn3), PL_EINT9 (fn14)
++ *   PL10: gpio, s_twi0_scl (fn2), PL_EINT10 (fn14)
++ *   PL11: gpio, s_twi0_sda (fn2), PL_EINT11 (fn14)
++ *   PL12: gpio, s_twi1_scl (fn2), PL_EINT12 (fn14)
++ *   PL13: gpio, s_twi1_sda (fn2), PL_EINT13 (fn14)
++ *   PL14: gpio, s_twi2_scl (fn2), PL_EINT14 (fn14)
++ *   PL15: gpio, s_twi2_sda (fn2), PL_EINT15 (fn14)
+  *
+  * PM bank functions (from stock DTS GPIO references):
+- *   PM0-PM4: gpio, PL_EINT (fn6) — used for WLAN/BT control
++ *   PM0-PM4: gpio, PL_EINT (fn14) — used for WLAN/BT control
+  */
+ 
+ #include <linux/init.h>

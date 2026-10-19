@@ -1,0 +1,75 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: h264: bound the skip-bits wait
+
+cedrus_skip_bits() flushed the slice header out of the VLD and then
+polled VE_H264_STATUS for VLD_BUSY with no limit. If the engine never
+goes idle, the request ioctl that runs the job spins on that CPU
+forever.
+
+That happened on 2026-10-03. Minutes into a plane-route soak of a clean
+1080p H.264 clip, CPU0 sat in cedrus_h264_setup -> __const_udelay from
+GStreamer's multiqueue thread. The kernel logged repeated RCU stalls,
+systemd killed journald on its watchdog, WiFi stopped answering, and only
+a power cycle recovered the board. Just before, an ad hoc damaged-HEVC run
+had left 25 failed frames and no VE interrupts, with no recovery check
+after it. Whatever left the VLD busy, one stuck engine should cost a
+frame, not the board.
+
+Poll with cedrus_wait_for(), as the H.265 path's skip already does
+(1 ms per 32-bit flush), and fail the job with -ETIMEDOUT at the first
+timeout. cedrus_device_run() already turns a setup error into an ERROR
+buffer, which the VA driver now reports on that frame. The message
+matches H.265's, so decode-robustness-test.sh counts it as the bounded
+slice-setup timeout, not as a watchdog reset.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/a4d6d5f38832ddee2e4619607bf3ba925dd7012d/patches/kernel/0156-media-cedrus-h264-bound-the-skip-bits-wait.patch (0156-media-cedrus-h264-bound-the-skip-bits-wait.patch, commit 250512a)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_h264.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_h264.c
+@@ -326,7 +326,7 @@
+  * rare cases frame is not decoded correctly. However, setting offset to 0 and
+  * skipping appropriate amount of bits with flush bits trigger always works.
+  */
+-static void cedrus_skip_bits(struct cedrus_dev *dev, int num)
++static int cedrus_skip_bits(struct cedrus_dev *dev, int num)
+ {
+ 	int count = 0;
+ 
+@@ -336,11 +336,22 @@
+ 		cedrus_write(dev, VE_H264_TRIGGER_TYPE,
+ 			     VE_H264_TRIGGER_TYPE_FLUSH_BITS |
+ 			     VE_H264_TRIGGER_TYPE_N_BITS(tmp));
+-		while (cedrus_read(dev, VE_H264_STATUS) & VE_H264_STATUS_VLD_BUSY)
+-			udelay(1);
++		/*
++		 * Bounded, like the H.265 path: an engine whose VLD never
++		 * goes idle must fail this job, not spin the CPU forever
++		 * inside the request ioctl.
++		 */
++		if (cedrus_wait_for(dev, VE_H264_STATUS,
++				    VE_H264_STATUS_VLD_BUSY)) {
++			dev_err_ratelimited(dev->dev,
++					    "timed out waiting to skip bits\n");
++			return -ETIMEDOUT;
++		}
+ 
+ 		count += tmp;
+ 	}
++
++	return 0;
+ }
+ 
+ static int cedrus_set_params(struct cedrus_ctx *ctx,
+@@ -392,7 +403,9 @@
+ 	cedrus_write(dev, VE_H264_TRIGGER_TYPE,
+ 		     VE_H264_TRIGGER_TYPE_INIT_SWDEC);
+ 
+-	cedrus_skip_bits(dev, slice->header_bit_size);
++	ret = cedrus_skip_bits(dev, slice->header_bit_size);
++	if (ret)
++		return ret;
+ 
+ 	if (V4L2_H264_CTRL_PRED_WEIGHTS_REQUIRED(pps, slice))
+ 		cedrus_write_pred_weight_table(ctx, run);

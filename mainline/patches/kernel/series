@@ -704,3 +704,17 @@
 0319-arm64-dts-h713-drop-the-iommu-comment-of-august-that-says-there-is-none.patch
 0320-rtc-sun6i-h713-take-the-rtc-s-32-khz-from-the-24-mhz-dcxo-like-the-vendor-kernel.patch
 0321-hid-h713-remote-the-ble-remote-s-focus-keys-are-the-other-way-round.patch
+# 19.10.2026: the deep review of cstenger's h713-letterbox (a861df2..a4d6d5f, arbeit/cstenger-letterbox-20261019/tief-kernel/
+#   BERICHT.md). 0322-0324 are his 0156, 0157, 0159, byte-identical (message and diff; From: and Origin: added); 0325 is ours.
+#   0322 (his 0156): the H.264 bit reader's skip waits at most 1 ms per 32 bits, as H.265's does since 0308; an engine whose VLD
+#   never goes idle fails the job (cedrus_recover follows) instead of spinning a CPU in the request ioctl until a power cycle.
+0322-media-cedrus-h264-bound-the-skip-bits-wait.patch
+#   0323 (his 0157): the CAPTURE queue takes 64 buffers instead of vb2's default 32 (the VA driver's capture table holds 64;
+#   a client holding more than 32 decoded frames got ENOBUFS from CREATE_BUFS instead of back-pressure).
+0323-media-cedrus-allow-64-capture-buffers.patch
+#   0324 (his 0159): all 16 H.265 DPB slots are written on every job, a slot without a picture behind it with the picture being
+#   decoded (as hantro does); a skipped slot kept the addresses of an earlier job or process. 0309/0316 still refuse a job whose
+#   reference lists name a slot without a decoded picture; this covers the slots the lists do not name.
+0324-media-cedrus-h265-never-leave-a-dpb-slot-stale.patch
+#   0325 (ours, after his 0171): the R_PIO header comment and the power key note in the dtsi name the EINT function 0xe, as 0140's table has it; comments only.
+0325-pinctrl-arm64-dts-h713-the-comments-name-the-eint-function-0xe-as-the-table-has-it.patch
