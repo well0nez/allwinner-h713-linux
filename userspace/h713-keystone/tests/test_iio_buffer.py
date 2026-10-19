@@ -210,6 +210,18 @@ class Trigger(unittest.TestCase):
         with mock.patch.object(ks.os, "makedirs", side_effect=AssertionError("made again")):
             k.sensor().sample(1)
 
+    def test_configfs_is_mounted_when_nobody_did(self):
+        """Its mount point is there and the iio directory is not: systemd did not mount it, the tool does."""
+        k = FakeKernel()
+        self.addCleanup(k.close)
+        shutil.rmtree(os.path.join(k.root, "trigger0"))
+        shutil.rmtree(os.path.join(k.configfs, "iio"))
+        mounted = []
+        with mock.patch.object(ks.subprocess, "run", lambda argv, **kw: mounted.append(argv)):
+            with self.assertRaises(ks.BufferUnavailable):
+                k.sensor()._trigger()                           # nothing appears in the fake: the point is the mount
+        self.assertEqual(mounted, [["mount", "-t", "configfs", "configfs", k.configfs]])
+
     def test_a_kernel_without_the_trigger_falls_back_and_says_why(self):
         k = FakeKernel()
         self.addCleanup(k.close)
