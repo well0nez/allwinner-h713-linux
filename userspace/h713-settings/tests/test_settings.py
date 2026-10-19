@@ -1773,18 +1773,18 @@ OSD_DIR = os.path.join(HERE, "..", "..", "h713-osd")
 OSD_BIN = os.path.join(OSD_DIR, "h713-osd")
 
 
-@unittest.skipUnless(os.path.exists(OSD_BIN) and any(f and os.path.exists(f) for f in FONTS),
-                     "needs the real h713-osd (make -C ../h713-osd host) and a font")
-class Stack(Base):
+class StackBase(Base):
     """h713-settings, the real h713-osd and a fake h713-tv (the one of h713-osd's own tests): the page as the wall gets it."""
+    SIZE = None                                                  # the fake panel: h713-osd's tests' own, or the box's (Wall)
 
     def setUp(self):
         sys.path.insert(0, os.path.join(OSD_DIR, "tests"))
         import test_osd
-        self.W, self.H, self.PITCH = test_osd.W, test_osd.H, test_osd.PITCH
+        self.W, self.H = self.SIZE or (test_osd.W, test_osd.H)
+        self.PITCH = self.W * 4
         self.dir = tempfile.mkdtemp(prefix="h713-stack-")
         self.addCleanup(shutil.rmtree, self.dir, True)
-        self.osd_tv = test_osd.FakeTv(os.path.join(self.dir, "wall.sock"))
+        self.osd_tv = test_osd.FakeTv(os.path.join(self.dir, "wall.sock"), size=(self.W, self.H))
         self.osd_tv.start()
         self.addCleanup(self.osd_tv.stop)
         self.osd_sock = os.path.join(self.dir, "osd.sock")
@@ -1792,9 +1792,9 @@ class Stack(Base):
         self.addCleanup(self.stop_daemon)
 
     def start_daemon(self):
-        env = dict(os.environ, H713_OSD_SOCKET=self.osd_sock, H713_OSD_TV=os.path.join(self.dir, "wall.sock"),
-                   H713_OSD_WARP_CONF=os.path.join(self.dir, "warp.conf"), H713_OSD_CONF=os.path.join(self.dir, "osd.conf"),
-                   H713_OSD_FONT=[f for f in FONTS if f and os.path.exists(f)][0])
+        self.osd_env = env = dict(os.environ, H713_OSD_SOCKET=self.osd_sock, H713_OSD_TV=os.path.join(self.dir, "wall.sock"),
+                                  H713_OSD_WARP_CONF=os.path.join(self.dir, "warp.conf"), H713_OSD_CONF=os.path.join(self.dir, "osd.conf"),
+                                  H713_OSD_FONT=[f for f in FONTS if f and os.path.exists(f)][0], H713_OSD_CLOCK="07:52")
         self.daemon = subprocess.Popen([OSD_BIN, "run"], env=env, stderr=subprocess.PIPE)
         self.assertTrue(wait_for(lambda: os.path.exists(self.osd_sock), 5))
 
@@ -1808,6 +1808,10 @@ class Stack(Base):
     def shown(self):
         return None if self.osd_tv.shown is None else os.pread(self.osd_tv.bufs[self.osd_tv.shown], self.PITCH * self.H, 0)
 
+
+@unittest.skipUnless(os.path.exists(OSD_BIN) and any(f and os.path.exists(f) for f in FONTS),
+                     "needs the real h713-osd (make -C ../h713-osd host) and a font")
+class Stack(StackBase):
     def test_the_page_is_on_the_wall_and_follows_the_keys(self):
         self.start_daemon()
         b = self.box().start_device("Picture", osd_socket=self.osd_sock)
@@ -1850,6 +1854,53 @@ class Stack(Base):
         self.assertEqual(a(2, self.H - 4), 0)                    # the pulled-in bottom corner is not: it went through the matrix
         b.press(HOME)
         b.proc.wait(timeout=5)
+
+
+@unittest.skipUnless(os.path.exists(OSD_BIN) and any(f and os.path.exists(f) for f in FONTS),
+                     "needs the real h713-osd (make -C ../h713-osd host) and a font")
+class Wall(StackBase):
+    """The box's panel through the HY310's keystone of 19.10.2026, turned about 24 degrees to the wall (h713-warp ctl status)."""
+    SIZE = (1920, 1080)
+    ROWS = "hdmi:HDMI input;film:Kodi;globe:Browser;desk:Desktop;sliders:Settings;>power:Standby"
+
+    def launcher(self, words):
+        """what h713-keys says to h713-osd: the launcher opened (with its entries), a move, a close"""
+        r = subprocess.run([OSD_BIN, "ctl", "launcher"] + words.split(), env=self.osd_env, capture_output=True, text=True, timeout=5)
+        self.assertTrue(r.stdout.startswith("ok"), r.stdout + r.stderr)
+        time.sleep(0.4)                                          # the refresh, and the idle time's fill of the other buffer
+
+    def test_back_to_the_launcher_and_its_moves_leave_no_hole(self):
+        """19.10.2026: in the launcher after the settings page every second key put two of its tiles on the wall and left the rest
+        transparent - the ground on the right pitch black. Each move must stand on the wall as the launcher put whole does."""
+        with open(os.path.join(self.dir, "warp.conf"), "w") as f:
+            f.write("tl_x = 65\ntl_y = 0\ntr_x = 199\ntr_y = 244\nbl_x = 12\nbl_y = 0\nbr_x = 187\nbr_y = 81\nwarp = on\n")
+        self.osd_tv.picture = "warped"
+        self.start_daemon()
+        self.launcher("4;HDMI 1080p60;" + self.ROWS)
+        self.launcher("close keep")                              # OK on Settings: the launcher stays until the page is drawn
+        b = self.box().start_device("Picture", osd_socket=self.osd_sock)
+        status = lambda: subprocess.run([OSD_BIN, "ctl", "status"], env=self.osd_env, capture_output=True, text=True, timeout=5).stdout
+        self.assertTrue(wait_for(lambda: "page            open (opaque" in status(), 8))
+        time.sleep(0.5)
+        b.press(DOWN)                                            # another area, and back
+        time.sleep(0.5)
+        b.press(UP)
+        time.sleep(0.5)
+        b.press(BACK)                                            # Back at the top: the page hands the wall over
+        self.assertEqual(b.proc.wait(timeout=5), 0)
+        self.launcher("4;HDMI 1080p60;" + self.ROWS)             # h713-keys: the launcher again, Settings chosen
+        shots = []
+        for sel in (5, 4, 3, 2):
+            self.launcher(str(sel))
+            shots.append((sel, self.shown()))
+        bad = []
+        for sel, shot in shots:
+            self.launcher("%d;HDMI 1080p60;%s" % (sel, self.ROWS))   # the same launcher put whole
+            whole = self.shown()
+            holes = sum(1 for i in range(3, len(whole), 4 * 7) if whole[i] == 255 and shot[i] != 255)   # every 7th pixel
+            if holes or shot != whole:
+                bad.append("move to %d: %d holes in every 7th pixel, %s" % (sel, holes, "the same" if shot == whole else "not the whole put"))
+        self.assertEqual(bad, [])
 
 
 class Render(Base):
