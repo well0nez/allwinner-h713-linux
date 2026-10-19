@@ -21,7 +21,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 5. **Doku-Runde 7.19 als komplette Überarbeitung - macht Mythos ganz (Marco 17.10.2026):** der Hinweis oben in `README.md` ("Disclaimer: ... written mainly in collaboration with AI and needs a complete review and refactor", Marco 19.10.2026) bleibt stehen; alles Neue und Geänderte seit v0.96 (Einblendungen/OSD, Launcher, Einstellungen,
    Kodi, Desktop/Browser, Warp-Server, Standby/crust, RTC), fehlende Seiten (`h713-remote-pair`, `h713-cpufreq`), README, STATUS,
    known-issues; zum Schluss die Release-Seite aus Fremdensicht.
-6. **Die übrigen Release-Punkte:** 1.2a (Journal persistent), 1.2b (Installer übernimmt `/etc/h713`), 1.3 (ins Abbild), 1.9.
+6. **Die übrigen Release-Punkte:** 1.10 (Prüfpunkte aus cstengers Zweig), 1.2a (Journal persistent), 1.2b (Installer übernimmt `/etc/h713`), 1.3 (ins Abbild), 1.9.
 7. **Release-Neubau 1.1a** von vorn, HY310 und HY300PRO-G-EU, an beiden installieren und messen.
 8. **Leck-Prüfung 1.7a** über alles, was rausgeht (Klarname, Adressen, Firma, Seriennummern/MACs; `main`, Forks, Submodul-Commits,
    Spiegel-Patches).
@@ -112,6 +112,29 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `h713-osd`, `doku/193`/`195`) statt "nothing acts on the remote's keys yet except Power" (7.18)
 - [ ] 1.9 `docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto
 
+- [ ] 1.10 **Vor dem Release: was cstengers Zweig `h713-letterbox` uns zeigt** (Abgleich 19.10.2026, Bericht
+      `arbeit/cstenger-letterbox-20261019/BERICHT.md`; Marco: "das sollten wir vor Release auschecken"; seine Kernel- und
+      libva-Patches GPL, Werkzeuge ohne Lizenzkopf nur als Methode). Jeweils erst messen, dann entscheiden:
+      a) **H.264 ohne Wartegrenze** (sein `0156`): `cedrus_skip_bits()` pollt `VLD_BUSY` endlos - eine hängende VE hängt die
+         ganze Box; unser `0308` begrenzt nur H.265. Patch übernehmen und mit Dauerlauf/Schadclips messen (9.3c).
+      b) Video-Engine: vb2 begrenzt CAPTURE auf 32 Puffer (`0157`, `ENOBUFS` beim 33.) - mit Kodi/VA prüfen; HEVC-DPB:
+         übersprungene Slots behalten alte Adressen (`0159`) - prüfen, ob das bei uns trotz `0309`/`0316` vorkommt;
+         libva `0010` meldet Fehlbilder über `vaSyncSurface` für alle Codecs (bei uns nur AV1).
+      c) **G-EU-Panel:** nach jedem MIPS-Neustart `0x0588001c/20/24` lesen (er: TCON auf 1080p, neues 720p-Latch hilft;
+         wir `doku/182`: PF6-Zyklus) - vor und nach dem Zyklus; fünf Warmstarts zählen (er: Panel mit Strom über den
+         Warmstart bleibt dunkel, `0184` geordnetes Abschalten); weißes Feld beim Boot (er hält PB5 bis zum Bild aus).
+      d) **mpv auf ALSA** kann nach einem Tonaussetzer für immer hängen (PCM in `PREPARED`): auf `hy310hdmi` mit 40 x
+         `SIGSTOP` 0,2-2 s prüfen; dazu ALSA-Periode 10 ms gegen 40 ms (er: 17,9 -> 7,3 % CPU) bei Kodi messen.
+      e) WLAN-AP nach Standby: cfg80211 stoppt den AP beim Suspend, hostapd stellt ihn nicht wieder her - einmal `mode=ap`,
+         Standby, Client verbindet sich?
+      f) Grün beim Start (2.93): seine Erklärung "das erste Bild nach dem Wiedereinschalten der Quelle ist leer, grün" (`0165`)
+         als Hypothese messen - tritt es genau im ersten Vsync nach dem AFBD-Enable auf?
+      g) Messmittel ohne Kamera: Helligkeits-Histogramm am Panel `0x051c0378`-`0x051c03fc` (Fächer zählen Pixel) als
+         Lesewerkzeug (eigener Code) - für den G-EU, Spiegel, verlorene Zeilen, Grün; am HY310 (Doppelport) erst prüfen.
+      h) Aufräumen bei uns: `TODO` 2.84 (b) ("Firmware treibt die Lampen-PWM") widerspricht `doku/136` Z. 52 und ihm;
+         `doku/128a` §5.5 per Nachtrag: 40 seiner Werkzeugdateien tragen SPDX GPL-2.0.
+      Nach dem Release, wenn gewollt: VP9 über den Polyphasen-Scaler (`0167`, 9.3d), Spiegeln in Hardware statt im Warp
+      (`0166`), HDMI-Ton über DSP-Route 0x8f (Bluetooth), AV1-Punkte mit 9.3b, A/V-Versatz ohne Kamera (`av-sync-probe` als Methode).
 ## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
 
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
