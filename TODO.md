@@ -352,7 +352,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       falls das nicht geht: die Pille misst die Neigung einmal beim Öffnen. Klein dazu: `rows_flush` in h713-settings wartet auf jeden laufenden
       Auftrag, nicht nur auf einen Turn-Lauf (sonst bleibt ein in den letzten 2 s gedrückter Wert unangewendet, wenn beim Beenden Measure again now
       oder der Autofokus läuft); die mitgelieferte `keystone.conf` bekommt die Zeile `turn_to_wall`; `h713-panel` kennt den Schlüssel nicht (nur nach Mockup).
-- [ ] 2.106 **osd-loch am HY310 messen** (Mythos 19.10.: go, Gerätemessung vor rend7): `arbeit/medien/osd-loch/BERICHT.md` §8 - Kontrollarm mit
+- [x] 2.106 **osd-loch am HY310 messen** (erledigt 19.10.2026 13:34-13:42 UTC, `arbeit/medien/osd-loch-messung/`: alt f8079711 Züge 1/3 nach der Seite je >1 Mio. Löcher, neu 4227af5b 0 Löcher in 10 Bildern, Ecken bei offener Seite: neue Geometrie pixelgleich; Wand nicht fotografiert) (Mythos 19.10.: go, Gerätemessung vor rend7): `arbeit/medien/osd-loch/BERICHT.md` §8 - Kontrollarm mit
       h713-osd f8079711, dann 4227af5b; nach jedem Zug ein Bild mit `ebenen.py` (liest den DRM-Puffer der OSD-Ebene), ausgewertet mit `loch.py`;
       dazu einmal die Ecken ändern, während die Settings-Seite offen ist (zweiter Fund). Marcos Augen: jeder Zug im Launcher nach der Seite deckend.
 - [ ] 2.107 **osd-loch am HY300PRO-G-EU nachmessen**: mit seinem eigenen Trapez (bei Bypass einmal Turn to wall 24 und zurück) Launcher ->
