@@ -447,17 +447,17 @@ int main(void)
 	      "an allocator whose break is past the slot: not written, no call, the old value stays");
 	machine_reset();
 	program_starts();
-	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, FWC_SHM_WB - FWC_SMM_HEAD);
+	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, (FWC_SHM_WB & ~0xfffu) - FWC_SMM_HEAD);
 	reply_clear(&r);
 	fwc_set(&r, 1, "600");
 	check(r.failed && strstr(r.buf, "grown over the slot") && calls_wb == 0 && nwlog == 0 && fwc.wb[1] == 512,
-	      "a break exactly at the slot refuses it: the next allocation would take it");
+	      "a break at the start of the slot's page refuses it: the next allocation (a page) would take it");
 	machine_reset();
 	program_starts();
-	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, FWC_SHM_WB - FWC_SMM_HEAD - 4);
+	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, (FWC_SHM_WB & ~0xfffu) - FWC_SMM_HEAD - 0x1000);
 	reply_clear(&r);
 	fwc_set(&r, 1, "600");
-	check(!r.failed && calls_wb == 1, "a break one word below the slot leaves it free");
+	check(!r.failed && calls_wb == 1, "a break one page below the slot's page leaves it free");
 	machine_reset();
 	program_starts();
 	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 47, 0);
