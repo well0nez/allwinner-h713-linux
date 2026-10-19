@@ -1317,6 +1317,16 @@ static void refresh(void)
 	bool skew;
 	double t0;
 
+	/*
+	 * A page that was handed over stands on the wall until its successor is drawn (HANDOVER_S at most). Only a refresh that draws
+	 * the successor - the launcher or a page of the page channel is open - or the end of that second decides what is on the wall.
+	 * Any other cause (a volume strip, the mute badge, the power countdown, a note on the signal, a new keystone) draws into the
+	 * buffer that is not shown and shows it: the page would go and the picture under it stand on the wall for the 0.2 s the
+	 * successor needs (found reading the hand-over, 17.10.2026; a rare window, not seen on the wall). What they want stays in
+	 * `want` and is drawn with the successor, or when the second is over.
+	 */
+	if (handover_until > now_s() && !page.open && !(lau.open && !lau.nosig))
+		return;
 	osd_waiting = true;
 	handover_until = 0;		/* whatever was handed over: this refresh decides what is on the wall */
 	if (!tv_claim())
@@ -1530,8 +1540,15 @@ static bool handle(const char *line, char *reply, size_t n)
 		/*
 		 * The power key's countdown (TODO 2.38), sent by h713-power about ten times a second: "power TENTHS
 		 * standby|off [only] [ALPHA%]". Each line keeps it a second, so a dead h713-power leaves nothing
-		 * behind. "ok unseen" when nothing can be seen (no signal: the console; no h713-tv): then h713-power
-		 * does not wait for a choice nobody sees.
+		 * behind. "ok unseen" when nothing can be seen (the console; no h713-tv): then h713-power does not
+		 * wait for a choice nobody sees. Anything of ours that stands on the wall and is seen can carry it, though
+		 * no picture lies under it ("osd picture" says "none": without a signal the warp gives its claim back
+		 * under the page without a signal, the launcher, the settings page and its pill; none of them has one):
+		 * "none" is unseen only when nothing of ours is seen. Seen means h713-tv took the overlay and did not
+		 * answer "ok waiting" (a strip with no picture to lie over is accepted and not on the wall), or the page
+		 * without a signal is due and the refresh that follows this line puts it up (Marco 18.10.2026: "Power
+		 * key as always, yes"). Over an open page of the page channel nothing is drawn (compose), with a signal
+		 * as without; h713-settings ends on the Power key before h713-power asks.
 		 */
 		const char *opt[2] = { d, e };
 
@@ -1547,7 +1564,8 @@ static bool handle(const char *line, char *reply, size_t n)
 				it.alpha = pct < 0 ? 0 : pct > 100 ? 1 : pct / 100.0f;
 		}
 		stay = 1.0;
-		if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none")) {
+		if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) ||
+		    (!strcmp(answer, "ok none") && !nosig_due() && !(tv.shown && !osd_waiting))) {
 			want.until = 0;
 			snprintf(reply, n, "ok unseen\n");
 			return true;

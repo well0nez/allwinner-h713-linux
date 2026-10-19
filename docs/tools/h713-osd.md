@@ -21,8 +21,14 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
 - `power TENTHS standby|off [only] [ALPHA%]` - the power key's countdown (h713-power, about ten times a second): large in
   the middle whatever `place` says, a ring with the seconds left (full at 150 tenths), standby left, off right; `only`:
   no standby on this board, the ring alone. Each line keeps it one second. The answer is `ok unseen` when nothing can be
-  seen (no signal, the console; no h713-tv) - h713-power then acts at once. *Not changed by the page without a signal (17.10.2026):* the
-  countdown still answers `ok unseen` there, because no picture lies under the page.
+  seen (the console; no h713-tv) - h713-power then acts at once. Anything of ours that stands on the wall is seen, though `osd picture` says
+  `none` under it (without a signal the warp's claim is back): [the page without a signal](#the-page-without-a-signal), the launcher opened
+  without a signal, the settings page and its pill. The rule is "does anything of ours stand on the wall" (h713-tv took the overlay and did not answer
+  `ok waiting`, which a strip with no picture to lie over gets), not which page it is (19.10.2026). Over the page without a signal and the launcher the
+  countdown rides in the tiles; an open page of [the page channel](#the-page-channel-package-s) takes no overlays, with a signal as without (h713-settings
+  ends on the Power key before h713-power asks). *Overtaken (19.10.2026):* "the countdown still answers `ok unseen` over the page without a signal,
+  because no picture lies under the page" (17.10.2026) - the warp's claim is given back under the page, so `osd picture` says `none` there, but the
+  page stands on the wall and somebody sees the choice.
 - `pair` - "hold Left + Right" for 10 s after the remote was forgotten (h713-panel, TODO 2.54).
 - `launcher SEL;NOW;[>]icon:label;...` - the launcher (h713-keys): an **opaque page** over the whole
   panel, not an overlay over the picture (Marco, 15.10.2026: it must have a ground): the ground `0xff0b0e0d`, the list of "Launcher C" in
@@ -105,7 +111,10 @@ second, so that the word follows a signal that goes or comes.
 channel before its connection ends (h713-settings on Back at the top, which brings the launcher back), `launcher close keep`
 (h713-keys on OK on an entry whose program is a page) - and stays on the wall until its successor is drawn into the other buffer
 and shown in its place, at most a second. Before, the first page went with `osd hide` and the HDMI picture stood on the wall for
-the 0.19-0.20 s the second took to draw through the keystone. Without the word (Home, Power, a crash) a page goes at once. `ctl
+the 0.19-0.20 s the second took to draw through the keystone. Without the word (Home, Power, a crash) a page goes at once. A strip,
+the mute badge or a power countdown line that comes in those 0.2 s does not end the hand-over (it would take the page from the wall and
+stand alone over the picture): only the successor being drawn, or the end of the second, decides what is on the wall, and what was
+wanted meanwhile is drawn with the successor or then (19.10.2026). `ctl
 status` says `closed (handed over ...)` meanwhile; `H713_OSD_TRACE=1` names per refresh the buffer drawn, whether the other one
 is on the wall, what lies under it and what was wiped. Host tests: `tests/test_handover.py`.
 

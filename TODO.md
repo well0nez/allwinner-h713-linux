@@ -318,7 +318,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       "geparkt" im hdmirx-Treiber) planen: h713-tv übersteht den MIPS-Neustart mit gehaltener Wand, oder die Konsole bleibt verdeckt. Verschoben (Marco 17.10.); Marco 18.10.: "kein Release-Hindernis - Kleinigkeit, muss man schauen, evtl. noch vor dem Release" - einplanen, wenn vor dem Release Platz ist, sonst danach.
 - [ ] 2.97 **P7: HDMI-Aufnahme parken** (`doku/215` §7): nach 5 min ohne HDMI an der Wand (Programm, Launcher, Settings, kein Signal)
       `THal_Vp_SetSource(1)`, zurück mit "Switching to HDMI..."; vorher V1, HDCP 2.2 mit Fire TV nach dem Rückweg (mit Marco). Verschoben (Marco 17.10.).
-- [ ] 2.98 Klein, aus den Prüfungen von Mythos: Power über der No-signal-Seite mit Countdown wie über dem Launcher (Entscheidung Aufsicht 17.10., Marco 18.10.: "Power-Taste wie immer, ja"; h713-osd behandelt `lau.nosig` beim Power-Befehl als gesehen - heute antwortet die Seite `ok unseen`, weil `osd picture` unter ihr `none` ist; `handle()`, Zweig "power");
+- [x] 2.98 Klein, aus den Prüfungen von Mythos (erledigt 19.10.2026, `arbeit/medien/klein-298/`, Mythos go: Power-Countdown über No-signal-Seite, ohne Signal geöffnetem Launcher, Settings-Seite und Pille - eine Regel; handover_until; Zelle ns-seite; `edid =` leer startet sauber; Bildwerte-Verlust = Installation ohne /var/lib/h713-tv, Anleitung und abn.sh werte-zurueck korrigiert. Offen in 2.111): Power über der No-signal-Seite mit Countdown wie über dem Launcher (Entscheidung Aufsicht 17.10., Marco 18.10.: "Power-Taste wie immer, ja"; h713-osd behandelt `lau.nosig` beim Power-Befehl als gesehen - heute antwortet die Seite `ok unseen`, weil `osd picture` unter ihr `none` ist; `handle()`, Zweig "power");
       Start mit `edid =` ohne VIC-Beschnitt prüfen; abnahme.sh-Zelle ns-seite nach der Regel von p5-seiten; h713-osd: eine Einblendung in den
       0,2 s einer Seitenübergabe bricht sie ab (handover_until); K1 (getöntes Bild an der Kante NV16 -> NV12) nur noch am Dienstschalter `warp ctl on` -
       Marcos Augentest entscheidet.
@@ -368,6 +368,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.110 **cstenger-Kernel 0322-0325: Wirkung vor `main` messen** (Mythos 19.10.: go für medien; Messung am HY310 19.10. ohne Fehlerbild im
       Kontrollarm, `arbeit/cstenger-letterbox-20261019/mess/BERICHT.md`): 9.3c (a)/(b) und der Dauerlauf-Block aus mess/BERICHT §7 mit dem Kernel
       aus dem Merge (IIO + 0322-0325); 0323 (64 CAPTURE-Puffer) bei 4K gegen den CMA beobachten (9.3d c). G-EU: dieselbe Matrix nachmessen.
+- [ ] 2.111 **Mit Marcos Auge, aus klein-298:** der Countdown-Ring über der Seite "No signal on HDMI" liegt über Symbol und Worten - Mockup (a) wie
+      heute / (b) die Seite nimmt Symbol und Worte zurück, solange der Countdown läuft (`arbeit/medien/klein-298/mockup/vergleich-a-b.png`, ~10 Zeilen);
+      K1 (getöntes Bild am Dienstschalter `warp ctl on`); die echte Power-Taste über der No-signal-Seite einmal drücken (Countdown, dann abbrechen).
+      G-EU: Power über No-signal/Settings/Pille und die Übergabe mit Einblendung nachmessen (Zeile in klein-298/BERICHT).
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
