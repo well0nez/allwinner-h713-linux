@@ -5,3 +5,4 @@ stubs.c
 *-stubs.c
 test_nosig
 test_color
+test_gamma

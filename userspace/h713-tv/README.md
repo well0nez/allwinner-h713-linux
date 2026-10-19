@@ -164,7 +164,7 @@ way:
 
 ```bash
 # from the workstation (the main session does this):
-cp userspace/h713-tv/main.c userspace/h713-tv/color.c userspace/h713-tv/color.h userspace/h713-tv/Makefile /srv/h713-rootfs/root/h713-tv/
+cp userspace/h713-tv/main.c userspace/h713-tv/color.c userspace/h713-tv/color.h userspace/h713-tv/gamma.c userspace/h713-tv/gamma.h userspace/h713-tv/Makefile /srv/h713-rootfs/root/h713-tv/
 ssh root@192.168.8.141 'make -C /root/h713-tv'
 ```
 
@@ -621,28 +621,26 @@ needs **430-530 ms**, the devices are open after 25 ms - so the start up to "pla
 **255-286 ms to 650-680 ms**. That is the price of the origin, and it is far inside the deadline of 2 s
 after which it is aborted.
 
-### The gamma curve comes from the board's own TSE
+### The gamma curve comes from the board's own TSE, and is computed here
 
-A second `h713-pq` runs beside the first, and it asks for the curve this panel was measured with:
+A second `h713-pq` runs beside the first. It reads the board's TSE once and hands over the raw curves of
+all its colour temperature states (normal, cool, warm), unchanged:
 
 ```
-h713-pq --data /etc/h713/tvconfig gamma --from-tse normal --project 0x30 \
-        --tse /boot/mips/ProjectID_0x0030.TSE --lut /run/h713-tv/gamma-tse.bin
+h713-pq --data /etc/h713/tvconfig gamma --export-slots /run/h713-tv/gamma-slots.bin --project 0x30 \
+        --tse /boot/mips/ProjectID_0x0030.TSE
 ```
 
 The ProjectID is the board's own - `/etc/h713/board` (`project_id = 0x30`), which the installer writes out
 of the board profile; without that file the device tree decides (`magcubic,hy310` -> `0x30`,
 `magcubic,hy300-pro` -> `0x34`). If anything in that chain is missing, the shipped `gamma-standard.bin`
 applies exactly as before and one journal line says which step failed. `-g` still beats all of it, and
-`ctl status` names the curve that is up:
+`ctl status` names the curve that is up.
 
-```
-gamma curve     /run/h713-tv/gamma-tse.bin (this board's own, ProjectID 0x30, state normal)
-```
-
-It is **one** bank, loaded on all three channels as before: what this brings is the shape of the panel's
-curve, not the per-channel white balance a board may have baked into it (that would need a three-bank
-`GAMMA_LUT`).
+What the gamma level and the colour temperature do to those raw curves is computed in `gamma.c`, the way the
+display firmware's own library does it (`ctl set gamma`, `ctl set colour_temperature`, see
+`docs/tools/h713-tv.md`). All three channels keep their own curve, so a board that bakes a different end point
+per channel into its TSE keeps that white balance. `tests/test_gamma.c` is the host test.
 
 ### When something is missing
 
@@ -886,9 +884,11 @@ fail.
 - **`rpc` is raw.** The call blocks the program for its duration, and the firmware checks nothing for us.
 - **`preset`** is not a firmware function but a mode plus nine `Set` RPCs; whoever wants other values sets
   them one by one and saves them with `ctl save` (section 6d).
-- **The gamma curve is loaded once, at the start.** A `ctl preset` onto a mode with a different gamma stage
-  sets the nine controls, not the curve - and says so in its answer. In this device's data the case does not
-  arise (all eight modes are on stage 3 = 2.2).
+- **The gamma level is the user's, not the picture mode's.** With the board's own curves (`ctl status`: `computed
+  here`) `ctl set gamma` decides the level, and a `ctl preset` changes only the colour temperature, and only
+  while `colour_temperature` is `auto`. Without them (`-g`, no TSE) the curve is loaded once, at the start: a
+  `ctl preset` onto a mode with a different gamma stage then sets the nine controls, not the curve, and says so
+  in its answer. In this device's data the case does not arise (all eight modes are on stage 3 = 2.2).
 - **`HDMI1` only.** `h713-pq` is asked about exactly this input (`--input`); the INI carries the same
   lines for `HDMI1`, `HDMI2` and `HDMI3` anyway.
 - **A resolution change costs ~1 s of console** - that is the source's real signal loss during the mode

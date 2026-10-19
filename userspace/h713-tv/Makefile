@@ -43,13 +43,21 @@ SYSROOT   ?= /srv/h713-rootfs
 TARGET    ?= aarch64-linux-gnu
 CROSS_CC  ?= clang
 
-# main.c is the program; color.c is the display firmware's white balance and colour management (interface: color.h)
-SRCS      = main.c color.c
+# main.c is the program; color.c is the display firmware's white balance and colour management (interface: color.h);
+# gamma.c is its gamma curve and colour temperature (interface: gamma.h)
+
+# gamma.c repeats the vendor library's floating point arithmetic operation by operation: no multiplication and addition
+# may be rounded together (a fused multiply-add on arm64 changes the last bit). The flag comes after CFLAGS and so beats
+# whatever was given there; gamma_arith_ok() looks at the result at run time and refuses the control if it was fused.
+GAMMA_FP  = -ffp-contract=off
 
 all: h713-tv
 
-h713-tv: $(SRCS) color.h
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $(SRCS) $(LDLIBS)
+h713-tv: main.c color.c gamma.o color.h gamma.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ main.c color.c gamma.o $(LDLIBS) -lm
+
+gamma.o: gamma.c gamma.h color.h
+	$(CC) $(CFLAGS) $(GAMMA_FP) -c -o $@ gamma.c
 
 cross: h713-tv.$(TARGET)
 
@@ -58,10 +66,14 @@ cross: h713-tv.$(TARGET)
 # clones of the same commit give two different binaries (E1 of v0.96-beta).
 REPRO_CFLAGS = -ffile-prefix-map=$(abspath .)=. -ffile-prefix-map=$(abspath $(SYSROOT))=/sysroot
 
-h713-tv.$(TARGET): $(SRCS) color.h
+h713-tv.$(TARGET): main.c color.c gamma.$(TARGET).o color.h gamma.h
 	$(CROSS_CC) --target=$(TARGET) --sysroot=$(SYSROOT) -fuse-ld=lld \
 	    $(CFLAGS) $(REPRO_CFLAGS) $(LDFLAGS) -isystem $(SYSROOT)/usr/include/libdrm \
-	    -L$(SYSROOT)/usr/lib/$(TARGET) -o $@ $(SRCS) -ldrm -lasound
+	    -L$(SYSROOT)/usr/lib/$(TARGET) -o $@ main.c color.c gamma.$(TARGET).o -ldrm -lasound -lm
+
+gamma.$(TARGET).o: gamma.c gamma.h color.h
+	$(CROSS_CC) --target=$(TARGET) --sysroot=$(SYSROOT) \
+	    $(CFLAGS) $(GAMMA_FP) $(REPRO_CFLAGS) -c -o $@ gamma.c
 
 install: h713-tv
 	install -D -m 0755 h713-tv $(DESTDIR)$(SBINDIR)/h713-tv
@@ -86,7 +98,7 @@ test:
 	$(MAKE) -C tests run SYSROOT=$(SYSROOT)
 
 clean:
-	rm -f h713-tv h713-tv.$(TARGET)
+	rm -f h713-tv h713-tv.$(TARGET) gamma.o gamma.$(TARGET).o
 	$(MAKE) -C tests clean
 
 .PHONY: all cross install install-cross install-data test clean

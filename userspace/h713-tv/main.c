@@ -131,6 +131,7 @@
 #include <alsa/asoundlib.h>
 
 #include "color.h"
+#include "gamma.h"
 
 #define DRM_DRIVER	"sun50i-h713-afbd"	/* patch 0093 */
 #define V4L2_DRIVER	"sun50i-h713-hdmirx"	/* patch 0094 */
@@ -941,17 +942,52 @@ static void display_release_master(struct display *d)
 #define DE2_BANK_DWORDS	512
 #define GAMMA_ENTRIES	(2 * DE2_BANK_DWORDS)
 
+_Static_assert(GAMMA_ENTRIES == GAMMA_N, "the CRTC's table and the computed curve have the same length");
+
 static uint16_t gamma_12_to_16(uint32_t v)
 {
 	/* the inverse of drm_color_lut_extract() for 12 bits, see gamma_test.c */
 	return (uint16_t)((v * 65535u + 2047u) / 4095u);
 }
 
+/* three curves of 1024 12-bit samples -> the entries of GAMMA_LUT (the file and the computed curve both end here) */
+static void gamma_lut_entries(const gamma_curve c, struct drm_color_lut lut[GAMMA_ENTRIES])
+{
+	unsigned int i;
+
+	for (i = 0; i < GAMMA_ENTRIES; i++) {
+		lut[i].red = gamma_12_to_16(c[0][i] & 0xfff);
+		lut[i].green = gamma_12_to_16(c[1][i] & 0xfff);
+		lut[i].blue = gamma_12_to_16(c[2][i] & 0xfff);
+		lut[i].reserved = 0;
+	}
+}
+
+/* does the CRTC have a GAMMA_LUT of the length this program writes (kernel 0095)? */
+static bool display_gamma_ready(struct display *d)
+{
+	uint64_t size = 0;
+
+	if (!props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &d->crtc_props)) {
+		warn("gamma           CRTC properties not readable: %s", strerror(errno));
+		return false;
+	}
+	if (!prop_id(&d->crtc_props, "GAMMA_LUT") ||
+	    !prop_value(&d->crtc_props, "GAMMA_LUT_SIZE", &size) ||
+	    size != GAMMA_ENTRIES) {
+		warn("gamma           CRTC %u has no GAMMA_LUT with %u entries (kernel 0095) -- the identity ramp stays",
+		     d->crtc_id, GAMMA_ENTRIES);
+		return false;
+	}
+
+	return true;
+}
+
 static void display_gamma_load(struct display *d, const char *path)
 {
 	struct drm_color_lut lut[GAMMA_ENTRIES];
+	gamma_curve curve;
 	uint32_t bank[3][DE2_BANK_DWORDS];
-	uint64_t size = 0;
 	unsigned int i, channels;
 	size_t got;
 	FILE *f;
@@ -959,17 +995,8 @@ static void display_gamma_load(struct display *d, const char *path)
 	d->gamma_blob = 0;
 	if (!path || !strcasecmp(path, "none"))
 		return;
-	if (!props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &d->crtc_props)) {
-		warn("gamma           CRTC properties not readable: %s", strerror(errno));
+	if (!display_gamma_ready(d))
 		return;
-	}
-	if (!prop_id(&d->crtc_props, "GAMMA_LUT") ||
-	    !prop_value(&d->crtc_props, "GAMMA_LUT_SIZE", &size) ||
-	    size != GAMMA_ENTRIES) {
-		warn("gamma           CRTC %u has no GAMMA_LUT with %u entries (kernel 0095) -- the identity ramp stays",
-		     d->crtc_id, GAMMA_ENTRIES);
-		return;
-	}
 	f = fopen(path, "rb");
 	if (!f) {
 		warn("gamma           %s: %s -- the identity ramp stays", path, strerror(errno));
@@ -989,14 +1016,14 @@ static void display_gamma_load(struct display *d, const char *path)
 		uint32_t g = bank[channels == 3 ? 1 : 0][i];
 		uint32_t b = bank[channels == 3 ? 2 : 0][i];
 
-		lut[2 * i].red = gamma_12_to_16(r & 0xfff);
-		lut[2 * i].green = gamma_12_to_16(g & 0xfff);
-		lut[2 * i].blue = gamma_12_to_16(b & 0xfff);
-		lut[2 * i + 1].red = gamma_12_to_16((r >> 12) & 0xfff);
-		lut[2 * i + 1].green = gamma_12_to_16((g >> 12) & 0xfff);
-		lut[2 * i + 1].blue = gamma_12_to_16((b >> 12) & 0xfff);
-		lut[2 * i].reserved = lut[2 * i + 1].reserved = 0;
+		curve[0][2 * i] = r & 0xfff;
+		curve[1][2 * i] = g & 0xfff;
+		curve[2][2 * i] = b & 0xfff;
+		curve[0][2 * i + 1] = (r >> 12) & 0xfff;
+		curve[1][2 * i + 1] = (g >> 12) & 0xfff;
+		curve[2][2 * i + 1] = (b >> 12) & 0xfff;
 	}
+	gamma_lut_entries((const uint16_t (*)[GAMMA_N])curve, lut);
 	if (drmModeCreatePropertyBlob(d->fd, lut, sizeof(lut), &d->gamma_blob)) {
 		warn("gamma           blob: %s -- the identity ramp stays", strerror(errno));
 		d->gamma_blob = 0;
@@ -1053,6 +1080,74 @@ static void display_gamma_apply(struct display *d)
 		warn("gamma           commit refused: %s", strerror(errno));
 	display_release_master(d);
 }
+
+/*
+ * A curve that gamma.c has computed, while the program runs: a new blob, one commit that carries only GAMMA_LUT (kernel
+ * 0095 writes the banks when it changes, with a picture standing as well as without one), and the old blob let go.
+ * The master is taken for the commit if nobody here holds it and given back after it, as display_gamma_apply() does at
+ * the start; with a picture up it is ours already. The blob stays in the display, so that every show carries it.
+ */
+static struct display *gamma_disp;	/* where the curve goes: set once in main() */
+
+static bool display_gamma_commit(struct display *d, uint32_t blob, char *why, size_t n)
+{
+	drmModeAtomicReq *req;
+	bool had = d->master, ok = true;
+	uint32_t id = prop_id(&d->crtc_props, "GAMMA_LUT");
+
+	if (!id) {
+		snprintf(why, n, "the CRTC has no GAMMA_LUT");
+		return false;
+	}
+	if (!had && !display_take_master(d)) {
+		snprintf(why, n, "another client holds the display");
+		return false;
+	}
+	req = drmModeAtomicAlloc();
+	if (!req)
+		fail("out of memory");
+	if (drmModeAtomicAddProperty(req, d->crtc_id, id, blob) < 0) {
+		snprintf(why, n, "GAMMA_LUT cannot be queued: %s", strerror(errno));
+		ok = false;
+	} else if (drmModeAtomicCommit(d->fd, req, 0, NULL)) {
+		snprintf(why, n, "the commit was refused: %s", strerror(errno));
+		ok = false;
+	}
+	drmModeAtomicFree(req);
+	if (!had)
+		display_release_master(d);
+
+	return ok;
+}
+
+static bool gamma_io_apply(const gamma_curve lut, char *why, size_t n)
+{
+	struct display *d = gamma_disp;
+	struct drm_color_lut entries[GAMMA_ENTRIES];
+	uint32_t blob = 0, old;
+
+	if (!d) {
+		snprintf(why, n, "no display");
+		return false;
+	}
+	gamma_lut_entries(lut, entries);
+	if (drmModeCreatePropertyBlob(d->fd, entries, sizeof(entries), &blob)) {
+		snprintf(why, n, "blob: %s", strerror(errno));
+		return false;
+	}
+	if (!display_gamma_commit(d, blob, why, n)) {
+		drmModeDestroyPropertyBlob(d->fd, blob);
+		return false;
+	}
+	old = d->gamma_blob;
+	d->gamma_blob = blob;
+	if (old)
+		drmModeDestroyPropertyBlob(d->fd, old);
+
+	return true;
+}
+
+static const struct gamma_io gamma_io = { .apply = gamma_io_apply };
 
 /* a width down to a whole AFBD block, a height down to an even line count */
 static unsigned int zoom_block(unsigned int v)
@@ -4033,8 +4128,7 @@ static int source_by_name(const char *w)
 #define BOARD_FILE	"/etc/h713/board"
 #define DT_COMPATIBLE	"/proc/device-tree/compatible"
 #define TSE_DIR	"/boot/mips"
-#define TSE_LUT	"/run/h713-tv/gamma-tse.bin"
-#define TSE_STATE	"normal"
+#define TSE_SLOTS	"/run/h713-tv/gamma-slots.bin"
 
 enum start_mode { START_AUTO, START_MANUAL, START_LAST };
 
@@ -4771,7 +4865,10 @@ static void cmd_list(struct reply *r, struct capture *cap)
 	}
 	/* the firmware's own: held here, not in the capture driver */
 	fwc_list(r);
+	gamma_list(r);
 }
+
+static int mode_ctemp(int mode);	/* the colour temperature a picture mode asks for: 0 normal, 1 cool, 2 warm */
 
 static void cmd_get(struct reply *r, struct capture *cap, const char *name)
 {
@@ -4782,6 +4879,10 @@ static void cmd_get(struct reply *r, struct capture *cap, const char *name)
 
 	if (fwc_key(name) >= 0) {
 		fwc_get(r, fwc_key(name));
+		return;
+	}
+	if (gamma_key(name) >= 0) {
+		gamma_get(r, gamma_key(name));
 		return;
 	}
 	if (!ctrl_find(cap->fd, name, &q)) {
@@ -4809,6 +4910,10 @@ static void cmd_set(struct reply *r, struct capture *cap, const char *name,
 
 	if (fwc_key(name) >= 0) {
 		fwc_set(r, fwc_key(name), value);
+		return;
+	}
+	if (gamma_key(name) >= 0) {
+		gamma_set(r, gamma_key(name), value);
 		return;
 	}
 	if (!ctrl_find(cap->fd, name, &q)) {
@@ -4853,6 +4958,8 @@ static void cmd_set(struct reply *r, struct capture *cap, const char *name,
 		ret = ctrl_set(cap->fd, &q, val);
 		if (mode)
 			fwc_mode_end("a picture mode");
+		if (mode && !ret)
+			gamma_mode_temp(mode_ctemp((int)val), "a picture mode");
 	}
 	if (ret) {
 		reply_fail(r, "%s = %lld: %s", q.name, val, strerror(-ret));
@@ -6783,6 +6890,7 @@ static const char *const preset_pq_key[9] = {
 static struct preset pq_presets[PQ_PRESETS_MAX];
 static char pq_names[PQ_PRESETS_MAX][32];
 static double pq_gamma[PQ_PRESETS_MAX];
+static int pq_ctemp[PQ_PRESETS_MAX];	/* the colour temperature of the preset: 0 normal, 1 cool, 2 warm, -1 not said */
 static unsigned int pq_presets_n;
 
 struct pq {
@@ -7182,6 +7290,10 @@ static bool pq_parse(struct pq *p)
 		t->mode = (int)mode;
 		pq_gamma[pq_presets_n] = 0.0;
 		js_double(lb, le, "gamma_exponent", &pq_gamma[pq_presets_n]);
+		/* "weitere": the columns that have no control of their own; colortemperature 0 standard, 1 cool, 2 warm */
+		pq_ctemp[pq_presets_n] = -1;
+		if (js_inside(lb, le, "weitere", &rb, &re) && js_number(rb, re, "colortemperature", &v) && v >= 0 && v <= 2)
+			pq_ctemp[pq_presets_n] = (int)v;
 		pq_presets_n++;
 	}
 	if (!pq_presets_n) {
@@ -7265,26 +7377,22 @@ static void preset_names(char *buf, size_t n)
 /* ------------------------------------------------------------------ *
  * The gamma curve of this board
  *
- * The shipped curve is a synthetic 2.2 power law; the panel's real one is
- * measured and sits in the board's own ProjectID_0x00NN.TSE, one state per
- * colour temperature. Measured over the bridge 22.09.2026: the HY300 Pro's
- * panel curve runs at about 48 % where ours is at 22 %, and his wall said the
- * same (doku/128). What is asked for here is that SHAPE -- one bank, loaded
- * on all three channels as before; a board that bakes a different end point
- * per channel into its curve (HY300 Pro: 4087/3863/3459) still loses that
- * white balance, which would need a three-bank GAMMA_LUT.
+ * The shipped curve is a synthetic 2.2 power law; the panel's real one is measured and sits in the board's own
+ * ProjectID_0x00NN.TSE, one state per colour temperature (normal, cool, warm), three channels each. Measured over the
+ * bridge 22.09.2026: the HY300 Pro's panel curve runs at about 48 % where the synthetic one is at 22 %, and his wall
+ * said the same (doku/128); a board that bakes a different end point per channel into its curve (HY300 Pro:
+ * 4087/3863/3459) keeps that white balance only with three banks.
  *
- *   h713-pq --data DIR gamma --from-tse normal --project 0xNN \
- *           --tse /boot/mips/ProjectID_0x00NN.TSE --lut /run/.../gamma-tse.bin
+ * h713-pq reads the TSE once at the start and hands over the raw curves of all the states:
  *
- * --data is a GLOBAL option, before the subcommand; h713-pq wants a tvconfig
- * directory for `gamma` too ($H713_TVCONFIG does the same job). "normal" is
- * colour temperature standard -- what every preset here asks for (tvpq.db
- * colortemperature 0). WHICH ProjectID this board carries is not readable
- * from /boot/mips, which holds all 13, so it is told: /etc/h713/board, written
- * by the installer out of the board profile, and where that is missing the
- * device tree (kernel patches 0160/0161/0181). If none of it works the shipped
- * file applies exactly as before, with one journal line saying why.
+ *   h713-pq --data DIR gamma --export-slots /run/.../gamma-slots.bin --project 0xNN --tse /boot/mips/ProjectID_0x00NN.TSE
+ *
+ * and gamma.c does the rest, as the display firmware's own library does (the gamma level, the colour temperature, the
+ * twelve-knot form it is always in). --data is a GLOBAL option, before the subcommand; h713-pq wants a tvconfig
+ * directory for `gamma` too ($H713_TVCONFIG does the same job). WHICH ProjectID this board carries is not readable
+ * from /boot/mips, which holds all 13, so it is told: /etc/h713/board, written by the installer out of the board
+ * profile, and where that is missing the device tree (kernel patches 0160/0161/0181). If none of it works the shipped
+ * file applies exactly as before, with one journal line saying why, and the two controls say so when they are used.
  * ------------------------------------------------------------------ */
 
 static const struct {
@@ -7344,7 +7452,7 @@ struct tse_gamma {
 	pid_t pid;		/* -1: nothing running */
 	int project;
 	char why[240];		/* why the shipped curve applies instead */
-	bool ok;		/* TSE_LUT holds this board's own curve */
+	bool ok;		/* TSE_SLOTS holds this board's own curves */
 };
 
 static struct tse_gamma tsegamma = { .pid = -1 };
@@ -7389,13 +7497,13 @@ static void tse_gamma_start(struct tse_gamma *t, const struct conf *c)
 			dup2(null, STDOUT_FILENO);
 		}
 		execl(c->calculator, "h713-pq", "--data", c->data, "gamma",
-		      "--from-tse", TSE_STATE, "--project", project,
-		      "--tse", tse, "--channel", "all", "--lut", TSE_LUT, (char *)NULL);
+		      "--export-slots", TSE_SLOTS, "--project", project,
+		      "--tse", tse, (char *)NULL);
 		_exit(127);
 	}
 }
 
-/* Wait for it and look at what it wrote; false means "the shipped curve". */
+/* Wait for it and look at what it wrote; false means "the shipped curve". gamma.c reads the file itself. */
 static bool tse_gamma_collect(struct tse_gamma *t)
 {
 	struct stat st;
@@ -7406,10 +7514,10 @@ static bool tse_gamma_collect(struct tse_gamma *t)
 	if (waitpid(t->pid, &status, 0) != t->pid)
 		snprintf(t->why, sizeof(t->why), "waitpid: %s", strerror(errno));
 	else if (!WIFEXITED(status) || WEXITSTATUS(status))
-		snprintf(t->why, sizeof(t->why), "h713-pq gamma --from-tse: "
+		snprintf(t->why, sizeof(t->why), "h713-pq gamma --export-slots: "
 			 "exit code %d", WEXITSTATUS(status));
-	else if (stat(TSE_LUT, &st) || st.st_size != 3 * 4 * DE2_BANK_DWORDS)
-		snprintf(t->why, sizeof(t->why), "%s is not three DE2 banks", TSE_LUT);
+	else if (stat(TSE_SLOTS, &st) || st.st_size <= 0)
+		snprintf(t->why, sizeof(t->why), "%s was not written", TSE_SLOTS);
 	else
 		t->ok = true;
 	t->pid = -1;
@@ -7452,6 +7560,38 @@ static double preset_gamma(const struct preset *p)
 		return 0.0;
 
 	return pq_gamma[p - &pq_presets[0]];
+}
+
+/*
+ * The colour temperature a preset asks for, as the vendor's own table has it (pq_picturemode.ini, HDMI: cinema and hdr
+ * warm, vivid cool, the rest standard). From the device's data when there is some; the compiled table has no such
+ * column and says the same by name.
+ */
+static int preset_ctemp(const struct preset *p)
+{
+	if (!p)
+		return 0;
+	if (preset_is_from_data(p) && pq_ctemp[p - &pq_presets[0]] >= 0)
+		return pq_ctemp[p - &pq_presets[0]];
+	if (!strcasecmp(p->name, "cinema") || !strcasecmp(p->name, "hdr"))
+		return 2;
+
+	return !strcasecmp(p->name, "vivid") ? 1 : 0;
+}
+
+/* ... and by the firmware's picture mode number (ctl set mode N): the first preset with that number, 0 for a mode without one */
+static int mode_ctemp(int mode)
+{
+	unsigned int i;
+
+	for (i = 0; i < pq_presets_n; i++)
+		if (pq_presets[i].mode == mode)
+			return preset_ctemp(&pq_presets[i]);
+	for (i = 0; i < sizeof(presets) / sizeof(presets[0]); i++)
+		if (presets[i].mode == mode)
+			return preset_ctemp(&presets[i]);
+
+	return 0;
 }
 
 /*
@@ -7512,6 +7652,7 @@ static int preset_apply(struct capture *cap, const struct preset *p, char *msg,
 				      p->value[i]);
 	}
 	fwc_mode_end("a preset");
+	gamma_mode_temp(preset_ctemp(p), "a preset");
 
 	return (int)failed;
 }
@@ -7563,6 +7704,9 @@ struct saved_values {
 	bool wb_have[FWC_WB_N];
 	int cm[FWC_CM_N];
 	bool cm_have[FWC_CM_N];
+	/* the gamma level and the colour temperature (GAMMA_T_*): the device's as well */
+	int gm[2];
+	bool gm_have[2];
 	bool complained;
 };
 
@@ -7585,6 +7729,7 @@ static void saved_read(struct saved_values *w)
 	memset(w->have, 0, sizeof(w->have));
 	memset(w->wb_have, 0, sizeof(w->wb_have));
 	memset(w->cm_have, 0, sizeof(w->cm_have));
+	memset(w->gm_have, 0, sizeof(w->gm_have));
 	if (!w->path)
 		return;
 	f = fopen(w->path, "r");
@@ -7633,8 +7778,17 @@ static void saved_read(struct saved_values *w)
 		{
 			int idx = 0, kept = 0;
 			long y;
-			int got;
+			int got = gamma_parse_kept(key, val, &idx, &kept);
 
+			if (got < 0) {
+				warn("%s:%u: %s = \"%s\" is not a value it knows -- dropped", w->path, n, key, val);
+				continue;
+			}
+			if (got > 0) {
+				w->gm[idx] = kept;
+				w->gm_have[idx] = true;
+				continue;
+			}
 			errno = 0;
 			y = strtol(val, &end, 10);
 			if (end == val || *end || errno) {
@@ -7813,6 +7967,7 @@ static bool saved_write(struct saved_values *w, struct capture *cap,
 	}
 	fprintf(f, "# the firmware's white balance (512 neutral) and colour management (a step, 0 neutral; only the changed)\n");
 	l = fwc_kept_lines(f, msg, n, l);
+	l = gamma_kept_lines(f, msg, n, l);
 	if (fflush(f) || fsync(fileno(f)) || fclose(f)) {
 		snprintf(msg, n, "%s: %s", tmp, strerror(errno));
 		unlink(tmp);
@@ -7842,6 +7997,7 @@ static bool saved_delete(struct saved_values *w, char *msg, size_t n)
 	memset(w->have, 0, sizeof(w->have));
 	memset(w->wb_have, 0, sizeof(w->wb_have));
 	memset(w->cm_have, 0, sizeof(w->cm_have));
+	memset(w->gm_have, 0, sizeof(w->gm_have));
 	w->zoom[0] = '\0';
 	w->preset[0] = '\0';
 	w->aspect[0] = '\0';
@@ -7880,7 +8036,7 @@ static void cmd_preset(struct reply *r, struct capture *cap, const char *name)
 	 * -- but silence would be the wrong answer if it ever did.
 	 */
 	g = preset_gamma(p);
-	if (g > 0.0 && pq.gamma > 0.0 && g != pq.gamma)
+	if (!gamma_active() && g > 0.0 && pq.gamma > 0.0 && g != pq.gamma)
 		reply_add(r, "   note: %s wants gamma %.2f, loaded is %.2f -- "
 			  "restart the service for that\n", p->name, g, pq.gamma);
 	reply_add(r, "   the saved deviations are dropped; \"ctl save\" "
@@ -7935,14 +8091,14 @@ static void cmd_status_picture_values(struct reply *r)
 		  preset_current_from_data ? "from the device data"
 					   : "the compiled-in table");
 	/* which curve is on the CRTC, and whose it is */
-	if (tsegamma.ok)
-		reply_add(r, "gamma curve     %s (this board's own, ProjectID "
-			  "0x%02x, state %s)\n", gamma_loaded, tsegamma.project,
-			  TSE_STATE);
+	if (gamma_active())
+		reply_add(r, "gamma curve     computed here from this board's own curves (ProjectID 0x%02x)\n",
+			  tsegamma.project);
 	else
 		reply_add(r, "gamma curve     %s (computed) -- %s\n",
 			  gamma_loaded ? gamma_loaded : "-",
 			  tsegamma.why[0] ? tsegamma.why : "no board TSE asked for");
+	gamma_status(r);
 	fwc_status(r);
 	if (!saved.path)
 		reply_add(r, "saved           nothing (state = none in tv.conf)\n");
@@ -8107,6 +8263,10 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        the firmware's white balance, 0..1023, 512 neutral (all six are always sent)\n"
 		  "  set cm_AXIS_hue|sat|value N   colour management, -255..255 on the picture mode's own value, 0 neutral;\n"
 		  "                        AXIS: red lips skintone yellow yellow_green green cyan blue blue_purple purple\n"
+		  "  set gamma 0..4        the panel's gamma level: 0..4 or 1.8 2.0 2.1 2.2 2.4 (default 3 = 2.2); the display\n"
+		  "                        firmware's own computation on this board's measured curves\n"
+		  "  set colour_temperature auto|normal|cool|warm   which of the board's curves; auto takes the picture mode's\n"
+		  "                        (cinema and hdr warm, vivid cool, the others normal); both are kept by \"save\"\n"
 		  "  wb [R G B RO GO BO|reset]   show / set all six white balance values in one call\n"
 		  "  cm [AXIS [H S V]|reset]     show the changed entries / one axis / set the three of an axis / all neutral\n"
 		  "  preset NAME           vendor preset: picture mode + nine controls.\n"
@@ -8724,6 +8884,7 @@ int main(int argc, char **argv)
 	struct pollfd fds[13];
 	const char *sock = CTL_SOCKET;
 	const char *startpreset = "standard";
+	bool gamma_own = false;		/* the curve is computed here (gamma.c) and not read from a file */
 	int sfd, arg, rc = 0;
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
@@ -8790,6 +8951,7 @@ int main(int argc, char **argv)
 	 * one that puts the picture up or leaves the console.
 	 */
 	fwc_init();
+	gamma_init();
 	conf_read(&conf);
 	if (o.calculator)
 		snprintf(conf.calculator, sizeof(conf.calculator), "%s", o.calculator);
@@ -8817,8 +8979,10 @@ int main(int argc, char **argv)
 	saved.path = conf.saved_path[0] && !o.report_only ? conf.saved_path : NULL;
 	saved_read(&saved);
 	/* the firmware's own colour that was kept: the steps are known before the preset's mode is sent (fwc_mode_begin) */
-	if (!o.report_only)
+	if (!o.report_only) {
 		fwc_adopt(saved.wb_have, saved.wb, saved.cm_have, saved.cm);
+		gamma_adopt(saved.gm_have, saved.gm);
+	}
 	startpreset = o.preset ? o.preset : (conf.preset[0] ? conf.preset : "standard");
 	if (!strcasecmp(startpreset, "last") || !strcasecmp(startpreset, "zuletzt"))
 		startpreset = saved.preset[0] ? saved.preset : "standard";
@@ -8885,17 +9049,34 @@ int main(int argc, char **argv)
 		if (tse_gamma_collect(&tsegamma) && o.gamma_set)
 			tsegamma.ok = false;		/* -g wins; said below */
 		if (tsegamma.ok) {
-			o.gamma = TSE_LUT;
-			info("gamma           this board's own curve: ProjectID "
-			     "0x%02x, state %s", tsegamma.project, TSE_STATE);
-		} else
+			char why[200] = "";
+
+			gamma_disp = &d;
+			if (!display_gamma_ready(&d))
+				snprintf(why, sizeof(why), "the CRTC has no GAMMA_LUT of the length this needs");
+			else if (!gamma_attach(TSE_SLOTS, &gamma_io, why, sizeof(why)))
+				;			/* why says why */
+			else
+				gamma_own = true;
+			if (!gamma_own) {
+				tsegamma.ok = false;
+				snprintf(tsegamma.why, sizeof(tsegamma.why), "%s", why);
+			}
+		}
+		if (gamma_own) {
+			/* the picture mode asks for its colour temperature before the first curve is made */
+			gamma_mode_temp(preset_ctemp(preset_find(startpreset)), "the start");
+		} else {
+			gamma_unavailable(tsegamma.why[0] ? tsegamma.why : "-g gives the curve");
 			warn("gamma           %s -- %s applies",
 			     tsegamma.why[0] ? tsegamma.why : "-g was given",
 			     o.gamma);
+		}
 	}
 	if (!o.report_only) {
 		gamma_loaded = o.gamma;
-		display_gamma_load(&d, o.gamma);
+		if (!gamma_own)
+			display_gamma_load(&d, o.gamma);
 	}
 
 	if (o.report_only) {
@@ -8947,7 +9128,15 @@ int main(int argc, char **argv)
 
 	/* a previous run may have left the console dark; see console_restore() */
 	console_restore();
-	display_gamma_apply(&d);
+	if (!gamma_own || !gamma_start()) {
+		if (gamma_own) {
+			/* the first curve did not go on the CRTC: the file applies, and the two controls say so */
+			warn("gamma           the computed curve could not be put on the CRTC -- %s applies", o.gamma);
+			snprintf(tsegamma.why, sizeof(tsegamma.why), "the computed curve could not be put on the CRTC");
+			display_gamma_load(&d, o.gamma);
+		}
+		display_gamma_apply(&d);
+	}
 
 	capture_select_input(&cap);
 	/*
