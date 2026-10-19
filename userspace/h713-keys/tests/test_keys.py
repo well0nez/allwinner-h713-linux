@@ -379,14 +379,35 @@ class KeysTest(unittest.TestCase):
         launcher = self.mod.Launcher()
         self.assertTrue(launcher.open({}))
         self.assertTrue(self.osds.lines[-1].startswith("launcher 0;HDMI no signal;"), self.osds.lines)
-        n = len(self.osds.lines)
+        defs = lambda: [l for l in self.osds.lines if l.startswith("launcher ")]   # the definitions (a `status` asked between them is not one)
+        n = len(defs())
         launcher.header_follow()
-        self.assertEqual(len(self.osds.lines), n)                    # the same signal: nothing sent
+        self.assertEqual(len(defs()), n)                             # the same signal: nothing sent
         self.tv.signal = "signal          1920x1080p59.94, 148.4 MHz (last measured)\n"
         launcher.header_follow()
-        self.assertEqual(self.osds.lines[-1], "launcher 0;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby")
+        self.assertEqual(defs()[-1], "launcher 0;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby")
         launcher.header_follow()
-        self.assertEqual(len(self.osds.lines), n + 1)                # and once only
+        self.assertEqual(len(defs()), n + 1)                         # and once only
+
+    def test_a_restarted_osd_keeps_its_launcher_closed(self):
+        # after a restart of h713-osd under the open launcher it said "closed"; the next change of signal opened it unasked (Mythos 19.10.2026)
+        self.launcher_d()
+        self.tv.signal = "signal          none\n"
+        launcher = self.mod.Launcher()
+        self.assertTrue(launcher.open({}))
+        n = len(self.osds.lines)
+        self.osds.answer = lambda line: "ok status\nlauncher        closed\npage            closed\n" if line == "status" else "ok\n"
+        self.tv.signal = "signal          1920x1080p59.94, 148.4 MHz (last measured)\n"
+        launcher.header_follow({})
+        self.assertFalse([l for l in self.osds.lines[n:] if l.startswith("launcher ") and ";" in l], self.osds.lines[n:])
+        self.assertIsNone(launcher.entries)                          # closed here too: no grab, no keys taken
+        self.osds.answer = lambda line: "ok status\nlauncher        open\n" if line == "status" else "ok\n"
+        launcher2 = self.mod.Launcher()
+        self.tv.signal = "signal          none\n"
+        self.assertTrue(launcher2.open({}))
+        self.tv.signal = "signal          1920x1080p59.94, 148.4 MHz (last measured)\n"
+        launcher2.header_follow({})
+        self.assertEqual(self.osds.lines[-1], "launcher 0;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby")   # open there: it follows
 
     def test_home_opens_the_launcher_and_holds_the_remote(self):
         self.launcher_d()

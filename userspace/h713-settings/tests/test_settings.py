@@ -1947,6 +1947,21 @@ class Look(LookKit):
     """What the owner asked for on 15.10.: everything inside a safe margin of 5 %, an opaque calm page, one pill over the picture
     while a value that is judged on the picture is adjusted. The picture of every state is the canvas of --test as PAM."""
 
+    def test_a_choice_leaves_nothing_of_the_rows_below_it(self):
+        # Mythos 19.10.2026 (gamma-ui): opening Picture mode's five options left the rows below them (Aspect ratio, Reset picture)
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        b = self.box().start("Picture", size="%dx%d" % (self.W, self.H))
+        b.keys("ok", *["down"] * 5, "ok")                           # Picture mode: five options over eight rows
+        self.assertIn("focus choice", b.dump())
+        data = self.snap(b, "choice")
+        ground = struct.pack("BBBB", 11, 14, 13, 255)
+        u = self.H / 1080
+        y0, y1 = int((202 + 94 * 5 - 54) * u) + 1, int(890 * u) - 1  # below the fifth option down to the note
+        x0, x1 = int(690 * u) + 1, int(1830 * u) - 1
+        stray = sum(data[(y * self.W + x) * 4:(y * self.W + x) * 4 + 4] != ground for y in range(y0, y1) for x in range(x0, x1))
+        self.assertEqual(stray, 0, "pixels of the rows below the options are still on the page")
+
     def test_a_shorter_area_leaves_nothing_of_the_longer_one(self):
         # Marco 19.10.2026: Reset in Colour, then White balance showed two "Reset" rows - the fourth was Colour's, never cleared
         if not any(f and os.path.exists(f) for f in FONTS):

@@ -380,7 +380,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Stellungen in der Antwort von `ctl wb`), dann fallen die Kopien in h713-settings (rows.c) und h713-panel (Python) weg und die Offset-Lücke
       (Offsets lesen, sechs Zahlen schreiben) ist zu - beim nächsten Anfassen von color.c. Marcos Blick auf den Reiter Colour im Panel (:8080, Handy
       und PC); G-EU: Reiter Colour nachmessen (Zeile in panel-farbe/BERICHT §6).
-- [ ] 2.114 **Launcher öffnet sich nach einem Neustart von h713-osd beim nächsten Signalwechsel von selbst** (Mythos 19.10., aus countdown-b, Ursache
+- [x] 2.114 (erledigt 20.10.2026, cbfdb4d, Mythos go; am Gerät nicht nachgestellt) **Launcher öffnet sich nach einem Neustart von h713-osd beim nächsten Signalwechsel von selbst** (Mythos 19.10., aus countdown-b, Ursache
       gelesen): header_follow() in h713-keys definiert den Launcher bei einem Signalwechsel neu, solange h713-keys ihn für offen hält; nach einem
       h713-osd-Neustart (Deploy, Absturz) steht dort "closed" -> h713-osd öffnet ihn. Fix ~5 Zeilen: vor dem Neudefinieren `ctl status` lesen, bei
       "closed" entries/snap aufgeben; allgemein den Launcher-Zustand abgleichen, wenn der Socket von h713-osd neu entsteht. Kosmetisch: nosig_sync
@@ -389,7 +389,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Marcos Blick an der Wand (Stufen, Auto mit Bildmodus, ob die zweizeiligen Sätze in der Pille zu viel sind), der
       blockierende LUT-Commit im Warp-Thread (<=40 ms) - erst messen, ob er ein Bild kostet, dann ggf. NONBLOCK (Mythos 19.10.).
       G-EU: - [ ] **G-EU: Gamma und Farbtemperatur nachmessen** (gamma-kern, am HY310 gemessen am 19.10.2026, nicht am HY300PRO-G-EU; Memory "HY310-Messung braucht G-EU-Nachmessung"): h713-tv und h713-pq aus `medien-gamma-kern` aufspielen (Sicherung zuerst: h713-tv, `h713_pq/{cli,output,tse}.py`, `werte`, `tv.conf`). (1) Die TSE des G-EU lesen: `h713-pq --data /etc/h713/tvconfig gamma --export-slots /tmp/s.bin --project 0x34 --tse /boot/mips/ProjectID_0x0034.TSE` - welche Zustände (erwartet normal, cool, warm), die Endpunkte je Kanal (HY300 Pro: 4087/3863/3459 bei warm), und `bm-gamma/emu/pow_abstand.py
-- [ ] 2.116 Klein (Mythos 19.10., aus gamma-ui): h713-settings, F_CHOICE-Zweig von ui_draw löscht die Zeilenplätze ab r->n nicht - beim Öffnen einer
+- [x] 2.116 (erledigt 20.10.2026, 8e15e3c, Mythos go) Klein (Mythos 19.10., aus gamma-ui): h713-settings, F_CHOICE-Zweig von ui_draw löscht die Zeilenplätze ab r->n nicht - beim Öffnen einer
       Optionsliste bleiben die Zeilen darunter stehen (Geisterzeilen wie 35e9d19, nur für Listen; mit neun Zeilen zusätzlich im anderen Raster).
       Fix ~3 Zeilen (clear_box ab row_y(r->n) bei all||D_RIGHT) plus Pixeltest.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
