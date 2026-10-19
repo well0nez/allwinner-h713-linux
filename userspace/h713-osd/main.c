@@ -281,6 +281,7 @@ static void conf_load(void)
 static struct warp_conf geom = { 0 };
 static double m[16], hinv[9];
 static bool m_valid, m_identity = true;
+static bool moved[2];			/* per buffer: a new matrix since it was last put - what it holds stands where the old one put it */
 
 static void geom_load(void)
 {
@@ -300,7 +301,7 @@ static void geom_load(void)
 	if (warp_inverse(k, hinv)) {
 		memcpy(m, k, sizeof(m));
 		m_valid = true;
-		lau.wipe[0] = lau.wipe[1] = true;	/* the launcher's footprint on the panel moved */
+		moved[0] = moved[1] = true;	/* the footprint of the launcher, of a page, on the panel moved */
 	}
 }
 
@@ -406,7 +407,7 @@ static void tv_drop(void)
 		tv.dmabuf[i] = -1;
 		memset(tv.box[i], 0, sizeof(tv.box[i]));
 		memset(lau.held[i], 0, sizeof(lau.held[i]));
-		lau.live[i] = lau.wipe[i] = false;
+		lau.live[i] = lau.wipe[i] = moved[i] = false;
 		page.live[i] = false;
 		rows_set(page.dirty[i], 0, page.open ? canvas.h : 0);	/* the next claim puts the whole page */
 	}
@@ -1152,12 +1153,39 @@ static int lau_put(int b, bool skew)
 	return area;
 }
 
-/* the launcher's pixels out of buffer b: the page covers all of it, straight or through the matrix */
-static void lau_wipe(int b)
+/*
+ * Buffer b cleared, and with it every record of what it holds: the launcher's tiles, the page's rows (all of them to be put again
+ * while it is open), the popups' rectangles. One wipe for all of them: the launcher and the page share the two buffers, and a wipe
+ * that forgets one record leaves it claiming pixels that are gone - the next put then puts only what changed into an empty buffer
+ * (19.10.2026: the page's wipe left the launcher's tiles recorded, and a move after the settings page put two tiles of the launcher
+ * on the wall, the rest of it transparent).
+ */
+static void buf_wipe(int b)
 {
 	memset(tv.map[b], 0, (size_t)tv.pitch * tv.h);
+	memset(tv.box[b], 0, sizeof(tv.box[b]));
 	memset(lau.held[b], 0, sizeof(lau.held[b]));
 	lau.live[b] = lau.wipe[b] = false;
+	page.live[b] = false;
+	rows_set(page.dirty[b], 0, page.open ? canvas.h : 0);
+}
+
+/* why buffer b is to be cleared before a put (NULL: it need not be): it holds pixels that nothing puts again - the launcher's or the
+ * page's, closed, drawn through another matrix, or for a picture that turned warped or straight. Asked by every put, the refresh's and
+ * the idle time's alike. */
+static const char *buf_stale(int b, bool skew)
+{
+	if (!lau.live[b] && !page.live[b])
+		return NULL;
+	if (moved[b])
+		return "a new geometry";
+	if (lau.live[b] && (lau.wipe[b] || !lau.open))
+		return lau.open ? "another launcher" : "the launcher closed";
+	if (page.live[b] && !page.open)
+		return "the page closed";
+	if ((lau.live[b] && lau.skew[b] != skew) || (page.live[b] && page.skew[b] != skew))
+		return "the picture under it turned warped or straight";
+	return NULL;
 }
 
 /* does buffer b lack a tile in its current version? */
@@ -1217,14 +1245,6 @@ static bool page_owes_much(void)
 	return page.open && rows * 3 > canvas.h;
 }
 
-/* the page's pixels out of buffer b: the whole buffer (through the matrix they are everywhere), and all of it again to put */
-static void page_wipe(int b)
-{
-	memset(tv.map[b], 0, (size_t)tv.pitch * tv.h);
-	page.live[b] = false;
-	rows_set(page.dirty[b], 0, page.open ? canvas.h : 0);
-}
-
 static void buf_sync(int fd, unsigned long long flags)
 {
 	struct dma_buf_sync s = { flags };
@@ -1241,11 +1261,12 @@ static void lau_prefill(void)
 	double t0 = now_s();
 	int px;
 
-	if (!lau.open || lau.nosig || tv.fd < 0 || !tv.shown || !lau_stale(b))
+	if (!lau.open || lau.nosig || tv.fd < 0 || !tv.shown || (!lau_stale(b) && !buf_stale(b, skew)))
 		return;		/* (the page without a signal does not change: nothing to get ready) */
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE);
-	if (lau.live[b] && (lau.wipe[b] || lau.skew[b] != skew))
-		lau_wipe(b);
+	if (buf_stale(b, skew))
+		buf_wipe(b);	/* the closed page's pixels too: the next key must not find them (and wipe the launcher with them) */
+	moved[b] = false;
 	px = lau_put(b, skew);
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE);
 	if (trace)
@@ -1319,18 +1340,14 @@ static void refresh(void)
 	last.ask = (now_s() - t0) * 1e3;	/* the question to h713-tv: its loop may be in a warp frame */
 	t0 = now_s();
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE);
-	bool wiped_lau = lau.live[b] && (lau.wipe[b] || !lau.open || lau.skew[b] != skew);
-	bool wiped_page = page.live[b] && (!page.open || page.skew[b] != skew);
+	const char *why = buf_stale(b, skew);
 
 	if (trace)		/* what this refresh does to which buffer: a wipe of the buffer on the wall would show what lies under it */
 		info("trace: refresh into buffer %d (the other is on the wall: %s), picture \"%s\", %s, %s%s%s", b, tv.shown ? "yes" : "no",
-		     answer, skew ? "pre-distorted" : "straight", last.cover ? "cover" : "no cover",
-		     wiped_lau ? (lau.wipe[b] ? ", launcher wiped (new geometry)" : !lau.open ? ", launcher wiped (closed)" : ", launcher wiped (skew)") : "",
-		     wiped_page ? ", page wiped" : "");
-	if (wiped_lau)
-		lau_wipe(b);	/* closed, a new geometry, or the picture under it turned warped or straight */
-	if (wiped_page)
-		page_wipe(b);	/* the page is gone, or the picture under it turned warped or straight */
+		     answer, skew ? "pre-distorted" : "straight", last.cover ? "cover" : "no cover", why ? ", wiped: " : "", why ? why : "");
+	if (why)
+		buf_wipe(b);
+	moved[b] = false;	/* what is put now goes through the matrix of now */
 	for (int r = 0; r < 2; r++)	/* what this buffer showed before */
 		for (int y = tv.box[b][r][1]; y < tv.box[b][r][1] + tv.box[b][r][3]; y++)
 			memset((char *)tv.map[b] + (size_t)y * tv.pitch + (size_t)tv.box[b][r][0] * 4, 0,

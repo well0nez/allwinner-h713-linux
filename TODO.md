@@ -352,6 +352,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       falls das nicht geht: die Pille misst die Neigung einmal beim Öffnen. Klein dazu: `rows_flush` in h713-settings wartet auf jeden laufenden
       Auftrag, nicht nur auf einen Turn-Lauf (sonst bleibt ein in den letzten 2 s gedrückter Wert unangewendet, wenn beim Beenden Measure again now
       oder der Autofokus läuft); die mitgelieferte `keystone.conf` bekommt die Zeile `turn_to_wall`; `h713-panel` kennt den Schlüssel nicht (nur nach Mockup).
+- [ ] 2.106 **osd-loch am HY310 messen** (Mythos 19.10.: go, Gerätemessung vor rend7): `arbeit/medien/osd-loch/BERICHT.md` §8 - Kontrollarm mit
+      h713-osd f8079711, dann 4227af5b; nach jedem Zug ein Bild mit `ebenen.py` (liest den DRM-Puffer der OSD-Ebene), ausgewertet mit `loch.py`;
+      dazu einmal die Ecken ändern, während die Settings-Seite offen ist (zweiter Fund). Marcos Augen: jeder Zug im Launcher nach der Seite deckend.
+- [ ] 2.107 **osd-loch am HY300PRO-G-EU nachmessen**: mit seinem eigenen Trapez (bei Bypass einmal Turn to wall 24 und zurück) Launcher ->
+      Settings -> Back -> Launcher -> vier Züge, je ein `ebenen.py`-Bild gegen das Ganzbild (`loch.py`, Skripte `arbeit/medien/osd-loch/skripte/`);
+      einmal Ecken ändern bei offener Settings-Seite. `make test` von h713-osd dauert seit test_wall ~4 min (Kürzung später möglich).
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

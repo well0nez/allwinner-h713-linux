@@ -39,6 +39,10 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   columns of its neighbours around it, writing only the panel pixels whose source lies in the tile (and only the pixels that count):
   otherwise the bilinear sample at its edge sees nothing outside and a seam or a hole shows at every boundary - in an opaque page a
   hole shows the picture. Volume, mute and the power countdown are drawn into the page and ride in the tiles they touch.
+  The launcher and the settings page share the two buffers: a buffer is cleared for all it holds at once, the idle time's fill clears
+  a closed page's pixels before it puts the launcher, and a new keystone makes a page's pixels stale like the launcher's (19.10.2026,
+  HY310 turned about 24 degrees to the wall: after the settings page every second move of the launcher left all but two of its tiles
+  transparent, the ground pitch black; host tests `tests/test_wall.py`, at the box's panel through strong keystones).
   `H713_OSD_TRACE=1` adds a journal line per refresh and prefill with wall-clock times.
 
 ## The page without a signal
@@ -84,7 +88,9 @@ answers after `osd show`: without an HDMI signal a page is shown over black (`os
 when that warps; over the straight ring too, which it hides - the second before the warp's claim at every start, so the launcher no longer jumps, `doku/214` §3), and the launcher opens there too (measured 16.10.2026: Home over the console puts the launcher on the wall, Back brings the console back, `doku/213` §1). `ok waiting` means h713-tv has no picture at the moment and keeps the page for its return (the autofocus
 has the panel, a source changes its mode). Popups and the mute badge are not drawn while a page is open; the page covers the
 panel, and a launcher does not open over it. `page` in `ctl status` says `closed`, `open (opaque ...)` or `open (transparent pixels ...)` - the first word stays `open`.
-Host tests: `tests/test_page.py`.
+A new keystone while a page is open (its corners, the turn to the wall, the automatic after a move) puts the page whole through the new
+matrix at the next refresh; before 19.10.2026 only the rows shown after it were, and the rest stood where the old one had put it.
+Host tests: `tests/test_page.py`, `tests/test_wall.py`.
 
 **`cover`, and what it does (17.10.2026):** the launcher and a page without a single transparent pixel are opaque - they are
 shown with `osd show N cover`, and h713-tv pauses the mode under them: h713-warp draws nothing, the HDMI sound is muted, both

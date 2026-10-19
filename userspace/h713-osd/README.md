@@ -90,14 +90,24 @@ other's edge with a half-transparent one; and only the pixels that count are wri
 range test turned down, belong to a neighbouring tile (the tiles meet along slanted lines through the matrix) and a zero written
 there is a hole in an opaque page (found by the move-equals-fresh test when the tiles were split left and right). When the matrix
 changes, the picture under the page turns warped or straight, h713-tv comes back or the launcher closes, the buffers are cleared
-(the page covers all of a buffer) and the tiles are put again. `H713_OSD_FONT` names the font (the image's Quicksand by default),
+(the page covers all of a buffer) and the tiles are put again. The launcher and the pages of the page channel share the two buffers,
+so a buffer is cleared in one way for all it holds (`buf_wipe`: the launcher's tiles, a page's rows and the popups' places are
+forgotten together), every put asks the same question whether it must clear first (`buf_stale`), and the idle time's fill clears a
+closed page's pixels before it puts the launcher. On 19.10.2026 (HY310, turned about 24 degrees to the wall) a clear for the closed
+settings page left the launcher's tiles recorded: every second move after the page put two tiles into an empty buffer, the rest of the
+launcher transparent - pitch black on the wall, where the picture under an opaque page is off. A new matrix makes the pixels of a page
+stale like the launcher's (the corners and the turn to the wall are set on the settings page, the automatic after a move rewrites
+warp.conf under any page): the next refresh puts the page whole through the new one. `H713_OSD_FONT` names the font (the image's Quicksand by default),
 `H713_OSD_CLOCK` a fixed header time and `H713_OSD_TRACE=1` a journal line per refresh and per prefill with wall-clock times (the
 tests; the key-to-wall measurement of 15.10.2026, doku/212).
 
 ## Building and testing
 
 In the container `h713-build`: `make cross SYSROOT=...` for the board (clang, as h713-tv is built), `make host`
-and `make test` for the host tests (`tests/test_osd.py`, 11 tests, ~11 s; `tests/test_launcher.py`, 10 tests with a font: `OSD_TEST_FONT`): a fake h713-tv on a Unix socket that
+and `make test` for the host tests (`tests/test_osd.py`, 11 tests, ~11 s; `tests/test_launcher.py`, 10 tests with a font: `OSD_TEST_FONT`;
+`tests/test_wall.py`, 5 tests with the font at the box's 1920x1080 through the HY310's keystone and stronger ones, ~2.5 min: the launcher
+and a page cut into pieces like the settings', walked through moves, areas and the ways between them, every step held against the same
+page put whole, and a new keystone under each): a fake h713-tv on a Unix socket that
 hands memfds over instead of dma-bufs; the tests read where the overlay landed in the buffer - bottom centre,
 pre-distorted inward over a keystone, mirrored in rear mode, following a new warp.conf, the badge staying and
 coming back after h713-tv restarts, the badge drawn again when the picture under it turns warped or straight, and
