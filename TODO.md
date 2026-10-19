@@ -347,7 +347,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.104 **Turn to wall am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): `once --apply`-Zeit und Sensorlesezeit (HY310 1,93 s / 1,8 s),
       `turn_to_wall` setzen und `h713-warp ctl status` zurücklesen, ein Warmstart, danach Drehung 0 und die Ecken wie vorgefunden; Frageliste 2.103
       ohne Kamera.
-- [ ] 2.105 **Neigungssensor über den IIO-Puffer lesen** (Mythos 19.10.: st_accel/sc7a20 schaltet den Sensor je sysfs-Rohwert ein und wartet
+- [x] 2.105 **Neigungssensor über den IIO-Puffer lesen** (erledigt 19.10.2026, `arbeit/medien/iio-puffer/`, Mythos go: drei Defconfig-Zeilen IIO_BUFFER/IIO_SW_TRIGGER/IIO_HRTIMER_TRIGGER, Satz 1,43->0,14 s, once --apply 1,94->0,74 s, Salve 3,95->2,3 s; watch pausiert 0,5 s; Rest 2.108) (Mythos 19.10.: st_accel/sc7a20 schaltet den Sensor je sysfs-Rohwert ein und wartet
       bootime/odr, ~45 ms je Lesung, 30 Lesungen = 1,8 s; gemessen 90 Lesungen 4,1 s): `buffer/enable` + hrtimer-Trigger, `/dev/iio:deviceN`, Sensor
       bleibt an - `once --apply` ~0,3 s statt 1,9 s, `watch` gleich mit (seine Startzeile "a reading every ~0.3 s" stimmt heute nicht). Rückfall,
       falls das nicht geht: die Pille misst die Neigung einmal beim Öffnen. Klein dazu: `rows_flush` in h713-settings wartet auf jeden laufenden
@@ -359,6 +359,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.107 **osd-loch am HY300PRO-G-EU nachmessen**: mit seinem eigenen Trapez (bei Bypass einmal Turn to wall 24 und zurück) Launcher ->
       Settings -> Back -> Launcher -> vier Züge, je ein `ebenen.py`-Bild gegen das Ganzbild (`loch.py`, Skripte `arbeit/medien/osd-loch/skripte/`);
       einmal Ecken ändern bei offener Settings-Seite. `make test` von h713-osd dauert seit test_wall ~4 min (Kürzung später möglich).
+- [ ] 2.108 Klein, aus iio-puffer (Mythos 19.10.): `average_samples` als Vorgabe 20 statt 10 (Puffer-Tripel streuen in z doppelt so stark; Winkel
+      0,25 statt 0,19 Grad, +0,1 s; Marcos Wert 10 nicht ändern); `in_timestamp_en` auf 0 setzen; `once --apply` 0,74 s -> ~0,4 s nur, wenn
+      Marcos Augentest (2.103) das Nachlaufen stört: ein Warp-Aufruf statt acht, Modellsuche cachen. GERAETESTAND: der HY310 trägt seit 19.10.
+      einen gemischten Modulbaum (rend6 + vier IIO-Module zum FIT e8c68904) - rend7 aus build-all von vorn.
+- [ ] 2.109 **IIO-Puffer am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): Kernel mit 5d32cbc, `h713-keystone read`/`once --apply`-Zeiten,
+      Journal ohne sysfs-Rückfall, `watch` nach einer Bewegung; ohne Beschleunigungssensor dort (falls keiner): Einheit übersprungen, nichts geändert.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

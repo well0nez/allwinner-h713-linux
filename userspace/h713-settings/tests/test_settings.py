@@ -987,6 +987,21 @@ class KeystoneTurn(Base):
         self.assertEqual(self.turns(b), ["1", "3"])
         self.assertIn("turn_to_wall = 3\n", b.read("keystone.conf"))
 
+    def test_when_the_page_ends_during_another_job_the_last_value_is_still_applied(self):
+        """Measure again now is under way when Back is pressed: it has read the configuration already, so the turn pressed
+        after it has to be run once it is over, by the page that waits for it. (It stayed in the file, unapplied, while the page
+        waited only for a run of its own.)"""
+        b = self.box(extra_env={"JOBTIME": "0.6"})
+        b.write("keystone.conf", self.CONF + "turn_to_wall = 0\n")
+        b.start("Keystone")
+        b.keys("ok", "down", "ok")                              # Measure again now
+        self.assertIn('Measure again now action "Measuring..."', b.dump())
+        b.keys("down", "right")                                 # Turn to wall, one press: it waits for the measurement
+        b.dump()
+        b.finish()
+        self.assertTrue(wait_for(lambda: len(b.tool_log("keystone")) == 2 and len(self.turns(b)) == 2, 4))
+        self.assertEqual(self.turns(b), ["0", "1"])
+
     def test_reset_keystone_takes_the_turn_back_and_does_not_run_the_automatic(self):
         b, go = self.open_turn(self.CONF + "turn_to_wall = 12\n")
         b.warp.v["tl_x"] = 40

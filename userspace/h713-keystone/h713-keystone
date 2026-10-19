@@ -51,8 +51,10 @@ camera, and it stays where it is put until it is changed.
 from __future__ import annotations
 
 import argparse
+import errno
 import os
 import re
+import select
 import signal
 import subprocess
 import sys
@@ -73,8 +75,11 @@ CONF_PATH, REF_PATH = "/etc/h713/keystone.conf", "/etc/h713/keystone-ref"
 IDEAL_TEXT = "ideal (0, 0, 1 g) - h713-keystone reference refines it"
 REFUSED_TEXT = "refused - ideal (0, 0, 1 g) applies, h713-keystone status says why"
 LAST_AUTO_PATH = "/var/lib/h713-keystone/last-auto"   # the set the automatic last applied
-# $H713_SYS replaces /sys (the tests run the not-present path end to end)
-IIO_DIR = os.environ.get("H713_SYS", "/sys") + "/bus/iio/devices"
+# $H713_SYS replaces /sys, $H713_DEV /dev (the tests run the not-present path end to end)
+SYS = os.environ.get("H713_SYS", "/sys")
+IIO_DIR = SYS + "/bus/iio/devices"
+DEV_DIR = os.environ.get("H713_DEV", "/dev")
+CONFIGFS = SYS + "/kernel/config"
 WARP_TOOL, G_M_S2 = "h713-warp", 9.80665
 FALLBACK_COUNTS_PER_G = 1000.0    # measured: in_accel_x_scale 0.009806 m/s2
 EXIT_ERROR, EXIT_NO_SENSOR, EXIT_NOT_LEVEL, EXIT_WARP = 2, 3, 4, 5
@@ -86,9 +91,26 @@ EXIT_CONFIG = EXIT_ERROR        # a configuration value out of its choices (the 
 AXES = {"x": 0, "y": 1, "z": 2}
 ZOOM_WIDTH = {0: 1920, 1: 1728, 2: 1440}          # AP2c 3, the aspect selector
 TURN_LIMIT = 30.0     # degrees to either side; the vendor chain is sound to 45, the picture is a third smaller by 30
+# The IIO buffer.  A sysfs read of in_accel_*_raw makes st_accel switch the
+# sensor on, wait for it to boot (bootime/odr) and switch it off again: about
+# 60 ms a value on the HY310, 1.8 s for the thirty values of one averaged
+# reading (19.10.2026).  With the buffer enabled the sensor stays on for the
+# burst and a timer trigger, made here through configfs, delivers a triple
+# every 1/rate seconds.  The sensor has no interrupt line to clock it.
+TRIGGER = "h713-keystone"      # the name of our hrtimer trigger
+SETTLE_SAMPLES = 3             # triples thrown away after the switch-on, they are not a pose yet
+BUFFER_TRIPLES = 32            # what the kernel keeps for us between two reads
+BUSY_WAIT_S = 3.0              # another reader has the node: wait for its burst this long
+BURST_MARGIN_S = 1.0           # a burst gets this much more than its samples need
+BURST_SETUP_S = 0.03           # what switching the buffer on and off costs, for the start line of watch
+SYSFS_VALUE_S = 0.06           # one sysfs value, measured: 1.8 s for thirty
+SCAN_TYPE = re.compile(r"(le|be):([su])(\d+)/(\d+)(?:X\d+)?>>(\d+)$")   # le:s12/16>>4
 # The loop's own pause.  One averaged reading already costs about 0.3 s at
 # 100 Hz, so this is a floor and not the sampling rate.
 POLL_S = 0.1
+# What `watch` waits between two readings.  A move is a change of 3 degrees that then stands still for 2 seconds, so a reading
+# every ~0.6 s finds it as well as one every 0.3 s; and the sensor is on, and the CPU busy, only for the 0.14 s of each reading.
+WATCH_PAUSE_S = 0.5
 # The eight insets in the APP order of AP2h (LT.x LT.y RT.x RT.y LB.x LB.y
 # RB.x RB.y) against the words h713-warp takes (KS4): `ctl keystone set CORNER
 # AXIS VALUE`, CORNER in tl tr bl br, AXIS in x y, per-mille inward.
@@ -107,6 +129,10 @@ class Error(Exception):
     def __init__(self, message, code=EXIT_ERROR):
         Exception.__init__(self, message)
         self.code = code
+
+
+class BufferUnavailable(Exception):
+    """The IIO buffer cannot deliver (this time): the reader says why and takes sysfs."""
 
 
 def _stderr(line):
@@ -274,10 +300,12 @@ def optics(conf):
 # --- the sensor -----------------------------------------------------------
 
 class Sensor(object):
-    """One IIO accelerometer, read through sysfs and averaged."""
+    """One IIO accelerometer, read through its IIO buffer when the kernel has
+    one and through sysfs when not, and averaged."""
 
-    def __init__(self, path, rate=None):
-        self.path = path
+    def __init__(self, path, rate=None, quiet=False):
+        self.path, self.quiet, self.said = path, quiet, None
+        self.dev_dir, self.configfs = DEV_DIR, CONFIGFS     # the tests point these at a directory
         self.name = _read(os.path.join(path, "name")) or "?"
         self.files = tuple(os.path.join(path, "in_accel_%s_raw" % a)
                            for a in ("x", "y", "z"))
@@ -320,6 +348,11 @@ class Sensor(object):
         A device that refuses the value says which ones it has."""
         path = os.path.join(self.path, "sampling_frequency")
         try:
+            if float(_read(path)) == rate:      # nothing to write; a write is refused while a burst has the buffer on
+                return rate
+        except (TypeError, ValueError, Error):
+            pass
+        try:
             with open(path, "wb") as fh:
                 fh.write(("%g\n" % rate).encode("ascii"))
         except (OSError, IOError) as exc:
@@ -330,9 +363,26 @@ class Sensor(object):
         return float(_read(path) or rate)
 
     def sample(self, count):
-        """`count` raw triples, averaged.  Each read waits for the device's
-        next sample, so this costs about 3 * count / rate seconds - 0.3 s for
-        the default ten triples at 100 Hz."""
+        """`count` triples, averaged.  Through the IIO buffer when the kernel
+        has one: the sensor is switched on for the burst and off again, and a
+        triple comes every 1/rate seconds.  Else, or when the buffer fails,
+        through sysfs, where every value switches the sensor on and waits for
+        it; said once per cause."""
+        why = self.buffer_problem()
+        if why is None:
+            try:
+                return self._buffer_sample(count)
+            except BufferUnavailable as exc:
+                why = str(exc)
+        if why != self.said and not self.quiet:
+            _stderr("warning: no IIO buffer (%s) - reading through sysfs, about %.1f s a reading"
+                    % (why, 3 * count * SYSFS_VALUE_S))
+        self.said = why
+        return self._sysfs_sample(count)
+
+    def _sysfs_sample(self, count):
+        """Each read waits for the device's next sample and, in st_accel,
+        switches the sensor on and off: about 60 ms a value."""
         total = [0.0, 0.0, 0.0]
         for _ in range(count):
             for index, path in enumerate(self.files):
@@ -341,6 +391,147 @@ class Sensor(object):
                     raise Error("%s: cannot be read" % path, EXIT_NO_SENSOR)
                 total[index] += float(int(text))
         return tuple(value / count for value in total)
+
+    def buffer_problem(self):
+        """Why the buffer cannot be used, or None.  A kernel without
+        CONFIG_IIO_BUFFER has no buffer/ and no scan_elements/ under the
+        device and no node in /dev."""
+        node = os.path.join(self.dev_dir, os.path.basename(self.path))
+        for what in (os.path.join(self.path, "buffer"), os.path.join(self.path, "scan_elements"), node):
+            if not os.path.exists(what):
+                return "%s is not there" % what
+        return None
+
+    def cadence(self, count, pause):
+        """(seconds from one reading to the next, how they are taken), for
+        the start line of watch."""
+        if self.buffer_problem() is None:
+            return (count + SETTLE_SAMPLES) / max(self.rate, 1.0) + BURST_SETUP_S + pause, "through the IIO buffer"
+        return 3 * count * SYSFS_VALUE_S + pause, "through sysfs, this kernel has no IIO buffer"
+
+    def _put(self, relative, text, base=None):
+        path = os.path.join(base or self.path, relative)
+        try:
+            with open(path, "wb") as fh:
+                fh.write((text + "\n").encode("ascii"))
+        except OSError as exc:
+            raise BufferUnavailable("%s: %s" % (path, exc.strerror or exc))
+
+    def _get(self, relative):
+        try:
+            text = _read(os.path.join(self.path, relative))
+        except Error as exc:
+            raise BufferUnavailable(str(exc))
+        if text is None:
+            raise BufferUnavailable("%s is not there" % os.path.join(self.path, relative))
+        return text
+
+    def _trigger(self):
+        """The sysfs node of our timer trigger; made through configfs the
+        first time (it stays: nothing needs it removed)."""
+        def find():
+            for entry in sorted(os.listdir(os.path.dirname(self.path))):
+                node = os.path.join(os.path.dirname(self.path), entry)
+                if entry.startswith("trigger") and _read(os.path.join(node, "name")) == TRIGGER:
+                    return node
+        node = find()
+        if node:
+            return node
+        base = os.path.join(self.configfs, "iio", "triggers", "hrtimer")
+        if not os.path.isdir(base) and os.path.isdir(self.configfs):
+            subprocess.run(["mount", "-t", "configfs", "configfs", self.configfs], capture_output=True)
+        try:
+            os.makedirs(os.path.join(base, TRIGGER), exist_ok=True)
+        except OSError as exc:
+            raise BufferUnavailable("no timer trigger (%s: %s) - CONFIG_IIO_HRTIMER_TRIGGER and configfs?"
+                                    % (base, exc.strerror or exc))
+        return find() or self._fail("the timer trigger %s did not appear" % TRIGGER)
+
+    @staticmethod
+    def _fail(why):
+        raise BufferUnavailable(why)
+
+    def _layout(self):
+        """(bytes of one scan, {axis: (offset, size, big endian, signed,
+        bits, shift)}) as the kernel packs the enabled channels: in index
+        order, each aligned to its own size."""
+        found = []
+        for axis in "xyz":
+            kind = SCAN_TYPE.match(self._get("scan_elements/in_accel_%s_type" % axis))
+            if not kind:
+                raise BufferUnavailable("the scan format of in_accel_%s is not one this tool reads" % axis)
+            found.append((int(self._get("scan_elements/in_accel_%s_index" % axis)), axis) + kind.groups())
+        layout, offset = {}, 0
+        for _, axis, order, sign, bits, store, shift in sorted(found):
+            size = int(store) // 8
+            offset = -(-offset // size) * size
+            layout[axis] = (offset, size, order == "be", sign == "s", int(bits), int(shift))
+            offset += size
+        widest = max(spec[1] for spec in layout.values())
+        return -(-offset // widest) * widest, layout
+
+    def _buffer_sample(self, count):
+        node = os.path.join(self.dev_dir, os.path.basename(self.path))
+        give_up = time.monotonic() + BUSY_WAIT_S
+        while True:         # the kernel lets one reader open the node: its burst is over before ours starts
+            try:
+                fd = os.open(node, os.O_RDONLY | os.O_NONBLOCK)
+                break
+            except OSError as exc:
+                if exc.errno != errno.EBUSY or time.monotonic() > give_up:
+                    raise BufferUnavailable("%s: %s" % (node, exc.strerror or exc))
+                time.sleep(0.01)
+        try:
+            trigger = self._trigger()
+            self._put("buffer/enable", "0")                   # one a killed run left on
+            self._put("sampling_frequency", "%g" % self.rate, trigger)
+            if self._get("trigger/current_trigger") != TRIGGER:
+                self._put("trigger/current_trigger", TRIGGER)
+            for axis in "xyz":
+                self._put("scan_elements/in_accel_%s_en" % axis, "1")
+            self._put("buffer/length", str(BUFFER_TRIPLES))
+            size, layout = self._layout()
+            self._put("buffer/enable", "1")
+            try:
+                rows = self._collect(fd, size, layout, count + SETTLE_SAMPLES)
+            finally:
+                try:
+                    self._put("buffer/enable", "0")           # the sensor is on only while it is read
+                except BufferUnavailable as exc:
+                    _stderr("warning: the accelerometer could not be switched off again: %s" % exc)
+        finally:
+            os.close(fd)
+        rows = rows[SETTLE_SAMPLES:]
+        return tuple(sum(row[i] for row in rows) / len(rows) for i in range(3))
+
+    def _collect(self, fd, size, layout, want):
+        data, rows = b"", []
+        end = time.monotonic() + want / max(self.rate, 1.0) + BURST_MARGIN_S
+        while len(rows) < want:
+            wait = end - time.monotonic()
+            if wait <= 0 or not select.select([fd], [], [], wait)[0]:
+                raise BufferUnavailable("%d of %d triples came - is the timer trigger running?" % (len(rows), want))
+            try:
+                chunk = os.read(fd, size * BUFFER_TRIPLES)
+            except BlockingIOError:
+                continue
+            except OSError as exc:
+                raise BufferUnavailable("the buffer: %s" % (exc.strerror or exc))
+            if not chunk:
+                raise BufferUnavailable("the buffer returned nothing")
+            data += chunk
+            while len(data) >= size and len(rows) < want:
+                rows.append(tuple(scan_value(data, layout[axis]) for axis in "xyz"))
+                data = data[size:]
+        return rows
+
+
+def scan_value(data, spec):
+    """One channel out of one scan, as the sysfs raw value would show it:
+    `le:s12/16>>4` is a 16 bit word, shifted right by 4, 12 bits, signed."""
+    offset, size, big, signed, bits, shift = spec
+    value = (int.from_bytes(data[offset:offset + size], "big" if big else "little") >> shift) & ((1 << bits) - 1)
+    return value - (1 << bits) if signed and value >> (bits - 1) else value
 
 
 def model_triple(raw, conf):
@@ -621,7 +812,7 @@ def open_sensor(args, conf, rate=True):
     """`rate` False leaves sampling_frequency alone, which is what a status
     that only reports wants."""
     return Sensor(Sensor.find(conf["iio_name"], args.device),
-                  conf["sampling_rate"] if rate else None)
+                  conf["sampling_rate"] if rate else None, args.quiet)
 
 
 def implausible(raw, sensor):
@@ -741,9 +932,10 @@ def do_watch(args, conf, ini):
     moving_since = None  # when the move began
     still_since = None   # when the readings became still again
     last = None
-    print("ok watch  after_move = %s, move %.1f degrees, settle %.1f s within %.1f degrees, a reading every ~%.1f s  %s"
+    every, how = sensor.cadence(conf["average_samples"], WATCH_PAUSE_S)
+    print("ok watch  after_move = %s, move %.1f degrees, settle %.1f s within %.1f degrees, a reading every ~%.2f s %s  %s"
           % (conf["after_move"], conf["move_degrees"], conf["settle_seconds"],
-             conf["settle_degrees"], conf["average_samples"] / 30.0, note))
+             conf["settle_degrees"], every, how, note))
     until = time.monotonic() + args.for_seconds if args.for_seconds else None
     bad = None
     while not stopped and (until is None or time.monotonic() < until):
@@ -816,7 +1008,7 @@ def do_watch(args, conf, ini):
                         except (OSError, subprocess.TimeoutExpired) as exc:
                             _stderr("warning: the focus command failed: %s" % exc)
         last = angles
-        deadline = time.monotonic() + POLL_S
+        deadline = time.monotonic() + WATCH_PAUSE_S
         while not stopped and time.monotonic() < deadline:
             time.sleep(0.02)
     return stop_code(stopped)
