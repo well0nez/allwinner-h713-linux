@@ -709,3 +709,6 @@
 #   0322 (his 0156): the H.264 bit reader's skip waits at most 1 ms per 32 bits, as H.265's does since 0308; an engine whose VLD
 #   never goes idle fails the job (cedrus_recover follows) instead of spinning a CPU in the request ioctl until a power cycle.
 0322-media-cedrus-h264-bound-the-skip-bits-wait.patch
+#   0323 (his 0157): the CAPTURE queue takes 64 buffers instead of vb2's default 32 (the VA driver's capture table holds 64;
+#   a client holding more than 32 decoded frames got ENOBUFS from CREATE_BUFS instead of back-pressure).
+0323-media-cedrus-allow-64-capture-buffers.patch

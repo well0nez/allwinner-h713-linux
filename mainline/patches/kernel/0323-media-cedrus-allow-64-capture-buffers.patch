@@ -1,0 +1,39 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: allow 64 capture buffers
+
+vb2 caps a queue at 32 buffers unless the driver says otherwise, and
+cedrus never did. A stateless decoder's CAPTURE queue holds every
+decoded frame a client keeps alive, not only the references, so a
+client that holds more than 32 at once gets ENOBUFS from
+VIDIOC_CREATE_BUFS and a failed decode rather than back-pressure. The
+VA driver's capture table holds 64, and the H713 AV1 decoder (hantro)
+already allows 64.
+
+Measured 2026-10-04 with a CREATE_BUFS probe at 1280x720: cedrus
+stopped at 32 (H.264 and H.265), the AV1 decoder at 64.
+
+cedrus has nothing sized by buffer index: its per-buffer loops run to
+vb2_get_num_buffers() and H.264 references use their own 18-entry
+positions, so raising the cap is the whole change.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/a4d6d5f38832ddee2e4619607bf3ba925dd7012d/patches/kernel/0157-media-cedrus-allow-64-capture-buffers.patch (0157-media-cedrus-allow-64-capture-buffers.patch, commit 1c35e30)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -1143,6 +1143,14 @@
+ 	dst_vq->timestamp_flags = V4L2_BUF_FLAG_TIMESTAMP_COPY;
+ 	dst_vq->lock = &ctx->dev->dev_mutex;
+ 	dst_vq->dev = ctx->dev->dev;
++	/*
++	 * vb2's default of 32 counts every decoded frame a client keeps
++	 * alive, not just the references: a GStreamer pipeline with queues
++	 * and a display sink holding frames ran out, and the 33rd buffer
++	 * failed with ENOBUFS instead of back-pressure. Match the VA
++	 * driver's capture table and the AV1 decoder's 64.
++	 */
++	dst_vq->max_num_buffers = 64;
+ 
+ 	return vb2_queue_init(dst_vq);
+ }
