@@ -392,6 +392,35 @@ class NoSignalTest(PageBase):
                 time.sleep(1.2)
                 self.assertTrue(self.shown() == page, "the page put whole")
 
+    def test_the_launcher_opened_over_no_signal_is_not_changed_by_the_countdown(self):
+        """only the page without a signal gives up its middle band: the launcher's rows stay"""
+        self.tv.picture = "none"
+        self.start_none()
+        self.launcher(line(1))
+        lau = self.shown()
+        self.countdown(3)
+        x0 = W * 35 // 100                                      # (the ring starts at 36.4 %)
+        self.assertEqual(self.inked(self.shown(), 0, x0), self.inked(lau, 0, x0), "the column is as it was")
+        time.sleep(1.1)
+        self.assertTrue(self.shown() == lau, "the launcher, the same pixels")
+
+    def test_the_page_that_opens_while_the_countdown_stands_is_quiet_from_its_first_picture(self):
+        """the launcher closes under a standing countdown and the page without a signal takes its place (the entry has most of its second to
+        go): its first picture is drawn without the words, and they come when the entry ends. The flag is compared at every drawing, so what
+        an earlier page left of it does not matter"""
+        self.tv.picture = "none"
+        self.start_none()
+        page = self.shown()
+        self.launcher(line(1))
+        self.countdown(3)
+        self.launcher("close", wait=0.3)
+        quiet = self.shown()
+        self.assertEqual(self.inked(quiet, 0, W * 35 // 100), 0, "no word of the page at the left of the ring")
+        self.assertGreater(self.inked(quiet, W * 35 // 100, W), 300, "the ring is still there")
+        self.assertIn("no-signal page  shown", self.status())
+        time.sleep(1.1)
+        self.assertTrue(self.shown() == page, "the page, the same pixels")
+
     def test_a_note_between_the_question_and_its_answer_is_taken(self):
         """h713-tv's note comes in the same write as the answer to "osd picture": the page opens, the volume rides in it"""
         self.start()
