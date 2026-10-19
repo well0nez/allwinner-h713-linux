@@ -1318,6 +1318,136 @@ class ColourTest(Bench):
         self.assertNotIn("colour", self.call("controls")["features"])
 
 
+# a stand-in h713-tv with a memory: `ctl get|set gamma` and `colour_temperature` as gamma.c answers them (docs/tools/h713-tv.md)
+TV_LOOK = r"""
+dir="DIR"
+absent() { [ -f "$dir/nocurves" ] && { echo "error $1 is not available: the board's curves were not read"; return 0; }; return 1; }
+gamma() { absent gamma && return; g=$(cat "$dir/gamma")
+  case "$g" in 0) n=1.8;; 1) n=2.0;; 2) n=2.1;; 3) n=2.2;; 4) n=2.4;; esac; echo "ok gamma = $g ($n)"; }
+temp() { absent colour_temperature && return; t=$(cat "$dir/ctemp")
+  case "$(cat "$dir/preset")" in cinema|hdr) a=warm;; vivid) a=cool;; *) a=normal;; esac
+  if [ "$t" = auto ]; then echo "ok colour_temperature = auto ($a)"
+  elif grep -qx "$t" "$dir/missing"; then echo "ok colour_temperature = $t (normal: this board has no $t curve)"
+  else echo "ok colour_temperature = $t"; fi; }
+case "$*" in
+  "ctl get gamma") gamma ;;
+  "ctl get colour_temperature") temp ;;
+  "ctl set gamma "*) set -- $*; echo "$4" > "$dir/gamma"; gamma ;;
+  "ctl set colour_temperature "*) set -- $*; echo "$4" > "$dir/ctemp"; temp ;;
+  "ctl preset "*) set -- $*; echo "$3" > "$dir/preset"; echo "ok preset $3 (the compiled-in table)" ;;
+  "ctl status brief") printf 'ok status\nmode            automatic\npreset          %s (from the device data)\n' "$(cat "$dir/preset")" ;;
+  *) echo "ok h713-tv $*" ;;
+esac
+"""
+
+
+class LookTest(Bench):
+    """Gamma and colour temperature: two verbs that are one `ctl set` each, and `look` that reads them.  h713-settings (rows.c) offers the
+    same two on the projector's own screen."""
+
+    def setUp(self):
+        super().setUp()
+        self.fake.script("h713-tv", TV_LOOK.replace("DIR", self.fake.dir))
+        self.state(3, "auto", "standard")
+
+    def state(self, gamma, ctemp, preset, missing=""):
+        for name, text in (("gamma", str(gamma)), ("ctemp", ctemp), ("preset", preset), ("missing", missing)):
+            with open(os.path.join(self.fake.dir, name), "w") as handle:
+                handle.write(text + "\n")
+
+    def tv(self):
+        return [c for c in self.fake.calls() if c.startswith("h713-tv")]
+
+    def test_every_level_and_every_temperature_is_one_ctl_set_of_a_fixed_word(self):
+        for level in panel.GAMMA_LEVELS:
+            self.fake.forget()
+            self.assertTrue(self.call("gamma", [int(level)])["ok"])        # the page sends a number, a text works too
+            self.assertTrue(self.call("gamma", [level])["ok"])
+            self.assertEqual(self.fake.calls(), ["h713-tv ctl set gamma " + level] * 2)
+        for name in panel.TEMPERATURES:
+            self.fake.forget()
+            self.assertTrue(self.call("colour_temperature", [name])["ok"])
+            self.assertEqual(self.fake.calls(), ["h713-tv ctl set colour_temperature " + name])
+        self.assertEqual(panel.GAMMA_LEVELS, ("0", "1", "2", "3", "4"))             # h713-tv's levels: 1.8 2.0 2.1 2.2 2.4
+        self.assertEqual(panel.TEMPERATURES, ("auto", "warm", "normal", "cool"))
+
+    def test_a_value_outside_its_list_starts_nothing(self):
+        for verb, args in (("gamma", [5]), ("gamma", [-1]), ("gamma", ["2.2"]), ("gamma", ["3; reboot"]), ("gamma", [True]),
+                           ("gamma", [""]), ("gamma", []), ("gamma", [3, 3]), ("gamma", [[3]]), ("gamma", [None]),
+                           ("colour_temperature", ["hot"]), ("colour_temperature", ["AUTO"]), ("colour_temperature", ["auto; reboot"]),
+                           ("colour_temperature", [True]), ("colour_temperature", [0]), ("colour_temperature", []),
+                           ("colour_temperature", ["warm", "cool"]), ("colour_temperature", [["warm"]]), ("look", [1, 2, 3, 4, 5])):
+            answer = self.call(verb, args)
+            self.assertFalse(answer["ok"], (verb, args, answer))
+            self.assertTrue(answer["line"].startswith("error"), answer)
+        self.assertEqual(self.fake.calls(), [])
+        with open(os.path.join(self.fake.dir, "gamma")) as handle:
+            self.assertEqual(handle.read().strip(), "3")
+
+    def test_look_says_what_is_set_and_what_auto_comes_to(self):
+        for gamma, name, ctemp, preset, now in ((3, "2.2", "auto", "standard", "normal"), (0, "1.8", "auto", "cinema", "warm"),
+                                               (4, "2.4", "auto", "vivid", "cool"), (2, "2.1", "cool", "cinema", "cool"),
+                                               (1, "2.0", "normal", "vivid", "normal"), (3, "2.2", "auto", "hdr", "warm")):
+            self.state(gamma, ctemp, preset)
+            self.assertEqual(self.call("look"), {"ok": True, "line": "ok look", "gamma": gamma, "gamma_name": name, "ct": ctemp,
+                                                 "ct_now": now, "preset": preset})
+
+    def test_what_a_tap_set_is_what_look_reads(self):
+        for level in (0, 4, 2, 3):
+            self.assertTrue(self.call("gamma", [level])["ok"])
+            self.assertEqual(self.call("look")["gamma"], level)
+        for name in ("warm", "cool", "normal", "auto"):
+            self.assertTrue(self.call("colour_temperature", [name])["ok"])
+            self.assertEqual(self.call("look")["ct"], name)
+
+    def test_the_preset_moves_auto_and_leaves_a_temperature_that_was_set(self):
+        self.assertTrue(self.call("preset", ["cinema"])["ok"])
+        self.assertEqual((self.call("look")["ct"], self.call("look")["ct_now"]), ("auto", "warm"))
+        self.assertTrue(self.call("colour_temperature", ["cool"])["ok"])
+        self.assertTrue(self.call("preset", ["standard"])["ok"])
+        self.assertEqual((self.call("look")["ct"], self.call("look")["ct_now"], self.call("look")["preset"]), ("cool", "cool", "standard"))
+
+    def test_a_board_without_the_curve_says_which_one_is_used(self):
+        self.state(3, "warm", "standard", missing="warm")
+        answer = self.call("look")
+        self.assertEqual((answer["ct"], answer["ct_now"]), ("warm", "normal"))
+
+    def test_look_only_reads_and_does_not_wait_for_the_lock(self):
+        self.assertTrue(self.panel.lock.acquire(False))        # a command is running
+        try:
+            self.assertTrue(self.call("look")["ok"])
+            with unittest.mock.patch.object(panel, "LOCK_WAIT_S", 0.1):
+                self.assertTrue(self.call("gamma", [1])["busy"])
+            self.assertTrue(all(" get " in c or c.endswith("status brief") for c in self.tv()), self.tv())
+        finally:
+            self.panel.lock.release()
+
+    def test_without_the_curves_look_is_refused_with_the_reason_and_the_tool_has_the_last_word(self):
+        open(os.path.join(self.fake.dir, "nocurves"), "w").close()
+        answer = self.call("look")
+        self.assertFalse(answer["ok"])
+        self.assertIn("not available (the board's curves were not read)", answer["line"])
+        self.assertFalse(self.call("gamma", [1])["ok"])                      # the tool refuses, its line is the answer
+        self.assertIn("is not available", self.call("colour_temperature", ["cool"])["line"])
+        # h713-tv not there at all: named, and nothing is sent
+        self.fake.forget()
+        gone = panel.Panel(tools=os.path.join(self.fake.dir, "nothing"), etc=self.etc)
+        answer = gone.call({"verb": "look"})
+        self.assertFalse(answer["ok"])
+        self.assertIn("h713-tv did not say what the gamma is", answer["line"])
+        self.assertEqual(self.fake.calls(), [])
+
+    def test_controls_say_whether_the_board_has_the_curves(self):
+        self.assertTrue(self.call("controls")["features"]["gamma"])
+        open(os.path.join(self.fake.dir, "nocurves"), "w").close()
+        self.assertFalse(self.call("controls")["features"]["gamma"])
+        self.fake.tool("h713-tv")                                   # h713-tv answers, but not with a gamma: unknown, the controls stay
+        self.assertNotIn("gamma", self.call("controls")["features"])
+
+    def test_look_names_a_preset_only_from_the_list(self):
+        self.state(3, "auto", "something-new")
+        self.assertEqual(self.call("look")["preset"], "")
+
 class PageTest(unittest.TestCase):
     def setUp(self):
         with open(PAGE, "rb") as handle:
@@ -1364,14 +1494,43 @@ class PageTest(unittest.TestCase):
         self.assertIn('act("wb_tune", [WB.cool, WB.magenta])', self.page)
         self.assertIn('act("cm_set", [PRIM, comp, s[comp]])', self.page)
         self.assertIn("s[comp] = +id(\"cm-\" + comp).value;", self.page)
-        for verb in ("wb_reset", "cm_reset"):
-            self.assertEqual(len(re.findall(r"act\(['\"]%s['\"]\)\.then\(loadColour\)" % verb, self.page)), 1, verb)
+        self.assertEqual(len(re.findall(r"act\(['\"]cm_reset['\"]\)\.then\(loadColour\)", self.page)), 1)
+        self.assertIn('<button onclick="wbReset()">Reset white balance</button>', self.page)        # wb_reset, and the temperature to Auto
+        self.assertIn('act("wb_reset")', self.page)
 
     def test_the_colour_tab_goes_with_the_calibration(self):
-        for anchor in ('id="tab-colour"', 'class="screen" id="colour"'):
-            self.assertIn('data-needs="colour"', re.search(r"<[^<>]*" + anchor + r"[^<>]*>", self.page).group(0), anchor)
-        self.assertIn('if (name === "colour" && READY) { loadColour(); }', self.page)
+        for anchor in ('id="tab-colour"', 'class="screen" id="colour"'):         # the tab is there with either: the calibration or the curves
+            self.assertIn('data-needs-any="colour gamma"', re.search(r"<[^<>]*" + anchor + r"[^<>]*>", self.page).group(0), anchor)
+        self.assertIn('<div class="card" data-needs="colour">\n    <h2>Colour</h2>', self.page)    # the primaries need the calibration alone
+        self.assertIn('if (name === "colour" && READY) { if (has("colour")) { loadColour(); } loadLook(); }', self.page)
         self.assertIn('if (id("colour").hidden && id("colour").classList.contains("on")) { show("projection"); }', self.page)
+
+    def test_the_picture_and_colour_tabs_offer_what_the_tool_checks(self):
+        gamma = re.search(r'<div class="seg" id="gm".*?</div>', self.page, re.S).group(0)
+        self.assertEqual(re.findall(r'id="gm-(\d)" onclick="gammaSet\((\d)\)">([\d.]+)<', gamma),
+                         [(n, n, w) for n, w in zip(panel.GAMMA_LEVELS, ("1.8", "2.0", "2.1", "2.2", "2.4"))])
+        temperatures = re.search(r'<div class="seg" id="ct".*?</div>', self.page, re.S).group(0)
+        self.assertEqual(re.findall(r"id=\"ct-(\w+)\" onclick=\"ctSet\('(\w+)'\)\">", temperatures),
+                         [(n, n) for n in panel.TEMPERATURES])
+        self.assertIn('act("colour_temperature", [name]).then(loadLook)', self.page)
+        self.assertIn('act("gamma", [level]).then(loadLook)', self.page)
+        self.assertIn('api("look")', self.page)
+        self.assertEqual(re.findall(r'GAMMAS = (\[[^\]]*\])', self.page), [json.dumps(["1.8", "2.0", "2.1", "2.2", "2.4"])])
+
+    def test_the_gamma_and_temperature_blocks_go_with_the_curves_and_the_fine_tuning_with_the_calibration(self):
+        for anchor in ('<h3>Colour temperature</h3>', '<h3>Gamma</h3>'):
+            block = self.page[:self.page.index(anchor)].rsplit("<div", 1)[1]
+            self.assertTrue(block.startswith(' data-needs="gamma">'), anchor)
+        self.assertIn('<div data-needs="colour">\n    <h3 data-needs="gamma">Fine tuning</h3>', self.page)
+        self.assertIn('e.hidden = !e.getAttribute("data-needs-any").split(" ").some(has);', self.page)
+        self.assertIn("if (!has(\"gamma\")) { return Promise.resolve(); }", self.page)      # no curves: nothing is asked, no error line
+
+    def test_the_page_decides_nothing_about_the_temperature(self):
+        # what auto comes to and the picture mode are read from the tool: the page holds no table of them
+        self.assertNotIn("CT_OF", self.page)
+        self.assertIn("LOOK.ct_now", self.page)
+        self.assertEqual(re.findall(r'press\("pr-" \+ p', self.page), ['press("pr-" + p'])
+        self.assertIn('["presets", c.presets, "preset", "pr-"]', self.page)
 
     def test_no_dash_characters(self):
         for path in (PAGE, TOOL, os.path.join(HERE, "test_h713_panel.py")):
