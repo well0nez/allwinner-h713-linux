@@ -150,6 +150,16 @@ class Config:
         return {CODES[w] for w in self.values["input_keys"].split()}
 
 
+def osd_launcher_closed():
+    """True when h713-osd says its launcher is closed (its `status` line "launcher        closed..."); not reachable or no such line:
+    False - then nothing is known, and nothing is decided on it."""
+    for line in (ctl(OSD_SOCK, "status", quiet=True) or "").splitlines():
+        w = line.split(None, 1)
+        if len(w) == 2 and w[0] == "launcher":
+            return w[1].startswith("closed")
+    return False
+
+
 def ctl(sock, line, quiet=False):
     """One command on a control socket, the answer as text; None when the daemon is not there."""
     try:
@@ -529,7 +539,7 @@ class Launcher:
         if self.osd("launcher %d;%s;%s" % (fall, now, self.rows), devices):
             self.sel = fall
 
-    def header_follow(self):
+    def header_follow(self, devices=None):
         """The header names the signal the launcher opened with. At the start the launcher comes before the signal, and over a standing
         1080p60 it said "HDMI no signal" until it was opened again (HY310, 18.10.2026). A changed signal defines the launcher anew,
         same rows, same selection; an entry whose header names no signal is left alone."""
@@ -543,6 +553,13 @@ class Launcher:
         self.snap["signal"] = signal
         now = e.get("now", e["label"]).replace("{signal}", signal)
         if now != old:
+            # The definition opens the launcher when h713-osd shows none: after a restart of h713-osd under the open launcher (a deploy,
+            # a crash) it said "closed" while this side still held it open, and the next change of signal opened it unasked (Mythos
+            # 19.10.2026). Ask first; closed there means closed here.
+            if osd_launcher_closed():
+                log("launcher closed: h713-osd shows none (restarted under it?) - the header is not sent", "<4>")
+                self.close(devices or {})
+                return
             ctl(OSD_SOCK, "launcher %d;%s;%s" % (self.sel, now, self.rows), quiet=True)
             log("launcher: the header follows the signal - %s" % now)
 
@@ -557,7 +574,7 @@ class Launcher:
         else:
             if not s and self.entries is not None and now >= self.sig_next:
                 self.sig_next = now + SIGNAL_RECHECK_S
-                self.header_follow()
+                self.header_follow(devices)
             if self.entries is not None and now - self.last > LAUNCHER_IDLE_S:
                 log("launcher closed: no key for %d s" % LAUNCHER_IDLE_S)
                 self.close(devices)
