@@ -3,7 +3,8 @@
 
 Scenario from FAKE_SCENARIO: found (default), none, pairfail, unconnected, empty, stale (a bond the remote
 has lost: a connect gives a link that drops right after, until the bond is removed and paired afresh),
-stalesilent (the same, but a connect gets no answer at all). As on the HY300PRO-G-EU (20.10.2026), the
+stalesilent (the same, but a connect gets no answer at all), staleneighbour (stale, and after the remove
+a second stock remote in pairing mode shows up in the scan before ours). As on the HY300PRO-G-EU (20.10.2026), the
 kernel's last connect to the stale remote outlives its removal and makes bluez' object again: after a
 remove the scan shows the remote only as "[CHG] ... RSSI", never "[NEW]". leftover: no bond, but bluez still
 keeps an unpaired object of the remote (seen in pairing mode within its temporary timeout), so a scan
@@ -22,9 +23,10 @@ REMOTE, FOREIGN, CTRL = "AA:BB:CC:DD:EE:01", "AA:BB:CC:DD:EE:02", "11:22:33:44:5
 scenario = os.environ.get("FAKE_SCENARIO", "found")
 log = os.environ.get("FAKE_LOG")
 attempts = 0
-connected = scenario not in ("unconnected", "connectfail", "flakyconnect", "abortonce", "stale", "stalesilent")
+connected = scenario not in ("unconnected", "connectfail", "flakyconnect", "abortonce", "stale", "stalesilent",
+                             "staleneighbour")
 bonded = scenario not in ("none", "empty", "leftover")
-stale = scenario in ("stale", "stalesilent")
+stale = scenario in ("stale", "stalesilent", "staleneighbour")
 brief = False       # a stale link: info sees it connected once, then it is gone
 raced = scenario == "leftover"      # the remote's unpaired object outlived its removal or its last scan
 
@@ -59,7 +61,8 @@ for raw in sys.stdin:
         if scenario == "speaker_advert":
             say("[NEW] Device %s JVIN Soundbar" % REMOTE)
         elif raced:
-            say("[NEW] Device %s Foo Remote" % FOREIGN, "[CHG] Device %s RSSI: 0xffffffc1 (-63)" % REMOTE)
+            say("[NEW] Device %s %s" % (FOREIGN, "Bluetooth remote" if scenario == "staleneighbour" else "Foo Remote"),
+                "[CHG] Device %s RSSI: 0xffffffc1 (-63)" % REMOTE)
         elif scenario not in ("none", "speaker"):
             say("[NEW] Device %s Foo Remote" % FOREIGN, "[NEW] Device %s BLE_X_RMC" % REMOTE)
     elif cmd == "scan off":

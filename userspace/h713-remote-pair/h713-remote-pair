@@ -222,8 +222,7 @@ def monitor_frames(source: str):
 class PairingOffers:
     """What the HCI monitor channel shows of the remotes, read in a thread: pairing adverts, other undirected
     adverts (a remote that wakes without a directed advert) and bluetoothd's Add Device commands, which put
-    the kernel's auto-connect back to any advert - the thread answers those for our remotes at once. bluez
-    shows none of it on D-Bus. event wakes watch."""
+    the kernel's auto-connect back to any advert. bluez shows none of it on D-Bus. event wakes watch."""
 
     def __init__(self, source: str, sink: str):
         self.seen, self.plain, self.rearmed, self.direct, self.random, self.quiet = {}, {}, {}, {}, {}, 0.0
@@ -245,8 +244,6 @@ class PairingOffers:
                             self.random[added[0]] = added[1]
                     if added and added[2] != ACTION_DIRECT:
                         self._note(self.rearmed, added[0], now)
-                        if added[0] in self.watched:        # bluetoothd re-armed a remote of ours: undo at once
-                            self.set_direct(added[0], added[1])
         except (OSError, AttributeError) as e:
             self.broken.set()
             print("note: no HCI monitor channel (%s): Left + Right cannot replace a stale bond, "
@@ -466,7 +463,7 @@ def cmd_watch(ctl: Ctl, a) -> int:
         offers.event.clear()
         # The bonded remotes of the last round first: a round of bluetoothctl costs 1.5 s.
         stale = offers.asking(d[0] for d in devs)
-        rc, paired = EXIT_OK, False
+        rc = EXIT_OK
         if not stale:
             devs = bonded(ctl, a.name)
             blind = offers.broken.is_set()     # without the monitor channel: bluetoothd's way, as before
@@ -477,7 +474,6 @@ def cmd_watch(ctl: Ctl, a) -> int:
             if not devs:
                 rc = run_pair(ctl, a.name, a.timeout, adopt=None if blind else offers.adopt)
                 offers.paired()
-                paired = rc == EXIT_OK
             elif (not offers.asking(d[0] for d in devs) and not any(d[2] for d in devs)
                     and (blind or offers.waking(devs[0][0]))):
                 # it woke with an undirected advert, which the kernel leaves alone now
@@ -490,11 +486,10 @@ def cmd_watch(ctl: Ctl, a) -> int:
             if rc == EXIT_OK:
                 rc = run_pair(ctl, a.name, a.timeout, stale, offers.adopt)
             offers.paired()
-            devs, paired = [], rc == EXIT_OK
+            devs = []
         if a.once:
             return rc
-        if not paired:      # after a pairing the new bond goes through a round at once
-            offers.event.wait(a.interval)
+        offers.event.wait(a.interval)
 
 
 def main(argv=None) -> int:

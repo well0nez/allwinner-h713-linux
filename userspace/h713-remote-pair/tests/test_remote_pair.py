@@ -388,6 +388,19 @@ class StaleBond(unittest.TestCase):
         self.assertIn("ok forgot " + REMOTE, r.stdout)
         self.assertIn("ok paired " + REMOTE, r.stdout)
 
+    def test_the_remote_that_asked_is_paired_not_a_neighbour(self):
+        """after the forget a second stock remote in pairing mode shows up first: only ours is paired"""
+        with tempfile.TemporaryDirectory() as d:
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            with open(hci, "wb") as f:
+                f.write(frames(adv_report(REMOTE)))
+            r = run(["watch", "--once", "--timeout", "5"], scenario="staleneighbour", log=log, monitor=hci)
+            with open(log) as f:
+                sent = f.read()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("cmd pair " + REMOTE, sent)
+        self.assertNotIn("cmd pair " + FOREIGN, sent)
+
     def test_the_advert_that_comes_during_a_reconnect_counts(self):
         """as on 20.10.2026: the stale link looks connected for a moment, the advert arrives meanwhile"""
         with tempfile.TemporaryDirectory() as d:
