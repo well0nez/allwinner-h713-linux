@@ -176,8 +176,8 @@ class Commands(unittest.TestCase):
         try:
             got, end = "", time.monotonic() + 10
             while "ok paired" not in got and time.monotonic() < end:
-                if select.select([p.stdout], [], [], 0.2)[0]:
-                    got += p.stdout.readline()
+                if select.select([p.stdout], [], [], 0.2)[0]:     # not readline: a second line kept in its
+                    got += os.read(p.stdout.fileno(), 4096).decode()    # buffer is invisible to select
             self.assertIsNone(p.poll(), "watch should still be running")
             self.assertIn("found " + REMOTE, got)
             self.assertIn("ok paired " + REMOTE, got)
