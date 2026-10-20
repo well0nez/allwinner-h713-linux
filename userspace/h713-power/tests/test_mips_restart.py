@@ -374,7 +374,7 @@ class Success(Base):
                             and "/dev/video2" in e and "user.notice" in e for e in ev), ev)
         self.assertIn("picture path back", err)                          # a person at the console sees it too
         self.assertEqual(sorted(os.listdir(b.p("active"))), ["h713-tv@video2.service", "h713-warp.service"])
-        self.assertNotIn("systemctl stop h713-wall-hold.service", ev)     # the holder waits for h713-tv's picture
+        self.assertNotIn("systemctl stop --no-block h713-wall-hold.service", ev)     # the holder waits for h713-tv's picture
 
     def test_a_holder_that_does_not_start_is_a_warning_and_the_picture_comes_back_all_the_same(self):
         b = self.box()
@@ -481,7 +481,7 @@ class DriverError(Base):
         self.assertNotIn("kernel bind hdmi-rx", ev)
         self.assertIn("systemctl start h713-warp.service", ev)
         self.assertFalse([e for e in ev if e.startswith("systemctl start h713-tv@")], ev)   # no node, no h713-tv
-        self.ordered(ev, HOLD, "systemctl start h713-warp.service", "systemctl stop h713-wall-hold.service")  # the console now
+        self.ordered(ev, HOLD, "systemctl start h713-warp.service", "systemctl stop --no-block h713-wall-hold.service")  # the console now
 
     def test_a_write_that_works_but_leaves_the_mips_failed(self):
         b = self.box(outcome="failed")
@@ -514,7 +514,7 @@ class NoNode(Base):
         self.assertTrue(any("shows no video node within 1 s" in e and "user.err" in e for e in ev), ev)
         self.assertEqual(ev.count("kernel bind hdmi-rx"), 1, ev)             # bound once, not again on the exit
         self.assertIn("systemctl start h713-warp.service", ev)
-        self.assertIn("systemctl stop h713-wall-hold.service", ev)           # no picture to come: the console back
+        self.assertIn("systemctl stop --no-block h713-wall-hold.service", ev)           # no picture to come: the console back
 
 
 class Abort(Base):

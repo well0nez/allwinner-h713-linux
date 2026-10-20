@@ -64,7 +64,7 @@ fin() {	# on every exit: the receiver back on a running MIPS, the services back
 	[ -z "$n" ] || systemctl start "h713-tv@$n.service" || { say warning "h713-tv@$n did not start"; [ "$rc" != 0 ] || rc=3; }
 	[ "$warp" = 0 ] || systemctl start h713-warp.service || { say warning "h713-warp did not start"; [ "$rc" != 0 ] || rc=3; }
 	[ "$rc" != 0 ] || { say notice "picture path back after $(( $(ms) - t0 )) ms: MIPS $s, /dev/$n"; dsp; }
-	[ "$rc" = 0 ] || systemctl stop "$HOLD" 2>/dev/null	# no picture to come: the console now, not after the holder's wait
+	[ "$rc" = 0 ] || systemctl stop --no-block "$HOLD" 2>/dev/null	# no picture to come: the console now, not after its wait
 	exit "$rc"
 }
 

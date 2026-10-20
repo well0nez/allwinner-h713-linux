@@ -6,7 +6,8 @@
  * plane off in one commit and gives the master back, and without one commits nothing; the start after a held restart leaves the
  * console dark only while the holder's framebuffer is on the plane and the console's framebuffer is known and real; no later look
  * at the plane (h713-osd's claim) takes the holder's framebuffer for the console's; the console's framebuffer is written down for
- * that start, never the holder's; an opaque page that goes while the straight ring is to come stays
+ * that start, never the holder's; the holder that ends with its framebuffer still up never takes it away before the console has the
+ * plane - fbcon when it may paint, else its own commit of the console's framebuffer once it gets the master; an opaque page that goes while the straight ring is to come stays
  * on the plane for the ring's own commit, and goes as before when no picture is to come.
  *
  *   test_hold      exit 0 when every case passed
@@ -31,6 +32,10 @@ static uint32_t primary_fb;		/* what drmModeGetPlane() says the primary plane ho
 static uint32_t real_fb = 46;		/* the one XRGB8888 framebuffer of the panel's size drmModeGetFB2() knows */
 static uint32_t real_format = DRM_FORMAT_XRGB8888;
 static int commits, masters;
+static int master_busy;			/* drmSetMaster() refuses this many more times (another master holds the card) */
+static bool apply;			/* a commit's FB_ID on the primary plane becomes what the plane holds */
+static int fbcon_backs;			/* hold_console_back() calls */
+static int fbcon_from;			/* ... from this call on fbcon may paint (no master): the console's framebuffer goes up; 0 never */
 static struct { uint32_t obj, prop; uint64_t val; } sets[64];
 static int nsets, pending;
 
@@ -52,9 +57,37 @@ int drmModeAtomicAddProperty(drmModeAtomicReqPtr req, uint32_t obj, uint32_t pro
 
 int drmModeAtomicCommit(int fd, drmModeAtomicReqPtr req, uint32_t flags, void *data)
 {
+	int i;
+
 	(void)fd, (void)req, (void)flags, (void)data;
 	commits++;
+	for (i = nsets - pending; apply && i < nsets; i++)
+		if (sets[i].obj == PRIMARY && sets[i].prop == prop_id(&osd.props, "FB_ID"))
+			primary_fb = (uint32_t)sets[i].val;
 	return 0;
+}
+
+drmModePlaneResPtr drmModeGetPlaneResources(int fd)
+{
+	static uint32_t ids[] = { PRIMARY, VIDEO };
+	drmModePlaneResPtr r = calloc(1, sizeof(*r));
+
+	(void)fd;
+	r->count_planes = 2;
+	r->planes = ids;
+	return r;
+}
+
+void drmModeFreePlaneResources(drmModePlaneResPtr r)
+{
+	free(r);
+}
+
+static void fake_console_back(void)
+{
+	fbcon_backs++;
+	if (fbcon_from && fbcon_backs >= fbcon_from)
+		primary_fb = real_fb;
 }
 
 void drmModeAtomicFree(drmModeAtomicReqPtr req)
@@ -65,6 +98,11 @@ void drmModeAtomicFree(drmModeAtomicReqPtr req)
 int drmSetMaster(int fd)
 {
 	(void)fd;
+	if (master_busy > 0) {
+		master_busy--;
+		errno = EBUSY;
+		return -1;
+	}
 	masters++;
 	return 0;
 }
@@ -256,6 +294,47 @@ int main(void)
 	primary_fb = 52;
 	osd.console_known = false;
 	check(osd_learn(&d) && osd.console_fb == 52, "no holder: whatever the plane holds, as before");
+
+	/* the holder's end with its framebuffer still up: the console takes the plane before the framebuffer goes */
+	{
+		struct timespec a, b;
+		long ms;
+
+		hold_console_back = fake_console_back;
+		apply = true;
+		put(cf, "46\n");
+		primary_fb = 77;
+		fbcon_from = 1;
+		fbcon_backs = 0;
+		c0 = commits;
+		hold_give_back(&d, 77);
+		check(primary_fb == 46 && fbcon_backs == 1 && commits == c0,
+		      "no master holds the card: fbcon takes the plane back, no commit of the holder's");
+		primary_fb = 77;
+		fbcon_from = 0;
+		fbcon_backs = 0;
+		master_busy = 30;		/* 1.5 s of commits around which h713-tv or h713-osd hold the master */
+		c0 = commits;
+		clock_gettime(CLOCK_MONOTONIC, &a);
+		hold_give_back(&d, 77);
+		clock_gettime(CLOCK_MONOTONIC, &b);
+		ms = (b.tv_sec - a.tv_sec) * 1000 + (b.tv_nsec - a.tv_nsec) / 1000000;
+		check(primary_fb == 46 && !hold_shown(d.fd, 77) && commits == c0 + 1 && masters == 0,
+		      "a master holds the card for 1.5 s: the holder waits, takes the master, puts the console's framebuffer up itself");
+		check(ms >= 1400 && fbcon_backs >= 2, "... it does not give up after a second with its framebuffer on the wall, and asks fbcon meanwhile");
+		unlink(cf);
+		primary_fb = 77;
+		fbcon_from = 3;			/* fbcon may paint from its third chance on (2 s) */
+		fbcon_backs = 0;
+		c0 = commits;
+		hold_give_back(&d, 77);
+		check(primary_fb == 46 && fbcon_backs == 3 && commits == c0,
+		      "no console's framebuffer written down: only fbcon can take the plane, and the holder waits for it");
+		fbcon_from = 0;
+		fbcon_backs = 0;
+		apply = false;
+		hold_console_back = console_restore;
+	}
 
 	/* the console's framebuffer written down for that start - never the holder's */
 	unlink(cf);

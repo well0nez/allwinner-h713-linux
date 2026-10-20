@@ -94,7 +94,11 @@ instead of the console, and the next `h713-tv` leaves it there until its own fir
 commit. `h713-tv` stops before `h713-warp`: a warp that goes first releases its claim, and `h713-tv` gave the panel to
 the console for the moment until its own stop. A run that ends without the picture path (exit 1 to 4) stops the holder,
 which gives the console back at once; otherwise the holder ends by itself once its framebuffer is off the wall, or after
-30 s with the console. A holder that does not start (`the wall is not held`) costs nothing but the old console.
+90 s with the console - above this tool's own budget (60 s for the receiver's node, then `h713-tv`'s start), so that a
+slow restart that succeeds never meets it. The holder never takes its framebuffer away while it is shown: the kernel would
+take it off the primary plane and the CRTC with it, and no `h713-tv` would start again. It lets the console take the plane
+first - fbcon when no master holds the card, else its own commit of the console's framebuffer once it gets the master - and
+waits for that without a limit. A holder that does not start (`the wall is not held`) costs nothing but the old console.
 
 ## How long it takes
 

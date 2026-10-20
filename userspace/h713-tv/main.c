@@ -2362,7 +2362,8 @@ static void osd_serve(struct display *d)
  * console dark while that framebuffer is on the plane (hold_adopt()), and its first picture or page takes the wall in its own
  * commit. A framebuffer belongs to the file that made it but any master may show it, which is how the console's own one is
  * shown under the picture. The holder ends when its framebuffer is on no plane any more; if nobody takes the wall within
- * HOLD_MAX_S, or it is told to stop, it gives the console back first: the console stays the view of last resort.
+ * HOLD_MAX_S, or it is told to stop, it gives the console back first: the console stays the view of last resort. It never takes
+ * its framebuffer away while that is shown (hold_give_back()).
  *
  * The console's framebuffer is learnt from the plane (osd_learn()), and after a held restart the plane holds the black one: so
  * the run that learns it writes it into CONSOLE_FB_FILE, and the next start takes it from there, checked against the card.
@@ -2371,7 +2372,8 @@ static void osd_serve(struct display *d)
 
 #define HOLD_FILE	"/run/h713-tv-state/hold"	/* "PID FB": the holder of the wall */
 #define CONSOLE_FB_FILE	"/run/h713-tv-state/console-fb"	/* the console's framebuffer, as osd_learn() found it */
-#define HOLD_MAX_S	30	/* nobody took the wall: the console after all */
+#define HOLD_MAX_S	90	/* nobody took the wall: the console after all - above the restart's own budget, its 60 s wait for the
+				 * receiver's node and h713-tv's start; a restart that fails stops the holder itself (h713-mips-restart) */
 #define HOLD_UNUSED_S	10	/* nobody put the black framebuffer up: no h713-tv was stopped for the restart */
 
 static const char *hold_file = HOLD_FILE;		/* the tests point these elsewhere */
@@ -2447,6 +2449,34 @@ static bool hold_take(struct display *d)
 	return true;
 }
 
+/* the console's framebuffer as CONSOLE_FB_FILE names it, if the card knows it, it is not black and it is XRGB8888 of the panel's
+ * size; 0 otherwise. GETFB2 hands a root caller a GEM handle per call: closed at once, or every call kept the buffer referenced */
+static uint32_t hold_console_known(struct display *d, uint32_t black)
+{
+	uint32_t con = 0;
+	drmModeFB2 *f;
+	FILE *cf;
+	bool ok;
+	int i;
+
+	if ((cf = fopen(console_fb_file, "r"))) {
+		if (fscanf(cf, "%u", &con) != 1)
+			con = 0;
+		fclose(cf);
+	}
+	f = con && con != black ? drmModeGetFB2(d->fd, con) : NULL;
+	ok = f && f->pixel_format == DRM_FORMAT_XRGB8888 && f->width == d->width && f->height == d->height;
+	for (i = 0; f && i < 4; i++)
+		if (f->handles[i] && (i == 0 || f->handles[i] != f->handles[0]))
+			drmCloseBufferHandle(d->fd, f->handles[i]);
+	if (f)
+		drmModeFreeFB2(f);
+	if (!ok)
+		warn("wall            the console's framebuffer is not known (%s: %u)", console_fb_file, con);
+
+	return ok ? con : 0;
+}
+
 /*
  * fb is the black one of a running holder: the console's framebuffer as CONSOLE_FB_FILE names it, if the card knows it and it is
  * the console's kind (XRGB8888, the panel's size; a page is ARGB8888); 0 otherwise - also when fb is not the holder's. Every
@@ -2456,26 +2486,12 @@ static bool hold_take(struct display *d)
  */
 static uint32_t hold_console_fb(struct display *d, uint32_t fb)
 {
-	uint32_t black = 0, con = 0;
-	drmModeFB2 *f;
-	FILE *cf;
-	bool ok;
+	uint32_t black = 0;
 
 	if (!fb || !hold_read(&black) || black != fb)
 		return 0;
-	if ((cf = fopen(console_fb_file, "r"))) {
-		if (fscanf(cf, "%u", &con) != 1)
-			con = 0;
-		fclose(cf);
-	}
-	f = con && con != fb ? drmModeGetFB2(d->fd, con) : NULL;
-	ok = f && f->pixel_format == DRM_FORMAT_XRGB8888 && f->width == d->width && f->height == d->height;
-	if (f)
-		drmModeFreeFB2(f);
-	if (!ok)
-		warn("wall            the console's framebuffer is not known (%s: %u)", console_fb_file, con);
 
-	return ok ? con : 0;
+	return hold_console_known(d, fb);
 }
 
 /* the start, after a held restart: the black framebuffer is on the plane and the console's is known - then no console */
@@ -2524,6 +2540,45 @@ static bool hold_shown(int fd, uint32_t fb)
 		drmModeFreePlaneResources(r);
 
 	return on;
+}
+
+/*
+ * The holder ends while its framebuffer is still on a plane (nobody took the wall, or it was told to stop): the console takes the
+ * plane first, and only then does the framebuffer go. A framebuffer taken away while shown is taken off its plane by the kernel,
+ * and on the primary plane the CRTC goes with it: no plane, no mode, and no h713-tv starts until fbcon is unblanked (HY300PRO-G-EU,
+ * 20.10.2026, the state after the first try of this). fbcon repaints when no master holds the card (console_restore()); if one does
+ * just then - h713-tv or h713-osd around a commit - the holder takes the master itself for one commit and puts the console's
+ * framebuffer up (CONSOLE_FB_FILE, checked against the card). Again every 50 ms until the framebuffer is on no plane: no limit, a
+ * master is held around commits only; a line every 10 s while it waits. hold_console_back is console_restore() (the tests count).
+ */
+static void (*hold_console_back)(void) = console_restore;
+
+static void hold_give_back(struct display *d, uint32_t fb)
+{
+	uint32_t con = hold_console_known(d, fb);
+	unsigned int n;
+
+	for (n = 0; hold_shown(d->fd, fb); n++) {
+		drmModeAtomicReq *req;
+
+		if (n % 200 == 0)
+			info("hold            the console takes the wall back%s", n ? " -- still waiting: a master holds the card" : "");
+		if (n % 20 == 0)
+			hold_console_back();
+		if (!hold_shown(d->fd, fb))
+			break;
+		if (con && osd_find_plane(d) && !drmSetMaster(d->fd)) {
+			req = drmModeAtomicAlloc();
+			if (req && osd_props(req, d, con, 0) && drmModeAtomicCommit(d->fd, req, 0, NULL))
+				warn("hold            the console's framebuffer %u did not go up: %s", con, strerror(errno));
+			if (req)
+				drmModeAtomicFree(req);
+			drmDropMaster(d->fd);
+			if (!hold_shown(d->fd, fb))
+				break;
+		}
+		usleep(50 * 1000);
+	}
 }
 
 static void hold_notify(const char *what)
@@ -2599,14 +2654,8 @@ static int hold_wall(const char *card)
 	else if (!shown)
 		info("hold            nobody put the black framebuffer up within %ld s -- done", s);
 	else {
-		int i;
-
 		info("hold            %s after %ld s with the wall still black -- the console back", hold_stop ? "stopped" : "nobody took the wall", s);
-		console_restore();
-		for (i = 0; i < 20 && hold_shown(d.fd, fb); i++)
-			usleep(50 * 1000);
-		if (hold_shown(d.fd, fb))
-			warn("hold            the console did not take the wall (a master holds the card?) -- the framebuffer goes with this process");
+		hold_give_back(&d, fb);
 	}
 	if (hold_read(&other) == getpid() && unlink(hold_file))
 		warn("%s: %s", hold_file, strerror(errno));
