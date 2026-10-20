@@ -364,16 +364,22 @@ def cmd_reconnect(ctl: Ctl, a) -> int:
 
 def cmd_watch(ctl: Ctl, a) -> int:
     offers = PairingOffers(a.monitor)
+    devs = []
     while True:
         offers.event.clear()
-        devs = bonded(ctl, a.name)
+        # The bonded remotes of the last round first: until the bond is gone the kernel keeps connecting the
+        # remote with the stale key, and a round of bluetoothctl costs 1.5 s - on the G-EU the remote once
+        # ended its pairing mode 0.3 s after a forget that came 1.5 s late (20.10.2026).
+        stale = offers.asking(d[0] for d in devs)
         rc = EXIT_OK
-        if not devs:
-            rc = run_pair(ctl, a.name, a.timeout)
-            offers.paired()
-        elif not offers.asking(d[0] for d in devs) and not any(connected for _, _, connected in devs):
-            rc = reconnect(ctl, devs[0][0], a.timeout, offers.event)
-        stale = devs and offers.asking(d[0] for d in devs)
+        if not stale:
+            devs = bonded(ctl, a.name)
+            if not devs:
+                rc = run_pair(ctl, a.name, a.timeout)
+                offers.paired()
+            elif not offers.asking(d[0] for d in devs) and not any(connected for _, _, connected in devs):
+                rc = reconnect(ctl, devs[0][0], a.timeout, offers.event)
+            stale = devs and offers.asking(d[0] for d in devs)
         if stale:
             print("%s asks to be paired (Left + Right) while bonded here: forgetting the old bond, "
                   "pairing afresh" % stale)
@@ -381,6 +387,7 @@ def cmd_watch(ctl: Ctl, a) -> int:
             if rc == EXIT_OK:
                 rc = run_pair(ctl, a.name, a.timeout, stale)
             offers.paired()
+            devs = []
         if a.once:
             return rc
         offers.event.wait(a.interval)

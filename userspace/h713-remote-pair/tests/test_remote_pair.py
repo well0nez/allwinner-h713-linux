@@ -347,6 +347,39 @@ class StaleBond(unittest.TestCase):
         self.assertIn("ok paired " + REMOTE, r.stdout)
         self.assertLess(took, 15, "the connect was waited out")
 
+    def test_the_advert_is_acted_on_at_once(self):
+        """the bonded remote is connected and watch idles: the advert must lead to the forget before another
+        round of bluetoothctl queries (each costs 1.5 s; on the G-EU the remote stopped its pairing mode
+        0.3 s after the forget that came 1.5 s late, 20.10.2026)"""
+        with tempfile.TemporaryDirectory() as d:
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            os.mkfifo(hci)
+            open(log, "w").close()
+            env = dict(os.environ, FAKE_SCENARIO="found", H713_BLUETOOTHCTL=CTL, FAKE_LOG=log, H713_HCI_MONITOR=hci)
+            p = subprocess.Popen([sys.executable, TOOL, "watch", "--interval", "30", "--timeout", "5"], env=env,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            try:
+                with open(hci, "wb") as w:              # waits for watch's reader
+                    end = time.monotonic() + 15
+                    while time.monotonic() < end and "cmd info " + REMOTE not in open(log).read():
+                        time.sleep(0.1)
+                    time.sleep(2)                       # the round is over, watch idles
+                    rounds = open(log).read().count("cmd devices Paired")
+                    w.write(frames(adv_report(REMOTE)))
+                    w.flush()
+                    start = time.monotonic()
+                    while time.monotonic() < end + 10 and "cmd remove " + REMOTE not in open(log).read():
+                        time.sleep(0.05)
+                    took = time.monotonic() - start
+            finally:
+                p.kill()
+                out = p.communicate()[0]
+            with open(log) as f:
+                sent = f.read()
+        self.assertIn("cmd remove " + REMOTE, sent, out)
+        self.assertEqual(sent[:sent.index("cmd remove ")].count("cmd devices Paired"), rounds, "a round came first")
+        self.assertLess(took, 1.0, out)
+
     def test_a_normal_reconnect_never_forgets_the_bond(self):
         """control: the bonded remote wakes (directed advert), other adverts of it and a foreign remote in pairing
         mode; bluez's AdvertisingFlags still say 05 from the last pairing"""
