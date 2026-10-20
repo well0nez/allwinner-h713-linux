@@ -462,6 +462,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       die Spalten 48-49 zeigen Ebene 0 = die stille Videoquelle (grün/alt). Stock hält 01A8 == 0180 (Mythos). Wege: (1) Selektor so, dass Ebene 0
       nicht mischt (Sichtprüfung S, S3 = 0x28), (2) unter Seiten ein statisches schwarzes Bild auf der Videoebene statt Ebene aus (Abruf ~83 MB/s,
       Deskriptorwechsel), (3) RE, wer 01A8 bei Stock auf 48 bringt. Am HY310 prüfen, ob dort dasselbe gilt.
+      **20.10.2026 abends:** (1) scheidet aus (Sichtprüfung S mit Marco: Selektor 0x28/0x09 ohne Wirkung, 0x20000000 = alles grün; X=4 macht
+      den Strich breiter = Herleitung bestätigt); (3) ohne Hebel (0x0520000c setzt nur das Videofenster und gehört der Firmware; 0520020,
+      0520034/38 ohne Wirkung; die Stock-Abzüge in re/ sind vom HY310). **Marco: Abdeckung (2) übernehmen, aber das darf nicht dauerhaft so
+      bleiben - die Ursache muss geklärt werden.** Abdeckung: launcher-rand b63044e (schwarzes NV12 unter Seiten, ~83 MB/s Abruf solange eine
+      Seite steht); offen bleiben Konsole (ctl off) und die Seite ohne Signal ohne vorheriges Bild. Nächster Schritt: RE, wer bei Stock die
+      RGB-Ebene auf den Bildanfang legt (Display-Firmware/MIPS-Aufrufe, U-Boot), Abzüge des G-EU unter Stock lesen; danach Abdeckung zurückbauen.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
