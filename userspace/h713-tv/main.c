@@ -2308,8 +2308,12 @@ static void osd_serve(struct display *d)
 			answer = osd.shown ? "ok cover -- over black, there is no picture under it\n"
 					   : "error the commit was refused\n";
 		} else if (!(d->on || d->warped)) {
-			osd_drop(d);		/* an opaque page before it goes: a popup does not stand over black */
-			osd_uncover(d);
+			/* an opaque page before it goes: a popup does not stand over black - unless the ring is to come, whose
+			 * commit takes the wall from the page and lays the popup over the picture (osd_handover()) */
+			if (!osd_handover(d)) {
+				osd_drop(d);
+				osd_uncover(d);
+			}
 			answer = "ok waiting -- no picture to lay it over, it comes with the picture\n";
 		} else if (d->warped) {
 			osd_resume(d);		/* queued: the warp's next frame carries it */
@@ -6849,6 +6853,8 @@ static bool nosig_page_ok(void)
  * nothing between. If evaluate() decides on no picture after all, display_hide() drops the page and gives the console back as
  * before. Until 20.10.2026 the page went first, alone, and the console stood on the wall for the 0.1 s until the ring came
  * (HY300PRO-G-EU without a keystone: after every closed launcher and after the page without a signal - so after every wake).
+ * The same when the page goes for a popup that stays ("osd show N" without "cover": the mute badge after a closed launcher,
+ * 0.10-0.12 s of console until 20.10.2026): the page stays, and the ring's commit lays the popup over the picture.
  */
 static bool osd_handover(const struct display *d)
 {

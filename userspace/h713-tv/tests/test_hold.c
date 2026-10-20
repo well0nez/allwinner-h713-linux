@@ -8,7 +8,7 @@
  * at the plane (h713-osd's claim) takes the holder's framebuffer for the console's; the console's framebuffer is written down for
  * that start, never the holder's; the holder that ends with its framebuffer still up never takes it away before the console has the
  * plane - fbcon when it may paint, else its own commit of the console's framebuffer once it gets the master; an opaque page that goes while the straight ring is to come stays
- * on the plane for the ring's own commit, and goes as before when no picture is to come.
+ * on the plane for the ring's own commit - for nothing or for a popup that stays (the mute badge) - and goes as before when no picture is to come.
  *
  *   test_hold      exit 0 when every case passed
  */
@@ -42,6 +42,7 @@ static int nsets, pending;
 drmModeAtomicReqPtr drmModeAtomicAlloc(void)
 {
 	pending = 0;
+	nsets = 0;		/* one request at a time: committed() reads the last one, and 64 slots would fill up over the cases */
 	return (drmModeAtomicReqPtr)calloc(1, 16);
 }
 
@@ -411,6 +412,27 @@ int main(void)
 	osd_serve(&d);
 	check(commits == c0 + 1 && !osd.shown, "a picture under the page already: the overlay goes at once, as before");
 	d.on = false;
+
+	/* the page goes for a popup that stays (the mute badge after a closed launcher): the page stays for the ring's commit */
+	while (heard(sv[1], 0)[0])
+		;			/* the answers the cases above did not read */
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	cover.on = true;
+	c0 = commits;
+	check(send(sv[1], "osd show 1\n", 11, 0) == 11, "h713-osd shows a popup in the place of the page (the launcher closed, the mute badge stays)");
+	osd_serve(&d);
+	check(!strncmp(heard(sv[1], 200), "ok waiting", 10) && commits == c0 && osd.shown && osd.want == 1 && !osd.cover,
+	      "... no commit: the page stays on the plane, the popup waits for the picture");
+	check(osd_wanted(true) == 1 && osd_wanted(false) < 0,
+	      "... the ring's commit lays the popup over the picture; without a picture the console's framebuffer, as before");
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	nosig.lost = true;
+	c0 = commits;
+	send(sv[1], "osd show 1\n", 11, 0);
+	osd_serve(&d);
+	check(!strncmp(heard(sv[1], 200), "ok waiting", 10) && commits == c0 + 1 && committed(&osd.props, PRIMARY, "FB_ID") == 46 &&
+	      !osd.shown, "... and no picture to come (no signal): the console's framebuffer at once, as before");
+	nosig.lost = false;
 
 	unlink(cf);
 	rmdir(dir);
