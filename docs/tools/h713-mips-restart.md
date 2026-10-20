@@ -43,6 +43,8 @@ rebuilds the `cpu_comm` region and everything the HDMI receiver told the old fir
 | 3 | the MIPS runs, but the receiver, its node or a service did not come back |
 | 4 | ended by a signal |
 
+The stop of `h713-warp` ends a running mode unit (Kodi, desktop, browser: `BindsTo=`), and the tool does not start it again. Around a standby that is `h713-mode sleep-pre`/`sleep-post`; after `h713-tv` gave up it is `h713-mode rescue`, which `h713-tv-rescue.service` runs; by hand, `h713-mode rescue` is the restart that brings the mode back as well.
+
 Every outcome is a journal line: `journalctl -t h713-mips-restart`. Run by hand it also writes to
 stderr; under systemd only to the journal. The end of a good run:
 

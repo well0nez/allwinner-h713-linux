@@ -453,6 +453,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.125 Klein (wach-wand §5.1/§9, Mythos 20.10.2026): **schlägt h713-tvs Commit beim Weg hinaus fehl, bleibt die CRTC ohne Ebene und kein
       h713-tv startet mehr** (`no CRTC drives a mode`, bis jemand fbcon entblankt). Beim Start den Kernel-Zustand wiederherstellen
       (console_restore(), dann noch einmal suchen) - Wiederherstellung, kein Netz (Mythos).
+      Dazu (kodi-93 §6, Mythos 20.10.): ein zweiter Absturz von h713-tv im selben Boot bekommt keine Rettung (Einmal-Marke `/run/h713-tv-rescued`,
+      ein Zähler ohne Zeit) und h713-tv endet mit "no CRTC drives a mode" - Vorschlag (i) ExecCondition "letzte Rettung länger als 5 min her",
+      (ii) der Start stellt bei "no CRTC" die Konsole selbst her.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
@@ -662,12 +665,12 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       ohne die Trennung von Dateisystem, Netz und Prozessen, die Namensräume geben. Das Defconfig schaltet `CONFIG_USER_NS` nicht ein (und `CONFIG_PID_NS`, `NET_NS`, `IPC_NS`,
       `UTS_NS` nicht ausdrücklich); eine eigene Kernelzeile mit Nachmessung (`about:support`, ein Neustart, ob andere Dienste sich ändern: Namensräume öffnen eine Angriffsfläche
       des Kernels, die dann gegen den Gewinn für Firefox abzuwägen ist).
-- [ ] 9.3i **Ein Absturz von `h713-tv` beendet Kodi** (userspace-Fund, am HY310 gemessen 16.10.2026, `doku/212` §4): ein `SIGKILL` von `h713-tv@` lässt die Einheit scheitern,
+- [x] 9.3i (erledigt 20.10.2026 am G-EU, `arbeit/medien/kodi-93/`, Mythos go: `h713-mode rescue` merkt die Moduseinheiten wie vor einem Standby, Kodi 8,7 s nach SIGKILL wieder da, Desktop 6,4 s; zweiter Absturz im Boot: 2.125) **Ein Absturz von `h713-tv` beendet Kodi** (userspace-Fund, am HY310 gemessen 16.10.2026, `doku/212` §4): ein `SIGKILL` von `h713-tv@` lässt die Einheit scheitern,
       `OnFailure=h713-tv-rescue.service` lädt die Display-MIPS neu und startet `h713-warp` neu, `BindsTo=` beendet `h713-kodi.service`; das HDMI-Bild ist nach etwa 16 s
       wieder da, Kodi bleibt aus, der Modus (`/run/h713-mode.resume`) wird nicht gemerkt. Fix-Richtung: die Rescue-Einheit (oder ein `ExecStartPost`) merkt vor dem Neustart die
       laufenden Moduseinheiten wie `h713-mode sleep-pre` und stellt sie danach wie `sleep-post` wieder her. Messen: `kill -KILL` der MainPID von `h713-tv` bei laufendem Kodi, Kodi muss
       nach dem Bild von selbst zurückkommen. `systemctl restart h713-tv@N` ist davon nicht betroffen (gemessen: Kodi bleibt).
-- [ ] 9.3j **Kodi schreibt `guisettings.xml` beim Beenden neu** (`doku/212` §4): als Nutzer `h713-kodi` kann es das jetzt, vorher als root; dabei wählt es Vorgaben nach den Fähigkeiten des
+- [x] 9.3j (erledigt 20.10.2026, `arbeit/medien/kodi-93/`, Mythos go: die Vorgaben des Abbilds stehen in Kodis `appliance.xml`, keine Samen-`guisettings.xml` mehr; Nutzeränderungen bleiben, auch ohne CanSuspend beim Ende) **Kodi schreibt `guisettings.xml` beim Beenden neu** (`doku/212` §4): als Nutzer `h713-kodi` kann es das jetzt, vorher als root; dabei wählt es Vorgaben nach den Fähigkeiten des
       Augenblicks (`powermanagement.shutdownstate` fiel ohne `CanSuspend` von 1 auf 0). Eine Einstellung, die das Abbild setzen will, hält also nur, wenn Kodi sie beim Beenden wieder
       schreibt; zu entscheiden ist, ob die Datei beim Start frisch aus dem Overlay gelegt wird (dann gehen Änderungen des Nutzers verloren) oder ob Kodis Eigenverhalten bleibt.
 - [ ] 9.3k **Firefox: 1080p60 wird zu einem Drittel nicht gezeichnet** (`doku/212` §3): auch mit der Hardware (60 Bilder/s dekodiert, 883 von 2748 = 32 % nicht gezeichnet, mit cage
