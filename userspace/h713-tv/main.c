@@ -1299,6 +1299,7 @@ static bool osd_on_panel(void);		/* one of our buffers is on the primary plane *
 static void console_keys(bool on);	/* the console's keyboard: off while anything else is on the panel */
 static bool wall_black_wanted(const struct display *d);	/* a client's claim goes and the straight ring is to come (TODO 2.124) */
 static bool wall_black_up(struct display *d);		/* ... the wall black for the ring's own commit */
+static bool wall_black_is(uint32_t fb);			/* fb is that black framebuffer */
 static bool ring_off_for_claim(struct display *d);	/* the straight ring goes for a claim's first frame: black, not the console */
 
 static bool display_show(struct display *d)
@@ -2088,7 +2089,9 @@ static bool osd_learn(struct display *d)
 	p = drmModeGetPlane(d->fd, osd.plane_id);
 	if (!p)
 		return false;
-	if (!osd.claimed || (p->fb_id != osd.fb_id[0] && p->fb_id != osd.fb_id[1])) {
+	if (wall_black_is(p->fb_id) && osd.console_fb) {
+		osd.console_known = true;	/* our own black wall (TODO 2.124) is no console: the one learnt before stays */
+	} else if (!osd.claimed || (p->fb_id != osd.fb_id[0] && p->fb_id != osd.fb_id[1])) {
 		uint32_t con = hold_console_fb(d, p->fb_id);	/* the holder's black one (TODO 2.96): the console's is written down */
 
 		osd.console_fb = con ? con : p->fb_id;
@@ -6877,7 +6880,7 @@ static bool osd_handover(const struct display *d)
  * The wall black between a client's release and the straight ring (TODO 2.124). From Kodi to HDMI without a keystone h713-warp
  * gives its client claim back, and the straight ring follows a tenth of a second later (evaluate(): the signal measured, the
  * ring's descriptor published, the firmware's chain rebuilt); the release put the console's framebuffer up for that tenth
- * (HY300PRO-G-EU, 20.10.2026: 0.15-0.17 s). Now the release puts a black framebuffer of this program's up when the ring is to
+ * (HY300PRO-G-EU, 20.10.2026: 0.12 s). Now the release puts a black framebuffer of this program's up when the ring is to
  * come, keeps the master, and the ring's commit takes the wall from it, as from a page that goes before the ring
  * (osd_handover()). Whatever comes instead - no signal, "off", a page, a new claim - takes the wall in its own commit, and the
  * master never goes while the black framebuffer is on the plane: the console's goes up first (wall_black_end()). It is never
@@ -6892,15 +6895,21 @@ static struct {
 
 static bool leaving;		/* the way out: nothing is to follow */
 
+static bool wall_black_is(uint32_t fb)
+{
+	return fb && fb == wall_black.fb_id;
+}
+
 /*
- * A claim goes, and the straight ring is to come: the mode is HDMI, nothing forces the console, no page on the wall - and for a
+ * A claim goes, and the straight ring is to come: the mode is HDMI, nothing forces the console, no opaque page on the wall (a
+ * popup that rode on the picture - the mute badge over Kodi - comes back with the ring's commit) - and for a
  * claim of the ring the signal stands (the keystone set back to the identity: h713-warp gives the ring back, 0.10-0.12 s of
  * console until 20.10.2026; a claim that goes with the signal is the page's or the console's, as before). The signal is not
  * followed under a client's claim, so there it is not asked.
  */
 static bool wall_black_wanted(const struct display *d)
 {
-	return (warp.client || !nosig.lost) && !leaving && !d->on && !osd_on_panel() && !cover.on && ctl.policy != POLICY_OFF &&
+	return (warp.client || !nosig.lost) && !leaving && !d->on && !osd_covering() && !cover.on && ctl.policy != POLICY_OFF &&
 	       ctl.source != SOURCE_CLIENT;
 }
 
@@ -6957,8 +6966,10 @@ static bool wall_black_up(struct display *d)
 	if (!ok) {
 		warn("wall            the black framebuffer did not go up (%s) -- the console, as before", strerror(errno));
 		wall_black_free(d);
+		return false;
 	}
-	return ok;
+	osd.shown = false;	/* a popup that rode on the picture is off the plane now; the ring's commit lays it again */
+	return true;
 }
 
 /*
@@ -6968,7 +6979,7 @@ static bool wall_black_up(struct display *d)
  */
 static bool ring_off_for_claim(struct display *d)
 {
-	if (!d->on || osd_on_panel() || cover.on || !wall_black_up(d))
+	if (!d->on || osd_covering() || cover.on || !wall_black_up(d))
 		return display_hide(d);
 	d->on = false;
 	info("wall            black -- the straight ring goes for h713-warp's first frame");

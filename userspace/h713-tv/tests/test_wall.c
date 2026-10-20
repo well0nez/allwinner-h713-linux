@@ -9,7 +9,8 @@
  * takes the wall the same way; a claim of the ring that goes while the signal stands (the keystone set back) does the same, and the
  * straight ring that goes for a claim's first frame (a keystone set) leaves black, not the console, for that frame; and where no
  * ring is to follow (a program is the mode, "off", a page on the wall, the signal gone, the way out) the release is what it was:
- * the console, or the page.
+ * the console, or the page. A claim of h713-osd's while the wall is black never takes the black framebuffer for the console's, and a
+ * popup on the wall at the release (the mute badge over Kodi) does not keep the console: black, and the ring's commit lays it again.
  *
  *   test_wall      exit 0 when every case passed
  */
@@ -228,6 +229,13 @@ int main(void)
 			     .fb_id = 70, .src_w = 1280, .src_h = 720, .src_pitch = 1280, .win_w = 1280, .win_h = 720 };
 	int c0;
 
+	char dir[] = "/tmp/test_wall.XXXXXX", cf[64];
+
+	if (!mkdtemp(dir))
+		return 2;
+	snprintf(cf, sizeof(cf), "%s/console-fb", dir);
+	console_fb_file = cf;			/* osd_learn() writes the console's framebuffer down: not into /run */
+	hold_file = cf;				/* ... and asks for a holder: none */
 	fake_props(&d.plane_props, vid, 11, 100);
 	fake_props(&osd.props, pri, 11, 200);
 	drm_video_props = d.plane_props;
@@ -284,6 +292,34 @@ int main(void)
 	osd.claimed = osd.shown = false;
 	osd.want = -1;
 	osd.cover = false;
+
+	/* h713-osd claims while the wall stands black (a restart of h713-osd in that tenth): the console is still the console's */
+	kodi(&d);
+	warp_release(&d);
+	osd.console_known = false;		/* what cmd_osd_claim() does before it learns the console again */
+	check(primary_fb == BLACK && osd_learn(&d) && osd.console_known && osd.console_fb == CONSOLE,
+	      "a claim of h713-osd's while the black framebuffer stands: the console stays the console's framebuffer, not the black one");
+	display_hide(&d);
+	check(primary_fb == CONSOLE && was_removed(BLACK) && !removed_shown, "... and no picture after all: the console's framebuffer, as learnt");
+
+	/* a popup rides on the client's picture (the mute badge over Kodi) when the claim goes: black too, the ring's commit lays it again */
+	kodi(&d);
+	osd.claimed = osd.shown = true;
+	osd.fb_id[0] = 48;
+	osd.fb_id[1] = 50;
+	osd.want = 0;
+	osd.cover = false;
+	primary_fb = 48;
+	warp_release(&d);
+	check(creates == 1 && primary_fb == BLACK && !osd.shown && d.master && !console_shown_after(0),
+	      "a popup on the wall at the release: black, not the console; the plane holds black, not the popup");
+	display_show(&d);
+	wall_black_free(&d);
+	check(primary_fb == 48 && committed(&osd.props, PRIMARY, "zpos") == 2 && osd.shown && was_removed(BLACK) && !removed_shown,
+	      "... the ring's commit lays the popup over the picture and takes the wall from black");
+	d.on = false;
+	osd.claimed = osd.shown = false;
+	osd.want = -1;
 
 	/* no ring to follow: the release is what it was */
 	kodi(&d);
@@ -362,6 +398,8 @@ int main(void)
 	osd.want = -1;
 	osd.cover = false;
 
+	unlink(cf);
+	rmdir(dir);
 	printf("%s\n", failed ? "FAILED" : "all passed");
 	return failed ? 1 : 0;
 }
