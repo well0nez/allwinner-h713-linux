@@ -482,7 +482,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       stehen schon zwei Client-Adressen in den Beschreibungen von aic8800-0008/-0010 und eine eth-Adresse in vier Boot-Mitschnitten unter analyse/boot/
       (v3-spl-tausch, layout-v2-kaltstart, v4-kaltstart, v5-mips-aus-p5 vom 10.09.).
       Maskieren (xx:xx:xx:xx:xx:xx, wie im Testzweig versuch/hy300pro-test11 e2ebea5), sperr-scan-Regel mit Ausnahmen für Testattrappen
-      (AA:BB:CC:..., 00:11:22:...); was schon auf GitHub ist, bleibt in der Historie - Marco entscheidet, ob das reicht.
+      (AA:BB:CC:..., 00:11:22:...); was schon auf GitHub ist, bleibt in der Historie - **Marco 21.10.2026: so lassen, kein Force-Push**; nur ab jetzt maskieren und sperren.
 - [ ] 2.128 **Lizenzen: Auflagen fürs Release aus Mythos' Prüfung des Lizenz-Abschlusses** (20.10.2026, arbeit/lizenz-abschluss-20261020/MYTHOS-PRUEFUNG.md):
       R1 die Quellenaussage im Abbild (kein schriftliches Angebot, Marco 20.10.) trägt nur, wenn sie wahr ist: ein Skript, das die Quellarchive des
       genauen Stands erzeugt (Repo, U-Boot, TF-A, crust, Linux, aic8800, Mesa, libva, sunxi-fel, dazu die Debian-Quellpakete aus DEBIAN-SOURCES),
