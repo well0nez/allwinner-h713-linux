@@ -59,15 +59,21 @@ The same chip, the same module family, one more UART. What ships:
   the HY310 with the remote connected, 97 of 97 1400-byte pings and 8 MiB in 3.5 s over Wi-Fi.
 - **The stock remote.** BLE HID (`1d5a:c081`). `h713-remote-pair` pairs it: hold Left + Right until the
   LED blinks, the unit `h713-remote-pair.service` scans and bonds. After that it reconnects on any key
-  press, also after a reboot. It remembers one box only: paired with another box since, it no longer
-  reconnects here and its keys come over IR until Left + Right. The kernel connects a bonded remote as soon
-  as it advertises; with the stale key that link fails and bluez keeps the bond without a word on D-Bus. So
-  `watch` also reads the HCI monitor channel, as btmon does (no scan of its own): a bonded remote that
-  advertises in pairing mode - `ADV_IND` with flags 0x05, LE Limited Discoverable, captured 20.10.2026 - is
-  forgotten and paired afresh, while a remote that wakes with a valid bond sends a directed advert without
-  flags. bluez's own `AdvertisingFlags` cannot tell: it keeps the flags of the last pairing. Built 20.10.2026,
-  not yet measured with the remote (TODO 2.92). *Superseded 20.10.2026:* `h713-remote-pair forget`, then
-  Left + Right, as the only way (measured on the HY300PRO-G-EU, `doku/195`). The kernel's `hid-h713-remote` fixes the remote's consumer report (its
+  press, also after a reboot. It remembers one box only, and Left + Right drops its key: paired with another
+  box since, or put into pairing mode here, the remote no longer matches the bond this box keeps. Measured on
+  the HY300PRO-G-EU (btmon, 20.10.2026): a remote that wakes with a valid bond sends a directed advert
+  (`ADV_DIRECT_IND`, no data); in pairing mode it sends `ADV_IND` with flags 0x05 (LE Limited Discoverable).
+  bluetoothd lets the kernel connect a bonded remote on any advert (mgmt Add Device, action 2), so the kernel
+  connected the pairing remote within 2 ms with the dropped key - `PIN or Key Missing` three times, and the
+  remote left pairing mode before it could be paired. `watch` therefore sets the kernel to connect its remote
+  on directed adverts only (action 1, again after each pairing, when bluetoothd sets 2) and reads the HCI
+  monitor channel, as btmon does (no scan of its own): a bonded remote in pairing mode is forgotten and
+  paired afresh - nothing has touched it before, whenever `watch` gets to it. An undirected advert without
+  the pairing flag makes `watch` connect it. bluez's own `AdvertisingFlags` cannot tell: it keeps the flags of
+  the last pairing. Without the monitor channel `watch` works as before. Built 20.10.2026; on the G-EU the
+  pairing advert was recognised and the bond forgotten twice, but before the directed-only setting the
+  remote was paired only by a second Left + Right (TODO 2.92). *Superseded 20.10.2026:* `h713-remote-pair
+  forget`, then Left + Right, as the only way (measured on the HY300PRO-G-EU, `doku/195`). The kernel's `hid-h713-remote` fixes the remote's consumer report (its
   report 3 is one byte shorter than the descriptor says) and maps Home and the two focus keys.
 - **`h713-bt-reset`.** The controller keeps its state across attaches: the kernel's `hci_uart` sends no
   HCI_Reset at init and its close-time reset never reaches the wire once `hciattach` has exited (that is
