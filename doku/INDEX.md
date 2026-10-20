@@ -66,6 +66,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/uboot/commands.md` | `doku/108`, `doku/67`, `doku/70`, `doku/98` |
 | `docs/uboot/environment.md` | `doku/105`, `doku/109`, `doku/30`, `doku/nachtlog/S41-r1-installer`, `doku/nachtlog/S48-fel-aus-uboot` |
 | `docs/uboot/power-gate.md` | `doku/103`, `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/174`, `doku/179`, `doku/181`, `doku/188`, `doku/190`, `doku/191` |
+| `docs/usage/first-hour.md` | `doku/174`, `doku/217` |
 | `installer/h713/RENAMES.md` | `doku/121` |
 | `installer/h713/__init__.py` | `doku/121` |
 | `installer/h713/blockdev.py` | `doku/109` |
@@ -230,7 +231,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`171-standby-fehler-b-display-takte-20261009.md`](171-standby-fehler-b-display-takte-20261009.md) | Analyse | 2026-10-09 | 171 - Standby-Fehler B: DMA-Master verlieren den DRAM, weil die Display-Pipeline durch den Self-Refresh läuft; Behebung gemessen (09.10.2026, 04:30) | 7 |
 | [`172-bild-nach-dem-standby-tv-top-20261009.md`](172-bild-nach-dem-standby-tv-top-20261009.md) | Analyse | 2026-10-09 | 172 - Bild nach dem Standby: der MIPS-Neustart aus dem Park hängte die SoC, weil der Schlaf die TV-Top-Wörter löscht; Behebung gemessen (09.10.2026, 09:47) | 14 |
 | [`173-durchsicht-r2-c1-ton-nach-standby-20261009.md`](173-durchsicht-r2-c1-ton-nach-standby-20261009.md) | Analyse | 2026-10-09 | 173 - Durchsicht des Standby-Codes, C1 im TVCAP-Abschalten eingegrenzt, Ton nach dem Standby abgesichert; r2test3 (09.10.2026, 14:30) | 11 |
-| [`174-mit-marco-am-geraet-ton-nach-standby-20261009.md`](174-mit-marco-am-geraet-ton-nach-standby-20261009.md) | Analyse | 2026-10-09 | 174 - Gerätetests mit Marco: Taste, Fernbedienung, lange Schläfe; der Ton kommt nach dem Standby zurück (09.10.2026, 15:30) | 13 |
+| [`174-mit-marco-am-geraet-ton-nach-standby-20261009.md`](174-mit-marco-am-geraet-ton-nach-standby-20261009.md) | Analyse | 2026-10-09 | 174 - Gerätetests mit Marco: Taste, Fernbedienung, lange Schläfe; der Ton kommt nach dem Standby zurück (09.10.2026, 15:30) | 14 |
 | [`175-hdcp14-nach-standby-und-haertungspaket-20261009.md`](175-hdcp14-nach-standby-und-haertungspaket-20261009.md) | Analyse | 2026-10-09 | 175 - HDCP 1.4 übersteht den Standby; was vom HDCP-Härtungspaket bleibt (09.10.2026, 17:40) | 2 |
 | [`176-nachtrag-mips-neustart-und-resume-haenger-20261008.md`](176-nachtrag-mips-neustart-und-resume-haenger-20261008.md) | Analyse | 2026-10-08 | 176 - Nachtrag 08.10. abends: MIPS-Neustart am HY310 (V2, V3, V8) und die Suche nach dem Resume-Hänger (L-B, L-A, L-C) (08.10.2026, 16:00-21:40; geschrieben 09.10.2026) | 4 |
 | [`177-r2-abgenommen-und-in-main-20261009.md`](177-r2-abgenommen-und-in-main-20261009.md) | Analyse | 2026-10-09 | 177 - R2 abgenommen und in `main`: Abnahmereihe V4 auf r2test4, Ton nach dem Standby, Aufräumen (09.10.2026, 16:45) | 5 |
@@ -274,6 +275,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md`](214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md) | Protokoll | 2026-10-17 | 214 - Das Nebenprojekt Medien: Bluetooth nach dem Neustart, der Launcher beim Start, der Warp übernimmt das Signal sofort (17.10.2026) | 4 |
 | [`215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md`](215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md) | Protokoll | 2026-10-17 | 215 - Das Nebenprojekt Medien: das Bedienmodell - Rückwege, Pause unter Seiten, HDMI als Modus, Start ohne geraden Ring, EDID ohne Deep Colour, Seite ohne Signal (17.10.2026) | 1 |
 | [`216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`](216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md) | Protokoll | 2026-10-20 | 216 Lizenzen: die offenen Teile von TODO 7.20 (a, b, c, d, e, g) - Protokoll | - |
+| [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -430,7 +432,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-52 von 275 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+52 von 276 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
