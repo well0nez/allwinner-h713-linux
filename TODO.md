@@ -121,7 +121,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
 - [ ] 2.42 **Netzteil summt/fiept im Standby (2,4 W) und im Aus über crust (0,3 W), im Gate (2,9 W) nicht** (Marco 09./10.10., HY310;
       Marco 20.10.: "das spricht dafür, dass wir irgendwas falsch machen"; Stock ist bei denselben 0,3 W still). Hypothesen und Testplan:
-      `arbeit/medien/standby-summen/` (Mythos 20.10.2026, HYPOTHESEN.md mit Nachtrag H0a-e, TESTPLAN.md). **T5c gebaut 21.10.2026, nicht gemessen:** crust `versuch/arisc-langsam` a0b00d9
+      `arbeit/medien/standby-summen/` (Mythos 20.10.2026, HYPOTHESEN.md mit Nachtrag H0a-e, TESTPLAN.md). **T5c gebaut 21.10.2026, nicht gemessen, Mythos go für den Hörtest:** crust `versuch/arisc-langsam` 4f076d7 (Fix der
+      Startphase nach Mythos; vorher a0b00d9)
       (HY310/G-EU, check-crust grün): die ARISC wartet im Standby/Aus zwischen ihren Polls auf LOSC statt durchzulaufen; Hörtest A-B-B0-B-A nach
       `standby-summen/TESTABLAUF-T5c.md` mit Marco, HY310 zuerst (Sonoff), Mythos prüft vorher. Nebenbefund: H0a (Stock-ARISC läuft langsam) ist am
       Quelltext nicht belegt - der Port der Stock-Routine setzt CPUS auf OSC24M/1 wie crust. Das Netzteil allein (H1) ist
