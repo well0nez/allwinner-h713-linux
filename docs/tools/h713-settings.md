@@ -67,7 +67,7 @@ be held means no page: a page whose keys Kodi shares is worse than none.
 **The pill** (a slider judged on the picture): the label, the track and the number over the real picture, the keys under it;
 Left/Right change the value, Up/Down go to the next such slider of the area (Brightness, Contrast, ...), OK or Back bring the
 opaque page back. Gamma and Colour temperature are sliders with **named stops**: the track has a dot at each stop, the pill names them under
-the track and says in a sentence (one line, or two when it is longer) what the stop it stands on means; the row on the page shows the word of the stop. The volume is not judged on the picture: it stays on the page. The remote's OK arrives as `KEY_ENTER` since `70-h713-remote.rules` (`KEY_OK`/`KEY_SELECT` are read the same); Menu has no meaning here.
+the track and says in a sentence (one line, or two when it is longer) what the stop it stands on means; the row on the page shows the word of the stop. The volume is not judged on the picture: it stays on the page. The remote's OK arrives as `KEY_ENTER` since `70-h713-remote.rules` (`KEY_OK`/`KEY_SELECT` are read the same, and so is `BTN_LEFT`, OK in the remote's mouse mode); Menu has no meaning here.
 A held Left/Right arrives as a burst and goes out as **one** command. Every value acts at once; what is kept for the next boot is written as the owner of the value does it (below).
 
 ## What each row is

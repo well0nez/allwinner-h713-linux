@@ -21,6 +21,7 @@ h713-keys run            # what the unit runs
 | `KEY_POWER` | left alone: logind powers off, or [h713-power](h713-power.md) decides on an image with standby |
 | `KEY_HOMEPAGE` | opens the launcher (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
 | Menu, Back, arrows, OK | with the launcher closed: logged once as "recognised, no action yet" (they are Kodi's); OK arrives as `KEY_ENTER` and Menu as `KEY_COMPOSE` (the udev rule below) and is read as `KEY_OK` |
+| `BTN_LEFT` (OK in the remote's mouse mode, where `REL_X`/`REL_Y` move a pointer) | with the launcher open it is read as OK, and the settings page does the same (it reads the remote itself); with both closed it stays a click for Kodi, the desktop and the browser. Host tests only, not yet tried on a box |
 | `KEY_F6` (IR `0x0266`: the mouse **and** the microphone key) | logged once. Over IR both keys send this one code, the vendor's `PRJ_BRC_PAIR`; their own functions run over Bluetooth only. *Superseded 17.10.2026:* "they ask for the Bluetooth pairing, and a second later the remote offers itself (measured 11.10.2026)" - the owner: pairing begins with Left+Right, and these two keys are no way to pair; the fix built on it was dropped (`doku/214` §1). Nothing acts on it: `h713-remote-pair` pairs only while no remote is bonded - a remote paired with another box since needs `h713-remote-pair forget`, then Left+Right (TODO 2.54) |
 
 Volume and mute work without an HDMI signal: `h713-tv` keeps them as long as its two sound cards are there.

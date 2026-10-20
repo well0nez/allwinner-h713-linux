@@ -1666,6 +1666,7 @@ class Life(Base):
 
 # the kernel's key codes, as h713-keys reads them
 UP, DOWN, LEFT, RIGHT, OK, SELECT, BACK, HOME, POWER = 103, 108, 105, 106, 352, 353, 158, 172, 116
+BTN_LEFT = 272                                        # the remote's OK in its mouse mode
 ENTER, COMPOSE, MENU = 28, 127, 139                    # the remote's OK and Menu since 70-h713-remote.rules; KEY_MENU without it
 GROUND, PAGEPILL = 0xff0b0e0d, 0xff1c2321             # the page's opaque ground and its lit pill, ARGB
 VOLUP, VOLDOWN, MUTE, F4, F5 = 115, 114, 113, 62, 63
@@ -1724,6 +1725,20 @@ class Device(Base):
         time.sleep(0.5)
         self.assertEqual(len(b.osd.log), n)
         self.assertIsNone(b.proc.poll())
+        b.press(HOME)
+        self.assertEqual(b.proc.wait(timeout=5), 10)
+
+    def test_the_remotes_mouse_click_is_ok(self):
+        """In its mouse mode the remote sends OK as BTN_LEFT and the page has no pointer: the click is OK (TODO 2.130)"""
+        b = self.box().start_device("Sound")
+        wait_for(lambda: len(b.osd.log) > 1)
+        b.press(BTN_LEFT, RIGHT)                                 # BTN_LEFT: into the rows; Volume up one step
+        self.assertTrue(wait_for(lambda: b.tv.volume == 95, 5))
+        b.press(DOWN, BTN_LEFT)                                  # and again as OK: Mute on
+        self.assertTrue(wait_for(lambda: b.tv.mute, 5))
+        b.press(BTN_LEFT, value=0)                               # its release: nothing
+        time.sleep(0.3)
+        self.assertTrue(b.tv.mute)
         b.press(HOME)
         self.assertEqual(b.proc.wait(timeout=5), 10)
 

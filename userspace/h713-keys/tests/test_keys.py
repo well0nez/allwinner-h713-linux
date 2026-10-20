@@ -20,7 +20,8 @@ HERE = os.path.dirname(os.path.abspath(__file__))
 PROG = os.path.join(HERE, "..", "h713-keys")
 EVENT = struct.Struct("qqHHi")
 KEY = {"up": 115, "down": 114, "mute": 113, "f4": 62, "f5": 63, "record": 167, "power": 116, "home": 172, "search": 217,
-       "select": 353, "enter": 28, "compose": 127, "nav_up": 103, "nav_down": 108, "ok": 352, "back": 158, "left": 105}
+       "select": 353, "enter": 28, "compose": 127, "nav_up": 103, "nav_down": 108, "ok": 352, "back": 158, "left": 105,
+       "click": 272}
 
 
 class FakeServer(threading.Thread):
@@ -481,6 +482,40 @@ class KeysTest(unittest.TestCase):
         self.run_once()
         time.sleep(0.2)
         self.assertEqual(self.systemctl_calls(), ["is-active --quiet h713-kodi.service", "start --no-block h713-kodi.service"])
+
+    def test_the_mouse_click_is_ok_in_the_launcher(self):
+        """The remote in its mouse mode sends OK as BTN_LEFT, and the launcher has no pointer: the click is OK while it is open (TODO 2.130)"""
+        self.launcher_d()
+        self.grabs()
+        self.keys("home", "nav_down", "click")
+        self.run_once()
+        time.sleep(0.2)
+        self.assertEqual(self.systemctl_calls(), ["is-active --quiet h713-kodi.service", "start --no-block h713-kodi.service"])
+
+    def test_the_release_of_a_mouse_click_in_the_launcher_does_nothing(self):
+        self.launcher_d()
+        self.grabs()
+        self.keys("home", "nav_down")
+        self.press("click", value=0)
+        self.run_once()
+        time.sleep(0.2)
+        self.assertEqual([c for c in self.systemctl_calls() if c.startswith("start")], [])      # (is-active: the open itself asks)
+        self.assertNotIn("launcher close", self.osds.lines)
+
+    def test_the_mouse_click_without_the_launcher_stays_a_click(self):
+        """Closed, the launcher takes no click: it is Kodi's, the desktop's, the browser's - h713-keys does nothing with it, before and after an open launcher"""
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        self.launcher_d()
+        self.grabs()
+        self.press("click")
+        self.keys("home", "back", "click")                  # opened, closed by Back, then the click is a click again
+        self.run_once()
+        time.sleep(0.2)
+        self.assertEqual([c for c in self.systemctl_calls() if c.startswith("start")], [])
+        self.assertEqual(self.osds.lines[-1], "launcher close")
+        self.assertEqual(len([l for l in self.osds.lines if l.startswith("launcher ")]), 2)    # the open and the close, nothing for a click
+        self.assertFalse([m for m in out if m.startswith("launcher:")], out)
 
     def test_enter_and_compose_with_the_launcher_closed_are_kodis(self):
         out = []

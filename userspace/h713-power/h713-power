@@ -4,7 +4,8 @@
 logind's default turns KEY_POWER into a power-off. The unit runs this tool under systemd-inhibit with logind's
 handle-power-key and handle-suspend-key locks, so the key is decided here. A short press shows a countdown of
 15 s in the middle of the picture (h713-osd, TODO 2.38): standby on the left, off on the right; Left and Right
-choose, OK or a second press acts at once, Back cancels, and when the time is up the choice is carried out.
+choose, OK or a second press acts at once (OK is the left button too, in the remote's mouse mode: that node is read for it),
+Back cancels, and when the time is up the choice is carried out.
 It starts on `default` of /etc/h713/power.conf (poweroff). Standby is offered only where it can happen: the
 image allows suspend (built with --standby), the kernel offers deep sleep (/sys/power/mem_sleep shows [deep])
 and crust says ready=1 (the arisc driver's state file); elsewhere the countdown shows the ring alone and ends
@@ -50,6 +51,8 @@ EVIOCGRAB = 0x40044590                       # _IOW('E', 0x90, int)
 EVENT = struct.Struct("qqHHi")               # struct input_event on a 64-bit kernel
 EV_KEY, KEY_POWER = 1, 116
 KEY_LEFT, KEY_RIGHT, KEY_BACK, KEY_OK, KEY_SELECT, KEY_ENTER = 105, 106, 158, 352, 353, 28
+BTN_LEFT = 272                               # the remote in its mouse mode sends OK as the left button
+REMOTE_ID = ("1d5a", "c081")                 # the stock BLE remote; its mouse is an input node of its own, without KEY_POWER
 OSD = os.environ.get("H713_POWER_OSD", "/run/h713-osd/ctl")
 COUNTDOWN_S = 15                             # libh713osd's ring is full at 15 s
 EVIOCSCLOCKID = 0x400445a0                   # _IOW('E', 0xa0, int)
@@ -131,18 +134,24 @@ def standby_refusal(conf):
     return standby_unavailable()
 
 
-def has_power_key(caps):
+def has_key(caps, code):
     """capabilities/key: hex words of the kernel's long, highest first."""
     bits = 0
     for word in caps.split():
         bits = (bits << 64) | int(word, 16)
-    return bool(bits >> KEY_POWER & 1)
+    return bool(bits >> code & 1)
+
+
+def has_power_key(caps):
+    return has_key(caps, KEY_POWER)
 
 
 def power_key_devices(conf):
     found = []
     for d in sorted(glob.glob(path("sys/class/input/event*"))):
-        if not has_power_key(read(os.path.join(d, "device/capabilities/key"), "0")):
+        caps = read(os.path.join(d, "device/capabilities/key"), "0")
+        remote = (read(os.path.join(d, "device/id/vendor")), read(os.path.join(d, "device/id/product"))) == REMOTE_ID
+        if not has_power_key(caps) and not (remote and has_key(caps, BTN_LEFT)):    # the remote's mouse: its click is OK in the countdown
             continue
         if conf["remote"] == "off" and int(read(os.path.join(d, "device/id/bustype"), "0"), 16) == BUS_BLUETOOTH:
             continue
@@ -349,7 +358,7 @@ class Countdown:
             self.choice = "standby"
         elif code == KEY_RIGHT:
             self.choice = "poweroff"
-        elif code in (KEY_OK, KEY_SELECT, KEY_ENTER):
+        elif code in (KEY_OK, KEY_SELECT, KEY_ENTER, BTN_LEFT):
             return "act"
         elif code == KEY_BACK:
             return "cancel"

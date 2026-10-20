@@ -28,7 +28,7 @@ lives; if it dies, logind's power-off is back ([standby.md](../subsystems/standb
 | Press | Does |
 |---|---|
 | short (released before `long_s`, 3 s) | the countdown (above); without a picture at once: standby if `default = standby` and it can happen, else power-off |
-| during the countdown: Left, Right, OK, Back, power again | standby, off, carry out now, cancel, carry out now |
+| during the countdown: Left, Right, OK, Back, power again | standby, off, carry out now, cancel, carry out now; in the remote's mouse mode OK is the left button (`BTN_LEFT`) and counts as OK: the remote's mouse node (1d5a:c081, no power key) is read and held with the others. Host tests only, not yet tried on a box |
 | held for `long_s` | power-off, without waiting for the release |
 | within `ignore_s` (2 s) after a resume the key itself woke | nothing: it is the press that woke the box |
 
