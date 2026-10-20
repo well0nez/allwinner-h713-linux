@@ -65,10 +65,10 @@ UMBAU_FREI = ("doku/", "installer/tests/run.sh",
               # (ein Eintrag in .sperrscan-ignore haette genau das mit abgeschaltet).
               "uboot-h713/", "tfa-h713/", "crust-h713/", "mainline/patches/")
 # Regel 9: Quelldateien unter mainline/ brauchen eine SPDX-Zeile in den ersten 2 KiB. Frei sind: die
-# Submodule, der AIC8800-Treiberbaum (Dateikoepfe der Hersteller, keine SPDX-Zeilen), die Bauskripte
-# (unsere, build.sh und uboot-build.sh im Neuschrieb) und unser OpenRISC-Compiler-Bau.
+# Submodule, die Bauskripte und ihre Ausgaben (mainline/build/) und unser OpenRISC-Compiler-Bau. (Die alte
+# Kopie des AIC8800-Treibers unter mainline/modules/aic8800/ war frei, bis sie am 20.10.2026 ging, TODO 7.20.)
 SPDX_ENDUNGEN = {".c", ".h", ".S", ".py", ".sh", ".dts", ".dtsi"}
-SPDX_FREI = ("mainline/external/", "mainline/modules/aic8800/", "mainline/build/", "mainline/tools/or1k-toolchain/")
+SPDX_FREI = ("mainline/external/", "mainline/build/", "mainline/tools/or1k-toolchain/")
 UMBAU_MAX = 5          # hoechstens so viele Zeilen je Datei nennen, dann zaehlen
 SECURE = (b"sunxi-secure-storage", b"hdcpkeyV22", b"wifiBleDatas")
 TEXT_ENDUNGEN = {".md", ".txt", ".py", ".sh", ".c", ".h", ".patch", ".dts", ".dtsi", ".env", ".conf", ".json", ".yaml", ".yml", ".ini", ".xml", ".service", ".rules", ".cfg", ".its", ".mk", ".S", ".s", ".html", ".css", ".js", ".toml", ".gitignore", ".gitmodules", ""}

@@ -131,8 +131,14 @@ written afresh or replaced.
   likewise, and these nine programs, each with his SPDX line: `mainline/tools/display/drm-flip.c` and, in
   `mainline/tools/video/`, `decd-client.c`, `gles-nv12.c`, `gles-play.c`, `gles-probe.c`, `gles-scanout.c`, `gles-tear.c`,
   `gputest.c` and `h713-present.c`. `LICENSE` names them as the parts that are his.
-- **Started as his and being rewritten:** `mainline/build/build.sh`, `mainline/build/uboot-build.sh`,
-  `mainline/config/versions.env` and `mainline/config/toolchain.md`; they are not part of this step.
+- **Started as his, written anew on 20.10.2026** (TODO 7.20 a, b, d), each from a description of what it has to do,
+  without the text of the file before: `mainline/build/build.sh` and `mainline/build/uboot-build.sh` (the outputs
+  byte for byte the same as with the old scripts), `mainline/config/versions.env` and `mainline/config/toolchain.md`,
+  and in `mainline/patches/` the kernel `series`, `board/hy200_qz713df_a1_defconfig`, `kernel/README.md` and
+  `aic8800/README.md` (the series the same entries in the same order, the defconfig the same options). The list
+  `aic8800/series` is nine file names and nothing else, so the new one is the same bytes. His three diagnostic
+  fragments `iommu`, `kasan` and `builtin-drivers` and the old copy of the AIC8800 driver under
+  `mainline/modules/aic8800/` (vendor release `2024_0109` with his README; no build read it) were removed instead.
 - **Where the removed files are:** in his repository at `8860991`, with the paths of `mainline/` minus that first directory
   (`mainline/docs/status.md` there is `docs/status.md`), and in this repository's history, for as long as it carries his
   commits (`git show 8860991:docs/status.md`). Older entries of the journal that name a path like `mainline/docs/...` or
@@ -165,8 +171,8 @@ and the drivers inherit it from their upstreams and could not be anything else; 
 BSD-3-Clause, `crust-h713/` BSD-3-Clause or GPL-2.0-only, `uboot-h713/` GPL-2.0+, some device-tree files dual-licensed, the GPL-2.0 lines of cstenger's nine programs);
 `rootfs/libva/patches/` is GPL-3.0-or-later (changes to megi's GPL-3.0-or-later driver); `rootfs/libva/build-libva.sh` and
 `rootfs/mesa/cross-aarch64.ini.in` are GPL-2.0-or-later; and the parts of cstenger's tree under `mainline/` carry what he put
-on them (a file of his without a licence line is not covered by ours; "Left out on purpose" above says which of them are
-still in the tree and being rewritten).
+on them (a file of his without a licence line is not covered by ours; since 20.10.2026 the ones there were are gone or
+written anew, "Left out on purpose" above).
 
 **In the image.** An image carries its licence notices under `/usr/local/share/doc/h713-linux/`: a README with every
 part's licence and the written offer of the source of every GPL or LGPL part, the revisions it was built from, the BSD

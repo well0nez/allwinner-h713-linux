@@ -43,7 +43,7 @@ class TestSpdxRule(unittest.TestCase):
     def test_patches_and_free_places_are_not_asked(self):
         rc, out = scan({
             "mainline/patches/kernel/0001-x.patch": "--- a/x.c\n+++ b/x.c\n",
-            "mainline/modules/aic8800/aic8800_bsp/x.c": "/* Copyright (C) vendor */\n",
+            "mainline/external/u-boot/x.c": "/* Copyright (C) vendor */\n",
             "mainline/build/build.sh": "#!/bin/sh\n",
             "rootfs/x.sh": "#!/bin/sh\n",
         })

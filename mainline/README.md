@@ -11,7 +11,6 @@ Assembling the image, the installer and everything that runs on the device live 
 | `patches/aic8800/` | The series applied to Radxa's AIC8800 tree, the Wi-Fi and Bluetooth driver |
 | `patches/zurueckgenommen/` | Patches that were withdrawn from the series, with the reason |
 | `patches/vorschlaege/` | Work that is not in the series (yet): one folder per topic with drafts, findings and test plans; finished ones sit in `_erledigt/` |
-| `modules/aic8800/` | The Wi-Fi and Bluetooth driver directories (`aic8800_bsp`, `aic8800_btlpm`, `aic8800_fdrv`) and the firmware checksum list; its own README says where the build takes the driver from |
 | `build/` | `build.sh` (TF-A, U-Boot, kernel and the Wi-Fi modules), `uboot-build.sh`, and `uboot-prove-fragments.sh`, which the board check runs. Everything else that appears here is build output and not tracked |
 | `config/` | `versions.env`, the pinned versions of every source, and a note on the toolchain |
 | `tools/` | The build of the OpenRISC compiler and a few small programs for the device; see [tools/README.md](tools/README.md) |
