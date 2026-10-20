@@ -30,6 +30,10 @@ Was ein harter Fund ist (doku/116 §2 "Veroeffentlichen", §7):
      raus (doku/210); eine neue Datei ohne Lizenzkopf soll nicht noch einmal still hineinrutschen.
      Ausgenommen sind die Stellen, die heute ohne SPDX-Zeile sind und es aus gutem Grund bleiben
      (SPDX_FREI unten). (Regel 8, die Identitaet, steht an ihrer Stelle im Code.)
+  10. Eine MAC-Adresse (sechs Hexpaare mit Doppelpunkt) in einer Textdatei. Anlass 20.10.2026: die Adresse
+     von Marcos Fernbedienung stand in drei Journalseiten, Client- und Ethernet-Adressen in Patch-Texten und
+     einem Boot-Mitschnitt (TODO 2.127). Erlaubt sind die maskierte Form xx:xx:xx:xx:xx:xx und die
+     Testattrappen der Tests (MAC_ATTRAPPEN unten). Die Adresse selbst wird nicht ausgegeben, nur Datei:Zeile.
 Ausgenommen: .git/, __pycache__/, die Arbeitsbaeume der Submodule aus .gitmodules
 (gepusht wird ihr Commit-Zeiger, nicht ihr Inhalt) und alles, was Zeilen in .sperrscan-ignore treffen
 (Zeile = Pfadpraefix relativ zur Wurzel; heute keine).
@@ -70,6 +74,9 @@ UMBAU_FREI = ("doku/", "installer/tests/run.sh",
 SPDX_ENDUNGEN = {".c", ".h", ".S", ".py", ".sh", ".dts", ".dtsi"}
 SPDX_FREI = ("mainline/external/", "mainline/build/", "mainline/tools/or1k-toolchain/")
 UMBAU_MAX = 5          # hoechstens so viele Zeilen je Datei nennen, dann zaehlen
+# Regel 10: genau sechs Hexpaare mit Doppelpunkt - ein siebtes Paar davor oder danach (EDID-Kopf, Hexdumps) ist keine Adresse.
+MAC = re.compile(rb"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:])")
+MAC_ATTRAPPEN = re.compile(rb"(?i)(?:00:11:22|11:22:33|aa:bb:cc):|(?:ff:){5}ff|(?:00:){5}00")
 SECURE = (b"sunxi-secure-storage", b"hdcpkeyV22", b"wifiBleDatas")
 TEXT_ENDUNGEN = {".md", ".txt", ".py", ".sh", ".c", ".h", ".patch", ".dts", ".dtsi", ".env", ".conf", ".json", ".yaml", ".yml", ".ini", ".xml", ".service", ".rules", ".cfg", ".its", ".mk", ".S", ".s", ".html", ".css", ".js", ".toml", ".gitignore", ".gitmodules", ""}
 
@@ -191,6 +198,14 @@ def main() -> int:
             if (rel.startswith("mainline/") and not rel.startswith(SPDX_FREI)
                     and os.path.splitext(f)[1] in SPDX_ENDUNGEN and b"SPDX-License-Identifier" not in daten[:2048]):
                 funde.append(("SPDX", rel, "no SPDX line in the head"))
+            # Regel 10: MAC-Adressen in Textdateien (ohne die Adresse auszugeben).
+            if os.path.splitext(f)[1] in TEXT_ENDUNGEN:
+                macs = [m for m in MAC.finditer(daten) if not MAC_ATTRAPPEN.match(m.group(0))]
+                for m in macs[:UMBAU_MAX]:
+                    funde.append(("MAC-Adresse", "%s:%d" % (rel, daten.count(b"\n", 0, m.start()) + 1),
+                                  "maskieren: xx:xx:xx:xx:xx:xx"))
+                if len(macs) > UMBAU_MAX:
+                    funde.append(("MAC-Adresse", rel, "und %d weitere" % (len(macs) - UMBAU_MAX)))
             # Regel 7: Verweise auf das Umbau-Arbeitsverzeichnis. Nur Textdateien --
             # in einer Binaerdatei waere ein Treffer Zufall. Datei:Zeile melden, damit
             # man sie ohne Suchen findet.
