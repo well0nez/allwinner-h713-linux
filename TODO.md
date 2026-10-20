@@ -468,6 +468,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       bleiben - die Ursache muss geklärt werden.** Abdeckung: launcher-rand b63044e (schwarzes NV12 unter Seiten, ~83 MB/s Abruf solange eine
       Seite steht); offen bleiben Konsole (ctl off) und die Seite ohne Signal ohne vorheriges Bild. Nächster Schritt: RE, wer bei Stock die
       RGB-Ebene auf den Bildanfang legt (Display-Firmware/MIPS-Aufrufe, U-Boot), Abzüge des G-EU unter Stock lesen; danach Abdeckung zurückbauen.
+      **Abdeckung gemergt** (launcher-rand b63044e, Mythos go als Abdeckung): unter deckenden Seiten liegt ein stilles schwarzes NV12 auf der
+      Videoebene. Offen dazu: Konsole und Seite ohne Signal ohne vorheriges Bild zeigen den Strich weiter; eine Seite im 0,1-s-Schwarzfenster der
+      Wand bekommt keinen Rahmen; under_black_fb() lässt bei Fehlschlag den Dumb-Buffer stehen (3 Zeilen). HY310 nachmessen: abnahme -t ps, -t st
+      mit offenem Launcher, neue Kamera-Zelle "Licht bei offenem Launcher 30 s". Verwandt: known-issues "green stripe on the console" (2.34) -
+      vermutlich dieselbe Wurzel (Spalten 48-49 zeigen Ebene 0).
 - [ ] 2.127 **MAC-Adressen im Repo maskieren und sperr-scan um eine MAC-Regel ergänzen** (Mythos 20.10.2026, Prüfung bt-neukoppeln; vor dem
       nächsten Push): die Adresse von Marcos Fernbedienung steht in doku/134 (3x), 135, 140 (nur lokal, nicht auf GitHub); auf GitHub (`origin/main`)
       stehen schon zwei Client-Adressen in den Beschreibungen von aic8800-0008/-0010 und eine eth-Adresse in vier Boot-Mitschnitten unter analyse/boot/
