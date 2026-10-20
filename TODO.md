@@ -125,6 +125,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       -> **T1** Stock-Aus am HY350 als stilles Referenzspektrum -> **T3** Last dazu im Standby -> **T5c** crust-Variante "ARISC langsam"
       (Bau, FEL, Marcos Ja) -> **T6'** Tiefschlaf-Bau build-deep-0034 (liegt). Vorab von Marco: Fotos Typenschild Netzteil und Platine
       (Regler-ICs).
+      **20.10.2026 abends am G-EU (Marco):** T0 Standby: Netzteil summt (leiser als HY310); T4b WLAN stromlos + Standby: Surren anders/lauter
+      -> WLAN nicht die Quelle; Aus über crust: Surren anders, etwas weniger; HDMI gezogen: keine Änderung. HY350 nicht vergleichbar (eingebautes
+      Netzteil). Nächster Schritt T5c (crust 'ARISC langsam', Kopie, FEL) mit Marco an einem anderen Abend.
 - [ ] 2.45 **Regel: wer auf Kanal 2 zeichnet, zeichnet verzerrt - Vorplanung Desktop** (`doku/192` §5.3-5.4): ein späterer
       Compositor setzt die Trapez-Matrix als letzten Durchgang und zeichnet die Einblendung davor; Kanal 2 gehört dann dem Desktop
       (Alpha je Bildpunkt über der Video-Ebene); Zeichnen und Ausgabeort trennen; DRM-Master heute `h713-tv`, später der
@@ -486,6 +489,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Lizenzarbeit tragen noch "Written offer" - nur fürs Gerät, nie weitergeben. Vor dem Release build-all von vorn (build-rootfs.sh/build-all.sh mit
       Änderungen beider Seiten nie zusammen gebaut). Randnotiz: build-all.sh liest AIC_REV aus dem jüngsten aic8800-Ordner statt aus versions.env.
       Offen am Gerät: das neu gebaute aic8800_fdrv.ko (nur der Baumname ändert sich) mit dem nächsten G-EU-/HY310-Abbild laden und WLAN prüfen.
+- [ ] 2.129 **Im Aus über crust verliert die HDMI-Quelle das Signal nicht** (Marco 20.10.2026 am G-EU, beim Summtest): unser Aus hält den Eingang
+      für die Quelle sichtbar (HPD high? 5-V-Erkennung, EDID-Speicher versorgt?); Stock vermutlich nicht. Messen: HPD-Pegel und EDID-Antwort im
+      Aus, Verhalten der Quelle (geht sie in Standby?); dann im Aus HPD low ziehen wie Stock (Ort: hdmirx-suspend/crust POWEROFF).
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
