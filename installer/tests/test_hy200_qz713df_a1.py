@@ -339,6 +339,15 @@ class MkimageCutsForTheProfileSize(unittest.TestCase):
             with self.assertRaises(SystemExit):
                 mkimage.disk_sectors_for(wrong)
 
+    def test_a_release_image_takes_its_boards_size(self):
+        # A verified board gets no --test-for; its release image names the board with --board
+        # (release/build-all.sh) and is cut for that board's eMMC, not the HY310's.
+        self.assertEqual(mkimage.disk_sectors_for(None, GEU_ID), GEU)
+        self.assertEqual(mkimage.disk_sectors_for(None, "hy310"), HY310)
+        self.assertEqual(mkimage.disk_sectors_for(GEU_ID, "hy310"), GEU)    # a test image's board wins
+        with self.assertRaises(SystemExit):
+            mkimage.disk_sectors_for(None, "hy200_qz713df_a1")             # a board with variants needs one
+
 
 # ------------------------------------------------------------------ h713-install
 

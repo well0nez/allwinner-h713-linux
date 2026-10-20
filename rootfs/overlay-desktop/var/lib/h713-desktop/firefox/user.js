@@ -9,6 +9,7 @@ user_pref("media.hardware-video-decoding.force-enabled", true);
 user_pref("widget.dmabuf.force-enabled", true);
 // A wall seen from three metres: a TV interface, not a laptop's. At 1920x1080 the page is laid out as for 960x540 CSS pixels, a 16 px text is a
 // 32 px letter (Marco 16.10.2026: "hardly readable"). Firefox takes the factor as a string; the browser and the desktop's Firefox window share it.
+// 2.0 is the HY310's 1920 / 960; h713-firefox-scale sets the panel's own factor before each start (1280x720: 1.333).
 user_pref("layout.css.devPixelsPerPx", "2.0");
 // Sound: ALSA `default`, the DSP bridge, like Kodi - no PulseAudio or PipeWire runs on this image (the media profile masks the PipeWire user
 // units and leaves pipewire-alsa out). Asked for by name, Firefox does not try a sound server first.
