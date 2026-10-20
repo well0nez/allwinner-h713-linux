@@ -212,16 +212,18 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       und die Journalzeile des afbd-Treibers, wenn die oberen Bits kommen oder gehen; bestanden, wenn in jedem Zyklus Bilder kommen und in den Zyklen
       mit gesetzten Bits ebenso (Panel des G-EU 59,71 Hz: 59,70/s erwartet). Offen auch am HY310: Bildinhalt und Latenz im gesetzten Zustand (Kamera),
       Ursache der oberen Bits (was zählt `+0xa08`?), ob die 10-15 ms Müllwort beim Aufwachen (7 von 25) ein Bild kosten.
-- [ ] 2.75 **eMMC-Lese-Schwelle (`0313`) und Netz (`0312`) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/211` §9): neun Kodi-4K-Läufe bei
+- [x] 2.75 **eMMC-Lese-Schwelle (`0313`) und Netz (`0312`) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/211` §9): neun Kodi-4K-Läufe bei
       gleicher Last, **0 Daten-CRC-Fehler auf 30 946 MiB** gegen 1899 auf 19 049 MiB ohne die Schwelle, FIFO voll 2,89 -> 0,002 %, B1-Kurzprobe
       300/300 bitgenau, Schreibtest gleich, `dd` neben Kodi 133-137 MB/s. Derselbe SoC und derselbe Treiber (`sun50i_h713_emmc_cfg`) am G-EU, der Fehler
       war dort einmal gesehen (2.22). Nachmessen: Kernel mit beiden Patches; ohne Kodi eine Last, die Speicher und DMA fordert (große Dateien von der
       eMMC lesen neben einem Speicherfresser), `dmesg` auf `data error`/`send stop`/`re-init`, `THLD` bei Lesungen `0x02000001`. Bestanden: 0 Fehlerzeilen,
       Lesen nicht langsamer als ohne.
-- [ ] 2.76 **Legacy-PTYs aus (Defconfig) am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15.10.2026, `doku/211` §8): `# CONFIG_LEGACY_PTYS is not set` in
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** Kodi 4K (60-s-HEVC) + dd O_DIRECT 900 s: 118 320 MiB, 137,7 MB/s (allein 145,1), **0 data error/send stop/re-init**, THLD durchgehend 0x02000001. Vergleich ohne 0313 am G-EU nicht gemessen (am HY310 gemessen).
+- [x] 2.76 **Legacy-PTYs aus (Defconfig) am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15.10.2026, `doku/211` §8): `# CONFIG_LEGACY_PTYS is not set` in
       `mainline/patches/kernel/board/hy200_qz713df_a1_defconfig`; `/sys/class/tty` 587 -> 75 Einträge, Kodis CEC-Suche 6,4 -> 1,2 % eines Kerns, B1-Kurzprobe
       300/300. Im Abbild öffnet niemand BSD-PTYs (openssh, agetty, Kodi, cage, PipeWire nehmen `/dev/ptmx`). Nachmessen am G-EU: `ls /sys/class/tty | wc -l`
       (Soll um 75), ssh, getty auf ttyS0 und WLAN gehen.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** `# CONFIG_LEGACY_PTYS is not set` im Bau-.config, 0 Geräte /dev/pty[p-z]*.
 - [ ] 2.77 **Kodi unter cage am Wayland-Server des Warp am HY300PRO-G-EU** - am HY310 gemessen (15.10.2026, `doku/211` §10: Menü und Video 57-58 Bilder/s, cage
       0 ns GPU-Zeit, `ctl check 900` 0 Abweichungen, Konsole nach dem Ende im Textmodus). Am G-EU nie gelaufen (anderes Panel, kein Fokusmotor, keine Kamera). Nachmessen:
       Profil `desktop` (oder Schnell-Deploy von `h713-warp`, `h713-tv`, Kodi-Einheit, Keymap), `systemctl start h713-kodi`, Menü 60 s, Video 1080p60, Beenden,
@@ -232,6 +234,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Kernel mit `0315`-`0319` auf den G-EU (Schnell-Deploy: FIT + `sunxi-cedrus.ko`, die anderen .ko müssen byte-gleich sein), die Zeile `module clock 600000000 Hz` im `dmesg`, der
       VE-Takt unter Last aus der CCU (`PLL_VE` +0x058, VE +0x690, nur lesend), 33 Clips bitgenau und eine Stunde 4K-HEVC-Dekodieren mit Temperatur und Treiberzeilen (Timeouts,
       IOMMU-Faults). Bestanden, wenn alles bitgenau ist, 0 Timeouts/Faults und keine Zone über 85 C.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** `module clock 600000000 Hz`, PLL_VE/VE 600 MHz unter Last; B1 33 von 33 bitgenau, 0 Treiberzeilen; Tempo H.264 2160p 31,6, HEVC8 2160p 60,9, HEVC10 2160p 54,3 Bilder/s; Kodi HEVC 2160p 2 x 15 min (60-s-Fassung) 29,76/29,73, 0 Timeouts/Faults, Zonen max 72,9 C (77,7 C mit dd daneben). Offen: die Stunde.
 - [ ] 2.79 **Launcher, Moduswechsel und Standby aus Kodi am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/212` §1: zehn Wechsel HDMI -> Kodi -> HDMI mit 4,16-4,24 s und
       0,39-0,44 s, Taste mal Zustand ohne Doppelwirkung, Auswahl 52,7 ms über HDMI und 81,8 ms über Kodi bis `osd show`, 35 von 35 Standbys aus allen Wegen mit Modus und Bild zurück). Am G-EU:
       dieselben vier Messungen mit einer uhid-Fernbedienung (Kennung `1d5a:c081`), das Panel mit 59,71 Hz gegenhalten; zusätzlich, was am HY310 nicht ging: (a) ob die echte
@@ -269,6 +272,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       öffnen `pcm0p` (`RUNNING`), Hörprobe nur nach Ansage; (k) **Bluetooth**: die Fernbedienung ist seit 11.10. am G-EU gekoppelt - nach dem Boot `Connected: yes`
       und Tasten ohne IR-Interrupts, sonst 2.90; (l) Standby mit PB5 (Lampe und Lüfter aus seit `0249`): fünf Standbys aus HDMI und Kodi, Bild und Modus zurück;
       (m) 1080p60-Quelle auf dem 720p-Panel: 60 s Ring 59,7 Bilder/s, `check 300` 0 Abweichungen.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** (a) Panel-Puffer 1280x720, Ring 59,7/s, Firefox-Faktor 1.333 nach dem ersten Start; Bilder mit dem Auge offen. (b) Lampe: Auge offen. (c) abnahme -K: rw 11/11, ps 7/7 (mit Mess-Trapez; bei Identität ist der Warp im Bypass, soll_sw dafür angepasst). (d) **10 von 10 RTC-Standbys aus HDMI** mit Ring danach. (e) **bestanden** (60-s-Clip, siehe 2.78). (f) **bestanden** (2.75). (g) Rate 1,0000 über 90 s, 16 x wake rtc; IR offen. (h) offen (Auge). (i) Kodi als h713-kodi, Launcher beim Start; Browser-Start **7,2-7,3 s > 7 s** (2.121). (j) **bestanden**: default -> hy310hdmi (Karte 1), Ton und Kodi-Pieper am ThinkPad-Mikro ~+35-50 dB über Grund, pcm0p RUNNING (kodi.bin). (k) offen (Marcos Fernbedienung). (l) 5 aus HDMI + 5 aus Kodi mit Modus zurück; Lampe/Lüfter aus: Auge offen. (m) check 900: 0, check 300: 0 (ein erster Lauf 1 Bild bei Bild 1).
 - [ ] 2.85 **Bildweiche (seatd ohne VT, Primärebene je Commit, Übergabe auf einem Claim, Stumm über den Neustart, Seite ohne Signal) am HY300PRO-G-EU nachmessen** - am HY310
       bestanden (16.10.2026, `doku/213` §1: 30 von 30 Wechseln mit Bild, 0 Blitze in 24 Übergaben, Stumm in 5 von 5 Standbys gehalten, 74 von 75 Zellen). Am G-EU: dieselbe
       display.bin-Revision, aber 720p-Übergabe und ein anderes Fenster; `abnahme.sh -n 1 -t wechsel` mit Marcos Blick statt der Kamera, `ctl mute on` über einen Standby,
@@ -282,6 +286,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       11-Minuten-Abgleich des Kernels verschluckte Wecker unter 174 s; mit `0320` Rate 1,000, zwei RTC-Standbys `wake rtc`, IR unberührt. Am G-EU (derselbe RTC-Block,
       kein 32-kHz-Quarz im Baum): `since_epoch` gegen `date` über 90 s (nur lesend) vor und nach dem Kernel, `hwclock` gegen `date`, zwei RTC-Standbys mit dem
       Wecker-Schritt der Abnahme, die IR-Fernbedienung. Dazu `referenz`-Zeile "RTC-Sekunde = 1,071 s" überholen.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** RTC-Rate 1,0000 über 90 s, RTC gegen date +1 s, 16 RTC-Standbys alle `wake rtc`. Offen: IR-Taste.
 - [ ] 2.88 **Fokus-Randbild und `h713-remote-pair` am HY300PRO-G-EU** - am HY310 gemessen (16.10.2026, `doku/213` §6). Der G-EU hat keinen Fokusmotor (`features =
       accelerometer`): der Randbild-Teil entfällt; Fernbedienung: nach dem Boot verbunden (sie ist dort gekoppelt), Tasten ohne IR-Interrupts; der BT-Fix (2.90) erst
       nach seiner Messung.
@@ -299,6 +304,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (16.10.2026, `doku/212` §4 Umfeld; N-2 im Trockenlauf mit einer `systemctl`-Attrappe). Am G-EU: Launcher öffnen, `systemctl restart h713-osd`, eine Taste ->
       Journal `launcher closed: h713-osd says error the launcher is not open`, Grab frei, OK startet nichts; Power 3 s bei offenem Launcher -> `long press: power-off`
       (schaltet die Box aus: nur mit Marco am Gerät), kurz -> `short press: countdown`. `h713-keys`, `h713-power`, `h713-settings` zusammen ausspielen.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** N-1 bestanden (Journal-Zeile, OK startet nichts, Modus hdmi). N-2 nicht gemacht (schaltet aus).
 
 - [ ] 2.92 **Bluetooth: LINKS+RECHTS koppelt auch bei veralteter Kopplung neu** (`doku/214` §1): hat der HY310 noch einen Bund, den die
       Fernbedienung nicht mehr kennt (sie wurde an einer anderen Box gekoppelt), ignoriert `h713-remote-pair watch` das LINKS+RECHTS des
@@ -311,9 +317,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.94 **Startfixe vom 17.10. am HY300PRO-G-EU nachmessen** (`doku/214` §2-3, c89234f, 8d22136, 47a29d9): Launcher beim Start vor dem
       HDMI-Bild (Journal: `launcher open` vor `plane 38 on`), Warp-Claim innerhalb 0,3 s nach `signal`, keine Zeile `drawn again` von
       h713-osd während des Starts; dazu einmal mit `On start: HDMI input` ansehen (der gerade Ring für ~0,14 s, `doku/214` §4).
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** Launcher open 10,7 s vor dem Signal 14,2 s; mit Trapez: Signal -> Claim 0,09 s, erstes Bild 7 ms nach dem Claim, keine "drawn again". Offen: einmal mit On start HDMI ansehen.
 - [ ] 2.95 **Bedienmodell am HY300PRO-G-EU nachmessen** (`doku/215`): Rückwege und On start, Pause unter Seiten (dort Warp im Bypass: der NV16-Ring
       geht unter der Seite aus und an = die getönte Kante, nachmessen), P3 mit `want none` (kein Warten, Ring sofort), EDID ohne Deep Colour (720p-EDID),
       No-signal-Seite (720p). Je Paket die Zelle aus abnahme.sh, Kamera dort keine: Marcos Auge.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** Rückwege 11/11, Pause unter Seiten 7/7 (Software, -K); On start launcher/hdmi/kodi/last-kodi bestanden, last-hdmi von Hand (Warmstart) bestanden; P3 want none = Identität (h713-tv zeigt den Ring selbst). Wand/Auge offen.
 - [ ] 2.96 **Wand nach dem Wecken** (`doku/215` §6): ~9 s Konsole, weil h713-tv mit der Display-Firmware neu startet. Zusammen mit V1 (Zustand
       "geparkt" im hdmirx-Treiber) planen: h713-tv übersteht den MIPS-Neustart mit gehaltener Wand, oder die Konsole bleibt verdeckt. Verschoben (Marco 17.10.); Marco 18.10.: "kein Release-Hindernis - Kleinigkeit, muss man schauen, evtl. noch vor dem Release" - einplanen, wenn vor dem Release Platz ist, sonst danach.
 - [ ] 2.97 **P7: HDMI-Aufnahme parken** (`doku/215` §7): nach 5 min ohne HDMI an der Wand (Programm, Launcher, Settings, kein Signal)
@@ -335,6 +343,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Break des Firmware-Allokators (Kopf +0x2D000, Wort 47 + Wort 45) unter +0x36000; (3) `ctl set wb_g_gain 563` -> `DC[11:0] = 0x8cc`;
       `ctl set cm_yellow_hue 60` -> Achse 3 = Basis + 60, `cm reset` gibt den Anfang zurück; (4) Warp im Bypass: wirkt der Weißabgleich dort?;
       (5) Warmstart und Standby mit gespeicherten Werten: Register gleich.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** (1) `ctl wb` auf den Registern; (2) +0x37100 = 5 1 40000 1 1 100, +0x37200/+0x37300 leer, Break +0x33000; (3) DC 0x080008cc, Achse 3 47->107, cm reset -> 47; (5) Warmstart mit gespeichertem wb: DC gleich. Offen: (4) Auge, Standby mit gespeicherten Werten.
 - [x] 2.102 Klein, aus Mythos' Prüfung von bm-wb2 (erledigt 19.10.2026: Kernel 0326 meidet erreichte Seiten, cpu-comm.md, `arbeit/medien/hdmirx-break/`; Rest 2.112; h713-tv-Teil erledigt 19.10.: `color.c`, Grenze gegen den Seitenanfang des Slots, weil der Break
       seitenbündig wächst - Paket `arbeit/medien/h713tv-color/`; offen bleiben Kernel und cpu-comm.md): der hdmirx-Treiber prüft beim Bind den Break des Firmware-Allokators (gegen den Seitenanfang) für seine festen Plätze
       (+0x36000 HDCP-Schlüssel, +0x37000, +0x37100; `dev_warn`), dazu die falschen Kommentare in 0094/0101 ("three doubles", "white balance is
@@ -347,6 +356,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.104 **Turn to wall am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): `once --apply`-Zeit und Sensorlesezeit (HY310 1,93 s / 1,8 s),
       `turn_to_wall` setzen und `h713-warp ctl status` zurücklesen, ein Warmstart, danach Drehung 0 und die Ecken wie vorgefunden; Frageliste 2.103
       ohne Kamera.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** read 0,51-0,60 s, once --apply 0,74 s; turn_to_wall 24 und 10 setzen die Ecken; Warmstart mit 10: Ecken gleich; zurück auf 0 und Identität. Offen: Frageliste 2.103 (Marco).
 - [x] 2.105 **Neigungssensor über den IIO-Puffer lesen** (erledigt 19.10.2026, `arbeit/medien/iio-puffer/`, Mythos go: drei Defconfig-Zeilen IIO_BUFFER/IIO_SW_TRIGGER/IIO_HRTIMER_TRIGGER, Satz 1,43->0,14 s, once --apply 1,94->0,74 s, Salve 3,95->2,3 s; watch pausiert 0,5 s; Rest 2.108) (Mythos 19.10.: st_accel/sc7a20 schaltet den Sensor je sysfs-Rohwert ein und wartet
       bootime/odr, ~45 ms je Lesung, 30 Lesungen = 1,8 s; gemessen 90 Lesungen 4,1 s): `buffer/enable` + hrtimer-Trigger, `/dev/iio:deviceN`, Sensor
       bleibt an - `once --apply` ~0,3 s statt 1,9 s, `watch` gleich mit (seine Startzeile "a reading every ~0.3 s" stimmt heute nicht). Rückfall,
@@ -359,12 +369,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.107 **osd-loch am HY300PRO-G-EU nachmessen**: mit seinem eigenen Trapez (bei Bypass einmal Turn to wall 24 und zurück) Launcher ->
       Settings -> Back -> Launcher -> vier Züge, je ein `ebenen.py`-Bild gegen das Ganzbild (`loch.py`, Skripte `arbeit/medien/osd-loch/skripte/`);
       einmal Ecken ändern bei offener Settings-Seite. `make test` von h713-osd dauert seit test_wall ~4 min (Kürzung später möglich).
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** bei Turn to wall 24: a5..a2-zug gegen w5..w2 **0 Löcher**, Alpha 255 an drei Proben; einzige Abweichung die Uhr (Minute dazwischen). Offen: Ecken ändern bei offener Settings-Seite.
 - [ ] 2.108 Klein, aus iio-puffer (Mythos 19.10.): `average_samples` als Vorgabe 20 statt 10 (Puffer-Tripel streuen in z doppelt so stark; Winkel
       0,25 statt 0,19 Grad, +0,1 s; Marcos Wert 10 nicht ändern); `in_timestamp_en` auf 0 setzen; `once --apply` 0,74 s -> ~0,4 s nur, wenn
       Marcos Augentest (2.103) das Nachlaufen stört: ein Warp-Aufruf statt acht, Modellsuche cachen. GERAETESTAND: der HY310 trägt seit 19.10.
       einen gemischten Modulbaum (rend6 + vier IIO-Module zum FIT e8c68904) - rend7 aus build-all von vorn.
 - [ ] 2.109 **IIO-Puffer am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): Kernel mit 5d32cbc, `h713-keystone read`/`once --apply`-Zeiten,
       Journal ohne sysfs-Rückfall, `watch` nach einer Bewegung; ohne Beschleunigungssensor dort (falls keiner): Einheit übersprungen, nichts geändert.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** sc7a20 als iio:device2, keystone-auto "a reading every ~0.66 s through the IIO buffer", 0 sysfs-Zeilen; read 0,51-0,60 s, once --apply 0,65-0,74 s. Offen: watch nach einer Bewegung (Hände).
 - [ ] 2.110 **cstenger-Kernel 0322-0325: Wirkung vor `main` messen** (Mythos 19.10.: go für medien; Messung am HY310 19.10. ohne Fehlerbild im
       Kontrollarm, `arbeit/cstenger-letterbox-20261019/mess/BERICHT.md`): 9.3c (a)/(b) und der Dauerlauf-Block aus mess/BERICHT §7 mit dem Kernel
       aus dem Merge (IIO + 0322-0325); 0323 (64 CAPTURE-Puffer) bei 4K gegen den CMA beobachten (9.3d c). G-EU: dieselbe Matrix nachmessen.
@@ -376,6 +388,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       drei Seiten per `IOCTL_MALLOC` holen, hdmirx neu binden, `dev_warn` und `hdcp` "skipped" lesen, `IOCTL_FREE`, Warmstart (eigener Slot; was ohne
       Wce im Fenster steht, ist nicht gemessen); den Break in `h713-tv ctl status` zeigen. G-EU: 0326 nachmessen - dort steht bei +0x37100 der PWM-Block,
       Info-Zeile im dmesg, keine Warnung, PWM-Schritt läuft.
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** G-EU-Teil bestanden: "allocator ends at +0x33000 ..., lowest place of this driver is at +0x36000", PWM-Schritt gelaufen, keine skipped-Warnung.
 - [ ] 2.113 Klein, aus panel-farbe (Mythos 19.10.): die Abbildung der zwei Weißabgleich-Schieber gehört in h713-tv (`ctl wb sliders COOL MAGENTA`,
       Stellungen in der Antwort von `ctl wb`), dann fallen die Kopien in h713-settings (rows.c) und h713-panel (Python) weg und die Offset-Lücke
       (Offsets lesen, sechs Zahlen schreiben) ist zu - beim nächsten Anfassen von color.c. Marcos Blick auf den Reiter Colour im Panel (:8080, Handy
@@ -410,6 +423,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.120 (UI-Teil erledigt 20.10.2026, medien-colour-aus, Mythos go: Settings ohne Bereich Colour, Panel ohne Grundfarben-Karte, Doku-Sätze; offen: Journal, HY350 aufräumen) **Settings/Panel: Hue und Saturation (Colour) ausblenden, bis 2.119 steht**; `ctl set cm_*` bleibt; Doku-Satz in docs/tools/h713-tv.md
       und docs/subsystems/pq.md ("am HY310 keine sichtbare Wirkung, cm-diagnose 20.10.2026"). Journal-Eintrag cm-diagnose. Aufräumen am HY350
       (Marco): /data/local/tmp/cam350, v350.sh, regread350.sh, /data/local/tmp/k350/ (42 MB), /sdcard/Download/testbild120.mp4.
+- [ ] 2.121 **G-EU: Browser-Start 7,2-7,3 s statt 5,6 s (HY310)** (20.10.2026, Aufsicht, Messreihe geu3): je drei Starts nach 40-s-Sitzungen,
+      "launcher: Browser" -> "has its picture" 7,20/7,27/7,33 s; Unit mit ExecStartPre 0,25 s, Firefox bis zum ersten Bild ~7,0 s; WLAN-Energiesparen
+      aus: 7,20 s (nicht die Ursache); erster Start nach Boot 10,7 s, erster nach Installation 14,1 s. Ursache messen (Firefox-Profil, CPU-Takt beim Start,
+      eMMC-Lesen, Faktor 1.333 gegen 2.0), dann Grenze aus 2.86 bestätigen oder begründet anpassen.
+- [ ] 2.122 **Die drei Commits von `medien-geu2` nach `medien`** (95aee92 Firefox-Faktor nach der Panelbreite, ddd7329 bl31-Schritt nennt die Variante,
+      385d6ba h713-mkimage --board schneidet für die eMMC des Boards): das G-EU-Abbild geu3 lief damit (20.10.2026); Mythos prüft, dann Merge.
+- [ ] 2.123 Klein (G-EU 20.10.2026): bei jedem Kodi-Start 5x `sun4i-codec ... ASoC error (-16)` auf dem Codec (Kodis Geräte-Abtastung, EBUSY);
+      ohne hörbare Folge - prüfen, ob Kodi den Codec überhaupt listen muss (ALSA-Hinweis "codec" ausblenden?) oder die Zeilen bleiben dürfen.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
