@@ -23,6 +23,19 @@
 
 struct area areas[MAXAREA];
 int nareas;
+int area_keystone = -1, area_sound = -1, area_wifi = -1;
+
+/*
+ * The Colour area (hue and saturation of six primaries, the firmware's colour manager) is left out: on the HY310 the block
+ * has no visible effect in any state, measured with the camera (cm-diagnose, 20.10.2026; TODO 2.119 asks whether it works
+ * under the vendor's system at all). `h713-tv ctl set cm_*` stays. H713_SETTINGS_COLOUR=1 brings the area back (the host tests).
+ */
+static bool colour_area(void)
+{
+	const char *e = getenv("H713_SETTINGS_COLOUR");
+
+	return e && !strcmp(e, "1");
+}
 
 static char out[4096];
 static bool have_accel, have_cam, have_motor, standby_ok;
@@ -1175,31 +1188,34 @@ void rows_init(void)
 	snprintf(r->text, sizeof(r->text), "Not available");
 	r->hidden = true;
 
-	a = &areas[nareas++];
-	a->name = "Colour", a->icon = "pic", a->enter = cm_enter;
-	r_cm_prim = r = new_row(a, "Primary colour", R_CHOICE);
-	r->apply = cm_prim_apply, r->more = true;
-	add_opt(r, "red", "Red");
-	add_opt(r, "yellow", "Yellow");
-	add_opt(r, "green", "Green");
-	add_opt(r, "cyan", "Cyan");
-	add_opt(r, "blue", "Blue");
-	add_opt(r, "purple", "Purple");
-	r->val = 1;				/* Yellow: the one that is judged most often */
-	r_cm_hue = r = slider(a, "Hue", "hue", 5, cm_slider_apply);
-	r->min = -100, r->max = 100;
-	r->note = "Turns this colour towards its neighbour on one side or the other. Other colours and white stay.";
-	r_cm_sat = r = slider(a, "Saturation", "sat", 5, cm_slider_apply);
-	r->min = -100, r->max = 100;
-	r->note = "Makes this colour paler or stronger. Other colours and white stay.";
-	r = new_row(a, "Reset", R_ACTION);
-	r->apply = cm_reset;
-	r_cm_gone = r = info(a, "Colour");
-	snprintf(r->text, sizeof(r->text), "Not available");
-	r->hidden = true;
+	if (colour_area()) {
+		a = &areas[nareas++];
+		a->name = "Colour", a->icon = "pic", a->enter = cm_enter;
+		r_cm_prim = r = new_row(a, "Primary colour", R_CHOICE);
+		r->apply = cm_prim_apply, r->more = true;
+		add_opt(r, "red", "Red");
+		add_opt(r, "yellow", "Yellow");
+		add_opt(r, "green", "Green");
+		add_opt(r, "cyan", "Cyan");
+		add_opt(r, "blue", "Blue");
+		add_opt(r, "purple", "Purple");
+		r->val = 1;				/* Yellow: the one that is judged most often */
+		r_cm_hue = r = slider(a, "Hue", "hue", 5, cm_slider_apply);
+		r->min = -100, r->max = 100;
+		r->note = "Turns this colour towards its neighbour on one side or the other. Other colours and white stay.";
+		r_cm_sat = r = slider(a, "Saturation", "sat", 5, cm_slider_apply);
+		r->min = -100, r->max = 100;
+		r->note = "Makes this colour paler or stronger. Other colours and white stay.";
+		r = new_row(a, "Reset", R_ACTION);
+		r->apply = cm_reset;
+		r_cm_gone = r = info(a, "Colour");
+		snprintf(r->text, sizeof(r->text), "Not available");
+		r->hidden = true;
+	}
 
 	a = &areas[nareas++];
 	a->name = "Keystone", a->icon = "trap", a->enter = keystone_enter;
+	area_keystone = nareas - 1;
 	r_auto = r = new_row(a, "Auto keystone", R_SWITCH);
 	r->apply = auto_apply;
 	r->note = "Corrects the picture once after the projector has been moved.";
@@ -1220,6 +1236,7 @@ void rows_init(void)
 
 	a = &areas[nareas++];
 	a->name = "Sound", a->icon = "speaker", a->enter = sound_enter;
+	area_sound = nareas - 1;
 	slider(a, "Volume", NULL, 5, volume_apply);
 	r = new_row(a, "Mute", R_SWITCH);
 	r->apply = mute_apply;
@@ -1251,6 +1268,7 @@ void rows_init(void)
 
 	a = &areas[nareas++];
 	a->name = "Wi-Fi", a->icon = "wifi", a->enter = wifi_enter;
+	area_wifi = nareas - 1;
 	info(a, "Mode");
 	info(a, "Network");
 	info(a, "Signal");

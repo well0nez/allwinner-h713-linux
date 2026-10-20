@@ -76,7 +76,7 @@ AFTER_MOVE = ("off", "keystone", "keystone+focus")
 # names it, and what each after-move choice needs of it.  The page hides the
 # controls of what is not present; nothing here guesses at a node itself.
 FEATURE_NAMES = ("camera", "accelerometer", "focus-motor")
-FIRMWARE_FEATURES = ("colour", "gamma")   # what h713-tv says of itself (`ctl wb` of the display firmware, `ctl get gamma` of the board's curves), not h713-features
+FIRMWARE_FEATURES = ("colour", "gamma", "colour-manager")   # what h713-tv says of itself (`ctl wb` of the display firmware, `ctl get gamma` of the board's curves; the colour manager: not offered, cm-diagnose 20.10.2026), not h713-features
 AFTER_MOVE_NEEDS = {"keystone": ("accelerometer",),
                     "keystone+focus": ("accelerometer", "camera", "focus-motor")}
 # h713-warp's projection modes: how the picture is mirrored for the mount.
@@ -587,6 +587,9 @@ class Panel(object):
         state = self.look_state()[0]
         if state != "unknown":
             present["gamma"] = state == "ok"
+        # The colour manager (hue and saturation of the primaries) has no visible effect on the HY310 in any state, measured with
+        # the camera (cm-diagnose, 20.10.2026): its card is not offered. The verbs stay for the day it is shown to work.
+        present["colour-manager"] = False
         return {"ok": True, "line": "ok controls", "steps": NUDGE_STEPS,
                 "controls": [dict(blank, name=n, **ranges.get(n, {}))
                              for n in PICTURE_CONTROLS],

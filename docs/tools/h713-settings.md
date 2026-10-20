@@ -82,7 +82,7 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | White balance | Colour temperature (Auto, Warm, Normal, Cool) | `ctl get colour_temperature` (`ok colour_temperature = auto (normal)`: the row says `Auto: Normal`; for a curve the board does not have, `Warm: Normal`) | `ctl set colour_temperature NAME`; Auto follows the picture mode (Cinema and HDR warm, Vivid cool, the others normal), the other three stay when the mode changes | `ctl save`, as above |
 | | Warm - Cool, Green - Magenta (-50..+50, steps of 2) | `ctl wb`: the six values; where they are not the ones the two sliders make, both show 0 | `ctl wb R G B 512 512 512`, all six in one call (the offsets as `h713-tv` holds them) | `ctl save` once the hand has rested for 1.5 s and when the page closes |
 | | Reset | | `ctl wb reset` and `ctl set colour_temperature auto` (not sent when it is on Auto already), `ctl save`: Reset gives back everything this page holds | |
-| Colour | Primary colour (Red, Yellow, Green, Cyan, Blue, Purple), Hue, Saturation (-100..+100, steps of 5) | `ctl cm AXIS` | `ctl set cm_AXIS_hue N` / `cm_AXIS_sat N`: a step on the picture mode's own value | as above |
+| Colour (not offered since 20.10.2026, see below) | Primary colour (Red, Yellow, Green, Cyan, Blue, Purple), Hue, Saturation (-100..+100, steps of 5) | `ctl cm AXIS` | `ctl set cm_AXIS_hue N` / `cm_AXIS_sat N`: a step on the picture mode's own value | as above |
 | | Reset | | `ctl cm reset` (every colour), `ctl save` | |
 | Keystone | Auto keystone | `after_move` in `keystone.conf` | `after_move = keystone \| off`, then `systemctl restart h713-keystone-auto` | the file |
 | | Measure again now | | `h713-keystone once --apply` | |
@@ -100,6 +100,8 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | Power | Power key | `default` of `power.conf`; "Standby" only where `h713-power status` offers it | `h713-power set default standby \| poweroff` | the file |
 | | Remote power key | `remote` of `power.conf` | `h713-power set remote on \| off` | the file |
 | Wi-Fi | Mode, Network, Signal, Address | `wifi.env` (never the password), `iw dev wlan0 link`, `ip -4 addr` | nothing: shown only | |
+
+**The Colour area is left out (since 20.10.2026).** The display firmware's colour manager - hue and saturation of the primaries - has no visible effect on the HY310 in any state, measured with the camera (the registers are written and read back, the picture does not change). Under the vendor's system (HY350) the value step of the same block has no effect either; hue and saturation could not be judged there, its camera sees no colour - whether they work under the vendor's system is open. The page shows eight areas; `H713_SETTINGS_COLOUR=1` brings the area back (the host tests use it), and `h713-tv ctl set cm_*` stays. White balance and colour temperature work.
 
 Rows of hardware the board does not have (`h713-features status`: camera, accelerometer, focus motor) are hidden, not
 greyed out. So are Gamma and Colour temperature where `ctl get gamma` says `is not available` (a board whose curves h713-tv could not read; the two go

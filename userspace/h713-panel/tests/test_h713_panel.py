@@ -370,13 +370,13 @@ def keystone_by(warp_set, last_auto):
         self.assertEqual(list(answer["steps"]), list(panel.NUDGE_STEPS))
 
     def test_controls_say_which_hardware_the_board_has(self):
-        answer = self.call("controls")         # no h713-features: everything stays
-        self.assertEqual(answer["features"], {})
+        answer = self.call("controls")         # no h713-features: everything stays (but the colour manager, cm-diagnose 20.10.2026)
+        self.assertEqual(answer["features"], {"colour-manager": False})
         self.assertEqual(list(answer["after_move"]), list(panel.AFTER_MOVE))
         self.fake.tool("h713-features", {"status": GEU_FEATURES})
         answer = self.call("controls")
         self.assertEqual(answer["features"], {"camera": False, "accelerometer": True,
-                                              "focus-motor": False})
+                                              "focus-motor": False, "colour-manager": False})
         self.assertEqual(list(answer["after_move"]), ["off", "keystone"])
 
     def test_after_move_refuses_hardware_the_board_does_not_have(self):
@@ -1312,6 +1312,8 @@ class ColourTest(Bench):
 
     def test_controls_say_whether_the_firmware_has_the_calibration(self):
         self.assertTrue(self.call("controls")["features"]["colour"])
+        # cm-diagnose 20.10.2026: the colour manager has no visible effect on the HY310 - the card of the primaries is not offered
+        self.assertIs(self.call("controls")["features"]["colour-manager"], False)
         open(os.path.join(self.fake.dir, "absent"), "w").close()
         self.assertFalse(self.call("controls")["features"]["colour"])
         self.fake.tool("h713-tv")                                   # h713-tv answers, but not with a white balance: unknown
@@ -1501,7 +1503,7 @@ class PageTest(unittest.TestCase):
     def test_the_colour_tab_goes_with_the_calibration(self):
         for anchor in ('id="tab-colour"', 'class="screen" id="colour"'):         # the tab is there with either: the calibration or the curves
             self.assertIn('data-needs-any="colour gamma"', re.search(r"<[^<>]*" + anchor + r"[^<>]*>", self.page).group(0), anchor)
-        self.assertIn('<div class="card" data-needs="colour">\n    <h2>Colour</h2>', self.page)    # the primaries need the calibration alone
+        self.assertIn('<div class="card" data-needs="colour colour-manager">\n    <h2>Colour</h2>', self.page)   # the primaries: calibration and a colour manager that works
         self.assertIn('if (name === "colour" && READY) { if (has("colour")) { loadColour(); } loadLook(); }', self.page)
         self.assertIn('if (id("colour").hidden && id("colour").classList.contains("on")) { show("projection"); }', self.page)
 
