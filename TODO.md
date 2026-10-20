@@ -495,6 +495,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.130 Klein (Marco 20.10.2026 am G-EU): **im Mausmodus der Fernbedienung bestätigt OK nichts mehr** - OK sendet dort BTN_LEFT statt KEY_SELECT
       (TODO-Notiz 11.10.), Launcher und Seiten haben keinen Zeiger. h713-keys soll BTN_LEFT bei offenem Launcher/offener Seite als OK nehmen. Dazu: nach
       dem Aufwachen gehen die ersten 2-3 s Tasten nur über IR (Maustaste per IR = 0x0266, keine Maus) - Marco: "Maus geht nicht beim ersten Mal".
+- [ ] 2.131 **G-EU: schwarzer Block unten im Launcher bei jedem zweiten Zug, nur ab und zu** (Marco 20.10.2026, Foto
+      `arbeit/medien/launcher-rand/foto-box-schatten.webp`, 18:06 und 21:01 bei Zügen über die uhid-Fernbedienung, nicht bei Marcos eigenem Aufruf).
+      Der Block sitzt dort, wo die Einblendung (Lautstärke-Pille) erscheint, rechts neben "Standby". Gemessen 21:06/21:08 UTC
+      (`launcher-rand/laeufe/box-210559`, `pille-210831`): der Launcher wechselt je Zug zwischen zwei Puffern (fb 49/50), beide nach jedem Zug
+      ohne Loch (Alpha 255 im ganzen Panel), auch nach einer Pille über dem offenen Launcher; Marco sah in beiden Läufen keinen Block.
+      Nicht nachgestellt. Offen: Auslöser finden (Pille kurz vor/beim Öffnen? Aufnahme dichter als 1,5 s nach dem Zug); ist der Puffer sauber,
+      liegt der Block im Anzeigeweg (osd-loch-Klasse, 2.106/2.107). Fängt ihn `aufnahme.py` nicht, Foto bei der nächsten Sichtung.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
