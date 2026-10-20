@@ -393,9 +393,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       0,25 statt 0,19 Grad, +0,1 s; Marcos Wert 10 nicht ändern); `in_timestamp_en` auf 0 setzen; `once --apply` 0,74 s -> ~0,4 s nur, wenn
       Marcos Augentest (2.103) das Nachlaufen stört: ein Warp-Aufruf statt acht, Modellsuche cachen. GERAETESTAND: der HY310 trägt seit 19.10.
       einen gemischten Modulbaum (rend6 + vier IIO-Module zum FIT e8c68904) - rend7 aus build-all von vorn.
-- [ ] 2.109 **IIO-Puffer am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): Kernel mit 5d32cbc, `h713-keystone read`/`once --apply`-Zeiten,
+- [x] 2.109 **IIO-Puffer am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): Kernel mit 5d32cbc, `h713-keystone read`/`once --apply`-Zeiten,
       Journal ohne sysfs-Rückfall, `watch` nach einer Bewegung; ohne Beschleunigungssensor dort (falls keiner): Einheit übersprungen, nichts geändert.
-      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** sc7a20 als iio:device2, keystone-auto "a reading every ~0.66 s through the IIO buffer", 0 sysfs-Zeilen; read 0,51-0,60 s, once --apply 0,65-0,74 s. Offen: watch nach einer Bewegung (Hände).
+      **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** sc7a20 als iio:device2, keystone-auto "a reading every ~0.66 s through the IIO buffer", 0 sysfs-Zeilen; read 0,51-0,60 s, once --apply 0,65-0,74 s. Kippen: **Marco 20.10.2026: selbst getestet, das Trapez folgt** (vor dem Boot 21:23 UTC; das Journal ist flüchtig, kein Protokollbeleg; heute steht `after_move = off`, Marcos Vorgabe).
 - [ ] 2.110 **cstenger-Kernel 0322-0325: Wirkung vor `main` messen** (Mythos 19.10.: go für medien; Messung am HY310 19.10. ohne Fehlerbild im
       Kontrollarm, `arbeit/cstenger-letterbox-20261019/mess/BERICHT.md`): 9.3c (a)/(b) und der Dauerlauf-Block aus mess/BERICHT §7 mit dem Kernel
       aus dem Merge (IIO + 0322-0325); 0323 (64 CAPTURE-Puffer) bei 4K gegen den CMA beobachten (9.3d c). G-EU: dieselbe Matrix nachmessen.
