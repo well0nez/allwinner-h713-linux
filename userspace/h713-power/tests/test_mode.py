@@ -28,8 +28,8 @@ class Root:
         if mips:
             self.put(self.state, "%s\n0x02001600=0x0\n" % mips)
         self.put("tv", '#!/bin/sh\necho "tv $@" >> %s\nexit 0\n' % self.log)
-        self.put("restart", '#!/bin/sh\necho mips-restart >> %s\nsed -i 1s/.*/running/ %s\nexit %d\n'
-                 % (self.log, self.p(self.state), restart_rc))
+        self.put("restart", '#!/bin/sh\necho mips-restart >> %s\ncat %s > %s 2>/dev/null\nsed -i 1s/.*/running/ %s\nexit %d\n'
+                 % (self.log, self.p("run/h713-mode.resume"), self.p("seen"), self.p(self.state), restart_rc))
         for f in ("systemctl", "restart", "tv"):
             os.chmod(self.p(f), 0o755)
 
@@ -55,6 +55,14 @@ class Root:
         env = dict(os.environ, H713_ROOT=self.d, H713_SYSTEMCTL=self.p("systemctl"), H713_MIPS_RESTART=self.p("restart"), H713_TV=self.p("tv"))
         env.pop("JOURNAL_STREAM", None)
         return subprocess.run(["sh", TOOL] + list(args), env=env, capture_output=True, text=True, timeout=20)
+
+    def seen_by_restart(self):
+        """what /run/h713-mode.resume held while h713-mips-restart ran"""
+        try:
+            with open(self.p("seen")) as f:
+                return f.read().split()
+        except OSError:
+            return None
 
     def memory(self):
         try:
@@ -160,6 +168,52 @@ class ModeTest(unittest.TestCase):
         before = r.calls()
         r.mode("sleep-post")
         self.assertEqual(r.calls(), before)
+
+    def test_a_rescue_restarts_the_mips_and_brings_the_mode_back(self):
+        """h713-tv-rescue.service: the restart stops h713-warp, which ends Kodi (BindsTo=); the mode comes back like after a sleep"""
+        r = Root(active=["h713-kodi.service"], mips="running")
+        out = r.mode("rescue")
+        self.assertEqual(out.returncode, 0, out.stderr)
+        self.assertEqual(r.calls(), ["mips-restart", "systemctl start --no-block h713-kodi.service"])
+        self.assertEqual(r.seen_by_restart(), ["h713-kodi.service"])    # remembered before the restart: h713-keys opens no launcher for the end
+        self.assertIsNone(r.memory())                                   # and forgotten after it
+        self.assertIn("back to h713-kodi.service", out.stderr)
+
+    def test_a_rescue_brings_back_the_desktop_too(self):
+        r = Root(active=["h713-desktop.service"], mips="running")
+        r.mode("rescue")
+        self.assertEqual(r.calls(), ["mips-restart", "systemctl start --no-block h713-desktop.service"])
+
+    def test_a_rescue_in_hdmi_only_restarts_the_mips(self):
+        r = Root(mips="running")
+        self.assertEqual(r.mode("rescue").returncode, 0)
+        self.assertEqual(r.calls(), ["mips-restart"])
+        self.assertEqual(r.seen_by_restart(), [])      # no resume file: nothing ends
+        self.assertIsNone(r.memory())
+
+    def test_a_rescue_whose_restart_failed_still_asks_for_the_mode(self):
+        """as after a sleep: the restart may have ended the mode before it failed (exit 2 comes after the stop of h713-warp)"""
+        r = Root(active=["h713-kodi.service"], mips="running", restart_rc=3)
+        out = r.mode("rescue")
+        self.assertEqual(out.returncode, 0)
+        self.assertIn("h713-mips-restart ended with 3", out.stderr)
+        self.assertIn("systemctl start --no-block h713-kodi.service", r.calls())
+        self.assertIsNone(r.memory())
+
+    def test_a_rescue_does_not_empty_what_a_sleep_remembers(self):
+        """h713-tv failing between h713-sleep-pre and h713-sleep-post: no mode runs, the file is the sleep's"""
+        r = Root(mips="running")
+        r.put("run/h713-mode.resume", "h713-kodi.service\n")        # h713-sleep-pre ended Kodi and wrote this
+        r.mode("rescue")
+        self.assertEqual(r.seen_by_restart(), ["h713-kodi.service"])
+        self.assertEqual(r.calls()[-1], "systemctl start --no-block h713-kodi.service")
+
+    def test_the_rescue_unit_runs_the_mode_tool(self):
+        """the unit is what makes `rescue` run: not h713-mips-restart alone, which would leave Kodi ended"""
+        with open(os.path.join(os.path.dirname(TOOL), "h713-tv-rescue.service")) as f:
+            unit = f.read()
+        self.assertIn("\nExecStart=/usr/local/sbin/h713-mode rescue\n", unit)
+        self.assertIn("\nConditionPathExists=/usr/local/sbin/h713-mips-restart\n", unit)   # the restart is still what the mode tool calls
 
     def test_a_wrong_word_is_a_usage_error(self):
         self.assertEqual(Root().mode("kodi").returncode, 2)

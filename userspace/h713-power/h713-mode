@@ -18,8 +18,11 @@
 #                         before a sleep is remembered) and end them
 #   h713-mode sleep-post  after a sleep: bring the picture path back when the display MIPS is parked (h713-mips-restart
 #                         restarts h713-tv and h713-warp), then start what the file remembers and remove it
+#   h713-mode rescue      h713-tv gave up and h713-tv-rescue.service reloads the display MIPS: h713-mips-restart stops h713-warp, and the
+#                         mode units end with it (BindsTo=). Remember the running ones in the same file as before a sleep (h713-keys
+#                         then takes their end for the box's own and opens no launcher), restart, start them again, remove the file
 #
-# h713-sleep-pre.service (Before=sleep.target) and h713-sleep-post.service (After=suspend.target) call the last two, so every
+# h713-sleep-pre.service (Before=sleep.target) and h713-sleep-post.service (After=suspend.target) call the two sleep words, so every
 # way into the sleep - the power key, the launcher, Kodi's own menu, `systemctl suspend` - ends the same way.
 # Tests only: H713_ROOT goes before /etc, /run and /sys; H713_SYSTEMCTL, H713_MIPS_RESTART and H713_TV replace the tools.
 set -u
@@ -36,6 +39,14 @@ running() {	# the mode units that are active or on their way up
 	for u in $(units); do
 		case $($SYSTEMCTL is-active "$u" 2>/dev/null) in active|activating|reloading) echo "$u" ;; esac
 	done
+}
+resume() {	# start what MEM remembers, then forget it (nothing remembered: the HDMI picture is the mode)
+	if [ -s "$MEM" ]; then
+		for u in $(cat "$MEM"); do say "back to $u"; $SYSTEMCTL start --no-block "$u" || say "starting $u failed"; done
+	else
+		say "back to HDMI"
+	fi
+	rm -f "$MEM"
 }
 parked() {
 	for f in "$R"/sys/bus/platform/drivers/sun50i-h713-mips/*/state; do
@@ -63,12 +74,13 @@ sleep-post)
 	else
 		say "after the sleep: the display MIPS is not parked, no restart"
 	fi
-	if [ -s "$MEM" ]; then
-		for u in $(cat "$MEM"); do say "back to $u"; $SYSTEMCTL start --no-block "$u" || say "starting $u failed"; done
-	else
-		say "back to HDMI"
-	fi
-	rm -f "$MEM" ;;
+	resume ;;
+rescue)
+	# a sleep may have written MEM already and ended its modes: running is then empty and that file stays what it is
+	r=$(running)
+	[ -z "$r" ] || { echo "$r" > "$MEM"; say "h713-tv gave up: $(echo $r) ends with the MIPS restart, remembered in $MEM"; }
+	"$RESTART" || say "h713-mips-restart ended with $? (journal: h713-mips-restart): the picture may not be back"
+	resume ;;
 *)
-	echo "usage: h713-mode status | hdmi | sleep-pre | sleep-post" >&2; exit 2 ;;
+	echo "usage: h713-mode status | hdmi | sleep-pre | sleep-post | rescue" >&2; exit 2 ;;
 esac
