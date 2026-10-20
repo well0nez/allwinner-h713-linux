@@ -482,12 +482,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Wand bekommt keinen Rahmen; under_black_fb() lässt bei Fehlschlag den Dumb-Buffer stehen (3 Zeilen). HY310 nachmessen: abnahme -t ps, -t st
       mit offenem Launcher, neue Kamera-Zelle "Licht bei offenem Launcher 30 s". Verwandt: known-issues "green stripe on the console" (2.34) -
       vermutlich dieselbe Wurzel (Spalten 48-49 zeigen Ebene 0).
-- [ ] 2.127 **MAC-Adressen im Repo maskieren und sperr-scan um eine MAC-Regel ergänzen** (Mythos 20.10.2026, Prüfung bt-neukoppeln; vor dem
+- [x] 2.127 **MAC-Adressen im Repo maskieren und sperr-scan um eine MAC-Regel ergänzen** (Mythos 20.10.2026, Prüfung bt-neukoppeln; vor dem
       nächsten Push): die Adresse von Marcos Fernbedienung steht in doku/134 (3x), 135, 140 (nur lokal, nicht auf GitHub); auf GitHub (`origin/main`)
       stehen schon zwei Client-Adressen in den Beschreibungen von aic8800-0008/-0010 und eine eth-Adresse in vier Boot-Mitschnitten unter analyse/boot/
       (v3-spl-tausch, layout-v2-kaltstart, v4-kaltstart, v5-mips-aus-p5 vom 10.09.).
       Maskieren (xx:xx:xx:xx:xx:xx, wie im Testzweig versuch/hy300pro-test11 e2ebea5), sperr-scan-Regel mit Ausnahmen für Testattrappen
       (AA:BB:CC:..., 00:11:22:...); was schon auf GitHub ist, bleibt in der Historie - **Marco 21.10.2026: so lassen, kein Force-Push**; nur ab jetzt maskieren und sperren.
+      **Erledigt 21.10.2026** (medien c1f2c926, Mythos go): Regel 10 (genau sechs Hexpaare, nur ganze Testattrappen frei, gibt nur Datei:Zeile aus),
+      10 Adressen maskiert (doku/134/135/140 mit Schwärzungsvermerk, aic8800 0008/0010 im Commit-Text, vier Boot-Mitschnitte). **Offen für Marco vor
+      dem nächsten Push (Mythos C):** die Adresse der Fernbedienung steht noch in vier **unveröffentlichten** Commits (doku 134/135/140); vor dem
+      Push ließe sich das lokal herausschreiben (replace-text nur auf dem unveröffentlichten Bereich, ohne Force-Push), danach nicht mehr.
 - [ ] 2.128 **Lizenzen: Auflagen fürs Release aus Mythos' Prüfung des Lizenz-Abschlusses** (20.10.2026, arbeit/lizenz-abschluss-20261020/MYTHOS-PRUEFUNG.md):
       **Entscheidung Marco 21.10.2026 - R1 klein statt groß:** keine Debian-, Mesa- oder libva-Archive (Debians Quellen liegen dauerhaft bei
       Debian, snapshot.debian.org; MIT/BSD verlangen keine Quellen). Beim Release: die Forks pushen, crust eingeschlossen (das Repo fehlt noch, 1.6);
