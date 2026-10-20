@@ -470,7 +470,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       RGB-Ebene auf den Bildanfang legt (Display-Firmware/MIPS-Aufrufe, U-Boot), Abzüge des G-EU unter Stock lesen; danach Abdeckung zurückbauen.
 - [ ] 2.127 **MAC-Adressen im Repo maskieren und sperr-scan um eine MAC-Regel ergänzen** (Mythos 20.10.2026, Prüfung bt-neukoppeln; vor dem
       nächsten Push): die Adresse von Marcos Fernbedienung steht in doku/134 (3x), 135, 140 (nur lokal, nicht auf GitHub); auf GitHub (`origin/main`)
-      stehen schon zwei Client-Adressen in den Beschreibungen von aic8800-0008/-0010 und eine eth-Adresse in analyse/boot/v3-spl-tausch-20260910.txt.
+      stehen schon zwei Client-Adressen in den Beschreibungen von aic8800-0008/-0010 und eine eth-Adresse in vier Boot-Mitschnitten unter analyse/boot/
+      (v3-spl-tausch, layout-v2-kaltstart, v4-kaltstart, v5-mips-aus-p5 vom 10.09.).
       Maskieren (xx:xx:xx:xx:xx:xx, wie im Testzweig versuch/hy300pro-test11 e2ebea5), sperr-scan-Regel mit Ausnahmen für Testattrappen
       (AA:BB:CC:..., 00:11:22:...); was schon auf GitHub ist, bleibt in der Historie - Marco entscheidet, ob das reicht.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
