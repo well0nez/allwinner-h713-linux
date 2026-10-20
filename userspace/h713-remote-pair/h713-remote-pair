@@ -218,25 +218,43 @@ def device_info(ctl: Ctl, addr: str):
             "connected": connected, "name": next((line[6:] for line in block if line.startswith("Name: ")), "")}
 
 
+def known_remotes(ctl: Ctl, names):     # {addr: name} of the objects bluez already keeps with a stock name
+    ctl.send("devices", "show")
+    out = {}
+    for line in ctl.lines(5):
+        m = DEVICE_LINE.search(line)
+        if m and line.startswith("Device ") and name_matches(m.group(2), names):
+            out[m.group(1).upper()] = m.group(2).strip()
+        if line.startswith(("Controller ", "No default controller")):
+            break
+    return out
+
+
 def scan_for(ctl: Ctl, names, timeout: float, addr=None):
     """LE scan for HoG advertisers until a name matches, or until the remote addr shows -> (addr, name) or None.
-    A remote that asked to be paired is followed by its address: its bluez object can outlive the forget (the
-    kernel's last connect makes it again, HY300PRO-G-EU 20.10.2026), and a sighting is then only a
-    "[CHG] ... RSSI" line, never "[NEW]" or its name."""
+    A remote whose bluez object already exists shows in a scan only as "[CHG] ... RSSI" lines, never "[NEW]"
+    or its name: the kernel's last connect to a stale bond makes it again after the forget, and bluez keeps
+    an unpaired object while the remote advertises (HY300PRO-G-EU 20.10.2026: 40 s in pairing mode, four
+    scans missed it). So the remote that asked is followed by its address, and known objects by theirs."""
     ctl.send("power on")
     done, line = ctl.wait(r"Changing power on succeeded|Powered: yes", r"No default controller", 5)
     if done is False and "No default controller" in line:
         print("error: no Bluetooth controller -- is h713-bluetooth.service up (hciattach on UART1)?", file=sys.stderr)
         return None
+    known = {} if addr else known_remotes(ctl, names)
     ctl.send("scan le")
     for line in ctl.lines(timeout):
         m = DEVICE_LINE.search(line)
-        if not m or (m.group(1).upper() != addr if addr else not name_matches(m.group(2).strip(), names)):
+        if not m:
             continue
-        info = device_info(ctl, m.group(1))
+        seen = m.group(1).upper()
+        name = m.group(2).strip() if not addr and name_matches(m.group(2).strip(), names) else known.pop(seen, None)
+        if (seen != addr) if addr else name is None:
+            continue
+        info = device_info(ctl, seen)
         if info["hog"]:
             ctl.send("scan off")
-            return m.group(1).upper(), info["name"] if addr else m.group(2).strip()
+            return seen, name or info["name"]
     ctl.send("scan off")
 
 

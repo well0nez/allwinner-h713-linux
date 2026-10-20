@@ -117,6 +117,13 @@ class Commands(unittest.TestCase):
             self.assertIn("cmd %s %s" % (verb, REMOTE), sent)
         self.assertNotIn("AA:BB:CC:DD:EE:02", sent, "the foreign device must not be paired")
 
+    def test_pair_finds_a_remote_whose_unpaired_object_is_left_over(self):
+        """HY300PRO-G-EU 20.10.2026: bluez kept the remote's object, the scan showed it only as [CHG] for 40 s"""
+        r = run(["pair", "--timeout", "5"], scenario="leftover")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("found " + REMOTE + " BLE_X_RMC", r.stdout)
+        self.assertIn("ok paired " + REMOTE, r.stdout)
+
     def test_pair_times_out_without_a_remote(self):
         r = run(["pair", "--timeout", "1"], scenario="none")
         self.assertEqual(r.returncode, 1)
