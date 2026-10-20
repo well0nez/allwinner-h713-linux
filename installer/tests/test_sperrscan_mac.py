@@ -43,6 +43,11 @@ class TestMacRule(unittest.TestCase):
         rc, out = scan({"mainline/patches/x/0001-y.patch": "Subject: x\n\n    wlan0: Add sta 2 (%s)\n" % ADDR.upper()})
         self.assertEqual(rc, 1, out)
 
+    def test_a_dummy_prefix_does_not_let_a_real_address_through(self):
+        # 00:11:22 is an assigned OUI block, so only the whole dummy addresses pass (Mythos 21.10.2026)
+        rc, out = scan({"doku/1-x.md": "seen %s\n" % ":".join(["00", "11", "22", "ab", "cd", "ef"])})
+        self.assertEqual(rc, 1, out)
+
     def test_masked_dummies_and_longer_runs_pass(self):
         rc, out = scan({
             "doku/1-x.md": "remote xx:xx:xx:xx:xx:xx\n",

@@ -76,7 +76,10 @@ SPDX_FREI = ("mainline/external/", "mainline/build/", "mainline/tools/or1k-toolc
 UMBAU_MAX = 5          # hoechstens so viele Zeilen je Datei nennen, dann zaehlen
 # Regel 10: genau sechs Hexpaare mit Doppelpunkt - ein siebtes Paar davor oder danach (EDID-Kopf, Hexdumps) ist keine Adresse.
 MAC = re.compile(rb"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:])")
-MAC_ATTRAPPEN = re.compile(rb"(?i)(?:00:11:22|11:22:33|aa:bb:cc):|(?:ff:){5}ff|(?:00:){5}00")
+# Ganze Adressen, keine Praefixe: 00:11:22 ist ein vergebener OUI-Block, aa:bb:cc die Form lokal verwalteter (zufaelliger)
+# Adressen - ein Praefix liesse echte Adressen durch (Mythos 21.10.2026). Neue Attrappen hier eintragen.
+MAC_ATTRAPPEN = {b"00:11:22:33:44:55", b"11:22:33:44:55:66", b"aa:bb:cc:dd:ee:01", b"aa:bb:cc:dd:ee:02", b"aa:bb:cc:dd:ee:ff",
+                 b"ff:ff:ff:ff:ff:ff", b"00:00:00:00:00:00"}
 SECURE = (b"sunxi-secure-storage", b"hdcpkeyV22", b"wifiBleDatas")
 TEXT_ENDUNGEN = {".md", ".txt", ".py", ".sh", ".c", ".h", ".patch", ".dts", ".dtsi", ".env", ".conf", ".json", ".yaml", ".yml", ".ini", ".xml", ".service", ".rules", ".cfg", ".its", ".mk", ".S", ".s", ".html", ".css", ".js", ".toml", ".gitignore", ".gitmodules", ""}
 
@@ -200,7 +203,7 @@ def main() -> int:
                 funde.append(("SPDX", rel, "no SPDX line in the head"))
             # Regel 10: MAC-Adressen in Textdateien (ohne die Adresse auszugeben).
             if os.path.splitext(f)[1] in TEXT_ENDUNGEN:
-                macs = [m for m in MAC.finditer(daten) if not MAC_ATTRAPPEN.match(m.group(0))]
+                macs = [m for m in MAC.finditer(daten) if m.group(0).lower() not in MAC_ATTRAPPEN]
                 for m in macs[:UMBAU_MAX]:
                     funde.append(("MAC-Adresse", "%s:%d" % (rel, daten.count(b"\n", 0, m.start()) + 1),
                                   "maskieren: xx:xx:xx:xx:xx:xx"))

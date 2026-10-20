@@ -1,4 +1,6 @@
 # Plan 134 - Verifikation der Fable-Welle am Geraet (02.10.2026)
+> Geschwaerzt 21.10.2026: die MAC-Adresse der Fernbedienung als xx:xx:xx:xx:xx:xx maskiert (TODO 2.127); sonst unveraendert.
+
 
 Alles aus doku/132/133 ist gebaut, reviewt und tiefengeprueft (reviews/deep-review-20260927.md), aber bis auf fuenf
 Pakete (KSREF-Referenzmessung, GE2D, EDID Stufe A, EDGEBLEND, AUDIO-Mischung) ungetestet. Dieser Plan bringt es
