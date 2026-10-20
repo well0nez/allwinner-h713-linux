@@ -24,7 +24,7 @@ that matches his DRAM block exactly. What we still do not have is a device, a bo
   `zq=0x003f3ffb`, `odt/flags=0x31`, `para1=0x10f410f4`).
 - **Defconfig names** - `mainline/config/versions.env`, `UBOOT_DEFCONFIG_LPDDR3` and
   `KERNEL_DEFCONFIG`; `boards/check.sh` fails if they drift apart from this `board.env`.
-- **DTB** - `versions.env`, `KERNEL_DTB_PROJECTOR`: *"arm64 projector DTB (untested on hardware)"*.
+- **DTB** - `versions.env`, `KERNEL_DTB_PROJECTOR`: built with every kernel, never booted on hardware.
 - **Installer profile** - `installer/h713/profiles/hy200_qz713_v2.py`, built in package F1 from the
   facts of the 2025-07-10 "HY300 Pro+" LPDDR3 vendor image
   (`installer/tests/fixtures/images/hy300-pro-plus-lpddr3-0710.json`). Its boot0 DRAM block is his

@@ -126,7 +126,7 @@ UUIDs and times) - compare stamps, not images ([RELEASES.md](RELEASES.md)).
 ## Pinned inputs
 
 `mainline/config/versions.env` is the single source of truth: kernel 6.18.38 from kernel.org with a
-pinned sha256, the AIC8800 vendor tarball, and the upstream bases the three curated series sit on. The
+pinned sha256, the AIC8800 vendor tarball, and the upstream bases the curated series sit on. The
 Debian keyring is pinned by sha256 in `release/build-all.sh`, so a rootfs built today and one built next
 year trust the same keys.
 

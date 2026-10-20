@@ -1,41 +1,37 @@
-# Toolchain
+# The toolchain
 
-The whole stack builds with **LLVM (clang / ld.lld)** - no aarch64 GCC is
-required for BL31, U-Boot, or the arm64 kernel. Host is Arch/CachyOS.
+The whole boot chain and the kernel build with **LLVM**: clang, ld.lld and the llvm binutils. There is no aarch64
+GCC for BL31, U-Boot or the kernel. Everything is built inside the container `h713-build`; how to set it up, its
+package list and the LLVM 20 step are in [docs/build-container.md](../../docs/build-container.md). crust, the
+ARISC firmware, needs an `or1k-elf` GCC, which `mainline/tools/or1k-toolchain/build-or1k-toolchain.sh` builds once
+and keeps (described there as well).
 
-## Pinned host tools
+## A known good set
 
-| Tool | Version verified | Provides | Notes |
-|------|------------------|----------|-------|
-| clang | 22.1.8 | C compiler + integrated assembler | `-target aarch64-linux-gnu` for U-Boot |
-| ld.lld | 22.1.8 | linker | needs the `.bss` lds fix (see bringup-notes) |
-| llvm (llvm-* binutils) | 22.1.8 | ar/nm/objcopy/objdump/readelf/strip | passed as `LLVM=1` to the kernel |
-| dtc | 1.8.1 | device-tree compiler | system dtc is only a fallback |
-| swig | 4.4.1 | **required** | U-Boot builds its own dtc + pylibfdt; pylibfdt needs swig |
-| python libfdt | importable | binman | comes with `python-libfdt` |
-| mmdebstrap | 1.5.7 | arm64 Debian rootfs | used with a private rootless QEMU binfmt namespace |
+Measured in the container on 20.10.2026 (`podman exec h713-build ...`):
 
-These are the versions this project has been built and hardware-verified with.
-Newer LLVM should work; the pins record a known-good set, not a hard floor.
+| Tool | Version |
+|---|---|
+| system | Ubuntu 24.04.4 LTS |
+| clang, ld.lld, llvm-* | 20.1.8 (apt.llvm.org; `/usr/local/bin` points to `/usr/lib/llvm-20/bin`) |
+| dtc | 1.7.0 |
+| swig | 4.2.0 - required: U-Boot builds its own dtc and pylibfdt with it, and binman needs pylibfdt |
+| Python | 3.12.3 (no system libfdt module, and none is needed: U-Boot builds its own) |
+| GNU make, patch, tar, gzip, xz | 4.3, 2.7.6, 1.35, 1.12, 5.4.5 |
+| git, curl, bash, gcc (host helpers) | 2.43.0, 8.5.0, 5.2.21, 13.3.0 |
+| mmdebstrap | 1.4.3 (the rootfs) |
+| mkimage of the system | 2025.10 - a fallback only; the FIT is made with the mkimage of the U-Boot build |
 
-## Non-obvious flags (each cost real debugging time - see docs/build.md)
+LLVM older than 19 is not enough: its `llvm-objcopy` cannot write SREC ([docs/build-container.md](../../docs/build-container.md)).
+Newer versions should work. The table is a set that is known to work, not a lower bound.
 
-- **`-fintegrated-as`** (U-Boot `KAFLAGS` *and* `KCFLAGS`) - without it clang
-  shells out to the x86 `/usr/bin/as` for `.S` files and fails on `-EL`.
-- **No `DTC=` override, no `NO_PYTHON=1`** for U-Boot - with swig present it
-  builds its own dtc (knows the `graph_child_address` check) and pylibfdt
-  (binman needs it).
-- TF-A / kernel take plain `CC=clang` / `LLVM=1`; only U-Boot needs the target
-  triple and the integrated-as flags.
+## Switches that are not obvious
 
-## Install (Arch/CachyOS)
+- U-Boot needs `-fintegrated-as` in `KAFLAGS` **and** in `KCFLAGS` (else clang hands `.S` files to the x86 `as`,
+  which fails on `-EL`), and `CC` with the target triple `aarch64-linux-gnu`.
+- U-Boot gets **no** `DTC=` and **no** `NO_PYTHON=1`: with swig it builds its own dtc, which knows the
+  `graph_child_address` check, and the pylibfdt binman needs.
+- TF-A takes plain `CC=clang`, the kernel `LLVM=1`.
 
-```
-sudo pacman -S clang lld llvm dtc python-libfdt swig
-# mmdebstrap from the AUR (rootfs only)
-sudo pacman -S apt qemu-user-static-binfmt e2fsprogs kmod android-tools curl libarchive openssh
-```
-
-`debian-archive-keyring` is optional on the host. If absent, the rootfs builder
-downloads its Arch package, verifies the package signature, and extracts the
-bootstrap trust anchor into the ignored build cache.
+The Debian keyring for the rootfs is no part of the toolchain: `release/build-all.sh` fetches it itself in step 5,
+pinned by sha256.
