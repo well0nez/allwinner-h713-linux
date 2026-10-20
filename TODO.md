@@ -447,7 +447,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       385d6ba h713-mkimage --board schneidet für die eMMC des Boards): das G-EU-Abbild geu3 lief damit (20.10.2026); Mythos prüft, dann Merge.
 - [ ] 2.123 Klein (G-EU 20.10.2026): bei jedem Kodi-Start 5x `sun4i-codec ... ASoC error (-16)` auf dem Codec (Kodis Geräte-Abtastung, EBUSY);
       ohne hörbare Folge - prüfen, ob Kodi den Codec überhaupt listen muss (ALSA-Hinweis "codec" ausblenden?) oder die Zeilen bleiben dürfen.
-- [ ] 2.124 Klein (wach-wand §9, Mythos 20.10.2026): **Wechsel Kodi -> HDMI ohne Trapez zeigt 0,15-0,17 s Konsole** ("console back with the
+- [x] 2.124 (erledigt 20.10.2026 am G-EU, `arbeit/medien/launcher-rand/`, Mythos go mit Auflagen A/B, eingebaut 9c7b53b: Kodi -> HDMI vorher 3/3 bzw. 5/5 mit Stumm-Zeichen Konsole, nachher 0/7 und 0/3 schwarz 84-117 ms; dazu Launcher-Schließen mit bleibendem Zeichen 5/5 -> 0/14; HY310 nicht gemessen) Klein (wach-wand §9, Mythos 20.10.2026): **Wechsel Kodi -> HDMI ohne Trapez zeigt 0,15-0,17 s Konsole** ("console back with the
       warp's release", dann der Ring; G-EU 2x gesehen) - derselbe Mechanismus wie die Seite in wach-wand Commit 2, über die Freigabe des
       Client-Claims; die Wand bis zum Commit des Rings halten. Test fällt heute, besteht danach.
 - [ ] 2.125 Klein (wach-wand §5.1/§9, Mythos 20.10.2026): **schlägt h713-tvs Commit beim Weg hinaus fehl, bleibt die CRTC ohne Ebene und kein
@@ -456,6 +456,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Dazu (kodi-93 §6, Mythos 20.10.): ein zweiter Absturz von h713-tv im selben Boot bekommt keine Rettung (Einmal-Marke `/run/h713-tv-rescued`,
       ein Zähler ohne Zeit) und h713-tv endet mit "no CRTC drives a mode" - Vorschlag (i) ExecCondition "letzte Rettung länger als 5 min her",
       (ii) der Start stellt bei "no CRTC" die Konsole selbst her.
+- [ ] 2.126 **G-EU: Strich in den ersten zwei Panelspalten, sobald die Videoebene aus ist** (Marco 20.10.2026, Fotos in `arbeit/medien/launcher-rand/`):
+      bei offenem Launcher, unter Seiten und unter der Konsole, nicht im HDMI-Bild. Gemessen (launcher-rand §13): die RGB-Ebene liegt 2 Bildpunkte
+      rechts vom Bildanfang (0x051C01A8 = 50 + X, Bildanfang 0x051C0180 = 48; X = 0x0528008C steht auf 0, nicht negativ stellbar; 01A8 nur lesbar),
+      die Spalten 48-49 zeigen Ebene 0 = die stille Videoquelle (grün/alt). Stock hält 01A8 == 0180 (Mythos). Wege: (1) Selektor so, dass Ebene 0
+      nicht mischt (Sichtprüfung S, S3 = 0x28), (2) unter Seiten ein statisches schwarzes Bild auf der Videoebene statt Ebene aus (Abruf ~83 MB/s,
+      Deskriptorwechsel), (3) RE, wer 01A8 bei Stock auf 48 bringt. Am HY310 prüfen, ob dort dasselbe gilt.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

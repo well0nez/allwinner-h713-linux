@@ -920,10 +920,13 @@ static bool display_take_master(struct display *d)
 	return true;
 }
 
+static void wall_black_end(struct display *d);	/* the black wall between a release and the ring: the console's framebuffer first */
+
 static void display_release_master(struct display *d)
 {
 	if (!d->master)
 		return;
+	wall_black_end(d);
 	if (drmDropMaster(d->fd))
 		warn("DROP_MASTER: %s", strerror(errno));
 	d->master = false;
@@ -1294,6 +1297,10 @@ static void osd_state_committed(bool committed, bool picture);
 static int osd_wanted(bool picture);	/* the buffer the primary plane is to carry, -1: the console's */
 static bool osd_on_panel(void);		/* one of our buffers is on the primary plane */
 static void console_keys(bool on);	/* the console's keyboard: off while anything else is on the panel */
+static bool wall_black_wanted(const struct display *d);	/* a client's claim goes and the straight ring is to come (TODO 2.124) */
+static bool wall_black_up(struct display *d);		/* ... the wall black for the ring's own commit */
+static bool wall_black_is(uint32_t fb);			/* fb is that black framebuffer */
+static bool ring_off_for_claim(struct display *d);	/* the straight ring goes for a claim's first frame: black, not the console */
 
 static bool display_show(struct display *d)
 {
@@ -1834,9 +1841,12 @@ static void warp_release(struct display *d)
 	/*
 	 * The video plane off and the console (or an opaque page) on the primary plane in one commit, before the
 	 * buffers go. Removing a framebuffer that is on a plane switches the plane off by itself (atomic_remove_fb),
-	 * which is how it went before - after a commit of its own for the console's framebuffer.
+	 * which is how it went before - after a commit of its own for the console's framebuffer. A client's claim that
+	 * goes while the straight ring is to come leaves the wall black instead, for the ring's own commit (TODO 2.124).
 	 */
-	if (display_plane_off(d))
+	bool black = wall_black_wanted(d) && wall_black_up(d);
+
+	if (!black && display_plane_off(d))
 		warn("warp            the video plane did not go off with the release (%s) -- removing the buffers takes it off",
 		     strerror(errno));
 	warp_free(d);
@@ -1846,7 +1856,9 @@ static void warp_release(struct display *d)
 		close(warp.flip);
 	warp.flip = -1;
 	d->warped = false;
-	if (!osd_on_panel()) {
+	if (black) {
+		info("wall            black with the client's release -- the straight ring takes it in its own commit");
+	} else if (!osd_on_panel()) {
 		display_release_master(d);
 		console_restore();
 		info("console         back with the warp's release, no page on the wall");
@@ -2077,7 +2089,9 @@ static bool osd_learn(struct display *d)
 	p = drmModeGetPlane(d->fd, osd.plane_id);
 	if (!p)
 		return false;
-	if (!osd.claimed || (p->fb_id != osd.fb_id[0] && p->fb_id != osd.fb_id[1])) {
+	if (wall_black_is(p->fb_id) && osd.console_fb) {
+		osd.console_known = true;	/* our own black wall (TODO 2.124) is no console: the one learnt before stays */
+	} else if (!osd.claimed || (p->fb_id != osd.fb_id[0] && p->fb_id != osd.fb_id[1])) {
 		uint32_t con = hold_console_fb(d, p->fb_id);	/* the holder's black one (TODO 2.96): the console's is written down */
 
 		osd.console_fb = con ? con : p->fb_id;
@@ -2308,8 +2322,12 @@ static void osd_serve(struct display *d)
 			answer = osd.shown ? "ok cover -- over black, there is no picture under it\n"
 					   : "error the commit was refused\n";
 		} else if (!(d->on || d->warped)) {
-			osd_drop(d);		/* an opaque page before it goes: a popup does not stand over black */
-			osd_uncover(d);
+			/* an opaque page before it goes: a popup does not stand over black - unless the ring is to come, whose
+			 * commit takes the wall from the page and lays the popup over the picture (osd_handover()) */
+			if (!osd_handover(d)) {
+				osd_drop(d);
+				osd_uncover(d);
+			}
 			answer = "ok waiting -- no picture to lay it over, it comes with the picture\n";
 		} else if (d->warped) {
 			osd_resume(d);		/* queued: the warp's next frame carries it */
@@ -6332,7 +6350,7 @@ static bool cmd_warp_claim(struct reply *r, struct capture *cap, struct display 
 		reply_fail(r, "no signal to warp -- the console stays, ask again");
 		return false;
 	}
-	if ((d->on && !display_hide(d)) || !display_take_master(d)) {
+	if ((d->on && !ring_off_for_claim(d)) || !display_take_master(d)) {
 		reply_fail(r, "the video plane or the DRM master could not be taken over: %s",
 			   strerror(errno));
 		return want_give_up(client, "the video plane or the DRM master");
@@ -6849,11 +6867,140 @@ static bool nosig_page_ok(void)
  * nothing between. If evaluate() decides on no picture after all, display_hide() drops the page and gives the console back as
  * before. Until 20.10.2026 the page went first, alone, and the console stood on the wall for the 0.1 s until the ring came
  * (HY300PRO-G-EU without a keystone: after every closed launcher and after the page without a signal - so after every wake).
+ * The same when the page goes for a popup that stays ("osd show N" without "cover": the mute badge after a closed launcher,
+ * 0.10-0.12 s of console until 20.10.2026): the page stays, and the ring's commit lays the popup over the picture.
  */
 static bool osd_handover(const struct display *d)
 {
 	return !d->on && !d->warped && osd.shown && cover.on && !warp.claimed && !nosig.lost && ctl.policy != POLICY_OFF &&
 	       ctl.source != SOURCE_CLIENT;
+}
+
+/*
+ * The wall black between a client's release and the straight ring (TODO 2.124). From Kodi to HDMI without a keystone h713-warp
+ * gives its client claim back, and the straight ring follows a tenth of a second later (evaluate(): the signal measured, the
+ * ring's descriptor published, the firmware's chain rebuilt); the release put the console's framebuffer up for that tenth
+ * (HY300PRO-G-EU, 20.10.2026: 0.12 s). Now the release puts a black framebuffer of this program's up when the ring is to
+ * come, keeps the master, and the ring's commit takes the wall from it, as from a page that goes before the ring
+ * (osd_handover()). Whatever comes instead - no signal, "off", a page, a new claim - takes the wall in its own commit, and the
+ * master never goes while the black framebuffer is on the plane: the console's goes up first (wall_black_end()). It is never
+ * removed while it is shown either: removing the primary plane's framebuffer switches the CRTC off (atomic_remove_fb), and no
+ * h713-tv starts after that (TODO 2.125). Made when it is needed, freed when the plane holds another: 3.7 MB of CMA at 720p,
+ * 8.3 MB at 1080p, for a tenth of a second. The same wall stands when a keystone goes (h713-warp gives its ring claim back) and
+ * when one comes (the straight ring goes for the claim's first frame, ring_off_for_claim()).
+ */
+static struct {
+	uint32_t handle, fb_id;
+} wall_black;
+
+static bool leaving;		/* the way out: nothing is to follow */
+
+static bool wall_black_is(uint32_t fb)
+{
+	return fb && fb == wall_black.fb_id;
+}
+
+/*
+ * A claim goes, and the straight ring is to come: the mode is HDMI, nothing forces the console, no opaque page on the wall (a
+ * popup that rode on the picture - the mute badge over Kodi - comes back with the ring's commit) - and for a
+ * claim of the ring the signal stands (the keystone set back to the identity: h713-warp gives the ring back, 0.10-0.12 s of
+ * console until 20.10.2026; a claim that goes with the signal is the page's or the console's, as before). The signal is not
+ * followed under a client's claim, so there it is not asked.
+ */
+static bool wall_black_wanted(const struct display *d)
+{
+	return (warp.client || !nosig.lost) && !leaving && !d->on && !osd_covering() && !cover.on && ctl.policy != POLICY_OFF &&
+	       ctl.source != SOURCE_CLIENT;
+}
+
+/* the dumb buffer gone, once no plane shows its framebuffer (or there is none) */
+static void wall_black_free(struct display *d)
+{
+	struct drm_mode_destroy_dumb dreq = { .handle = wall_black.handle };
+
+	if (wall_black.fb_id) {
+		drmModePlane *p = drmModeGetPlane(d->fd, osd.plane_id);
+		bool shown = !p || p->fb_id == wall_black.fb_id;
+
+		if (p)
+			drmModeFreePlane(p);
+		if (shown)
+			return;		/* on the plane, or not known: it stays */
+		drmModeRmFB(d->fd, wall_black.fb_id);
+	}
+	if (wall_black.handle)
+		drmIoctl(d->fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+	wall_black.fb_id = wall_black.handle = 0;
+}
+
+/* the video plane off and a black framebuffer of the panel's size on the primary plane, zpos 0, in one commit; false: nothing
+ * changed, the caller does what it did before. The console's framebuffer has to be known, for wall_black_end() */
+static bool wall_black_up(struct display *d)
+{
+	struct drm_mode_create_dumb creq = { .width = d->width, .height = d->height, .bpp = 32 };
+	uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
+	drmModeAtomicReq *req;
+	bool ok;
+
+	if (!d->master || !osd_learn(d) || !osd.console_fb)
+		return false;
+	if (!wall_black.fb_id) {
+		if (drmIoctl(d->fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq)) {
+			warn("wall            no black framebuffer (%s) -- the console, as before", strerror(errno));
+			return false;
+		}
+		wall_black.handle = handles[0] = creq.handle;
+		pitches[0] = creq.pitch;
+		if (drmModeAddFB2(d->fd, d->width, d->height, DRM_FORMAT_XRGB8888, handles, pitches, offsets,
+				  &wall_black.fb_id, 0)) {
+			wall_black.fb_id = 0;
+			wall_black_free(d);
+			return false;
+		}
+	}
+	req = drmModeAtomicAlloc();
+	ok = req && add(req, d, "FB_ID", 0) && add(req, d, "CRTC_ID", 0) && osd_props(req, d, wall_black.fb_id, 0) &&
+	     !drmModeAtomicCommit(d->fd, req, 0, NULL);
+	if (req)
+		drmModeAtomicFree(req);
+	if (!ok) {
+		warn("wall            the black framebuffer did not go up (%s) -- the console, as before", strerror(errno));
+		wall_black_free(d);
+		return false;
+	}
+	osd.shown = false;	/* a popup that rode on the picture is off the plane now; the ring's commit lays it again */
+	return true;
+}
+
+/*
+ * The straight ring goes for h713-warp's claim (a keystone set from the identity): its first frame comes 30 ms later and turns the
+ * video plane on again. The wall is black for those 30 ms, not the console (0.03 s of console until 20.10.2026); with a page on
+ * the wall, or without a black framebuffer, display_hide() as before.
+ */
+static bool ring_off_for_claim(struct display *d)
+{
+	if (!d->on || osd_covering() || cover.on || !wall_black_up(d))
+		return display_hide(d);
+	d->on = false;
+	info("wall            black -- the straight ring goes for h713-warp's first frame");
+	return true;
+}
+
+/* before the master goes: the console's framebuffer over the black one, then the black one away */
+static void wall_black_end(struct display *d)
+{
+	drmModePlane *p;
+	bool shown;
+
+	if (!wall_black.fb_id || !d->master)
+		return;
+	p = drmModeGetPlane(d->fd, osd.plane_id);
+	shown = p && p->fb_id == wall_black.fb_id;
+	if (p)
+		drmModeFreePlane(p);
+	if (shown && !osd_commit(d, osd.console_fb, 0))
+		warn("wall            the console's framebuffer did not go over the black one -- it stays until the plane changes");
+	wall_black_free(d);
 }
 
 /* what h713-osd is to hear: "none" while the page is wanted; "off" when there is no signal and no page (console forced, a program);
@@ -9006,6 +9153,8 @@ static void evaluate(struct capture *cap, struct display *d,
 			     RETRY_MAX, d->on ? "the picture" : "the console",
 			     RETRY_SLOW_MS);
 			rt->n++;
+			if (wall_black.fb_id && !d->on && !d->warped)
+				display_hide(d);	/* the black wall waited for the ring: the console, as without it */
 		}
 		retry_arm(rt, RETRY_SLOW_MS);
 		return;
@@ -9785,6 +9934,8 @@ int main(int argc, char **argv)
 		cover_follow(&cap, &d, &rt, &au);
 		nosig_follow(&cap, &d, &rt, &au);
 		capture_follow();
+		if (wall_black.fb_id)
+			wall_black_free(&d);	/* the ring, a page or a claim took the wall from the black framebuffer */
 	}
 
 	/*
@@ -9795,6 +9946,7 @@ int main(int argc, char **argv)
 	 */
 	retry_stop(&rt);
 	audio_close(&au);
+	leaving = true;
 	/* stopped for a restart of the picture path while a holder runs: the wall black, not the console (TODO 2.96) */
 	if (!hold_take(&d)) {
 		warp_release(&d);

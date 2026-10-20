@@ -11,6 +11,8 @@
 #   test_nosig  the page without a signal (P5): what h713-osd is told, when the last picture stands for the page, the way back
 #   test_hold   the wall held black over a restart of the picture path (TODO 2.96): the holder's file, the way out with and
 #               without a holder, the start after it, the console's framebuffer written down; a page that goes before the ring
+#   test_wall   the wall black between a client's release and the straight ring (TODO 2.124): one commit to black, the ring's
+#               commit takes it, the console's framebuffer first when nothing comes, the black one never removed while shown
 #   test_color  the firmware's white balance and colour management (bm-wb2): the registers a value gives, all six words every
 #               time, the colour management as a step on the board's own value, the firmware that forgets, the slots, the file werte
 #   test_gamma  the gamma curve and the colour temperature: the arithmetic of the display firmware's library against checksums
@@ -29,7 +31,7 @@ CFLAGS  += -std=gnu11 -Wall -Wextra -Wno-format-truncation -Wno-unused-function
 # program says why); the tests are built the same way
 CFLAGS  += -ffp-contract=off
 INC      = -idirafter $(SYSROOT)/usr/include -idirafter $(SYSROOT)/usr/include/libdrm
-TESTS    = test_want test_edid test_nosig test_hold test_color test_gamma
+TESTS    = test_want test_edid test_nosig test_hold test_wall test_color test_gamma
 
 all: $(TESTS)
 
@@ -39,7 +41,7 @@ color.o: ../color.c ../color.h
 gamma.o: ../gamma.c ../gamma.h ../color.h
 	$(CC) $(CFLAGS) -c -o $@ ../gamma.c
 
-test_want test_edid test_nosig test_hold: color.o gamma.o
+test_want test_edid test_nosig test_hold test_wall: color.o gamma.o
 test_color: gamma.o
 test_gamma: color.o
 
@@ -54,6 +56,7 @@ run: $(TESTS)
 	./test_edid
 	./test_nosig
 	./test_hold
+	./test_wall
 	./test_color
 	./test_gamma
 
