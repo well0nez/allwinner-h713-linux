@@ -1941,6 +1941,8 @@ static bool nosig_page_ok(void);		/* the page can stand for "no signal" (h713-os
 static bool nosig_linger(struct display *d);	/* h713-warp lets go while the page is not up: the claim and the last frame stay */
 static const char *nosig_word(void);		/* what h713-osd is to hear now: "none", or what is not none */
 static void nosig_said(bool said);
+static void hold_console_note(uint32_t fb);	/* the console's framebuffer, for the start after a held restart (TODO 2.96) */
+static uint32_t hold_console_fb(struct display *d, uint32_t fb);	/* fb is the holder's: the console's from the note, 0 */
 
 /* a claim of the ring was made: that needed a signal, so the signal is back and the page can go (nosig_follow() says so) */
 static void nosig_claimed(void)
@@ -2075,11 +2077,14 @@ static bool osd_learn(struct display *d)
 	if (!p)
 		return false;
 	if (!osd.claimed || (p->fb_id != osd.fb_id[0] && p->fb_id != osd.fb_id[1])) {
-		osd.console_fb = p->fb_id;
+		uint32_t con = hold_console_fb(d, p->fb_id);	/* the holder's black one (TODO 2.96): the console's is written down */
+
+		osd.console_fb = con ? con : p->fb_id;
 		osd.console_known = true;
 		if (!p->fb_id)
 			warn("osd             the primary plane %u is off -- the console comes back only when the kernel repaints it",
 			     osd.plane_id);
+		hold_console_note(p->fb_id);	/* for the start after a held restart (TODO 2.96) */
 	}
 	drmModeFreePlane(p);
 
@@ -2337,6 +2342,277 @@ static void osd_serve(struct display *d)
 		warn("osd             answering \"%s\": %s", buf, strerror(errno));
 		osd_release(d);
 	}
+}
+
+
+/* ------------------------------------------------------------------ *
+ * The wall held black over a restart of the picture path (TODO 2.96)
+ *
+ * h713-mips-restart stops this program to restart the display MIPS (the receiver's node has to be closed for its unbind) and
+ * starts it again. The way out handed the panel to the console, and the next start unblanked it once more, so the wall showed
+ * the console from the stop to the next picture or page: after every standby 7 to 8 s (HY300PRO-G-EU, 20.10.2026). The console
+ * is the kernel's own client: it paints the panel whenever no DRM master does and it is asked to (an unblank, the last close of
+ * the card). So the restart first starts "h713-tv --hold-wall": a second process of this program that opens the card - it is
+ * then not closed for the last time - makes a framebuffer of the panel's size, black as the kernel hands it over, names itself
+ * and it in HOLD_FILE and waits. This program, stopped while that file names a live holder, puts the holder's framebuffer on the
+ * primary plane and the video plane off in one commit and leaves without the console (hold_take()); the next start leaves the
+ * console dark while that framebuffer is on the plane (hold_adopt()), and its first picture or page takes the wall in its own
+ * commit. A framebuffer belongs to the file that made it but any master may show it, which is how the console's own one is
+ * shown under the picture. The holder ends when its framebuffer is on no plane any more; if nobody takes the wall within
+ * HOLD_MAX_S, or it is told to stop, it gives the console back first: the console stays the view of last resort.
+ *
+ * The console's framebuffer is learnt from the plane (osd_learn()), and after a held restart the plane holds the black one: so
+ * the run that learns it writes it into CONSOLE_FB_FILE, and the next start takes it from there, checked against the card.
+ * /run/h713-tv-state outlives a stop of the unit (its RuntimeDirectory does not).
+ * ------------------------------------------------------------------ */
+
+#define HOLD_FILE	"/run/h713-tv-state/hold"	/* "PID FB": the holder of the wall */
+#define CONSOLE_FB_FILE	"/run/h713-tv-state/console-fb"	/* the console's framebuffer, as osd_learn() found it */
+#define HOLD_MAX_S	30	/* nobody took the wall: the console after all */
+#define HOLD_UNUSED_S	10	/* nobody put the black framebuffer up: no h713-tv was stopped for the restart */
+
+static const char *hold_file = HOLD_FILE;		/* the tests point these elsewhere */
+static const char *console_fb_file = CONSOLE_FB_FILE;
+
+/* the holder HOLD_FILE names, if it runs: its PID, and its framebuffer in *fb; 0: none */
+static pid_t hold_read(uint32_t *fb)
+{
+	FILE *f = fopen(hold_file, "r");
+	long pid = 0;
+	unsigned long id = 0;
+
+	if (!f)
+		return 0;
+	if (fscanf(f, "%ld %lu", &pid, &id) != 2 || pid <= 0 || !id || kill((pid_t)pid, 0))
+		pid = 0;
+	fclose(f);
+	*fb = (uint32_t)id;
+
+	return (pid_t)pid;
+}
+
+/* the framebuffer the primary plane holds, 0: none or not known */
+static uint32_t hold_primary_fb(struct display *d)
+{
+	drmModePlane *p;
+	uint32_t fb;
+
+	if (!osd_find_plane(d) || !(p = drmModeGetPlane(d->fd, osd.plane_id)))
+		return 0;
+	fb = p->fb_id;
+	drmModeFreePlane(p);
+
+	return fb;
+}
+
+/* osd_learn() found the console's framebuffer: for the start after a held restart (never the holder's black one) */
+static void hold_console_note(uint32_t fb)
+{
+	uint32_t black = 0;
+	FILE *f;
+
+	if (!fb || (hold_read(&black) && black == fb) || !(f = fopen(console_fb_file, "w")))
+		return;
+	fprintf(f, "%u\n", fb);
+	fclose(f);
+}
+
+/* the way out, while a holder runs: its framebuffer on the primary plane, the video plane off - one commit, the master gone */
+static bool hold_take(struct display *d)
+{
+	drmModeAtomicReq *req;
+	uint32_t fb = 0;
+	pid_t pid = hold_read(&fb);
+	bool ok;
+
+	if (!pid || !osd_find_plane(d) || !display_take_master(d))
+		return false;
+	req = drmModeAtomicAlloc();
+	ok = req && add(req, d, "FB_ID", 0) && add(req, d, "CRTC_ID", 0) && osd_props(req, d, fb, 0) &&
+	     !drmModeAtomicCommit(d->fd, req, 0, NULL);
+	if (req)
+		drmModeAtomicFree(req);
+	display_release_master(d);
+	if (!ok) {
+		warn("wall            the black framebuffer %u of PID %d did not go up (%s) -- the console, as without it", fb,
+		     (int)pid, strerror(errno));
+		return false;
+	}
+	d->on = d->warped = false;
+	info("wall            held black by PID %d (framebuffer %u) for a restart -- the console stays dark", (int)pid, fb);
+
+	return true;
+}
+
+/*
+ * fb is the black one of a running holder: the console's framebuffer as CONSOLE_FB_FILE names it, if the card knows it and it is
+ * the console's kind (XRGB8888, the panel's size; a page is ARGB8888); 0 otherwise - also when fb is not the holder's. Every
+ * look at the plane asks this (osd_learn(): the start, and again at every claim of h713-osd's): the holder's framebuffer taken
+ * for the console's went with the holder, and every commit of "the console" after it was refused - the picture never came back,
+ * and the run's way out left the CRTC without a plane (HY300PRO-G-EU, 20.10.2026, the first try of this).
+ */
+static uint32_t hold_console_fb(struct display *d, uint32_t fb)
+{
+	uint32_t black = 0, con = 0;
+	drmModeFB2 *f;
+	FILE *cf;
+	bool ok;
+
+	if (!fb || !hold_read(&black) || black != fb)
+		return 0;
+	if ((cf = fopen(console_fb_file, "r"))) {
+		if (fscanf(cf, "%u", &con) != 1)
+			con = 0;
+		fclose(cf);
+	}
+	f = con && con != fb ? drmModeGetFB2(d->fd, con) : NULL;
+	ok = f && f->pixel_format == DRM_FORMAT_XRGB8888 && f->width == d->width && f->height == d->height;
+	if (f)
+		drmModeFreeFB2(f);
+	if (!ok)
+		warn("wall            the console's framebuffer is not known (%s: %u)", console_fb_file, con);
+
+	return ok ? con : 0;
+}
+
+/* the start, after a held restart: the black framebuffer is on the plane and the console's is known - then no console */
+static bool hold_adopt(struct display *d)
+{
+	uint32_t fb = 0, con;
+	pid_t pid = hold_read(&fb);
+
+	if (!pid || hold_primary_fb(d) != fb)
+		return false;
+	if (!(con = hold_console_fb(d, fb))) {
+		warn("wall            held black by PID %d, but the console's framebuffer is not known -- the console", (int)pid);
+		return false;
+	}
+	osd.console_fb = con;
+	osd.console_known = true;
+	info("wall            held black by PID %d -- no console at the start; the first picture or page takes the wall", (int)pid);
+
+	return true;
+}
+
+/* "h713-tv --hold-wall": the holder. Ready (READY=1 to systemd) once HOLD_FILE names it */
+static volatile sig_atomic_t hold_stop;
+
+static void hold_signal(int sig)
+{
+	(void)sig;
+	hold_stop = 1;
+}
+
+/* the framebuffer is on one of the planes */
+static bool hold_shown(int fd, uint32_t fb)
+{
+	drmModePlaneRes *r = drmModeGetPlaneResources(fd);
+	bool on = false;
+	unsigned int i;
+
+	for (i = 0; r && i < r->count_planes && !on; i++) {
+		drmModePlane *p = drmModeGetPlane(fd, r->planes[i]);
+
+		on = p && p->fb_id == fb;
+		if (p)
+			drmModeFreePlane(p);
+	}
+	if (r)
+		drmModeFreePlaneResources(r);
+
+	return on;
+}
+
+static void hold_notify(const char *what)
+{
+	const char *s = getenv("NOTIFY_SOCKET");
+	struct sockaddr_un sa = { .sun_family = AF_UNIX };
+	size_t n = s ? strlen(s) : 0;
+	int fd;
+
+	if (!n || n >= sizeof(sa.sun_path) || (s[0] != '/' && s[0] != '@'))
+		return;
+	memcpy(sa.sun_path, s, n);
+	if (s[0] == '@')
+		sa.sun_path[0] = '\0';
+	fd = socket(AF_UNIX, SOCK_DGRAM | SOCK_CLOEXEC, 0);
+	if (fd < 0)
+		return;
+	if (sendto(fd, what, strlen(what), 0, (struct sockaddr *)&sa, offsetof(struct sockaddr_un, sun_path) + n) < 0)
+		warn("hold            %s to systemd: %s", what, strerror(errno));
+	close(fd);
+}
+
+static int hold_wall(const char *card)
+{
+	struct display d = { .fd = -1 };
+	struct drm_mode_create_dumb creq = { 0 };
+	struct drm_mode_destroy_dumb dreq = { 0 };
+	uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 }, fb = 0, other = 0;
+	char tmp[64];
+	struct timespec t0, t;
+	bool shown = false, gone = false;
+	FILE *f;
+	long s;
+
+	signal(SIGTERM, hold_signal);
+	signal(SIGINT, hold_signal);
+	d.fd = display_open_card(card);
+	if (drmSetClientCap(d.fd, DRM_CLIENT_CAP_UNIVERSAL_PLANES, 1))
+		fail("universal planes: %s", strerror(errno));
+	display_find_crtc(&d);
+	/* the first client to open the card becomes its master: given back at once, h713-tv needs it */
+	if (drmDropMaster(d.fd) && errno != EINVAL)
+		warn("DROP_MASTER: %s", strerror(errno));
+	creq.width = d.width;
+	creq.height = d.height;
+	creq.bpp = 32;
+	if (drmIoctl(d.fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq))
+		fail("CREATE_DUMB %ux%u: %s", d.width, d.height, strerror(errno));
+	handles[0] = creq.handle;
+	pitches[0] = creq.pitch;
+	if (drmModeAddFB2(d.fd, d.width, d.height, DRM_FORMAT_XRGB8888, handles, pitches, offsets, &fb, 0))
+		fail("AddFB2: %s", strerror(errno));
+	snprintf(tmp, sizeof(tmp), "%s.%d", hold_file, (int)getpid());
+	if (!(f = fopen(tmp, "w")) || fprintf(f, "%d %u\n", (int)getpid(), fb) < 0 || fclose(f) || rename(tmp, hold_file))
+		fail("%s: %s", hold_file, strerror(errno));
+	info("hold            the wall can be held black: framebuffer %u (%ux%u) for h713-tv's restart", fb, d.width, d.height);
+	hold_notify("READY=1");
+	clock_gettime(CLOCK_MONOTONIC, &t0);
+	for (;;) {
+		bool on = hold_shown(d.fd, fb);
+
+		clock_gettime(CLOCK_MONOTONIC, &t);
+		s = t.tv_sec - t0.tv_sec;
+		if (on && !shown)
+			info("hold            the wall is black (framebuffer %u up)", fb);
+		shown |= on;
+		if ((gone = shown && !on) || hold_stop || (!shown && s >= HOLD_UNUSED_S) || s >= HOLD_MAX_S)
+			break;
+		usleep(50 * 1000);
+	}
+	if (gone)
+		info("hold            the wall is taken after %ld s -- done", s);
+	else if (!shown)
+		info("hold            nobody put the black framebuffer up within %ld s -- done", s);
+	else {
+		int i;
+
+		info("hold            %s after %ld s with the wall still black -- the console back", hold_stop ? "stopped" : "nobody took the wall", s);
+		console_restore();
+		for (i = 0; i < 20 && hold_shown(d.fd, fb); i++)
+			usleep(50 * 1000);
+		if (hold_shown(d.fd, fb))
+			warn("hold            the console did not take the wall (a master holds the card?) -- the framebuffer goes with this process");
+	}
+	if (hold_read(&other) == getpid() && unlink(hold_file))
+		warn("%s: %s", hold_file, strerror(errno));
+	drmModeRmFB(d.fd, fb);
+	dreq.handle = creq.handle;
+	drmIoctl(d.fd, DRM_IOCTL_MODE_DESTROY_DUMB, &dreq);
+	close(d.fd);
+
+	return 0;
 }
 
 
@@ -8817,6 +9093,7 @@ _Noreturn static void usage(const char *me)
 		"                 [-a AUDIO] [-t DB] [-C CONFIG] [--calculator PATH] [--data DIR]\n"
 		"                 [--input NAME] [--lut PATH] [-n]\n"
 		"        %s ctl [-s SOCKET] COMMAND [ARG...]      (h713-tv ctl help)\n"
+		"        %s --hold-wall [-c /dev/dri/cardN]       (h713-mips-restart: the wall black over the restart)\n"
 		"\n"
 		"  -s PATH     control socket; default %s\n"
 		"  -C FILE     configuration (start = auto|manual|last, state = PATH|none,\n"
@@ -8847,7 +9124,7 @@ _Noreturn static void usage(const char *me)
 		"              h713-tv ctl volume\n"
 		"  Controls, picture on/off, audio, RPCs while it runs: h713-tv ctl help\n"
 		"  -n          only report what was found, then exit -- the display is untouched\n",
-		me, me, CTL_SOCKET, CONF_FILE, STATE_FILE, V4L2_DRIVER, DRM_DRIVER,
+		me, me, me, CTL_SOCKET, CONF_FILE, STATE_FILE, V4L2_DRIVER, DRM_DRIVER,
 		PQ_BIN, PQ_DATA, PQ_INPUT, PQ_LUT, GAMMA_FILE);
 	exit(2);
 }
@@ -8889,6 +9166,8 @@ int main(int argc, char **argv)
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
 
+	if (argc >= 2 && !strcmp(argv[1], "--hold-wall"))
+		return hold_wall(argc >= 4 && !strcmp(argv[2], "-c") ? argv[3] : NULL);
 	if (argc >= 2 && !strcmp(argv[1], "ctl")) {
 		int a = 2;
 
@@ -9126,8 +9405,9 @@ int main(int argc, char **argv)
 		return sig == 1 ? 0 : 1;
 	}
 
-	/* a previous run may have left the console dark; see console_restore() */
-	console_restore();
+	/* a previous run may have left the console dark; see console_restore() - unless the wall is held over a restart (TODO 2.96) */
+	if (!hold_adopt(&d))
+		console_restore();
 	if (!gamma_own || !gamma_start()) {
 		if (gamma_own) {
 			/* the first curve did not go on the CRTC: the file applies, and the two controls say so */
@@ -9448,10 +9728,13 @@ int main(int argc, char **argv)
 	 */
 	retry_stop(&rt);
 	audio_close(&au);
-	warp_release(&d);
-	osd_release(&d);	/* an opaque page over black goes too: the console, and its keyboard, are back */
-	if (!display_hide(&d))
-		rc = 1;
+	/* stopped for a restart of the picture path while a holder runs: the wall black, not the console (TODO 2.96) */
+	if (!hold_take(&d)) {
+		warp_release(&d);
+		osd_release(&d);	/* an opaque page over black goes too: the console, and its keyboard, are back */
+		if (!display_hide(&d))
+			rc = 1;
+	}
 	control_close(&ctl);
 	display_destroy_fb(&d);
 	if (d.gamma_blob)

@@ -4,5 +4,6 @@ test_edid
 stubs.c
 *-stubs.c
 test_nosig
+test_hold
 test_color
 test_gamma
