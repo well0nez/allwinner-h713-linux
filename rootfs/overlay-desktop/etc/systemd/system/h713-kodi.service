@@ -13,12 +13,16 @@
 #   h713-tv does not keep the source across its own restart, so the desktop profile's tv.conf starts it on `auto` as well
 #   (rootfs/build-rootfs.sh): a `systemctl restart h713-tv@...` under a running Kodi leaves Kodi on the panel (h713-warp asks
 #   again once a second), and a start of this unit before h713-tv is up needs no command at all. (A crash of h713-tv ends
-#   Kodi instead - measured with a SIGKILL on the HY310: the first failure already starts OnFailure=h713-tv-rescue.service,
-#   which restarts the display MIPS and h713-warp, and BindsTo= below ends this unit.) h713-tv is not ordered before this unit, for the reason h713-warp.service gives (a template instance has no
+#   this unit for a while: the first failure already starts OnFailure=h713-tv-rescue.service, which restarts the display MIPS and
+#   h713-warp, and BindsTo= below ends this unit. The rescue is `h713-mode rescue`: it remembers the running mode unit first, as before a
+#   sleep, and starts it again once the picture path is back - measured on the HY300PRO-G-EU, Kodi 9 s after a SIGKILL of h713-tv.) h713-tv is not ordered before this unit, for the reason h713-warp.service gives (a template instance has no
 #   name to order after); the unit tolerates its absence instead. `h713-mode hdmi` sets the source to `hdmi` while a mode
 #   runs (the ring at once) and to `auto` once the units have ended; the next start of this unit sets `client`.
 # * Kodi writes userdata/guisettings.xml anew at every exit (its own views and settings): a test that starts and ends Kodi changes
-#   the owner's file - keep a copy before such a run and put it back after (17.10.2026: an acceptance run changed it).
+#   the owner's file - keep a copy before such a run and put it back after (17.10.2026: an acceptance run changed it). The image lays
+#   no such file: what it wants of Kodi is Kodi's default, named in usr/share/kodi/system/settings/appliance.xml (Kodi 21 reads it after
+#   its own defaults), so an owner's change is explicit in guisettings.xml and stays, every other setting is written as default="true"
+#   and takes the image's value at the next start, after a reset too, whatever Kodi could do when it ended.
 # * BindsTo=h713-warp.service: without the server cage has nothing to draw on; a stop or restart of h713-warp ends Kodi.
 # * A stop asks Kodi to quit first (JSON-RPC Application.Quit, ExecStop=) and waits for cage to end with it: a SIGTERM
 #   to the whole group lets cage close the socket under a running Kodi, which then aborts without saving its state
@@ -44,7 +48,7 @@
 #
 # * The VA-API wiring comes from the drop-in h713-kodi.service.d/10-h713-media-env.conf, a symlink to
 #   /usr/local/share/h713/systemd/h713-media-env.conf.
-# * Sound: KODI_AE_SINK=ALSA, the DSP bridge (ALSA `default`, guisettings.xml); h713-tv keeps the HDMI input's sound
+# * Sound: KODI_AE_SINK=ALSA, the DSP bridge (ALSA `default`, appliance.xml); h713-tv keeps the HDMI input's sound
 #   silent while the client is on the panel (not measured with a client running), the bridge plays on.
 # * No V4L2_REQUEST_SCALE here: Kodi gets the full-size picture.
 [Unit]

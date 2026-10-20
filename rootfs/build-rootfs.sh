@@ -970,6 +970,7 @@ if has_profile desktop; then
 	t "desktop: Firefox's decoder process keeps its sandbox (MOZ_DISABLE_RDD_SANDBOX is only a commented line; foreign web content)" bash -c '! grep -q "^Environment=MOZ_DISABLE_RDD_SANDBOX" "$1"/etc/systemd/system/h713-{browser,desktop}.service' _ "$TREE"
 	t "desktop: foot names its shell (the account h713-desktop has none; the window would close at once)" grep -qx 'shell=/bin/bash' "$TREE/etc/xdg/foot/foot.ini"
 	t "desktop: Firefox profile lifts the VA-API blocklist" grep -q 'media.hardware-video-decoding.force-enabled", true' "$TREE/var/lib/h713-desktop/firefox/user.js"
+	t "desktop: Kodi's defaults are in appliance.xml, each where Kodi's settings.xml has it, and the image lays no guisettings.xml of its own" python3 -I "$HERE/check-kodi-appliance.py" "$TREE"
 	t "desktop: launcher entries that name a unit name an existing one" bash -c 'for f in "$1"/etc/h713/launcher.d/*.conf; do u=$(sed -n "s/^unit *= *//p" "$f"); [ -z "$u" ] || test -f "$1/etc/systemd/system/$u" || exit 1; done' _ "$TREE"
 	t "desktop: launcher entries with a wait command: the command is in the image" bash -c 'for f in "$1"/etc/h713/launcher.d/*.conf; do w=$(sed -n "s/^wait *= *//p" "$f" | cut -d" " -f1); [ -z "$w" ] || test -x "$1$w" || exit 1; done' _ "$TREE"
 	t "desktop: the browser's and the desktop's wait files are the ones their labwc touches at the first window" bash -c 'for m in browser desktop; do d=labwc; [ $m = browser ] && d=labwc-browser; grep -q "^wait *= */usr/bin/test -e /run/h713-$m/mapped\$" "$1/etc/h713/launcher.d/"*-$m.conf && grep -q "command=\"touch /run/h713-$m/mapped\"" "$1/etc/h713/$d/rc.xml" || exit 1; done' _ "$TREE"
@@ -999,6 +1000,8 @@ fi
 t "h713-power linked"         test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
 t "h713-mips-restart"         test -x "$TREE/usr/local/sbin/h713-mips-restart"
 t "h713-tv-rescue"            test -f "$TREE/etc/systemd/system/h713-tv-rescue.service"
+t "h713-mode"                 test -x "$TREE/usr/local/sbin/h713-mode"
+t "h713-tv-rescue brings the mode back (h713-mode rescue, not h713-mips-restart alone: its stop of h713-warp ends Kodi)" grep -qx 'ExecStart=/usr/local/sbin/h713-mode rescue' "$TREE/etc/systemd/system/h713-tv-rescue.service"
 if [[ -n "$CRUST_BIN" ]]; then
 	t "crust as $BOARD-crust.bin" cmp -s "$CRUST_BIN" "$TREE/lib/firmware/$BOARD-crust.bin"
 else
