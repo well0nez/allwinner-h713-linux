@@ -79,16 +79,29 @@ class Root:
         with open(self.p(rel), "w") as f:
             f.write(text)
 
+    def node(self, n, caps, ids, bustype):
+        """one more event device n, as a fifo: its key capabilities, (vendor, product) and bus"""
+        self.put("sys/class/input/event%d/device/capabilities/key" % n, caps)
+        self.put("sys/class/input/event%d/device/id/vendor" % n, ids[0] + "\n")
+        self.put("sys/class/input/event%d/device/id/product" % n, ids[1] + "\n")
+        self.put("sys/class/input/event%d/device/id/bustype" % n, bustype + "\n")
+        os.mkfifo(self.p("dev/input/event%d" % n))
+
     def press(self, *events, osd=None):
-        """Run 'h713-power run --once' while (value, delay_s[, code]) events reach the fifo; -> systemctl calls.
-        osd: the path of a stand-in h713-osd socket; none by default, so no countdown is seen."""
+        """Run 'h713-power run --once' while (value, delay_s[, code[, device]]) events reach the fifo of event<device> (0);
+        -> systemctl calls. osd: the path of a stand-in h713-osd socket; none by default, so no countdown is seen."""
         def feed():
-            with open(self.fifo, "wb") as f:
-                for ev in events:
-                    time.sleep(ev[1])
-                    f.write(struct_event(ev[0], *ev[2:]))
-                    f.flush()
-                time.sleep(1.5)
+            files = {}
+            for ev in events:
+                time.sleep(ev[1])
+                n = ev[3] if len(ev) > 3 else 0
+                if n not in files:
+                    files[n] = open(self.p("dev/input/event%d" % n), "wb")
+                files[n].write(struct_event(ev[0], *ev[2:3]))
+                files[n].flush()
+            time.sleep(1.5)
+            for f in files.values():
+                f.close()
         threading.Thread(target=feed, daemon=True).start()
         env = dict(os.environ, H713_POWER_ROOT=self.dir, H713_SYSTEMCTL=self.p("systemctl"),
                    H713_POWER_CTL=self.p("power.sock"), H713_POWER_OSD=osd or self.p("no-osd"))
@@ -488,6 +501,7 @@ class Countdown(unittest.TestCase):
         self.assertEqual(cd.choice, "poweroff")
         self.assertEqual(cd.key(m.KEY_OK), "act")
         self.assertEqual(cd.key(m.KEY_SELECT), "act")
+        self.assertEqual(cd.key(272), "act")            # BTN_LEFT: the remote's OK in its mouse mode
         self.assertEqual(cd.key(m.KEY_BACK), "cancel")
         t[0] += 6.05
         self.assertIn("power 90 ", cd.line())          # 8.95 s left: the digits say 9
@@ -510,6 +524,25 @@ class Countdown(unittest.TestCase):
         self.assertIn("countdown of 15 s, poweroff chosen", out)
         self.assertTrue(any(l.startswith("power ") and " standby " in l for l in osd.lines), osd.lines)
         self.assertEqual(osd.lines[-1], "hide")
+
+    def test_the_mouse_click_of_the_remote_acts_like_ok(self):
+        """TODO 2.130: in its mouse mode the remote sends OK as the left button, on a node of its own (no KEY_POWER): the countdown reads it"""
+        r = Root(conf="default = poweroff\n")
+        r.node(1, "10000 0 0 0 0", ("1d5a", "c081"), "0005")        # BTN_LEFT (272) = bit 16 of the fifth word
+        osd = FakeOsd(r.p("osd"))
+        calls, out = r.press((1, 0.3), (0, 0.15), (1, 0.6, 272, 1), (0, 0.05, 272, 1), osd=r.p("osd"))
+        self.assertIn("countdown: poweroff (chosen)", out)          # (time up) after 15 s without the node
+        self.assertEqual(calls, ["poweroff"], out)
+
+    def test_only_the_remotes_mouse_is_read_with_the_power_keys(self):
+        """a USB mouse has BTN_LEFT too: nobody else's click is a countdown's OK, and its events are not read"""
+        r = Root(conf="default = poweroff\n")
+        r.node(1, "10000 0 0 0 0", ("1d5a", "c081"), "0005")
+        r.node(2, "10000 0 0 0 0", ("046d", "c077"), "0003")
+        r.node(3, "0 0 0 0 0", ("1d5a", "c081"), "0005")               # a node of the remote with no button: nothing to read
+        m = load()
+        m.ROOT = r.dir
+        self.assertEqual([os.path.basename(d) for d in m.power_key_devices(m.config()[0])], ["event0", "event1"])
 
     def test_back_cancels_and_nothing_happens(self):
         r = Root(conf="default = poweroff\n")
