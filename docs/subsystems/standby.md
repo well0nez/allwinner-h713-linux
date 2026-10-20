@@ -63,7 +63,8 @@ through the driver `sun50i-h713-mips`), and two things go with the park.
   MIPS started without them stalls the whole SoC within 200 ms (`doku/172`).
 
 After the resume the wall shows the last picture until [h713-power](../tools/h713-power.md) starts
-`h713-mips-restart`: the driver repeats U-Boot's TV top step where the standby lost it, loads `display.bin`
+`h713-mips-restart`, and from there black (not the console: the tool's holder, TODO 2.96) until `h713-tv`'s first picture
+or page: the driver repeats U-Boot's TV top step where the standby lost it, loads `display.bin`
 and starts the MIPS as U-Boot does; the HDMI receiver is bound again and `h713-tv` and `h713-warp` start.
 Measured on 09.10.2026 in the R2 test images: six standbys in one boot, each with the picture back 3.9-5.2 s
 after the wake (`doku/172`), and 30 of 30 in a fast loop on r2test3 (`doku/173`).

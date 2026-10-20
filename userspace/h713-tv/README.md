@@ -56,7 +56,9 @@ The state machine is small accordingly:
 ```
 
 `SIGTERM`/`SIGINT` take the same way out as a signal loss: plane off, console back, and only then exit. So a
-`systemctl stop` leaves **no still frame** standing on the wall.
+`systemctl stop` leaves **no still frame** standing on the wall. The one exception is the restart of the picture path after
+a standby: while `h713-mips-restart`'s holder (`h713-tv --hold-wall`) runs, the way out puts the holder's black framebuffer on
+the wall instead of the console, and the next start leaves it there (TODO 2.96, docs/tools/h713-tv.md "After a standby").
 
 Everything is **decided** on an event and on nothing else. There is no time loop, no `sleep` as a remedy and
 no retry without a cause: the MIPS firmware fires its `SignalChange` callback by itself both on loss **and**

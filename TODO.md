@@ -330,8 +330,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       geht unter der Seite aus und an = die getönte Kante, nachmessen), P3 mit `want none` (kein Warten, Ring sofort), EDID ohne Deep Colour (720p-EDID),
       No-signal-Seite (720p). Je Paket die Zelle aus abnahme.sh, Kamera dort keine: Marcos Auge.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** Rückwege 11/11, Pause unter Seiten 7/7 (Software, -K); On start launcher/hdmi/kodi/last-kodi bestanden, last-hdmi als Nachmessung von Hand nach dem Werkzeugfehler (Warmstart) bestanden; P3 want none = Identität (h713-tv zeigt den Ring selbst). Wand/Auge offen.
-- [ ] 2.96 **Wand nach dem Wecken** (`doku/215` §6): ~9 s Konsole, weil h713-tv mit der Display-Firmware neu startet. Zusammen mit V1 (Zustand
+- [x] 2.96 (erledigt 20.10.2026 am G-EU, `arbeit/medien/wach-wand/`, Mythos go mit Auflagen A/B, eingebaut 5a02a9c; offen: HY310 nachmessen, s. u.) **Wand nach dem Wecken** (`doku/215` §6): ~9 s Konsole, weil h713-tv mit der Display-Firmware neu startet. Zusammen mit V1 (Zustand
       "geparkt" im hdmirx-Treiber) planen: h713-tv übersteht den MIPS-Neustart mit gehaltener Wand, oder die Konsole bleibt verdeckt. Verschoben (Marco 17.10.); Marco 18.10.: "kein Release-Hindernis - Kleinigkeit, muss man schauen, evtl. noch vor dem Release" - einplanen, wenn vor dem Release Platz ist, sonst danach.
+      **G-EU 20.10.2026 (wach-wand):** Ursache: h713-tv gibt die Wand beim Stopp an fbcon zurück und entblankt fbcon beim Start; Fix: ein
+      Halter (`h713-tv --hold-wall`, transiente Einheit von h713-mips-restart) hält einen schwarzen Puffer über den MIPS-Neustart, das neue
+      h713-tv übernimmt die Wand im eigenen Commit; eine deckende Seite geht erst mit dem Commit des Rings. Konsole nach dem Wecken vorher
+      15/15 (7,3-9,1 s), nachher 0/19 (HDMI 10, Kodi 5, ohne DRM-Leser 2, Trapez 2) und nach den Auflagen 0/7 (HDMI 5, Kodi 2); Wand
+      7,3-8,9 s schwarz (Scanout-Register, kein Auge), dann Seite/Bild. Fehlerwege des Halters nur in Host-Tests.
+      **HY310 nachmessen (wach-wand):** 10 RTC-Standbys aus HDMI + 5 aus Kodi, je mit Warp-Claim und ohne (`keystone reset`),
+      `skripte/sb.sh` + `wand.py` + `zeitleiste.py` (fbcon-Puffer aus der ersten KONSOLE-Zeile); dazu Kamera (`kamroh.py`) in den 8 s nach dem
+      Wecken: Wand schwarz, nicht grau/Konsole. Erwartung wie G-EU: 0 Konsole, schwarz 7-9 s, dann Seite/Bild.
 - [ ] 2.97 **P7: HDMI-Aufnahme parken** (`doku/215` §7): nach 5 min ohne HDMI an der Wand (Programm, Launcher, Settings, kein Signal)
       `THal_Vp_SetSource(1)`, zurück mit "Switching to HDMI..."; vorher V1, HDCP 2.2 mit Fire TV nach dem Rückweg (mit Marco). Verschoben (Marco 17.10.).
 - [x] 2.98 Klein, aus den Prüfungen von Mythos (erledigt 19.10.2026, `arbeit/medien/klein-298/`, Mythos go: Power-Countdown über No-signal-Seite, ohne Signal geöffnetem Launcher, Settings-Seite und Pille - eine Regel; handover_until; Zelle ns-seite; `edid =` leer startet sauber; Bildwerte-Verlust = Installation ohne /var/lib/h713-tv, Anleitung und abn.sh werte-zurueck korrigiert. Offen in 2.111): Power über der No-signal-Seite mit Countdown wie über dem Launcher (Entscheidung Aufsicht 17.10., Marco 18.10.: "Power-Taste wie immer, ja"; h713-osd behandelt `lau.nosig` beim Power-Befehl als gesehen - heute antwortet die Seite `ok unseen`, weil `osd picture` unter ihr `none` ist; `handle()`, Zweig "power");
@@ -439,6 +447,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       385d6ba h713-mkimage --board schneidet für die eMMC des Boards): das G-EU-Abbild geu3 lief damit (20.10.2026); Mythos prüft, dann Merge.
 - [ ] 2.123 Klein (G-EU 20.10.2026): bei jedem Kodi-Start 5x `sun4i-codec ... ASoC error (-16)` auf dem Codec (Kodis Geräte-Abtastung, EBUSY);
       ohne hörbare Folge - prüfen, ob Kodi den Codec überhaupt listen muss (ALSA-Hinweis "codec" ausblenden?) oder die Zeilen bleiben dürfen.
+- [ ] 2.124 Klein (wach-wand §9, Mythos 20.10.2026): **Wechsel Kodi -> HDMI ohne Trapez zeigt 0,15-0,17 s Konsole** ("console back with the
+      warp's release", dann der Ring; G-EU 2x gesehen) - derselbe Mechanismus wie die Seite in wach-wand Commit 2, über die Freigabe des
+      Client-Claims; die Wand bis zum Commit des Rings halten. Test fällt heute, besteht danach.
+- [ ] 2.125 Klein (wach-wand §5.1/§9, Mythos 20.10.2026): **schlägt h713-tvs Commit beim Weg hinaus fehl, bleibt die CRTC ohne Ebene und kein
+      h713-tv startet mehr** (`no CRTC drives a mode`, bis jemand fbcon entblankt). Beim Start den Kernel-Zustand wiederherstellen
+      (console_restore(), dann noch einmal suchen) - Wiederherstellung, kein Netz (Mythos).
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
@@ -597,6 +611,8 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 9.0 **Nach dem Release (Marco 09.10.): schneller ans Bild nach dem Standby.** Vom Wecken bis zum Bild ~11 s, davon
       ~4-5 s, weil h713-tv nach dem MIPS-Neustart den HPD 300 ms auf low zieht und die Quelle (Laptop) neu synchronisiert
       (`doku/174` §1). Bei unveränderter EDID den Replug sparen; vorher messen, ob die Quelle ohne ihn wieder sendet
+      - 20.10.2026 (wach-wand §9, G-EU): nach jedem Wecken 1-5 s Seite "No signal": h713-tv publiziert beim Start die EDID ohne Deep Colour
+        neu (HPD 300 ms), kurz nachdem die Probe des Empfängers die Quelle synchronisieren ließ - Wurzel hier (kein zweiter Puls), kein Netz (Mythos)
 - [ ] 9.0b **Stumm über den Standby** (Marco 11.10.: optional, nach dem Release): h713-tv startet nach jedem Standby neu und
       vergisst die Stummschaltung; speichern wie die Lautstärke - das Stumm-Zeichen kommt dann von selbst mit (h713-osd fragt
       h713-tv beim Neuverbinden)

@@ -8,7 +8,9 @@
 # unbind the HDMI receiver, write FIRMWARE (default /boot/mips/display.bin) to the driver's restart file
 # (running: halt, load, start like the vendor; parked: load, start like U-Boot), bind the receiver, wait up to
 # 60 s for its video node, start h713-tv@ on it and h713-warp again, then rebuild the audio DSP, which the
-# standby powered off (msp "error"; up to three attempts, five of five within two, 09.10.2026).
+# standby powered off (msp "error"; up to three attempts, five of five within two, 09.10.2026). Before the stop
+# the unit h713-wall-hold runs h713-tv --hold-wall, and h713-tv goes first: the wall stays black, not the console,
+# until h713-tv's next picture or page (TODO 2.96); a run that brings no picture back stops it, the console is back.
 # The receiver is unbound only when no process holds its node (an unbind under an open node frees memory the
 # close still uses) and bound again only on a running MIPS, through h713-hdcp-key --bind where it can (a plain
 # bind loses the HDCP 2.2 key). Whatever ends the run, warp and tv come back as far as the MIPS allows; the
@@ -17,13 +19,8 @@
 # 2 refused, MIPS untouched; 3 the MIPS runs, but receiver, node or a service did not; 4 a signal.
 # Tests only: H713_ROOT goes before /sys, /proc, /run, FIRMWARE and KEY; H713_WAIT replaces 60 s.
 set -u
-R=${H713_ROOT:-}
-FW=${1:-/boot/mips/display.bin}
-WAIT=${H713_WAIT:-60}
-RX=hdmi-rx
-RXD=$R/sys/bus/platform/drivers/sun50i-h713-hdmirx
-KEY=/usr/local/sbin/h713-hdcp-key
-warp=0 n=
+R=${H713_ROOT:-} FW=${1:-/boot/mips/display.bin} WAIT=${H713_WAIT:-60} RX=hdmi-rx KEY=/usr/local/sbin/h713-hdcp-key
+RXD=$R/sys/bus/platform/drivers/sun50i-h713-hdmirx HOLD=h713-wall-hold.service warp=0 n=
 
 say() {	# LEVEL TEXT - a journal line (-t h713-mips-restart); run by hand also on stderr
 	[ -n "${JOURNAL_STREAM:-}" ] || echo "h713-mips-restart: $2" >&2
@@ -67,6 +64,7 @@ fin() {	# on every exit: the receiver back on a running MIPS, the services back
 	[ -z "$n" ] || systemctl start "h713-tv@$n.service" || { say warning "h713-tv@$n did not start"; [ "$rc" != 0 ] || rc=3; }
 	[ "$warp" = 0 ] || systemctl start h713-warp.service || { say warning "h713-warp did not start"; [ "$rc" != 0 ] || rc=3; }
 	[ "$rc" != 0 ] || { say notice "picture path back after $(( $(ms) - t0 )) ms: MIPS $s, /dev/$n"; dsp; }
+	[ "$rc" = 0 ] || systemctl stop --no-block "$HOLD" 2>/dev/null	# no picture to come: the console now, not after its wait
 	exit "$rc"
 }
 
@@ -81,7 +79,9 @@ if systemctl is-active --quiet h713-warp.service; then warp=1; fi
 trap fin EXIT
 trap 'say warning "ended by a signal"; exit 4' INT TERM HUP
 say notice "MIPS $(state); firmware $FW"
-systemctl stop h713-warp.service 'h713-tv@*.service' || say warning "systemctl stop failed"
+systemd-run -q --collect -u "$HOLD" -p Type=notify -p TimeoutStartSec=5 /usr/local/sbin/h713-tv --hold-wall || say warning "the wall is not held"
+systemctl stop 'h713-tv@*.service' || say warning "systemctl stop h713-tv@* failed"	# first: a warp's release gave the console
+systemctl stop h713-warp.service || say warning "systemctl stop h713-warp failed"
 n=$(node)
 if [ -n "$n" ]; then
 	p=$(holders "$n")
