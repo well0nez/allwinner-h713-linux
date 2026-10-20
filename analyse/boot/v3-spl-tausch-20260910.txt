@@ -543,7 +543,7 @@ Starting kernel ...
 [    5.831257] Sending DHCP requests .., OK
 [    8.179269] IP-Config: Got DHCP answer from 192.168.8.1, my address is 192.168.8.141
 [    8.187056] IP-Config: Complete:
-[    8.190311]      device=eth0, hwaddr=00:e0:fc:68:24:cb, ipaddr=192.168.8.141, mask=255.255.255.0, gw=192.168.8.1
+[    8.190311]      device=eth0, hwaddr=xx:xx:xx:xx:xx:xx, ipaddr=192.168.8.141, mask=255.255.255.0, gw=192.168.8.1
 [    8.200509]      host=192.168.8.141, domain=lan, nis-domain=(none)
 [    8.206707]      bootserver=192.168.8.1, rootserver=192.168.8.123, rootpath=
 [    8.206722]      nameserver0=192.168.8.1

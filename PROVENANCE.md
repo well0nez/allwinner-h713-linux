@@ -34,7 +34,8 @@ The follow-ups marked as pull-request candidates in `doku/116` are meant to go b
 
 The Wi-Fi driver is a second series, `mainline/patches/aic8800/`: nine patches on Radxa's `aic8800` tree
 (commit `df4c783b`, vendor release `2026_0123`). `0008` - `0010` are cstenger's `0007` - `0009` from the same
-branch, renumbered and byte-identical but for the phantom `CONFIG_DEBUG_FS_AIC` that `0010` compiles in; the
+branch, renumbered and byte-identical but for the phantom `CONFIG_DEBUG_FS_AIC` that `0010` compiles in and,
+since 21.10.2026, two MAC addresses in the commit texts of `0008` and `0010` masked as `xx:xx:xx:xx:xx:xx`; the
 rest is ours. That directory's README names each patch and its origin.
 
 ## Firmware components

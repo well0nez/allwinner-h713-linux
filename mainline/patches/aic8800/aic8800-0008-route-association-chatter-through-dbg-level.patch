@@ -8,11 +8,11 @@ driver is built in so fbcon takes over at 1.25 s).  That makes anything
 printed unconditionally a thing a user physically sees, and this driver
 prints a burst on every association:
 
-    rwnx_cfg80211_del_station_compat: 68:ef:dc:2f:c3:95
-    wlan0: Del sta 1 (68:ef:dc:2f:c3:95)
+    rwnx_cfg80211_del_station_compat: xx:xx:xx:xx:xx:xx
+    wlan0: Del sta 1 (xx:xx:xx:xx:xx:xx)
     deinit:macaddr:68,ef,dc,2f,c3,95
     reord_mac:8,5b,d6,d9,c2,13
-    wlan0: Add sta 2 (68:ef:dc:2f:c3:95) flags=[SHORT_PREAMBLE][WME]...
+    wlan0: Add sta 2 (xx:xx:xx:xx:xx:xx) flags=[SHORT_PREAMBLE][WME]...
     done=1 retry_required=0 sw_retry_required=0 acknowledged=1
 
 With a client that re-associates every few seconds that is enough to fill a

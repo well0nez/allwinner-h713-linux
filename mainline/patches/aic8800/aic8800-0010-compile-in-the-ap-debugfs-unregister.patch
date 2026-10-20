@@ -5,7 +5,7 @@ Subject: [PATCH] aic8800: the AP-mode debugfs unregister was never compiled in
 
 Every re-association of an already-seen MAC logged:
 
-    debugfs: '08:5b:d6:d9:c2:13' already exists in 'rc'
+    debugfs: 'xx:xx:xx:xx:xx:xx' already exists in 'rc'
     aicwf_sdio mmc1:6721:1: Error while (un)registering debug entry for sta 7
 
 Deterministically, on every cycle, with the sta index climbing for one
@@ -31,7 +31,7 @@ Confirmed on hardware before the fix: after ten forced re-associations the rc/
 directory held exactly one entry, timestamped at boot, while the station had
 joined and left ten times.
 
-    /sys/kernel/debug/ieee80211/phy0/rwnx/rc/08:5b:d6:d9:c2:13
+    /sys/kernel/debug/ieee80211/phy0/rwnx/rc/xx:xx:xx:xx:xx:xx
 
 Use CONFIG_DEBUG_FS in both places.
 

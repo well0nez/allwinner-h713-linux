@@ -119,6 +119,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/tests/test_layout_v4.py` | `doku/109` |
 | `installer/tests/test_o1b_followups.py` | `doku/61` |
 | `installer/tests/test_py39_syntax.py` | `doku/61` |
+| `installer/tests/test_sperrscan_mac.py` | `doku/1`, `doku/2`, `doku/3` |
 | `installer/tests/test_sperrscan_spdx.py` | `doku/210` |
 | `installer/tests/test_stock_gpt_crosscheck.py` | `doku/60`, `doku/61` |
 | `installer/tests/test_stock_guard.py` | `doku/121` |
