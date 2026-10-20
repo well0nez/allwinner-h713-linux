@@ -4,8 +4,10 @@ Who made what, where it comes from, and what is deliberately absent.
 
 ## The kernel series
 
-`mainline/` is a **git subtree** of [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline)
-at commit `8860991`, with full history - you can `git log` any of his commits here. On top of it,
+`mainline/` began as a **git subtree** import (13.09.2026, commit `657ce79`) of
+[cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline) at commit `8860991`. What of his tree
+is still in the working tree, and what is not, is told in "Left out on purpose" below; his kernel patches are the part
+that stayed. His commits up to `8860991` are still in this repository's git history. On top of them,
 `mainline/patches/kernel/series` carries 348 patches:
 
 | Origin | Patches | Note |
@@ -24,11 +26,10 @@ at commit `8860991`, with full history - you can `git log` any of his commits he
 | well0nez | `0325` | the R_PIO header comment and the power key note in the dtsi name the EINT function 0xe as `0140`'s table has it (the pinctrl comment is the same correction as in cstenger's `0171`, whose code part `0140` already carries); comments only |
 | well0nez | `0326` | the hdmirx driver checks the break of the display firmware's allocator before it writes a block into the shared memory (the HDCP 2.2 key, the window structures, the backlight PWM words) and leaves the step out when the allocator has reached the block's page; two comments of `0094`/`0101` corrected (SetWhiteBalance's argument, white balance versus CTM). Own work, no foreign material; the layout of the allocator is read from our own `cpu_comm` port |
 
-cstenger says the same in his own `PROVENANCE.md`: "the bulk of the H713 driver support … originates
+cstenger says the same in his own `PROVENANCE.md` (in his repository at `8860991`): "the bulk of the H713 driver support … originates
 from well0nez". The direction of the debt runs both ways - his arm64 work is what made the 6.18 line
-possible here - which is why this repository vendors his tree with its full history instead of copying
-files out of it. The follow-ups marked as pull-request candidates in `doku/116` are meant to go back to
-him.
+possible here - which is why his kernel patches stay in the series with their `From:` lines, byte for byte where the table says so.
+The follow-ups marked as pull-request candidates in `doku/116` are meant to go back to him.
 
 The Wi-Fi driver is a second series, `mainline/patches/aic8800/`: nine patches on Radxa's `aic8800` tree
 (commit `df4c783b`, vendor release `2026_0123`). `0008` - `0010` are cstenger's `0007` - `0009` from the same
@@ -110,6 +111,42 @@ What we took from cstenger's tree besides patches is **knowledge**, put into our
 HEVC output is laid out, the AV1 core's hardware rules, mpv's settings for a Mali-G31, the reference method for the bit-exact
 tests (framemd5 against a software decoder). No file of his `tools/` or `docs/` was copied.
 
+## Left out on purpose: the unlicensed part of cstenger's tree
+
+His repository has no LICENSE file. Apart from his kernel patches (changes to Linux, so GPL-2.0; the table above lists
+them) and nine C programs with a `SPDX-License-Identifier: GPL-2.0` line in the head, no file of it says under which
+terms it may be copied or passed on, and nobody but him can say so. He has not answered so far. Without that statement we do not
+redistribute his files: since 13.10.2026 they are no longer in the working tree, and what we needed from them was
+written afresh or replaced.
+
+- **Gone from the tree:** the documents and logs under `mainline/docs/` (bring-up notes, hand-overs, measurement logs,
+  his plans), his helper programs and scripts under `mainline/tools/` (serial and flashing tools, his rootfs build, the
+  display and video measuring scripts, Wi-Fi and boot helpers), his three libva patch files with their README (patches on
+  bootlin's MIT-licensed code, not used in `main`), and his top-level README, PROVENANCE, `.gitmodules`, `.gitignore` and
+  one measurement protocol. [`doku/210`](doku/210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md) lists every path.
+- **Written afresh:** `mainline/README.md` and `mainline/tools/README.md`, the `.gitignore` lines in the top-level file, and
+  the table of the display firmware's routines, now a section of [docs/subsystems/cpu-comm.md](docs/subsystems/cpu-comm.md)
+  (the facts after his capture, the wording and the checking ours).
+- **Still here from him:** the kernel patches the table above credits to him, `mainline/patches/aic8800/` `0008` - `0010`
+  likewise, and these nine programs, each with his SPDX line: `mainline/tools/display/drm-flip.c` and, in
+  `mainline/tools/video/`, `decd-client.c`, `gles-nv12.c`, `gles-play.c`, `gles-probe.c`, `gles-scanout.c`, `gles-tear.c`,
+  `gputest.c` and `h713-present.c`. `LICENSE` names them as the parts that are his.
+- **Started as his, written anew on 20.10.2026** (TODO 7.20 a, b, d), each from a description of what it has to do,
+  without the text of the file before: `mainline/build/build.sh` and `mainline/build/uboot-build.sh` (the outputs
+  byte for byte the same as with the old scripts), `mainline/config/versions.env` and `mainline/config/toolchain.md`,
+  and in `mainline/patches/` the kernel `series`, `board/hy200_qz713df_a1_defconfig`, `kernel/README.md` and
+  `aic8800/README.md` (the series the same entries in the same order, the defconfig the same options). The list
+  `aic8800/series` is nine file names and nothing else, so the new one is the same bytes. His three diagnostic
+  fragments `iommu`, `kasan` and `builtin-drivers` and the old copy of the AIC8800 driver under
+  `mainline/modules/aic8800/` (vendor release `2024_0109` with his README; no build read it) were removed instead.
+- **Where the removed files are:** in his repository at `8860991`, with the paths of `mainline/` minus that first directory
+  (`mainline/docs/status.md` there is `docs/status.md`), and in this repository's history, for as long as it carries his
+  commits (`git show 8860991:docs/status.md`). Older entries of the journal that name a path like `mainline/docs/...` or
+  `mainline/tools/...` mean his tree as it was; they are not rewritten.
+
+Kernel patches and the U-Boot mirrors keep comments that point at his documents (`docs/kernel-bump.md`, `docs/status.md`,
+`docs/vaapi-scope.md` and others). The patches stay byte for byte as they are, so those pointers are origin notes, not links.
+
 ## What is *not* in this repository, on purpose
 
 **No vendor firmware, no keys, no dumps.** The display firmware (`display.bin`), the vendor's ARISC
@@ -131,10 +168,17 @@ has found its way into the tree.
 **Code: GPL-2.0, unless a file or directory says otherwise** ([LICENSE](LICENSE)) - the kernel patches, the U-Boot changes
 and the drivers inherit it from their upstreams and could not be anything else; the tools in `installer/`, `rootfs/`,
 `userspace/` and `release/` are under it by choice. The exceptions: a file's own `SPDX-License-Identifier` wins (`tfa-h713/`
-BSD-3-Clause, `crust-h713/` BSD-3-Clause or GPL-2.0-only, `uboot-h713/` GPL-2.0+, some device-tree files dual-licensed);
+BSD-3-Clause, `crust-h713/` BSD-3-Clause or GPL-2.0-only, `uboot-h713/` GPL-2.0+, some device-tree files dual-licensed, the GPL-2.0 lines of cstenger's nine programs);
 `rootfs/libva/patches/` is GPL-3.0-or-later (changes to megi's GPL-3.0-or-later driver); `rootfs/libva/build-libva.sh` and
 `rootfs/mesa/cross-aarch64.ini.in` are GPL-2.0-or-later; and the parts of cstenger's tree under `mainline/` carry what he put
-on them (a file of his without a licence line is not covered by ours).
+on them (a file of his without a licence line is not covered by ours; since 20.10.2026 the ones there were are gone or
+written anew, "Left out on purpose" above).
+
+**In the image.** An image carries its licence notices under `/usr/local/share/doc/h713-linux/`: a README with every
+part's licence and where the source of every part is (it goes with the image, as source archives next to it), the revisions it was built from, the BSD
+notices of TF-A's BL31 and of crust (the copyright lines of every source file built into them), the kernel's licence,
+the copyright files of the libraries linked statically into `h713-osd` and `h713-settings`, and the list of Debian's
+source packages; Debian's own copyright files stay in `/usr/share/doc/` ([rootfs/README.md](rootfs/README.md)).
 
 **Documentation: CC BY-SA 4.0** ([LICENSE.docs](LICENSE.docs)) - `docs/`, `doku/` and the Markdown at the
 top level: share it, adapt it, credit **well0nez**, keep the same licence.

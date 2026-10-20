@@ -25,3 +25,17 @@ for an image, take [BUILDING.md](../BUILDING.md).
 The result is about 242 MiB, journal in RAM by default, SSH key-only, and it carries no proprietary
 file at all: the display, ARISC and Wi-Fi firmware come off your own device while installing
 ([PROVENANCE.md](../PROVENANCE.md)).
+
+## Licences in the image
+
+`/usr/local/share/doc/h713-linux/` says what the image is made of, under which licence, and how to get the source:
+`README` (from `overlay/`) lists the parts with their licences and says where their source is: next to the image as its
+source archives, and in the repository at the commit `SOURCES` names; `SOURCES` names the revisions this image was built from (the boot chain and the kernel from
+`release/build-all.sh`, the Debian suites, Mesa and libva from `build-rootfs.sh`); `DEBIAN-SOURCES` lists every
+Debian source package with its version. Next to them, what `release/build-all.sh` hands over with `build-rootfs.sh --notice`: `tf-a/` and
+`crust/` (their licence and the copyright lines of every source file built into BL31 and `scp.bin`, which BSD wants
+with the binary), `linux/` (the kernel's `COPYING` with its syscall note), `static/` (the copyright files of the
+libraries `h713-osd` and `h713-settings` link statically) and `licenses/BSD-2-Clause`. Debian's own
+`/usr/share/doc/<package>/copyright` stay in the image (`path-include`; a package whose documentation directory is a
+link to another package of the same source keeps the link, Debian Policy 12.5), and `release/notice.py
+copyright-files` asks every installed package for its file. The acceptance checks all of it: a build without `--notice` (`--notice none`) is a bench tree, not one to pass on.

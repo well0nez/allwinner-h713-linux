@@ -30,7 +30,7 @@ WURZEL = os.path.normpath(os.path.join(os.path.dirname(os.path.abspath(__file__)
 JOURNAL = "doku"
 # Wo nach Zitaten gesucht wird: die Leserdokumentation und die Wurzeltexte, nicht das
 # Journal selbst - Querverweise im Journal sind seine eigene Sache.
-ZITIERER = ["docs", "boards", "installer", "release", "rootfs", "userspace", "mainline/docs"]
+ZITIERER = ["docs", "boards", "installer", "release", "rootfs", "userspace"]
 WURZELTEXTE = ["README.md", "STATUS.md", "ROADMAP.md", "BUILDING.md", "FLASHING.md",
                "RELEASES.md", "PROVENANCE.md"]
 

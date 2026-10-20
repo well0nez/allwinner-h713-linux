@@ -27,7 +27,7 @@
 #
 # ============================================================================
 # WHAT THIS SCRIPT DELIBERATELY DOES *NOT* DO -- how it differs from
-# mainline/tools/rootfs/build.sh (cstenger)
+# cstenger's rootfs build (tools/rootfs/build.sh in his repository at 8860991)
 # ============================================================================
 #  * No VIDEO_RUNTIME_PACKAGES. There the GStreamer/Mesa/GTK chain is part of
 #    the base system ("this is a projector"). For us it is the single biggest
@@ -88,6 +88,7 @@ H713_TV_SRC="$PROJECT_ROOT/userspace/h713-tv"
 H713_TV_BIN="$H713_TV_SRC/h713-tv.aarch64-linux-gnu"
 MESA_TAR="$PROJECT_ROOT/mainline/build/out/mesa-panfrost-25.0.7.tar"   # rootfs/mesa/build-mesa.sh
 LIBVA_TAR="$PROJECT_ROOT/mainline/build/out/libva-v4l2-request-1.2.tar" # rootfs/libva/build-libva.sh; laid in by profiles media and desktop
+NOTICE_DIR="$PROJECT_ROOT/mainline/build/out/notice"   # release/build-all.sh: SOURCES and the notices of the boot chain and the kernel
 H713_PQ_SRC="$PROJECT_ROOT/userspace/h713-pq"
 
 usage() {
@@ -119,6 +120,12 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
                         ${LIBVA_TAR#"$PROJECT_ROOT"/}); laid in by --profile media and by --profile desktop (with
                         rootfs/overlay-va/: environment, the unit drop-in); media also lays rootfs/overlay-media/
                         (mpv.conf); "none" leaves the driver out
+  --notice DIR         the licence notices release/build-all.sh assembles (default:
+                        ${NOTICE_DIR#"$PROJECT_ROOT"/}): SOURCES with the revisions
+                        of the boot chain and the kernel, tf-a/, crust/, linux/, static/, licenses/;
+                        they go to /usr/local/share/doc/h713-linux/ next to its README.
+                        "none" for a bench tree: the image then names no revisions and
+                        is not for passing on
   --authorized-key FILE optionally build in an SSH key. NOT the default and
                         not the release way (107 §3).
   --wifi-env FILE       your own /etc/h713/wifi.env (mode=ap|sta|off, ssid,
@@ -169,6 +176,7 @@ while (($#)); do
 	--h713-tv)        H713_TV_BIN=${2:?missing value for --h713-tv}; shift 2 ;;
 	--mesa)           MESA_TAR=${2:?missing value for --mesa}; shift 2 ;;
 	--libva)          LIBVA_TAR=${2:?missing value for --libva}; shift 2 ;;
+	--notice)         NOTICE_DIR=${2:?missing value for --notice}; shift 2 ;;
 	--authorized-key)  AUTHORIZED_KEY=${2:?missing value for --authorized-key}; shift 2 ;;
 	--wifi-env)        WIFI_ENV=${2:?missing value for --wifi-env}; shift 2 ;;
 	--board)           BOARD=${2:?missing value for --board}; shift 2 ;;
@@ -552,6 +560,7 @@ dry_run() {
 		(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) -printf '    /%P\n' | sort)
 	done
 	if ((WANT_LIBVA)); then info "plus the VA-API driver: ${LIBVA_TAR#"$PROJECT_ROOT"/}"; fi
+	info "plus the licence notices: $( [[ "$NOTICE_DIR" == none ]] && echo "none (a bench tree)" || echo "${NOTICE_DIR#"$PROJECT_ROOT"/}" ) -> /usr/local/share/doc/h713-linux/"
 	echo
 
 	say "5. WLAN ($WIFI_ENV_ORIGIN: $WIFI_ENV)"
@@ -806,7 +815,7 @@ rm -rf "$TREE/var/log/journal"
 # Debian signature and would reject the database. So point at -upstream. For the
 # aic8800 (self-managed wiphy, default_ccode) that has no consequences; for
 # cfg80211's global realm it is the difference between "loaded" and "discarded".
-# (cstenger's finding, mainline/tools/rootfs/customize.sh.)
+# (cstenger's finding, tools/rootfs/customize.sh in his repository at 8860991.)
 # Without a chroot: the alternative is only a symlink under /etc/alternatives.
 for alt in regulatory.db regulatory.db.p7s; do
 	if [[ -e "$TREE/lib/firmware/$alt-upstream" && -L "$TREE/etc/alternatives/$alt" ]]; then
@@ -850,6 +859,38 @@ if [[ "$MESA_TAR" != none ]]; then
 		warn "not root: ld.so.cache not refreshed, libEGL_mesa.so.0 will not be found until ldconfig runs on the device"
 	fi
 fi
+
+# --- 5c. licence notices (TODO 7.20 e) ---------------------------------------
+# The overlay's /usr/local/share/doc/h713-linux/README says which part of the image comes under which licence and how to get
+# the source. Here comes what only this build knows: the notices release/build-all.sh assembled (--notice: SOURCES with the
+# revisions of the boot chain and the kernel, the BSD notices of BL31 and crust, the kernel's licence, the copyright files of
+# the static libraries), the root file system's part of SOURCES and the list of Debian's source packages. Debian's own
+# /usr/share/doc/<package>/copyright stay (path-include above; a package whose directory is a link to the one of another
+# package of the same source, Debian Policy 12.5, keeps its link), and the acceptance asks every package for its file.
+NOTICE_DST="$TREE/usr/local/share/doc/h713-linux"
+install -d -m 0755 "$NOTICE_DST"
+if [[ "$NOTICE_DIR" != none ]]; then
+	[[ -f "$NOTICE_DIR/SOURCES" ]] || die "no $NOTICE_DIR/SOURCES (release/build-all.sh writes it; --notice none for a bench tree)"
+	tar -C "$NOTICE_DIR" --mode="$LAY_MODE" --owner=0 --group=0 --numeric-owner -cf - . | tar -C "$NOTICE_DST" --no-same-owner -p -xf -
+	info "licence notices from ${NOTICE_DIR#"$PROJECT_ROOT"/}: $(cd "$NOTICE_DIR" && find . -type f | wc -l) files"
+else
+	printf '%s\n' "This root file system was built by rootfs/build-rootfs.sh by itself, not by release/build-all.sh: the revisions" \
+		"of the boot chain and of the kernel are not recorded here. A bench tree, not an image to pass on." "" > "$NOTICE_DST/SOURCES"
+	warn "--notice none: the image names no revisions of its boot chain and kernel -- a bench tree, not for passing on"
+fi
+{
+	echo "root file system"
+	echo "  Debian $SUITE/$ARCH from $(bootstrap_sources | sed 's/^deb //; s/ main$//' | paste -sd';' | sed 's/;/; /g'); every source package and its version: DEBIAN-SOURCES"
+	if [[ "$MESA_TAR" != none ]]; then echo "  Mesa: /usr/local/share/doc/mesa/README"; fi
+	if ((WANT_LIBVA)); then echo "  libva-v4l2-request: /usr/local/share/doc/libva-v4l2-request/SOURCE"; fi
+	if ((! SKIP_PROJECT)); then echo "  this project's programs: userspace/, rootfs/ and installer/ of the repository"; fi
+} >> "$NOTICE_DST/SOURCES"
+python3 "$PROJECT_ROOT/release/notice.py" debian-sources "$TREE/var/lib/dpkg/status" > "$NOTICE_DST/DEBIAN-SOURCES"
+chmod 0644 "$NOTICE_DST/SOURCES" "$NOTICE_DST/DEBIAN-SOURCES"
+info "DEBIAN-SOURCES: $(wc -l < "$NOTICE_DST/DEBIAN-SOURCES") source packages"
+# the mesa stand-ins are ours and empty (README says so): no copyright file is asked of them
+NOTICE_EXCEPT=()
+for _f in "$EQUIVS_DIR"/*.control; do NOTICE_EXCEPT+=(--except "$(sed -n 's/^Package: //p' "$_f")"); done
 
 # --- 6. acceptance, tar, ext4 ----------------------------------------------
 say "6/6 acceptance and output"
@@ -913,6 +954,25 @@ done
 t "no Debian libgallium"     test -z "$(find "$TREE/usr/lib/aarch64-linux-gnu" -maxdepth 1 \( -name 'libgallium*' -o -name 'libLLVM*' -o -name 'libgbm.so*' -o -name 'libEGL_mesa*' \) -print -quit)"
 t "glvnd libEGL.so.1"        test -e "$TREE/usr/lib/aarch64-linux-gnu/libEGL.so.1"
 t "glvnd libGLESv2.so.2"     test -e "$TREE/usr/lib/aarch64-linux-gnu/libGLESv2.so.2"
+# The licences (TODO 7.20 e): the notices that must travel with the binaries in this image, and where their source is.
+t "licences: README says where the source is" grep -q '^Source code\.' "$NOTICE_DST/README"
+t "licences: SOURCES names the root file system" grep -qx 'root file system' "$NOTICE_DST/SOURCES"
+t "licences: DEBIAN-SOURCES lists the source packages" grep -q '^base-files ' "$NOTICE_DST/DEBIAN-SOURCES"
+t "licences: the GPL-2 text (common-licenses)" test -s "$TREE/usr/share/common-licenses/GPL-2"
+t "licences: every Debian package has its copyright file" python3 "$PROJECT_ROOT/release/notice.py" copyright-files "$TREE" "${NOTICE_EXCEPT[@]}"
+if [[ "$NOTICE_DIR" != none ]]; then
+	t "licences: SOURCES names the boot chain and the kernel" bash -c 'grep -qx "boot chain.*" "$1" && grep -qx kernel "$1"' _ "$NOTICE_DST/SOURCES"
+	t "licences: TF-A's licence and the notices of BL31" test -s "$NOTICE_DST/tf-a/license.rst" -a -s "$NOTICE_DST/tf-a/COPYRIGHTS" -a -s "$NOTICE_DST/licenses/BSD-2-Clause"
+	t "licences: the kernel's COPYING and syscall note" test -s "$NOTICE_DST/linux/COPYING" -a -s "$NOTICE_DST/linux/Linux-syscall-note"
+	if [[ -n "$CRUST_BIN" ]]; then
+		t "licences: crust's licence and notices" test -s "$NOTICE_DST/crust/LICENSE.md" -a -s "$NOTICE_DST/crust/COPYRIGHTS"
+	fi
+	if [[ -e "$TREE/usr/local/sbin/h713-osd" || -e "$TREE/usr/local/bin/h713-settings" ]]; then
+		for _pk in libfreetype-dev libpng-dev libbz2-dev libbrotli-dev zlib1g-dev; do
+			t "licences: static $_pk (h713-osd, h713-settings)" test -s "$NOTICE_DST/static/$_pk/copyright"
+		done
+	fi
+fi
 if [[ "$MESA_TAR" != none ]]; then
 	t "mesa licence texts (MIT notice)" test -f "$TREE/usr/local/share/doc/mesa/licenses/MIT" -a -f "$TREE/usr/local/share/doc/mesa/license.rst"
 	t "ICD file for libEGL_mesa"  grep -q '"libEGL_mesa.so.0"' "$TREE/etc/glvnd/egl_vendor.d/50_mesa.json"
@@ -1088,6 +1148,7 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "mesa=$( [[ "$MESA_TAR" == none ]] && echo none || echo "${MESA_TAR#"$PROJECT_ROOT"/}" )"
 	echo "profile=${PROFILES:-none}"
 	echo "libva=$( ((WANT_LIBVA)) && echo "${LIBVA_TAR#"$PROJECT_ROOT"/}" || echo none )"
+	echo "notice=${NOTICE_DIR#"$PROJECT_ROOT"/}"
 	echo "mesa_dummies=$(sed -n 's/^Package: //p' "$EQUIVS_DIR"/*.control | paste -sd,)"
 	echo "crust=$( [[ -n "$CRUST_BIN" ]] && echo "$BOARD-crust.bin $(sha256sum "$CRUST_BIN" | cut -c1-16)" || echo none )"
 	echo "standby=$( ((STANDBY)) && echo offered || echo no )"

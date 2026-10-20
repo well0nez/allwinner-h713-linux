@@ -479,6 +479,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (v3-spl-tausch, layout-v2-kaltstart, v4-kaltstart, v5-mips-aus-p5 vom 10.09.).
       Maskieren (xx:xx:xx:xx:xx:xx, wie im Testzweig versuch/hy300pro-test11 e2ebea5), sperr-scan-Regel mit Ausnahmen für Testattrappen
       (AA:BB:CC:..., 00:11:22:...); was schon auf GitHub ist, bleibt in der Historie - Marco entscheidet, ob das reicht.
+- [ ] 2.128 **Lizenzen: Auflagen fürs Release aus Mythos' Prüfung des Lizenz-Abschlusses** (20.10.2026, arbeit/lizenz-abschluss-20261020/MYTHOS-PRUEFUNG.md):
+      R1 die Quellenaussage im Abbild (kein schriftliches Angebot, Marco 20.10.) trägt nur, wenn sie wahr ist: ein Skript, das die Quellarchive des
+      genauen Stands erzeugt (Repo, U-Boot, TF-A, crust, Linux, aic8800, Mesa, libva, sunxi-fel, dazu die Debian-Quellpakete aus DEBIAN-SOURCES),
+      ein Release-Schritt, der sie neben das Abbild legt, und ein Tor davor; zwei Sätze im README; sunxi-fel in SOURCES. R2 die Probeabbilder der
+      Lizenzarbeit tragen noch "Written offer" - nur fürs Gerät, nie weitergeben. Vor dem Release build-all von vorn (build-rootfs.sh/build-all.sh mit
+      Änderungen beider Seiten nie zusammen gebaut). Randnotiz: build-all.sh liest AIC_REV aus dem jüngsten aic8800-Ordner statt aus versions.env.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,

@@ -126,7 +126,7 @@ UUIDs and times) - compare stamps, not images ([RELEASES.md](RELEASES.md)).
 ## Pinned inputs
 
 `mainline/config/versions.env` is the single source of truth: kernel 6.18.38 from kernel.org with a
-pinned sha256, the AIC8800 vendor tarball, and the upstream bases the three curated series sit on. The
+pinned sha256, the AIC8800 vendor tarball, and the upstream bases the curated series sit on. The
 Debian keyring is pinned by sha256 in `release/build-all.sh`, so a rootfs built today and one built next
 year trust the same keys.
 
@@ -147,10 +147,16 @@ them the build compiles the same 119 objects. Only measured boot or TPM support 
 
 ```bash
 mainline/build/build.sh bl31                  # TF-A
-BOARD=hy310 mainline/build/build.sh uboot     # U-Boot for one board
+BOARD=hy310 mainline/build/build.sh uboot     # one board's U-Boot base, without a role
 BOARD=hy310 mainline/build/build.sh kernel    # kernel + modules + FIT
 BOARD=hy200-qz713df-a1 VARIANT=projector05061226 mainline/build/build.sh uboot   # one firmware variant
+mainline/build/uboot-build.sh "$PWD/mainline/build/uboot-release" hy310 release   # a U-Boot with a role
 ```
+
+`build.sh uboot` builds the board's base defconfig alone, and that boots nothing on purpose: what a U-Boot
+is for (booting the eMMC, sharing it over USB for the installer) comes from a role fragment, which
+`uboot-build.sh` merges over the base ([docs/uboot/README.md](docs/uboot/README.md)). The U-Boot in an
+image is the `release` role, built by `release/build-all.sh`.
 
 `BOARD` defaults to `ddr3`, the HY200 bench board this port was brought up on - name the board you
 mean. `release/build-all.sh` always passes one.

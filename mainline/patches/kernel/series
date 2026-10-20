@@ -1,49 +1,32 @@
-# ============================================================================
-# Serie fuer Linux 6.18.38 (Tarball, config/versions.env). build.sh wendet sie
-# der Reihe nach an; Zeilen mit '#' und Leerzeilen ueberliest es (12.09.2026).
-# Die Nummern sind Geschichte, nicht Reihenfolge: die a/b/c-Nachtraege gehoeren
-# direkt hinter ihr Original, weil spaetere Patches ihren Kontext brauchen.
-# Herkunft und Begruendung: doku/116-plan-release-repo.md P1, doku/80.
+# The kernel series: Linux 6.18.38 from the tarball pinned in mainline/config/versions.env, and these patches on
+# top of it. mainline/build/build.sh applies them in the order of this file with patch -p1; a line that is empty
+# or starts with '#' is not an entry. docs/kernel-patches.md describes the series, PROVENANCE.md who wrote what.
 #
-# --- 1. Basis: cstenger/allwinner-h713-mainline@8860991, patches/kernel ------
-#     46 Patches, byteidentisch (geprueft 12.09.: cmp gegen origin/main).
-#     0001-0022 stammen urspruenglich aus well0nez/allwinner-h713-linux
-#     (Namensnennung in cstengers PROVENANCE.md).
+# Numbers are history, not order. A follow-up with a letter (0014a, 0091b) corrects an earlier patch and stands
+# right behind it, because later patches need its context; the corrected original stays byte for byte as it was.
+# Where an entry stands is decided by this file alone (doku/116 P1, doku/80).
+#
+# Withdrawn and not in this list (patches/zurueckgenommen/ keeps them with the reason): 0011, 0040, 0136j, and
+# the diagnostic patch 0311.
+
+# --- section 1 Base: the patches of cstenger/allwinner-h713-mainline at 8860991, byte for byte, with our follow-ups.
+# 0001-0022 are well0nez' H713 driver series, which his tree carried; 0023-0048 are his arm64 side.
 0001-clk-sunxi-ng-add-h713-ccu-driver.patch
 0002-pinctrl-sunxi-add-h713-pio-driver.patch
 0003-pinctrl-sunxi-add-h713-r-pio-driver.patch
 0004-pinctrl-sunxi-fix-irq-mux-and-graceful-resource.patch
 0005-phy-sun4i-usb-add-h713-pmu-bit0-quirk.patch
-#   (Nachtrag well0nez, doku/125 -- Original bleibt byteidentisch; SIDDQ-Bit der HCI-PHYs loeschen, sonst haengt USB an U-Boots usb start)
 0005a-phy-sun4i-usb-h713-clear-siddq-on-the-hci-phys.patch
 0006-mmc-sunxi-add-h713-v5p3x-support.patch
 0007-pwm-add-sun8i-8channel-driver.patch
 0008-misc-add-hy310-board-mgr.patch
 0009-misc-add-hy310-keystone-motor.patch
-#   (Q1 -- 0011 withdrawn 22.09.: drivers/misc/sunxi-nsi.c is not an NSI driver.
-#    It calls itself an ARM-MIPS interface "based on factory 0x3061000 base" and
-#    invents a register map (CTRL 0x00, IRQ_EN 0x08, MEM_BASE 0x10, MEM_SIZE 0x14)
-#    for nsi-controller@2020000, whose real layout is base + 0x200*port, +0x10 mode,
-#    +0x14 priority, +0x18 io, port 0 = the CPU master (vendor nsi_port_setmode
-#    @0xC05404C0 / nsi_port_setpri @0xC0540520, AP3s section 11). Its probe would
-#    write a DMA address into the CPU master's MBUS mode register and a buffer
-#    length into its priority register. Nothing calls into it - its three exports
-#    have no user, the nsi@2020000 node carries another compatible, and the ARM-MIPS
-#    IPC it claims to be is 0014/0092. The file stays in patches/kernel/ as history.
-#    A real NSI driver, if one is ever wanted, starts from the vendor layout, not
-#    from this file.)
 0012-misc-add-sunxi-tvtop.patch
 0013-misc-add-sunxi-decd.patch
-#   (Nachtrag well0nez, doku/124 -- Original bleibt byteidentisch; die drei Korrekturen aus cstengers Zweig vom 28.08.)
 0013a-misc-decd-three-corrections-from-cstengers-branch.patch
 0014-soc-sunxi-add-cpu-comm-ipc.patch
-#   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
 0014a-soc-sunxi-cpu-comm-der-h713-stand-vom-04-09.patch
-#   (follow-up well0nez, N1 -- 0014a stays byte-identical; the msgbox has three
-#    GIC lines, one per register bank, and one handler has to serve whichever
-#    of them fires)
 0014b-soc-sunxi-cpu-comm-service-every-msgbox-rx-endpoint.patch
-# 0014c: only the line of the bank it owns (SPI 109 stormed with all three, 16.09.)
 0014c-soc-sunxi-cpu-comm-request-only-the-line-of-the-bank-it-owns.patch
 0015-misc-add-h713-driver-kconfig.patch
 0016-dt-bindings-add-h713-clock-reset-ids.patch
@@ -55,18 +38,10 @@
 0022-staging-cedrus-add-h713-ve3-clock-reset.patch
 0023-clk-sunxi-ng-enable-d1-r-ccu-on-arm64.patch
 0024-arm64-dts-add-sun50i-h713-hy200-qz713df-a1-board.patch
-#   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
 0024a-arm64-dts-h713-cpu-comm-reg-0x1000-und-irq-46.patch
-#   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
 0024b-misc-hy310-keystone-motor-ist-der-fokusmotor.patch
 0024c-arm64-dts-h713-cpu-comm-einschalten-motor-kommentieren.patch
-#   (follow-up well0nez, N1 -- 0024a/0024b/0024c stay byte-identical; the msgbox
-#    node gets all three interrupt lines in the stock order, and the watchdog
-#    gets its own SPI 53 back instead of the msgbox's 46)
 0024d-arm64-dts-h713-msgbox-three-lines-watchdog-spi-53.patch
-#   (keystone S2, well0nez -- GPU operating points 288..696 MHz with devfreq and a cooling
-#    map, the IOMMU comment; the board defconfig drops DRM_LIMA and SUN50I_IOMMU and adds
-#    DEVFREQ_THERMAL alongside)
 0024e-arm64-dts-h713-gpu-opp-table-cooling-iommu-symbol.patch
 0025-clk-sunxi-ng-h713-register-cpu-clock-notifiers.patch
 0026-arm64-dts-h713-add-cpu-opp-table-for-cpufreq.patch
@@ -83,8 +58,6 @@
 0037-drm-add-h713-afbd-scanout-kms-driver.patch
 0038-arm64-dts-h713-add-afbd-kms-display-node.patch
 0039-media-cedrus-add-runtime-dma-guard.patch
-#   0040 (Cedrus-Reset vor dem Freigeben) seit 15.09. in zurueckgenommen/: Deadlock bei parallelen Dekodern, sein Grund
-#   war der 1416-MHz-Betriebspunkt, den 0055 entfernt (cstenger 23.08., doku/124 3.1)
 0041-iommu-sun50i-support-h713-seven-master-two-cell.patch
 0042-arm64-dts-h713-iommu-real-block-and-attach-ve.patch
 0043-mmc-sunxi-v5p3x-delays-threshold-and-uhs.patch
@@ -92,13 +65,11 @@
 0045-mmc-sunxi-use-validated-sdr25-for-h713-wifi.patch
 0046-mmc-sunxi-use-v5p3x-max-idma-descriptor-size.patch
 0048-mmc-sunxi-h713-run-sdio-at-stock-sdr104-50mhz.patch
-#
-# --- 2. Eigener Zusatz zwischen Basis und Zweig ------------------------------
+
+# --- section 2 Bridge: ours, between his main branch and his display branch.
 0049-h713-size-the-scanout-carveout-for-a-1080p-panel.patch
-#
-# --- 3. cstengers Zweig h713-display-video-path -------------------------------
-#     17 Patches, byteidentisch zum Zweig (geprueft 12.09.; die frühere Angabe 16 war falsch gezählt). Scanout, DECD-
-#     Fixes, IOMMU, MMC, HDMI-Video-Plane. 0078a ist unser Nachtrag dazu.
+
+# --- section 3 His branch h713-display-video-path: scanout, DECD, the IOMMU, MMC, the HDMI video plane, and 0078a.
 0051-iommu-sun50i-rate-limit-fault-reporting.patch
 0053-drm-panfrost-do-not-map-imported-buffers-cacheable.patch
 0055-arm64-dts-h713-drop-the-1416-mhz-opp-it-corrupts-memory.patch
@@ -110,7 +81,6 @@
 0072-misc-decd-refuse-a-non-contiguous-dma-buf-import.patch
 0073-misc-decd-declare-the-single-mapping-dma-constraint.patch
 0078-drm-h713-add-fullscreen-nv12-overlay.patch
-#   (Nachtrag well0nez, doku/116 P1 -- Original bleibt byteidentisch)
 0078a-drm-h713-afbd-probe-zusicherung-ohne-1280x720.patch
 0079-drm-h713-do-not-vmap-prime-imports.patch
 0082-arm64-dts-h713-enable-the-internal-audio-codec.patch
@@ -118,53 +88,21 @@
 0084-asoc-sun4i-codec-add-the-h713-variant.patch
 0085-asoc-h713-drive-the-speaker-from-the-hp-amp.patch
 0086-asoc-h713-fix-the-audio-clock.patch
-#
-# --- 4. HY310 (well0nez): ARISC, cpu_comm-Kernel-API, HDMI-RX-Callbacks -------
-#     doku/82, 83, 88, 91, nachtlog/S1-S13. Abgenommen 07./08.09.
+
+# --- section 4 ARISC and cpu_comm: the second co-processor, the ARM-MIPS kernel API, the HDMI receiver's callbacks.
 0091-soc-sunxi-h713-arisc.patch
-#   (follow-up well0nez, K1 -- 0091 stays byte-identical; the eight SRAM
-#    addresses belong to the loaded ARISC build, so they are resolved from
-#    the image at probe time and an unknown layout refuses the probe,
-#    issue #1 / doku/126)
 0091a-soc-sunxi-h713-arisc-resolve-the-firmware-s-sram-addresses.patch
-#   (follow-up well0nez, K2 -- 0091/0091a stay byte-identical; a second
-#    hotplug pulse the receive driver asks for at the end of its bring-up,
-#    so the source re-sends into a warm, armed receiver, issue #1 / A13)
 0091b-soc-sunxi-h713-arisc-export-a-late-hotplug-pulse.patch
-#   (follow-up well0nez, Q5 -- 0091/0091a/0091b stay byte-identical; the
-#    EDID version byte is a per-port block mask, it moves behind the eight
-#    fragments, the board states it in the devicetree and debugfs reads back
-#    all 256 bytes port 0 publishes, AP3l)
 0091c-soc-sunxi-h713-arisc-the-edid-version-byte-is-a-per-port-block-mask.patch
-#   (follow-up well0nez, Q12 -- comment only, 0091..0091c stay byte-identical;
-#    the device says SetEDIDVersion alone republishes nothing, so the mask is
-#    applied where fragment 7 publishes and a mask change needs the upload
-#    behind it, dev20 22.09.)
 0091d-soc-sunxi-h713-arisc-what-the-device-says-about-the-edid-mask.patch
-#   (follow-up well0nez, Q14 -- 0091..0091d stay byte-identical; the 0x0f the
-#    mask read back is this driver's race, so the sub-commands whose handler
-#    re-reads the scratch wait for the handler's effect instead of for the
-#    classifier, and a changed mask ends with a hotplug pulse, Q13)
 0091e-soc-sunxi-h713-arisc-wait-for-the-handler-s-effect.patch
-#   (follow-up well0nez, Q16 -- 0091..0091e stay byte-identical; the EDID
-#    fragment upload gets the same effect wait, because rapid module swaps
-#    put the follower's probe into a running copy loop and published a
-#    corrupted block, dev21 22.09.)
 0091f-soc-sunxi-h713-arisc-wait-for-every-fragment-s-copy.patch
 0096-arm64-dts-h713-add-the-tvcap-bringup-node.patch
-#   (follow-up well0nez, K2 -- 0096 stays byte-identical; the driver for
-#    that node, in the tree and built in, so the TVFE/TVCAP domains and the
-#    capture clocks are held from boot on, issue #1 / A13)
 0096a-soc-sunxi-add-the-h713-tvcap-driver-and-hold-the-domains-from-boot.patch
 0097-soc-sunxi-cpu-comm-fix-the-call-argument-abi-and-the-callwq-pointer.patch
 0092-soc-sunxi-h713-cpu-comm-kernel-api.patch
-#   (follow-up well0nez, R2 -- 0092 stays byte-identical; the display
-#    firmware's two elog addresses are board data, not driver constants)
 0092a-soc-sunxi-cpu-comm-the-elog-addresses-come-from-the-board.patch
 0093-drm-h713-afbd-nv16-hdmi-ring.patch
-#   (follow-up well0nez, K2 -- 0093 stays byte-identical; the vsync enable
-#    is audited against the driver's own bookkeeping and set again when
-#    found cleared while a consumer holds it, A12 D)
 0093a-drm-h713-afbd-audit-the-vsync-enable-against-its-bookkeeping.patch
 0094-media-sun50i-h713-hdmirx.patch
 0095-drm-h713-afbd-color-mgmt.patch
@@ -177,18 +115,17 @@
 0105-soc-sunxi-cpu-comm-stop-reading-the-mips-newcall-ring.patch
 0106-soc-sunxi-cpu-comm-quiet-the-per-call-log.patch
 0107-media-drm-h713-follow-source-geometry.patch
-#
-# --- 5. HY310: Fokusmotor, erster Durchgang (Endschalter-Lesepfad, Handbefehle)
-#     doku/94 -- die Stilllegung von damals beruhte auf einem Fehler, s. Abschnitt 10.
+
+# --- section 5 Focus motor, first pass.
 0111-misc-hy310-motor-fix-the-limit-switch-read-path.patch
 0112-misc-hy310-motor-add-the-stock-manual-move-commands.patch
 0113-arm64-dts-h713-use-the-stock-property-names-on-the-motor-node.patch
 0114-misc-hy310-motor-say-what-the-driver-is-in-kconfig.patch
 0115-misc-hy310-motor-add-a-bias-override-to-test-the-limiter-pad.patch
 0116-misc-hy310-motor-let-probe-skip-homing.patch
-#
-# --- 6. HY310: Bildpfad -- Geometrie, Republish, Capture, Regler, Einpassung ---
-#     doku/91-93, 96, 99, nachtlog/S13-S20, K4. Paket A-J aus Plan 77.
+
+# --- section 6 Display path: geometry, republishing the record, capture, controls, the aspect.
+# 0014d-0014f stand here and not behind 0014c: 0106 rewrites the lines 0014d deletes.
 0117-drm-h713-afbd-republish-the-viddec-record-on-geometry-change.patch
 0119-media-h713-hdmirx-no-source-switch-on-a-republished-descriptor.patch
 0120-drm-h713-afbd-keep-the-panel-in-the-record-window-words.patch
@@ -197,19 +134,6 @@
 0123-media-h713-hdmirx-restore-the-capture-input-converter-after-a-republish.patch
 0124-soc-sunxi-cpu-comm-release-the-call-slot-after-a-callback.patch
 0125-soc-sunxi-cpu-comm-drop-the-unread-channel-ring-and-fix-the-pid-match.patch
-#   (Q1 -- 0014d, 0014e and 0014f are addenda to 0014/0014a and belong behind
-#    0014c by the rule above, but they cannot sit there: 0106 rewrites BOTH
-#    copies of the doorbell block 0014d removes, so behind 0014c it would take
-#    0106's second hunk away with it. They therefore sit behind 0125, the last
-#    patch in the series that touches cpu_comm at all, and 0014 - 0014c and
-#    everything in between stay byte-identical.
-#    0014d: one doorbell per message -- the write block stood twice in 0014a,
-#      so every message went out as two words (AP3s sections 3 and 4).
-#    0014e: the two whitelist words the vendor array really holds are the
-#      hardware spinlock's 0x03004000/0x03004010, not the msgbox's (AP3o 7).
-#    0014f: the TX FIFO is eight words deep and a word written past it is lost
-#      without a trace; the TX_IRQ_EN pulse stays until one device run decides
-#      it (AP3s section 2).)
 0014d-soc-sunxi-cpu-comm-one-doorbell-per-message.patch
 0014e-soc-sunxi-cpu-comm-the-whitelist-is-the-hwspinlock-s.patch
 0014f-soc-sunxi-cpu-comm-never-write-into-a-full-tx-fifo.patch
@@ -221,146 +145,51 @@
 0131-media-drm-h713-follow-the-ring-pitch-for-widths-that-are-not-a-multiple-of-16.patch
 0132-media-h713-hdmirx-name-the-picture-modes.patch
 0133-drm-h713-afbd-expose-the-display-aspect-mode.patch
-#   (follow-up well0nez, R2 -- 0133 stays byte-identical; the three handoff
-#    words the probe insists on come from the board, not from the driver)
 0133a-drm-h713-afbd-the-handoff-state-is-a-board-fact.patch
-#   (follow-up well0nez, Q4 -- descriptor words 31..34 are the window the
-#    firmware fits the picture into, so they become the plane's ordinary
-#    CRTC_X/Y/W/H; a plane that covers its CRTC publishes the same record as
-#    before, word for word. AP3c 4.2/5, AP3e 2.2/2.5)
 0133b-drm-h713-afbd-the-plane-s-destination-rectangle-is-the-firmware-s-window.patch
-#   (follow-up well0nez, Q10 -- the window of 0133b is a window in the RING:
-#    the firmware scales into it and leaves its layout alone (dev20,
-#    22.09.2026), so what the plane reads is the source rectangle and the
-#    record keeps the ring's own geometry)
 0133c-drm-h713-afbd-the-ring-s-source-rectangle-is-what-the-plane-reads.patch
-#   (Q10 5.3, 22.09. -- the window words are fractions of the firmware's fixed
-#    30720x17280 space; identical on a 1920x1080 panel, two thirds on the HY300
-#    Pro's 1280x720 = its 853x480 ring. Candidate for test7)
 0133d-drm-h713-afbd-the-window-words-are-fractions-of-30720x17280-not-1-16-pixel.patch
-#   (Q15, 22.09. -- the same eight words, driven independently of the plane:
-#    two module parameters for the descriptor's source and destination window.
-#    Empty = today's record word for word; the bench run is Q15's FOLLOW-UP)
 0133e-drm-h713-afbd-the-descriptor-s-two-windows-as-parameters.patch
-#   (Q17, 22.09. -- the bench answered: the eight words are a transform into
-#    the RING, so they become two plane properties "src-window"/"dst-window"
-#    (blobs, panel pixels, absent = full) and the plane's CRTC rectangle is
-#    the placement only. 0133e's parameters go, 0133c's crop stays)
 0133f-drm-h713-afbd-the-two-windows-as-plane-properties.patch
-#
-# --- 7. HY310: HDMI-Audio -- Takte, Codec-I2S, MSP-DSP-Treiber -----------------
-#     doku/100, 101, nachtlog/S16. Abgenommen 08.09. (Lippensynchronitaet Marco).
+
+# --- section 7 HDMI audio: clocks, the codec's I2S, the MSP DSP driver; and the receiver's 0136 follow-ups.
+# 0101a stands between them: 0126, 0132 and 0136 grew the table it extends.
 0134-clk-sunxi-ng-h713-model-pll-periph0-and-the-audio-clocks.patch
 0135-ASoC-sun4i-codec-h713-add-the-i2s-input-path-for-the-msp-dsp.patch
 0135b-arm64-dts-h713-describe-the-codec-s-i2s-window.patch
 0136-media-h713-hdmirx-expose-the-audio-status.patch
-# 0136a: no source switch on a hot-plugged port (first plug after boot, 15.09.)
 0136a-media-h713-hdmirx-no-source-switch-on-a-hot-plugged-port.patch
-# 0136c: no console blip while the release runs (boot with the source plugged, 16.09.)
 0136c-media-h713-hdmirx-a-release-in-progress-is-a-change-in-flight.patch
-#   (follow-up well0nez, K2 -- 0136c stays byte-identical; 0136d holds the
-#    flip notifier from probe to remove so the vsync enable stays set (A12 D))
 0136d-media-h713-hdmirx-hold-the-slot-source-for-the-driver-s-lifetime.patch
-#   (follow-up well0nez, K2 -- 0136e repeats the ARISC hotplug pulse at the
-#    very end of the probe so the source re-sends into the armed receiver,
-#    issue #1 / A13)
 0136e-media-h713-hdmirx-pulse-hotplug-once-more-at-the-end-of-the-bring-up.patch
-#   (follow-up well0nez, K3v2 -- 0136f derives the capture ring's geometry from
-#    INCAP rowbyte and active: the format is the ring, not the source, on a
-#    panel smaller than the source (HY300 Pro, issue #1); 0136e stays
-#    byte-identical)
 0136f-media-h713-hdmirx-derive-the-ring-geometry-from-the-rowbyte-and-incap-active.patch
 0137-ASoC-sunxi-add-the-h713-msp-audio-dsp-driver.patch
 0138-arm64-dts-h713-describe-the-msp-audio-dsp.patch
 0136b-arm64-dts-h713-describe-the-hdmi-receiver-link-window.patch
-#   (K3v2 -- 0136g: the DE picture-scaler syscon 0136f reads as an optional
-#    cross-check of the ring's size; drop this line and the patch to run
-#    without it)
 0136g-arm64-dts-h713-describe-the-de-picture-scaler-window.patch
-#   (T2 -- 0136h: the presets are the display firmware's own mode table, the
-#    TFD module THDMI_ModeList in database.TSE, where allwinner,firmware-tse
-#    names the window it is loaded into; the same patch adds that property.
-#    Without it the kernel's preset list decides, as before)
 0136h-media-h713-hdmirx-the-presets-are-the-firmware-s-own-mode-table.patch
-#   (T2 -- 0136i: a detection made with a genuine firmware record survives our
-#    own descriptor republish while INCAP still reads the same three words;
-#    576p50 and a CVT 720p stuck on "change in flight" without it, 21.09.)
 0136i-media-h713-hdmirx-a-lock-that-survives-our-own-republish.patch
-#   (T2 -- 0136j withdrawn 21.09. evening: the pre-publish window veto blocked the
-#    very republish that makes the firmware re-commit the DE window (720p60 stayed
-#    on the console, HY310 dev19); a post-publish check follows as 0136j v2)
-#   (T2 -- 0136k: the source cap follows the firmware's table, 4096x2160 and
-#    297 MHz, because the ring rule of 0136f is what protects the plane;
-#    interlaced stays refused)
 0136k-media-h713-hdmirx-the-source-cap-is-what-the-firmware-locks.patch
-#   (Q3 -- 0136l: the driver's remaining German log messages in English, the
-#    list T2's report 8.2 names; string literals and two comments only)
 0136l-media-h713-hdmirx-the-remaining-german-messages-in-english.patch
-#   (Q3 -- 0136m: a geometry the firmware's mode table does not carry answers
-#    -ERANGE with the measured timing instead of -ENOLCK for ever; 1600x900
-#    read "change in flight" until now, T2 7.3)
 0136m-media-h713-hdmirx-a-source-the-firmware-s-table-does-not-carry.patch
-#   (Q3 -- 0136n: colorspace, quantization, ycbcr_enc and the CE flag come
-#    from the firmware's 44 byte record instead of a hardcoded BT.709 limited;
-#    the status file names the colour and the HDR scheme, AP3i/AP3k/AP3q)
 0136n-media-h713-hdmirx-report-the-colour-the-firmware-read-out-of-the-avi.patch
-#   (Q3 -- 0101a: three more of the vendor's picture settings as V4L2 controls
-#    - backlight level, dynamic backlight, low latency; each an existing
-#    routine id with one argument word (AP3 section 3 and D2). The number
-#    names 0101, which built the control table and the RPC mechanism it
-#    extends, but the line sits here: 0126, 0132 and 0136 grew that table
-#    afterwards, so the addendum has to follow them to apply at all. No later
-#    patch was written against it, so nothing moves under it)
 0101a-media-sun50i-h713-hdmirx-three-more-of-the-vendor-s-picture-settings.patch
-#   (Q3 -- 0136o: the own-record test also asks whether a descriptor was ever
-#    published, so a genuine 30.00 Hz source before the first publication of a
-#    boot is not mistaken for the firmware's echo of ours)
 0136o-media-h713-hdmirx-our-own-record-cannot-exist-before-we-published-one.patch
-#   (Q3 -- 0136p: S_DV_TIMINGS checks the ring it would set against the
-#    capture slot instead of letting REQBUFS answer -EINVAL three calls
-#    later; since 0136k a hand-given 4K timing gets that far, T2 8.1)
 0136p-media-h713-hdmirx-s-dv-timings-refuses-a-ring-no-slot-can-hold.patch
-#   (Q3 -- 0136q: the table is the TFD module THDMI_ModeList; the name the
-#    finder searches for belongs to the module behind it (AP3f). Comments and
-#    one word of a refusal, no code, both board DTBs byte-identical)
 0136q-media-h713-hdmirx-the-mode-table-is-thdmi-modelist.patch
-#   (Q9 -- 0136r: 0136m v2. The stale-record cross-check fired before the
-#    unlisted branch, so 1600x900 still read "change in flight" on the device
-#    (dev20). The raster INCAP names is looked up in the table there; a
-#    raster in no record is unlisted whatever the stale record says)
 0136r-media-h713-hdmirx-a-raster-in-no-record-is-unlisted.patch
-#   (Q9 -- 0136s: under a standing picture the record is the descriptor we
-#    published, so the status file's colour:/hdr: lines carry its constants
-#    and not the source's (dev20, row "Q3 status file"). One line under the
-#    two names the state and the cached values; debugfs only)
 0136s-media-h713-hdmirx-say-when-the-status-file-reads-our-own-record.patch
-#   (Q9 -- 0136t: 0136l's follow-up N1, the 66 remaining German strings and
-#    the five German identifiers in English. Four status-file keys are
-#    renamed with them (slot-source:, pitch:, converter:, picture:);
-#    h713-tv's key filter follows in the same commit. No behaviour change)
 0136t-media-h713-hdmirx-the-last-german-strings-in-english.patch
-#   (review Q9, 22.09. -- the unlisted pre-check judges the raster alone; the
-#    flip rate is the panel's and would refuse 576p50/1080p24 in the lag window)
 0136u-media-h713-hdmirx-the-unlisted-pre-check-asks-for-the-raster-not-the-rate.patch
-#   (device run 22.09. afternoon -- the INCAP sanity check is where an unlisted
-#    raster really ends: totals new, active word stale; ask the record there)
 0136v-media-h713-hdmirx-an-unlisted-raster-is-caught-at-the-incap-sanity-check.patch
-#   (follow-up well0nez, Q16 -- 0136m/0136v stay byte-identical; v4l2 core
-#    dropped the timing they fill, because a read-only ioctl takes the
-#    shortcut in video_get_user() before its ALWAYS_COPY flag is read)
 0136w-media-v4l2-core-a-read-only-ioctl-keeps-its-always-copy-flag.patch
-#   (keystone S4, well0nez -- VIDIOC_EXPBUF: a capture slot plane as a dma-buf for the GPU,
-#    one-entry scatterlist over dma_map_resource, no pages, no fence beyond the V4L2 states)
 0136y-media-h713-hdmirx-export-capture-slots-as-dmabufs.patch
 0139-arm64-dts-h713-power-key-on-pl4.patch
-#
-# --- 8. HY310: pinctrl -- EINT-Mux (Einschalttaste) ----------------------------
-#     doku/103.
+
+# --- section 8 pinctrl: the EINT mux of the power key.
 0140-pinctrl-sunxi-h713-use-eint-function-0xe-and-mux-irq-pins.patch
-#
-# --- 9. HY310: board-mgr (Luefter-Tacho per IRQ), pinctrl-IRQ-Bank-Fix, NTC-Phantom
-#     doku/60 §board-mgr, §Aufhaenger, §NTC; analyse/boot/*20260911*. 0143/0144
-#     ist ein generischer Fix der Basis-Patches 0004 (PR-Kandidat, doku/116 P8).
+
+# --- section 9 Board manager: the fan tacho on an IRQ, the IRQ banks, the NTC.
 0141-misc-hy310-board-mgr-tacho-via-gpio-irq-and-no-surprise-poweroff.patch
 0142-arm64-dts-h713-fit-the-board-mgr-node-to-this-board-s-fan.patch
 0143-pinctrl-sunxi-index-the-bank-interrupts-by-irq-bank-not-by-hardware-bank.patch
@@ -368,96 +197,45 @@
 0146-misc-hy310-board-mgr-den-ntc-rohwert-in-millivolt-umrechnen.patch
 0147-iio-adc-sun20i-gpadc-zwoelf-bit-maskieren-und-nach-kanalwechsel-verwerfen.patch
 0152-misc-hy310-board-mgr-ntc-num-ist-bindend-dieses-geraet-hat-keinen-fuehler.patch
-#
-# --- 10. H713: Crypto Engine -- Binding, DTS, Messmodul (Vendor-Deskriptorformat)
-#     doku/112, 114. Das Messmodul laedt automatisch und bleibt (Marco, 12.09.).
+
+# --- section 10 Crypto Engine: binding, device tree, a measuring module.
 0148-dt-bindings-crypto-crypto-engine-des-h713.patch
 0149-arm64-dts-h713-beide-ce-baenke-und-beide-interrupts.patch
 0150-crypto-allwinner-h713-ce-test-ein-task-im-vendorformat.patch
-#
-# --- 11. HY310: Fokusmotor, zweiter Durchgang -- PH14 ist ein Bereichswaechter -
-#     doku/94 Nachtrag, analyse/boot/motor-bereichswaechter-20260912.txt.
-#     homing standardmaessig aus, Knoten aktiv. Bedienung: userspace/h713-focus.
+
+# --- section 11 Focus motor, second pass: the limit switch is a range guard.
 0153-misc-hy310-motor-pad-bias-des-endschalters-nicht-mehr-erzwingen.patch
 0154-misc-hy310-motor-rohpegel-des-endschalters-in-motor-limit-zeigen.patch
-#     0154a: a read-only motor_state in stock's own packed layout
-#     ("%d%d.%02d.%d%d\n" = edge_up edge_dn step_cur step_inc%10 limiter), so a
-#     vendor-side caller can read the state at all; motor_ctrl and motor_limit
-#     keep their output byte for byte (Q6, 22.09., AP1 6 / AP1b 4)
 0154a-misc-hy310-motor-motor-state-in-the-stock-read-back-layout.patch
 0156-misc-hy310-motor-homing-standardmaessig-aus.patch
 0157-arm64-dts-h713-den-motorknoten-aktivieren.patch
-#
-# --- 12. HY310: WLAN -- Einschaltleitung im Geraetebaum (Treiber: patches/aic8800)
-#     analyse/boot/wlan-aic8800-messung-20260912.txt.
+
+# --- section 12 Wi-Fi: its power line in the device tree (the driver has a series of its own, patches/aic8800/).
 0155-arm64-dts-h713-die-wlan-einschaltleitung-in-den-geraetebaum.patch
-#
-# --- 13. Release: kein Debug im Auslieferungszustand ---------------------------
-#     doku/60 §Kein Debug im Release. Zusammen mit board/hy200_qz713df_a1_defconfig
-#     (DEBUG_FS aus) und U-Boot 0033 (uboot-h713/).
+
+# --- section 13 Release: no debug output in the shipping kernel.
 0158-arm64-dts-h713-rueckfall-bootargs-ohne-earlycon-mit-loglevel-4.patch
-#
-# --- 14. HY310: Schutz -- der Notaus bei Luefterstillstand -------------------
-#     doku/60 §board-mgr; Marco 12.09.: der Tacho ist der Schutz, den dieses
-#     Geraet hat, und er ist belegt. thermal_shutdown bleibt aus (kein NTC).
+
+# --- section 14 Protection: the power-off when the fan stands still.
 0159-misc-hy310-board-mgr-den-notaus-bei-luefterstillstand-scharf-schalten.patch
-#     0159a: the fan rail is HIGH from the request on (flags 0 is
-#     GPIOF_OUT_INIT_LOW), and the first RPM reading after SYSTEM_RUNNING is
-#     logged once, so a foreign owner's journal proves the tacho (A14, 20.09.)
 0159a-misc-hy310-board-mgr-fan-rail-high-from-the-request-and-the-first-rpm.patch
-#
-# --- 15. Boards: one DTB name per board (stage 4) -----------------------------
-#     doku/121 §3 "Kernel DTS". Until now the HY310
-#     booted sun50i-h713-hy200-qz713df-a1.dtb -- the HY310's hardware under
-#     cstenger's board name. boards/<id>/board.env names the DTB per board, and
-#     it cannot do that while every board shares one file. 0160 adds a device
-#     tree that is only a name: it includes the hy200 dts and overrides model
-#     and board compatible; the SoC compatible and every node stay identical,
-#     so the DTB the device boots does not change behaviour. Splitting the
-#     HY310-specific bits out of the hy200 dts is a later cleanup, not this.
+
+# --- section 15 Boards: one device tree per board, the HY300 Pro, the accelerometer, the lamp's PWM words.
 0160-arm64-dts-h713-add-the-hy310-board-dts.patch
-#     0161: the same for the HY300 Pro (issue #1) -- the tree a TEST image for
-#     its owner boots (stage 5, doku/121 section 5: no image is shipped).
 0161-arm64-dts-h713-add-the-hy300-pro-board-dts.patch
-#     0161a: PB5 is the LED-boost AND fan-rail enable on that board, GPIO high
-#     only (A14, 19.09.); the dtsi's pwm-backlight (PWM2/PB4) reaches nothing
-#     there and is disabled so systemd-backlight has nothing to write to.
 0161a-arm64-dts-h713-hy300-pro-no-backlight-device.patch
-#     0161b: its display firmware's elog sits 0xC00 lower than the HY310's
-#     (A12); without the two addresses cpu_comm dumps an empty ring, R2
 0161b-arm64-dts-h713-hy300-pro-the-elog-addresses-of-its-firmware.patch
-#   (keystone S8, well0nez -- twi1 on again with one child, the accelerometer at 0x18 as
-#    silan,sc7a20; defconfig gains IIO_ST_ACCEL_3AXIS/I2C_3AXIS=m alongside. At the end
-#    of the series, not beside 0024e: 0082's board hunk carries the old twi1 line as context)
 0162-arm64-dts-h713-twi1-accelerometer-auto-keystone.patch
-# 23.09.: the video plane flips the keystone warp's NV12 frames sixty times a second; a flip on a plane
-#   already up without the ring is the address slots and DIRTY, not the enable sequence with its poll
 0163-drm-h713-afbd-video-plane-flip-is-the-slots-and-dirty.patch
-# 23.09.: the focus motor's range gate on PH14 floated on our boot chain and read a stale level, so the
-#   focus stood 110 msteps outside its travel unnoticed; the pad gets the pull-up from the driver, homing at probe walks
-#   the mechanism back as stock does
 0164-misc-hy310-motor-limiter-pad-pull-up.patch
 0165-misc-hy310-motor-homing-on-by-default.patch
-# 23.09.: the lamp's dimmer is a PWM the display firmware owns; the vendor tells it channel, polarity and
-#   frequency before the level, out of panel_config.ini [PWMSetting]. The HY300 Pro was dark without it.
 0166-media-hdmirx-backlight-pwm-info-from-the-board-file.patch
-#     0166a: the PA12 group of 0166 goes (AC200 clock, and "pwm5" is no function
-#     of our table - test8 lost its receiver and its login); the six words stay.
 0166a-arm64-dts-h713-hy300-pro-lamp-pwm-words-without-the-pa12-group.patch
-# 02.10.: the maintainer's own HY300 Pro (HY300PRO-G-EU) - the HY310's tree, its lamp's PWM words
-#   (channel 5, as its panel_config.ini says), its fan tacho PH13, no pwm-backlight or focus motor;
-#   the accelerometer node stays on so the first boot shows which chip is fitted (package GEU1)
 0167-arm64-dts-h713-add-the-hy300pro-g-eu-board-dts.patch
-# 03.10.: 0166 sent the six PWM words as six parameters; the firmware takes one, their address
-#   (display.bin 0x8B10A444, stock libhaldisplay 0xA20C) - the HY300 Pro crashes since test8 (GEU1 device test)
 0168-media-hdmirx-backlight-pwm-info-by-address.patch
-# 03.10.: the stock BLE remote (1d5a:c081) declares two usages in its consumer report and sends one; 6.18's
-#   HID core drops such short reports, so none of its keys arrived (HY310 integration test)
+
+# --- section 16 The stock remote, EDID, the HDCP state, the audio bridge, the drivers' log lines in English.
 0169-hid-h713-remote-the-stock-ble-remote-s-consumer-report.patch
-# 04.10.: the Fable wave (umbau/reviews/deep-review-20260927.md, device tests doku/134), without standby, crust,
-#   MIPS reload, IR and HDCP 1.4. EDID: one 256-byte EDID per S_EDID, the refused raster named from the record, enum_dv_timings
-#   is the firmware's table (+ deep-review fixes). HDCP 2.2 state exposed for h713-tv (+ elog fixes). Audio: a playback PCM
-#   for device sounds mixed into HDMI by the DSP (+ fixes), its bridge window and interrupts in the DTS.
 0170-media-h713-hdmirx-s-edid-takes-one-256-byte-edid.patch
 0171-media-h713-hdmirx-a-refused-raster-is-named-from-the-record.patch
 0172-media-h713-hdmirx-enum-dv-timings-is-the-firmware-s-table.patch
@@ -469,25 +247,17 @@
 0178-arm64-dts-h713-the-audio-bridge-window-and-interrupts-for-the-msp.patch
 0179-media-h713-hdmirx-link-0x6d-is-the-firmware-s-connect-event-flag.patch
 0180-h713-drivers-log-in-english.patch
-# 04.10.: one board, one tree (ST3-BOARDMERGE). The HY310's description leaves the hy200 file for
-#   sun50i-h713-hy310.dts (same DTB bytes; hy300-pro includes it now); sun50i-h713-hy200-qz713df-a1.dts
-#   becomes 0167's tree measured on the HY300PRO-G-EU, whose silkscreen is HY200 QZ713DF A1; the
-#   hy300pro-g-eu tree goes. Both stock firmwares of that board share it (boards/hy200-qz713df-a1).
+
+# --- section 15, continued: one tree for the HY200 QZ713DF A1, the HY300 Pro's own focus tables.
 0181-arm64-dts-h713-one-tree-for-the-hy200-qz713df-a1.patch
-# 04.10.: the HY300 Pro of issue #1 drives its focus motor with its own stock tree's tables (another
-#   coil order than the HY310's, which the hy310 include brought); the lamp words' comment says 0168
-#   (ST3-FOREIGN)
 0182-arm64-dts-h713-hy300-pro-its-own-focus-motor-tables.patch
-# 05.10.: with a 720p source the warp's 1920x1080 frame was read with the ring's 1280-byte pitch:
-#   the VidDec record was refused a rewrite outside ring mode. Republished for a memory framebuffer
-#   too, without a window (bench of 05.10.: arbeit/warp-pruefstand, TODO 2.4a)
+
+# --- section 17 Small follow-ups.
 0183-drm-h713-afbd-republish-the-viddec-record-for-a-memory-framebuffer.patch
 0184-asoc-sun4i-codec-h713-the-speaker-amp-stays-on-once-it-is-on.patch
-# 06.10.: the firmware's zoom aspect (5) stops the picture for good, also from a saved value at
-#   the start; the plane does not offer it any more (arbeit/zoom-20261006, TODO 2.1)
 0185-drm-h713-afbd-do-not-offer-the-firmware-s-zoom-aspect.patch
-# 08.10.: crust as the HY310 ARISC firmware and the standby chain at release quality - watchdog layout
-#   and PM (TODO 2.25), the arisc/crust driver, the display/board side (arbeit/crust-release-20261007)
+
+# --- section 18 crust and the standby chain: the watchdog, the ARISC with crust, the suspend to RAM.
 0186-dt-bindings-watchdog-sun4i-a10-wdt-add-the-h713.patch
 0187-arm64-dts-h713-bind-the-watchdog-with-the-a523-register-layout.patch
 0188-watchdog-sunxi-wdt-stop-for-system-sleep-feed-while-userspace-is-frozen.patch
@@ -527,11 +297,8 @@
 0222-arm64-dts-h713-hy310-pb5-to-the-board-manager-not-a-hog.patch
 0223-watchdog-sunxi-wdt-reload-before-stopping.patch
 0224-watchdog-sunxi-wdt-read-mode-and-cfg-back-in-the-standby-lines.patch
-# 08.10.: the display MIPS restarts from Linux, from a running core and out of the standby park (TODO 3.3).
-#   0225-0227 are 0167/0167c/0167d of the reload work, rebased; then the park's accounting and the msgbox,
-#   one owner for the MIPS clock and resets, the restart driver and its node (HY310 only), and the receiver's
-#   lifetime across the unbind that now comes with every restart. The sequences are those of the test bench
-#   that brought the picture back on the HY310 (V3, V8, V10; arbeit/mips-reload-20261008)
+
+# --- section 19 The display MIPS restarts from Linux; the standby itself.
 0225-soc-sunxi-cpu-comm-the-arm-side-of-a-co-processor-restart.patch
 0226-soc-sunxi-cpu-comm-the-reload-path-on-real-hardware.patch
 0227-soc-sunxi-cpu-comm-the-master-init-without-device-memory-faults.patch
@@ -541,40 +308,28 @@
 0231-soc-sunxi-h713-mips-restart-the-display-mips-from-linux-from-a-running-core-or-out-of-the-standby-park.patch
 0232-arm64-dts-h713-the-display-mips-node-enabled-on-the-hy310.patch
 0233-media-h713-hdmirx-the-driver-s-state-outlives-an-unbind-while-the-node-is-open.patch
-#   0234/0235 after the review: the msgbox flush keeps the receive path out, and a start without a halt follows the
-#   registers (review A F4, F6 of the standby hook)
 0234-soc-sunxi-cpu-comm-the-receive-path-stays-out-while-the-restart-reads-the-msgbox-off.patch
 0235-soc-sunxi-h713-mips-the-start-type-follows-the-registers-when-no-halt-runs.patch
-#   0236-0238 the standby itself (09.10.2026, arbeit/mips-reload-20261008 and arbeit/standby-display-20261009): a
-#   driver asks cpu_comm whether the firmware still runs; hdmirx reads no LINK after the park (bus hang A); the
-#   display clocks go off with the parked MIPS (DMA masters lost the DRAM after the wake, B)
 0236-soc-sunxi-cpu-comm-tell-a-driver-whether-the-firmware-still-runs.patch
 0237-media-h713-hdmirx-no-link-read-after-the-standby-parked-the-mips.patch
 0238-soc-sunxi-cpu-comm-the-display-clocks-go-off-with-the-parked-mips.patch
-#   0239 the picture after a standby (09.10.2026, arbeit/r2-20261009): the restart out of the park sets the TV top
-#   first, as U-Boot does before its start; the standby powers the TV domains off and on (the SoC stalled, three of three)
 0239-soc-sunxi-h713-mips-the-start-out-of-the-standby-park-sets-the-tv-top-first.patch
-#   0240-0244 after the review of the R2 standby code (09.10.2026, arbeit/review-r2-20261009): the capture stops before
-#   the standby (hang C1 in the TVCAP power-off), the display clocks go off whenever no MIPS runs, the start messages say
-#   "parked", the audio DSP is taken as lost in every standby (no AUDIF access after the wake), the PPU names a domain
-#   that did not switch
 0240-media-h713-hdmirx-the-capture-stops-before-the-standby.patch
 0241-soc-sunxi-cpu-comm-the-display-clocks-go-off-whenever-no-mips-runs-at-the-standby.patch
 0242-soc-sunxi-h713-mips-say-parked-where-the-start-without-a-tv-top-window-leaves-the-core.patch
 0243-asoc-sunxi-h713-msp-the-island-is-lost-in-every-standby.patch
 0244-pmdomain-sunxi-h713-ppu-say-which-domain-did-not-switch.patch
 0245-soc-sunxi-h713-mips-a-standby-that-does-not-finish-ends-in-the-power-gate.patch
+
+# --- section 20 The HY300PRO-G-EU, the power off, the RGB channel over the video plane.
 0246-arm64-dts-h713-hy200-qz713df-a1-crust-as-the-arisc-firmware-the-display-mips-restart-on.patch
 0247-pinctrl-sunxi-h713-pf6-as-a-gpio.patch
 0248-soc-sunxi-h713-mips-cycle-the-panel-s-supply-after-a-restart.patch
 0249-arm64-dts-h713-hy200-qz713df-a1-pb5-to-the-board-manager-so-a-standby-switches-lamp-and-fan-off.patch
-#   0250 the power off through crust (10.10.2026, doku/188): the driver names phase 7, the build bit and TF-A's gate event
 0250-soc-sunxi-h713-arisc-name-crust-s-power-off-phase-build-bit-and-tf-a-s-gate-event.patch
-#   0251 the RGB channel over the video plane (10.10.2026, arbeit/osd-a-20261010): primary zpos, ARGB per-pixel alpha, "osd" window
 0251-drm-h713-afbd-the-rgb-channel-over-the-video-plane.patch
-#   0252-0254 the IR receiver and the stock remote (11.10.2026, TODO 2.35/2.46): sunxi-cir at its default 8 MHz, 0021's vendor
-#   register values gone, and the keymap of the stock remote (NEC 0xfd02) - from the IR package of 03.10. (doku/138), without its
-#   PL9 re-apply, which answered the vendor's ARISC firmware and is not needed with crust
+
+# --- section 20, continued: the IR receiver, the Bluetooth UART, cpu_comm's locks, the capture ring, the GPU clock.
 0252-arm64-dts-h713-the-ir-receiver-at-sunxi-cir-s-default-8-mhz.patch
 0253-media-sunxi-cir-h713-drop-0021-s-vendor-register-values.patch
 0254-media-rc-keymaps-the-h713-projectors-stock-ir-remote-and-its-map-on-the-hy310.patch
@@ -591,22 +346,11 @@
 0265-soc-sunxi-cpu_comm-no-read-of-the-mips-status-behind-a-closed-bus-gate.patch
 0266-asoc-sunxi-h713-msp-a-standby-aborted-before-the-island-lost-its-power-is-rebuilt-not-called-a-loss.patch
 0267-soc-sunxi-h713-arisc-the-module-option-firmware-vendor-or-crust-over-the-device-tree.patch
-# 13.10.: the GPU clock model and its DVFS (Paket A "Takt" of the media side project). 0268 is cstenger's 0152 (PLL_GPU's output
-#   divide-by-two and the GPU clock's 2-bit M divider), 0269 his 0153 adapted to replace 0024e's OPP table (150/200/300/600 MHz with
-#   PLL_GPU pinned at 600 MHz), 0270 his 0142 (mbus-av1 is bit 3). Measured on the HY310; the G-EU is still to be measured (TODO 2.72)
 0268-clk-sunxi-ng-h713-the-gpu-runs-at-432-mhz-not-864.patch
 0269-arm64-dts-h713-gpu-dvfs-at-stock-s-points-pll-gpu-pinned-at-600-mhz.patch
 0270-clk-sunxi-ng-h713-mbus-av1-is-bit-3.patch
-# 13.-15.10.2026: the decoders and what they needed (the media work: cedrus with VP9 and the AV1 core behind the IOMMU,
-#   the eMMC under 4K playback, the capture index after a standby).
-#   0271-0296 are cstenger's cedrus series in his series order, byte-identical (message and diff; From: and Origin: added):
-#   his 0099 (VE scaler into the capture buffer), 0101-0125 (cedrus hardening, 10-bit sizing, polyphase scaler for
-#   H.265/H.264, enum_framesizes, field MPEG-2, capture pitch 32), 0143/0154/0155 (VP9 on the VE), 0144 (VE at 432 MHz for
-#   the AV1 core; since 0315 only while the AV1 decoder is on), 0151 (bidirectional capture mappings, needed behind the
-#   IOMMU). Not taken: his 0126/0127 (IOVA reservation, only for a display in the IOMMU group), 0052/0080 (display behind
-#   the IOMMU), 0092. 0297 is ours: the IOMMU comment of 0024e.
-#   0298 is ours: a job of another codec starts from a reset engine (H.265 next to his VP9 failed every job).
-#   The defconfig turns CONFIG_SUN50I_IOMMU on (VE masters 0/1 translated, display physical).
+
+# --- section 21 The decoders (cedrus with VP9, the AV1 core, switched off by 0310), the eMMC, and the RTC.
 0271-media-cedrus-scale-down-into-the-capture-buffer.patch
 0272-media-cedrus-harden-compose-negotiation.patch
 0273-media-cedrus-fix-secondary-chroma-stride.patch
@@ -635,91 +379,33 @@
 0296-media-cedrus-vp9-refuse-profiles-other-than-0-at-control-time.patch
 0297-arm64-dts-h713-the-iommu-comment-says-the-codecs-are-translated-and-the-display-is-not.patch
 0298-media-cedrus-a-job-of-another-codec-starts-from-a-reset-engine.patch
-# 13.10.: the AV1 decoder. Off since 0310 (node disabled, CONFIG_VIDEO_HANTRO off); the code stays in the series.
-#   0300-0304 are cstenger's AV1 series in his series order (his 0150 before 0145): 0300 his 0150 (V4L2 PL10 = P010 with
-#   the samples in bits 9:0, DRM P010 + ALLWINNER_LSB10), 0301 his 0145 (hantro hooks: variant_priv, no forced post-
-#   processing without a post-processor, VIDEO_HANTRO_AV1, dev_err_probe), 0303 his 0147 (the H713 variant: the Google
-#   core at 0x01c0d000, generated register image, the five hardware rules), 0304 his 0148 (binding), byte-identical
-#   (message and diff; From: and Origin: added). 0302 is his 0146 adapted: it adds the node his 0140 had added for the
-#   presence probe (not taken, nor 0141) with 0146's change, the node his series ends with.
-#   0300 stays although nothing uses it while the AV1 decoder is off: 0303 needs PL10, and dropping it would leave the AV1
-#   code in the series unbuildable. Its numbers are local and not agreed upstream (PL10, and fourcc_mod_code(ALLWINNER, 2)
-#   for LSB10); with the decoder off no driver of this kernel produces or accepts either, and no image ships this kernel's
-#   headers. The VA driver carries its own copies of both values (#ifndef). Before the AV1 decoder comes back into an
-#   image, the modifier wants an upstream number.
 0300-EXPERIMENT-media-drm-p010-lsb-modifier-and-pixfmt.patch
 0301-media-verisilicon-hooks-for-a-variant-without-a-post-processor.patch
 0302-arm64-dts-h713-bind-the-av1-decoder-to-hantro.patch
 0303-media-verisilicon-add-the-h713-av1-decoder.patch
 0304-dt-bindings-media-add-the-allwinner-h713-av1-decoder.patch
-#   0305-0307 (13./14.10.2026): the VE bus reset is shared with the AV1 core; a guard arbitrates it, cedrus pulses only
-#   through it, the AV1 variant holds it from its first register access to the end of its interrupt (measured).
 0305-soc-sunxi-a-guard-for-the-video-engine-s-shared-bus-reset.patch
 0306-media-cedrus-pulse-the-ve-reset-through-the-guard.patch
 0307-media-verisilicon-h713-av1-hold-the-ve-s-reset-while-the-core-is-touched.patch
-#   0308/0309 (14.10.2026): a damaged H.265 stream leaves the VE's IOMMU ports blocked and the engine dead until reboot;
-#   the ports are released before the engine's next job, while its bus reset is held and only while no AV1 stream is open
-#   (next to a decoding AV1 core the release cost frames or stopped the SoC); an H.265 reference must be a picture decoded
-#   here (index in range, MV column buffer present).
 0308-iommu-sun50i-media-cedrus-release-the-ve-s-iommu-ports-once-its-engine-has-stopped.patch
 0309-media-cedrus-an-h265-reference-must-be-a-picture-decoded-here.patch
-#   0310 (14.10.2026, Marco): the AV1 decoder stays off for now - node disabled, CONFIG_VIDEO_HANTRO off in the board defconfig;
-#   the code of 0300-0307 stays. Reason in the patch; to bring it back, drop 0310 and turn the option on (the VE then goes back
-#   to 432 MHz by itself, 0315).
 0310-arm64-dts-h713-the-av1-decoder-stays-off-for-now.patch
-#   0311 is not in this series: a diagnostic patch (the eMMC data-error path prints the error class and the controller state
-#   before finalize_request() clears them). 0312 and 0313 keep their numbers because their measurements name 0311.
-#   0312 (15.10.2026, measured): a CMD18 that fails mid-transfer leaves the controller receiving into a full FIFO with the
-#   card clock held, so neither CMD12 nor the recovery's CMD13 can go out; the controller is re-initialised like a runtime
-#   resume before the stop. On the HY310: three forced errors and about 2000 natural ones under Kodi 4K, no hang - a net,
-#   not a cure (0313 removes the errors).
 0312-mmc-sunxi-a-failed-multi-block-read-re-initialises-the-controller-before-the-stop.patch
-#   0313 (15.10.2026, measured): the eMMC host uses the card read threshold at HS200/HS400, so a read block starts only when
-#   the FIFO has room for it; without it the controller holds the card clock mid-block when the DMA falls behind under 4K
-#   playback, and the reads saw data CRC errors only then. On the HY310: 0 errors on 30946 MiB of Kodi 4K reads against 1899
-#   on 19049 MiB, FIFO full in 0.002 % of the samples instead of 2.9 %.
 0313-mmc-sunxi-the-emmc-host-starts-a-read-block-only-when-the-fifo-has-room-for-it.patch
-#   0314 (15.10.2026): afbd reads the capture's write index (INCAP +0xa0c) as the field [2:0], as the vendor firmware does
-#   (`andi 0x7`). After some standbys to RAM the bits above are set (0x4b0..0x4b2) while [2:0] runs as in a good state, and
-#   0255 dropped every frame because it compared the whole word with "< 3": the warp got no picture until a warm start.
-#   One journal line when the upper bits come or go; nothing is written to INCAP.
-#   Measured on the HY310 (15.10.2026): 25 standbys, pictures in all 25; the bits above the index were set after 9 of them and
-#   the warp ran at the clean state's rate there (59.40 frames/s, ctl check 900 without a differing row).
 0314-drm-h713-afbd-the-capture-index-is-the-field-2-0-of-its-word-as-the-firmware-reads-it.patch
-#   0315-0319 (15.10.2026, review of 0271-0314 before main):
-#   0315: cedrus runs the H713 VE at 432 MHz only while an enabled AV1 node is in the device tree, else at the H6's 600 MHz
-#   (0293 held 432 MHz for the AV1 core alone; with the AV1 decoder off the codecs on the VE ran 28 % slow, and 2160p30
-#   did not keep up). Measured on the HY310: H.264 2160p in mpv 30.0 instead of 26.6 frames/s, the decoder suite bit-exact.
-#   0316: an H.265 job whose collocated_ref_idx lies outside the active reference list is refused, like 0309's indices.
-#   0317: cedrus_vp9_finish() keeps the 15 bytes it needs across load_probs() instead of a 2 KiB frame context on the stack
-#   (the one warning of the kernel build).
-#   0318: the AV1 node of 0024 at 0x01c0d000 goes (no driver, the VE's resets, a duplicate unit address next to 0302's node).
-#   0319: the IOMMU comment of August in the dtsi that said there is no IOMMU goes.
-#   0320: the H713 RTC takes its 32 kHz from the 24 MHz DCXO (LOSC_OUT_GATING bit 16 + LOSC_CTRL 0x4002, as the vendor kernel) instead
-#         of the internal RC, which lost 26 % (1.357 s per RTC second) and let the 11-minute RTC update expire every rtcwake alarm under 174 s.
 0315-media-cedrus-the-h713-video-engine-runs-at-432-mhz-only-while-the-av1-decoder-is-on.patch
 0316-media-cedrus-h265-the-collocated-picture-must-be-in-the-active-reference-list.patch
 0317-media-cedrus-vp9-keep-only-the-tx-and-skip-probabilities-across-load-probs.patch
 0318-arm64-dts-h713-drop-the-av1-node-of-0024-that-no-driver-binds.patch
 0319-arm64-dts-h713-drop-the-iommu-comment-of-august-that-says-there-is-none.patch
 0320-rtc-sun6i-h713-take-the-rtc-s-32-khz-from-the-24-mhz-dcxo-like-the-vendor-kernel.patch
+
+# --- section 22 The stock remote's focus keys, and cstenger's h713-letterbox.
 0321-hid-h713-remote-the-ble-remote-s-focus-keys-are-the-other-way-round.patch
-# 19.10.2026: the deep review of cstenger's h713-letterbox (a861df2..a4d6d5f, arbeit/cstenger-letterbox-20261019/tief-kernel/
-#   BERICHT.md). 0322-0324 are his 0156, 0157, 0159, byte-identical (message and diff; From: and Origin: added); 0325 is ours.
-#   0322 (his 0156): the H.264 bit reader's skip waits at most 1 ms per 32 bits, as H.265's does since 0308; an engine whose VLD
-#   never goes idle fails the job (cedrus_recover follows) instead of spinning a CPU in the request ioctl until a power cycle.
 0322-media-cedrus-h264-bound-the-skip-bits-wait.patch
-#   0323 (his 0157): the CAPTURE queue takes 64 buffers instead of vb2's default 32 (the VA driver's capture table holds 64;
-#   a client holding more than 32 decoded frames got ENOBUFS from CREATE_BUFS instead of back-pressure).
 0323-media-cedrus-allow-64-capture-buffers.patch
-#   0324 (his 0159): all 16 H.265 DPB slots are written on every job, a slot without a picture behind it with the picture being
-#   decoded (as hantro does); a skipped slot kept the addresses of an earlier job or process. 0309/0316 still refuse a job whose
-#   reference lists name a slot without a decoded picture; this covers the slots the lists do not name.
 0324-media-cedrus-h265-never-leave-a-dpb-slot-stale.patch
-#   0325 (ours, after his 0171): the R_PIO header comment and the power key note in the dtsi name the EINT function 0xe, as 0140's table has it; comments only.
 0325-pinctrl-arm64-dts-h713-the-comments-name-the-eint-function-0xe-as-the-table-has-it.patch
-#   0326 (ours): the hdmirx driver reads the break of the firmware's allocator (Trid_SMM, header at +0x2d000 of the shared memory) before it
-#   writes the HDCP 2.2 key (+0x36000), the Wce_SetWindow structures (+0x37000) and the backlight PWM words (+0x37100); a block whose page the
-#   break has reached is not written and its step is left out, with a warning. Nothing changes while the break is below them. Also corrects
-#   two comments of 0094/0101 (SetWhiteBalance takes six words, not three doubles; white balance is not the display CRTC's CTM).
+
+# --- section 23 The hdmirx driver and the firmware's allocator.
 0326-media-h713-hdmirx-leave-out-a-block-whose-page-the-firmware-s-allocator-has-reached.patch

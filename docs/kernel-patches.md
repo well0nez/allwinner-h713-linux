@@ -76,12 +76,13 @@ give it the next free number - or an `NNNNa` suffix if it corrects a specific ea
 behind it - and insert the line in `series` at that position, under the right section banner. Nothing else
 needs updating; the next build notices the new file on its own.
 
-That "on its own" is the **tree digest**: `kernel_inputs_digest()` hashes the `KERNEL_*` lines of
-`versions.env` (a prefix match, so an unrelated pin bump elsewhere in that shared file does not invalidate
-the kernel cache), the `series` file, the board defconfig, any `KERNEL_CONFIG` fragment in use, and every
-patch file `series` names - one SHA-256 over all of it. `prepare_kernel` names the extracted, patched source
-tree `build/linux-6.18.38-<digest>`, so editing a single patch byte gets you a fresh tree automatically,
-never a stale one silently reused, and two different patch sets never collide in the same directory.
+That "on its own" is the **tree digest**: the `kernel` stage of `build.sh` hashes the `KERNEL_*` lines of
+`versions.env` word for word (a prefix match, so an unrelated pin bump elsewhere in that shared file does not
+invalidate the kernel cache, while a changed comment at the end of a `KERNEL_*` line does), the `series` file,
+the board defconfig, any `KERNEL_CONFIG` fragment in use, and every patch file `series` names - one SHA-256 over
+all of it - and prepares the extracted, patched source tree as `build/linux-6.18.38-<digest>`. Editing a single
+patch byte gets you a fresh tree automatically, never a stale one silently reused, and two different patch sets
+never collide in the same directory.
 
 `board/hy200_qz713df_a1_defconfig` is the shipping state - `CONFIG_DEBUG_FS` and `CONFIG_DYNAMIC_DEBUG` are
 off in it. `board/debug.config` is a fragment for developers only: `KERNEL_CONFIG=debug build.sh kernel`
@@ -93,7 +94,21 @@ suffixed `h713-kernel-debug.fit` so it can never be mistaken for the release ima
 `patches/zurueckgenommen/` keeps patches that were dropped from the series, each with the reason - they
 are history, not a fallback. `patches/vorschlaege/` holds work in progress by topic: a finding, a test
 plan, sometimes a patch that was never applied. Neither directory is read by `build.sh`; both are there
-so a decision can be re-read instead of re-argued. `patches/aic8800/` is the Wi-Fi driver's own series
-and `patches/libva-v4l2-request/` the VA-API backend's, applied by their own build steps.
+so a decision can be re-read instead of re-argued. `patches/aic8800/` is the Wi-Fi driver's own series,
+applied by its own build step.
+
+The VA-API backend's patch files (`patches/libva-v4l2-request/`, three patches on bootlin's libva-v4l2-request) are
+not in the tree any more since 13.10.2026; they were cstenger's, without a licence statement ([PROVENANCE.md](../PROVENANCE.md)).
+No build step of `main` applied them.
+
+*Superseded 13.10.2026:* this page used to say that `patches/libva-v4l2-request/` was "the VA-API backend's, applied by
+their own build steps". It was not: `git grep -i libva` over `release/`, `rootfs/`, `boards/` and `installer/` finds no
+step that applies them.
+
+Several kernel patches and U-Boot mirror patches carry comments that name documents of cstenger's tree
+(`docs/kernel-bump.md`, `docs/status.md`, `docs/vaapi-scope.md` and others) that are no longer in this tree. The patches
+stay byte for byte as they are (the kernel patches are hashed into the kernel build, the U-Boot mirrors are checked
+against the fork's tree), so those names are notes on where a passage came from, not links; `doku/210` says where
+the documents are.
 
 Details: `doku/116-plan-release-repo.md` §4a P1, `doku/80-vergleich-baeume.md`.
