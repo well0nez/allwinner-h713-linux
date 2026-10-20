@@ -5,7 +5,7 @@ This system was built by release/build-all.sh of H713 Linux,
 https://github.com/well0nez/allwinner-h713-linux. It is free software,
 made of many parts under several licences. This file says which parts
 are in the image, under which licence each one comes, where its licence
-text is, and how to get the source code. SOURCES, next to this file,
+text is, and where its source code is. SOURCES, next to this file,
 names the revisions this image was built from.
 
 The texts of the common licences (GPL-2, GPL-3, LGPL-2.1, Apache-2.0,
@@ -83,11 +83,7 @@ repository at the commit SOURCES names. SOURCES also names, for each
 upstream, the revision the patches apply to. Debian's source packages
 are on deb.debian.org and, by version, on snapshot.debian.org.
 
-Written offer. For at least three years from the source date in SOURCES,
-well0nez, who publishes this image, will give anyone who has a copy of
-it a complete machine-readable copy of the corresponding source code of
-every part of it that is licensed under the GPL or the LGPL, for a
-charge no more than the cost of physically performing the copy, on a
-medium customarily used for software interchange or as a download. Ask
-through https://github.com/well0nez/allwinner-h713-linux/issues and name
-the first line of SOURCES.
+Source code. The complete corresponding source of this image goes with
+it: next to the image where it is published (its source archives), and
+in the repository at the commit SOURCES names. Whoever passes the
+image on passes these archives on with it.

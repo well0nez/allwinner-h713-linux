@@ -2,7 +2,7 @@
 """release/notice.py, the licence notices of an image (TODO 7.20 e), against made-up trees.
 
 A BSD licensed binary must carry the copyright notices of what went into it, a Debian package its copyright file,
-and the written offer needs the list of source packages. The three commands are checked here the way a guard has to
+and the image's source needs the list of source packages. The three commands are checked here the way a guard has to
 be: a file that went into the build is named, a file that did not is not, a licence text's own sentences are no
 copyright lines, the head of a file under another licence is printed, a package without its file is a finding and
 one with it through a Debian Policy 12.5 link is not, and two runs give the same bytes.

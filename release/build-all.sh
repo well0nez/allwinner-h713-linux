@@ -569,7 +569,7 @@ if ((WANT_LIBVA)); then
 fi
 
 # --- the image's SOURCES (TODO 7.20 e) ---------------------------------------
-# The revisions the boot chain and the kernel were built from, for README's source offer; build-rootfs.sh adds the root file
+# The revisions the boot chain and the kernel were built from, for README's source statement; build-rootfs.sh adds the root file
 # system's part (the Debian suites, Mesa, libva) below it. No path of this machine and no build time in it.
 series_on() { # <mirror dir> -> "N patches on <base> (<what the mirror calls it>)"
 	awk '$1 == "base" { b = substr($2, 1, 12); $1 = $2 = ""; sub(/^ +/, ""); w = $0 } $1 == "count" { n = $2 }
@@ -667,10 +667,10 @@ python3 "$ROOT/release/check-crust.py" --board "$BOARD" \
 	&& info "crust gate: green ($(sed -n 's/^crust: //p' "$OUT/crust-gate.log"))" \
 	|| { grep -E "FAIL|Error" "$OUT/crust-gate.log" | sed 's/^/    /'
 	     die "crust gate failed (log: $OUT/crust-gate.log)"; }
-# The licence notices (TODO 7.20 e), in the artefact: the rootfs tar carries the README with the source offer, and its SOURCES
+# The licence notices (TODO 7.20 e), in the artefact: the rootfs tar carries the README that says where the source is, and its SOURCES
 # names this image's boot chain and kernel - every line write_sources gives now, but the repository's commit and date.
 NOTICE_TAR=$(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./usr/local/share/doc/h713-linux/SOURCES 2>/dev/null) || die "the rootfs carries no SOURCES (licence notices, build-rootfs.sh --notice)"
-tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./usr/local/share/doc/h713-linux/README 2>/dev/null | grep -q '^Written offer\.' || die "the rootfs carries no README with the written offer"
+tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./usr/local/share/doc/h713-linux/README 2>/dev/null | grep -q '^Source code\.' || die "the rootfs carries no README that says where the source is"
 while IFS= read -r l; do
 	[[ -z "$l" || "$l" == repository:* || "$l" == "source date:"* || "$l" == "H713 Linux "* ]] && continue
 	grep -qxF -- "$l" <<< "$NOTICE_TAR" || die "the rootfs's SOURCES does not name this build's \"$l\" -- an old rootfs?"

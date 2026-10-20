@@ -29,8 +29,8 @@ file at all: the display, ARISC and Wi-Fi firmware come off your own device whil
 ## Licences in the image
 
 `/usr/local/share/doc/h713-linux/` says what the image is made of, under which licence, and how to get the source:
-`README` (from `overlay/`) lists the parts with their licences and carries the written offer of the source of every
-GPL or LGPL part; `SOURCES` names the revisions this image was built from (the boot chain and the kernel from
+`README` (from `overlay/`) lists the parts with their licences and says where their source is: next to the image as its
+source archives, and in the repository at the commit `SOURCES` names; `SOURCES` names the revisions this image was built from (the boot chain and the kernel from
 `release/build-all.sh`, the Debian suites, Mesa and libva from `build-rootfs.sh`); `DEBIAN-SOURCES` lists every
 Debian source package with its version. Next to them, what `release/build-all.sh` hands over with `build-rootfs.sh --notice`: `tf-a/` and
 `crust/` (their licence and the copyright lines of every source file built into BL31 and `scp.bin`, which BSD wants

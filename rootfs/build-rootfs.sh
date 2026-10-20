@@ -954,8 +954,8 @@ done
 t "no Debian libgallium"     test -z "$(find "$TREE/usr/lib/aarch64-linux-gnu" -maxdepth 1 \( -name 'libgallium*' -o -name 'libLLVM*' -o -name 'libgbm.so*' -o -name 'libEGL_mesa*' \) -print -quit)"
 t "glvnd libEGL.so.1"        test -e "$TREE/usr/lib/aarch64-linux-gnu/libEGL.so.1"
 t "glvnd libGLESv2.so.2"     test -e "$TREE/usr/lib/aarch64-linux-gnu/libGLESv2.so.2"
-# The licences (TODO 7.20 e): the notices that must travel with the binaries in this image, and the offer of their source.
-t "licences: README with the written offer"   grep -q '^Written offer\.' "$NOTICE_DST/README"
+# The licences (TODO 7.20 e): the notices that must travel with the binaries in this image, and where their source is.
+t "licences: README says where the source is" grep -q '^Source code\.' "$NOTICE_DST/README"
 t "licences: SOURCES names the root file system" grep -qx 'root file system' "$NOTICE_DST/SOURCES"
 t "licences: DEBIAN-SOURCES lists the source packages" grep -q '^base-files ' "$NOTICE_DST/DEBIAN-SOURCES"
 t "licences: the GPL-2 text (common-licenses)" test -s "$TREE/usr/share/common-licenses/GPL-2"

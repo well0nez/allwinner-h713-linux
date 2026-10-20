@@ -14,8 +14,8 @@ copyrights      The copyright and licence lines of every source file a build com
                 --main. For a BSD licensed binary (TF-A's BL31), whose licence asks that the
                 notices travel with the binary.
 debian-sources  Every source package of the installed packages of a dpkg status file, with its
-                version, one per line, sorted: what the written offer and snapshot.debian.org
-                are asked for.
+                version, one per line, sorted: what to ask deb.debian.org or snapshot.debian.org
+                for, and what the image's source archives have to hold.
 copyright-files Every installed package of the tree has its /usr/share/doc/<package>/copyright
                 (a package whose directory is a link to another package of the same source,
                 Debian Policy 12.5, has it through the link). Prints those without; ends with 1
