@@ -76,12 +76,13 @@ give it the next free number - or an `NNNNa` suffix if it corrects a specific ea
 behind it - and insert the line in `series` at that position, under the right section banner. Nothing else
 needs updating; the next build notices the new file on its own.
 
-That "on its own" is the **tree digest**: `kernel_inputs_digest()` hashes the `KERNEL_*` lines of
-`versions.env` (a prefix match, so an unrelated pin bump elsewhere in that shared file does not invalidate
-the kernel cache), the `series` file, the board defconfig, any `KERNEL_CONFIG` fragment in use, and every
-patch file `series` names - one SHA-256 over all of it. `prepare_kernel` names the extracted, patched source
-tree `build/linux-6.18.38-<digest>`, so editing a single patch byte gets you a fresh tree automatically,
-never a stale one silently reused, and two different patch sets never collide in the same directory.
+That "on its own" is the **tree digest**: the `kernel` stage of `build.sh` hashes the `KERNEL_*` lines of
+`versions.env` word for word (a prefix match, so an unrelated pin bump elsewhere in that shared file does not
+invalidate the kernel cache, while a changed comment at the end of a `KERNEL_*` line does), the `series` file,
+the board defconfig, any `KERNEL_CONFIG` fragment in use, and every patch file `series` names - one SHA-256 over
+all of it - and prepares the extracted, patched source tree as `build/linux-6.18.38-<digest>`. Editing a single
+patch byte gets you a fresh tree automatically, never a stale one silently reused, and two different patch sets
+never collide in the same directory.
 
 `board/hy200_qz713df_a1_defconfig` is the shipping state - `CONFIG_DEBUG_FS` and `CONFIG_DYNAMIC_DEBUG` are
 off in it. `board/debug.config` is a fragment for developers only: `KERNEL_CONFIG=debug build.sh kernel`
