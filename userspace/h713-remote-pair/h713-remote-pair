@@ -7,13 +7,15 @@ HY300PRO-G-EU, the same remote); other remotes may use a different combination. 
 whenever no remote is connected and bonds without a dialog (FB-REMOTE). This does the
 same with bluez: bluetoothctl (bluez's D-Bus client) runs with a NoInputNoOutput agent,
 the remote is bonded, trusted and connected, and from then on bluez reconnects it.
-A remote keeps one bond: paired with another box since, it has lost the key this box keeps, and
-Left + Right here gave a connection that fails while bluez kept the stale bond. watch therefore also
-listens to the HCI monitor channel (as btmon does, no scanning of its own): a bonded remote that
-advertises in pairing mode (LE Limited Discoverable) asks for a new bond, so the old one is forgotten
-and the remote paired afresh.
+A remote keeps one bond, and Left + Right drops it: in pairing mode it advertises undirected (flags
+0x05, LE Limited Discoverable), while a bonded remote wakes with a directed advert. bluetoothd lets the
+kernel connect a bonded remote on any advert, so the kernel connected the pairing remote within 2 ms
+with the dropped key - three failures, and the remote left pairing mode before anything could pair it
+(btmon, HY300PRO-G-EU, 20.10.2026). watch therefore lets the kernel connect its remote on directed
+adverts only (mgmt Add Device, action 1) and reads the HCI monitor channel (as btmon does, no scan of
+its own): a bonded remote in pairing mode is forgotten and paired afresh, untouched until then.
 Commands: pair [--timeout 60], reconnect [--timeout 30], status, forget [ADDR],
-watch (reconnect a known remote; pair when none is bonded or when the bonded one is in pairing mode).
+watch (keep the remote bonded; pair when none is bonded or when the bonded one is in pairing mode).
 Exit: 0 done, 1 no remote seen, 2 bluez refused, 3 usage or no bluetoothctl.
 """
 
@@ -39,10 +41,17 @@ ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\x01\x02]")
 #: (LE Limited Discoverable, no BR/EDR) only after Left + Right (btmon, 20.10.2026); a bonded remote wakes
 #: with a directed advert, which carries no flags.
 LIMITED_DISCOVERABLE = 0x01
-MONITOR_HEADER = struct.Struct("<HHH")      # opcode, controller index, length (the HCI monitor channel)
+MONITOR_HEADER = struct.Struct("<HHH")      # opcode, controller index, length (HCI monitor and mgmt alike)
 MONITOR_EVENT = 3                           # an HCI event from the controller
-#: Pairing adverts until this many seconds after a pairing of our own are the ones that led to it.
-OFFER_GRACE = 5.0
+MONITOR_CTRL_COMMAND = 16                   # a mgmt command of a program (cookie, opcode, parameters)
+HCI_CHANNEL_MONITOR, HCI_CHANNEL_CONTROL = 2, 3
+MGMT_ADD_DEVICE, MGMT_CMD_COMPLETE, MGMT_CMD_STATUS = 0x0033, 0x0001, 0x0002
+#: Add Device action for the kernel's auto-connect: 1 connects on directed adverts only, 2 (bluetoothd's
+#: choice for a bonded LE remote) on any connectable advert - also on the undirected pairing advert.
+ACTION_DIRECT = 0x01
+#: Pairing adverts until this many seconds after a pairing of our own are the ones that led to it (the
+#: remote stops advertising once it is connected; on the G-EU the last one came 0.6 s before the link).
+OFFER_GRACE = 1.0
 DEVICE_LINE = re.compile(r"(?:\[NEW\] )?Device ([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}) (?:Name: )?(.+)$")
 
 
@@ -108,8 +117,14 @@ class Ctl:
 
 def pairing_adverts(event: bytes):
     """Addresses of the connectable undirected adverts with the LE Limited Discoverable flag in one HCI
-    event (LE Advertising Report and LE Extended Advertising Report). bluez's AdvertisingFlags property
-    cannot tell: it keeps the flags of the last pairing (05 on a remote that is bonded and connected)."""
+    event. bluez's AdvertisingFlags property cannot tell: it keeps the flags of the last pairing (05 on a
+    remote that is bonded and connected)."""
+    return (addr for addr, flags in undirected_adverts(event) if flags & LIMITED_DISCOVERABLE)
+
+
+def undirected_adverts(event: bytes):
+    """(address, flags or 0) of the connectable undirected adverts in one HCI event (LE Advertising Report
+    and LE Extended Advertising Report)."""
     if len(event) < 4 or event[0] != 0x3E or event[2] not in (0x02, 0x0D):
         return
     extended, pos = event[2] == 0x0D, 4
@@ -126,8 +141,48 @@ def pairing_adverts(event: bytes):
         data = event[pos + head:pos + head + event[pos + head - 1]]
         pos += head + len(data) + (0 if extended else 1)    # legacy: the RSSI follows the data
         flags = ad_field(data, 0x01)
-        if undirected and flags and flags[0] & LIMITED_DISCOVERABLE:
-            yield ":".join("%02X" % b for b in reversed(addr))
+        if undirected:
+            yield ":".join("%02X" % b for b in reversed(addr)), flags[0] if flags else 0
+
+
+def added_device(payload: bytes):
+    """(address, random, action) of a mgmt Add Device command as the monitor channel shows it, else None."""
+    if len(payload) >= 14 and struct.unpack_from("<H", payload, 4)[0] == MGMT_ADD_DEVICE:
+        return ":".join("%02X" % b for b in reversed(payload[6:12])), payload[12] == 2, payload[13]
+    return None
+
+
+def bind_channel(sock, channel: int):
+    # Python's bind() knows no HCI channel: sockaddr_hci {family, HCI_DEV_NONE, channel}
+    addr = struct.pack("<HHH", socket.AF_BLUETOOTH, 0xFFFF, channel)
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.bind(sock.fileno(), addr, len(addr)) != 0:
+        err = ctypes.get_errno()
+        raise OSError(err, os.strerror(err))
+
+
+def kernel_direct(addr: str, random: bool, sink: str) -> bool:
+    """Let the kernel auto-connect the bonded remote on its directed adverts only: mgmt Add Device with
+    action 1 replaces bluetoothd's 2. Through the kernel's control channel, or into the file sink (tests)."""
+    params = bytes.fromhex(addr.replace(":", ""))[::-1] + bytes([2 if random else 1, ACTION_DIRECT])
+    frame = MONITOR_HEADER.pack(MGMT_ADD_DEVICE, 0, len(params)) + params     # controller index 0: hci0
+    if sink:
+        with open(sink, "ab") as f:
+            f.write(frame)
+        return True
+    try:
+        with socket.socket(socket.AF_BLUETOOTH, socket.SOCK_RAW, socket.BTPROTO_HCI) as sock:
+            bind_channel(sock, HCI_CHANNEL_CONTROL)
+            sock.settimeout(2)
+            sock.send(frame)
+            while True:                 # other events reach this socket too; a timeout ends the wait
+                reply = sock.recv(512)
+                if (len(reply) >= 9 and MONITOR_HEADER.unpack_from(reply)[0] in (MGMT_CMD_COMPLETE, MGMT_CMD_STATUS)
+                        and struct.unpack_from("<H", reply, 6)[0] == MGMT_ADD_DEVICE):
+                    return reply[8] == 0
+    except (OSError, AttributeError) as e:
+        print("error: kernel auto-connect of %s: %s" % (addr, e), file=sys.stderr)
+        return False
 
 
 def ad_field(data: bytes, kind: int) -> bytes:
@@ -150,13 +205,11 @@ def monitor_frames(source: str):
                 op, _, size = MONITOR_HEADER.unpack(head)
                 yield op, f.read(size)
     sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_RAW, socket.BTPROTO_HCI)
-    # Python's bind() knows no HCI channel: sockaddr_hci {family, HCI_DEV_NONE, HCI_CHANNEL_MONITOR}
-    addr = struct.pack("<HHH", socket.AF_BLUETOOTH, 0xFFFF, 2)
-    libc = ctypes.CDLL(None, use_errno=True)
-    if libc.bind(sock.fileno(), addr, len(addr)) != 0:
-        err = ctypes.get_errno()
+    try:
+        bind_channel(sock, HCI_CHANNEL_MONITOR)
+    except OSError:
         sock.close()
-        raise OSError(err, os.strerror(err))
+        raise
     with sock:
         while True:
             frame = sock.recv(65536)
@@ -167,26 +220,66 @@ def monitor_frames(source: str):
 
 
 class PairingOffers:
-    """Pairing adverts per address, read in a thread. A bonded remote is connected by the kernel as soon
-    as it advertises; with a stale bond that connection fails and bluez keeps the bond without a word on
-    D-Bus, so the advert is the one sign that the remote asks for a new bond. event wakes watch."""
+    """What the HCI monitor channel shows of the remotes, read in a thread: pairing adverts, other undirected
+    adverts (a remote that wakes without a directed advert) and bluetoothd's Add Device commands, which put
+    the kernel's auto-connect back to any advert - the thread answers those for our remotes at once. bluez
+    shows none of it on D-Bus. event wakes watch."""
 
-    def __init__(self, source: str):
-        self.seen, self.quiet, self.watched = {}, 0.0, set()
-        self.lock, self.event = threading.Lock(), threading.Event()
+    def __init__(self, source: str, sink: str):
+        self.seen, self.plain, self.rearmed, self.direct, self.random, self.quiet = {}, {}, {}, {}, {}, 0.0
+        self.watched, self.sink = set(), sink
+        self.lock, self.event, self.broken = threading.Lock(), threading.Event(), threading.Event()
         threading.Thread(target=self._read, args=(source,), daemon=True).start()
 
     def _read(self, source: str):
         try:
             for op, payload in monitor_frames(source):
-                for addr in pairing_adverts(payload) if op == MONITOR_EVENT else ():
-                    with self.lock:
-                        self.seen[addr] = time.monotonic()
-                        if addr in self.watched:
-                            self.event.set()
+                now = time.monotonic()
+                if op == MONITOR_EVENT:
+                    for addr, flags in undirected_adverts(payload):
+                        self._note(self.seen if flags & LIMITED_DISCOVERABLE else self.plain, addr, now)
+                elif op == MONITOR_CTRL_COMMAND:
+                    added = added_device(payload)
+                    if added:
+                        with self.lock:
+                            self.random[added[0]] = added[1]
+                    if added and added[2] != ACTION_DIRECT:
+                        self._note(self.rearmed, added[0], now)
+                        if added[0] in self.watched:        # bluetoothd re-armed a remote of ours: undo at once
+                            self.set_direct(added[0], added[1])
         except (OSError, AttributeError) as e:
+            self.broken.set()
             print("note: no HCI monitor channel (%s): Left + Right cannot replace a stale bond, "
                   "use h713-remote-pair forget" % e, file=sys.stderr)
+
+    def _note(self, table, addr, now):
+        with self.lock:
+            table[addr] = now
+            if addr in self.watched:
+                self.event.set()
+
+    def needs_direct(self, addr) -> bool:  # bluetoothd set any advert since we set directed ones, or we never did
+        with self.lock:
+            return self.rearmed.get(addr, 0.0) >= self.direct.get(addr, -1.0)
+
+    def set_direct(self, addr, random):
+        with self.lock:
+            self.direct[addr] = time.monotonic()    # once per arming, also when it failed (said on stderr)
+        if kernel_direct(addr, random, self.sink):
+            print("%s: the kernel connects it on its directed adverts only (waking), "
+                  "a pairing advert is left to watch" % addr)
+
+    def adopt(self, addr):
+        """a remote just paired is ours: bluetoothd set the kernel to any advert while pairing it - undo that
+        now (not during the pairing connection), with the address type of bluetoothd's own command"""
+        with self.lock:
+            self.watched.add(addr)
+            random = self.random.get(addr, False)
+        self.set_direct(addr, random)
+
+    def waking(self, addr) -> bool:         # an undirected advert without the pairing flag since the last call
+        with self.lock:
+            return self.plain.pop(addr, None) is not None
 
     def asking(self, addrs):       # the first of addrs that advertised in pairing mode since our last pairing
         with self.lock:
@@ -201,7 +294,7 @@ class PairingOffers:
 def device_info(ctl: Ctl, addr: str):
     """Only use fields belonging to the requested info block, not other events."""
     ctl.send("info " + addr)
-    block, active, connected = [], False, False
+    block, active, connected, random = [], False, False, False
     for line in ctl.lines(1.5):
         change = re.search(r"\[CHG\] Device ([0-9A-Fa-f:]{17}) Connected: (yes|no)$", line)
         if change and change.group(1).upper() == addr.upper():
@@ -210,12 +303,14 @@ def device_info(ctl: Ctl, addr: str):
         header = re.fullmatch(r"Device ([0-9A-Fa-f:]{17})(?: .*|$)", line)
         if header:
             active = header.group(1).upper() == addr.upper()
+            random = random or (active and "(random)" in line)
         elif active and not line.startswith(("[", "Controller ")):
             block.append(line)
             if line in ("Connected: yes", "Connected: no"):
                 connected = line == "Connected: yes"
     return {"hog": any(line.startswith("UUID:") and HOG_UUID in line for line in block),
-            "connected": connected, "name": next((line[6:] for line in block if line.startswith("Name: ")), "")}
+            "connected": connected, "name": next((line[6:] for line in block if line.startswith("Name: ")), ""),
+            "random": random}
 
 
 def known_remotes(ctl: Ctl, names):     # {addr: name} of the objects bluez already keeps with a stock name
@@ -271,7 +366,7 @@ def pair(ctl: Ctl, addr: str, timeout: float) -> int:
     return EXIT_OK
 
 
-def bonded(ctl: Ctl, names):                     # [(addr, name, connected)] of the bonded remotes
+def bonded(ctl: Ctl, names):                     # [(addr, name, connected, random)] of the bonded remotes
     ctl.send("devices Paired", "show")          # "show" prints a line that ends the listing
     out = []
     for line in ctl.lines(5):
@@ -285,11 +380,11 @@ def bonded(ctl: Ctl, names):                     # [(addr, name, connected)] of 
     for dev in out:
         info = device_info(ctl, dev[0])
         dev[2] = info["connected"]
-        dev.append(info["hog"])
-    return [tuple(d[:3]) for d in out if d[3]]
+        dev.extend((info["random"], info["hog"]))
+    return [tuple(d[:4]) for d in out if d[4]]
 
 
-def run_pair(ctl: Ctl, names, timeout: float, addr=None) -> int:
+def run_pair(ctl: Ctl, names, timeout: float, addr=None, adopt=None) -> int:
     found = scan_for(ctl, names, timeout, addr)
     if found is None:
         print("no remote in pairing mode within %ds (hold LEFT + RIGHT on the stock remote)" % timeout)
@@ -298,12 +393,14 @@ def run_pair(ctl: Ctl, names, timeout: float, addr=None) -> int:
     rc = pair(ctl, found[0], timeout)
     if rc == EXIT_OK:
         print("ok paired %s %s (trusted, bluez reconnects it)" % found)
+        if adopt:
+            adopt(found[0])
     return rc
 
 
 def cmd_status(ctl: Ctl, a) -> int:
     devs = bonded(ctl, a.name)
-    for addr, name, connected in devs:
+    for addr, name, connected, _ in devs:
         print("%s %s %s" % (addr, name, "connected" if connected else "bonded, not connected"))
     print("" if devs else "no remote bonded", end="" if devs else "\n")
     return EXIT_OK if devs else EXIT_NOT_FOUND
@@ -356,28 +453,34 @@ def cmd_reconnect(ctl: Ctl, a) -> int:
     if not devs:
         print("no remote bonded; use pair for first-time setup")
         return EXIT_NOT_FOUND
-    if any(connected for _, _, connected in devs):
+    if any(d[2] for d in devs):
         print("ok remote already connected")
         return EXIT_OK
     return reconnect(ctl, devs[0][0], a.timeout)
 
 
 def cmd_watch(ctl: Ctl, a) -> int:
-    offers = PairingOffers(a.monitor)
+    offers = PairingOffers(a.monitor, a.mgmt)
     devs = []
     while True:
         offers.event.clear()
-        # The bonded remotes of the last round first: until the bond is gone the kernel keeps connecting the
-        # remote with the stale key, and a round of bluetoothctl costs 1.5 s - on the G-EU the remote once
-        # ended its pairing mode 0.3 s after a forget that came 1.5 s late (20.10.2026).
+        # The bonded remotes of the last round first: a round of bluetoothctl costs 1.5 s.
         stale = offers.asking(d[0] for d in devs)
-        rc = EXIT_OK
+        rc, paired = EXIT_OK, False
         if not stale:
             devs = bonded(ctl, a.name)
+            blind = offers.broken.is_set()     # without the monitor channel: bluetoothd's way, as before
+            for addr, _, _, random in [] if blind else devs:
+                # bluetoothd sets the kernel's auto-connect to any advert when it loads or pairs the remote
+                if offers.needs_direct(addr):
+                    offers.set_direct(addr, random)
             if not devs:
-                rc = run_pair(ctl, a.name, a.timeout)
+                rc = run_pair(ctl, a.name, a.timeout, adopt=None if blind else offers.adopt)
                 offers.paired()
-            elif not offers.asking(d[0] for d in devs) and not any(connected for _, _, connected in devs):
+                paired = rc == EXIT_OK
+            elif (not offers.asking(d[0] for d in devs) and not any(d[2] for d in devs)
+                    and (blind or offers.waking(devs[0][0]))):
+                # it woke with an undirected advert, which the kernel leaves alone now
                 rc = reconnect(ctl, devs[0][0], a.timeout, offers.event)
             stale = devs and offers.asking(d[0] for d in devs)
         if stale:
@@ -385,12 +488,13 @@ def cmd_watch(ctl: Ctl, a) -> int:
                   "pairing afresh" % stale)
             rc = forget(ctl, stale)
             if rc == EXIT_OK:
-                rc = run_pair(ctl, a.name, a.timeout, stale)
+                rc = run_pair(ctl, a.name, a.timeout, stale, offers.adopt)
             offers.paired()
-            devs = []
+            devs, paired = [], rc == EXIT_OK
         if a.once:
             return rc
-        offers.event.wait(a.interval)
+        if not paired:      # after a pairing the new bond goes through a round at once
+            offers.event.wait(a.interval)
 
 
 def main(argv=None) -> int:
@@ -414,6 +518,8 @@ def main(argv=None) -> int:
     s.add_argument("--once", action="store_true", help="one round, then exit")
     s.add_argument("--monitor", default=os.environ.get("H713_HCI_MONITOR", ""),
                    help="read HCI monitor frames from this file instead of the kernel (tests; env H713_HCI_MONITOR)")
+    s.add_argument("--mgmt", default=os.environ.get("H713_HCI_MGMT", ""),
+                   help="append mgmt commands to this file instead of sending them to the kernel (tests; env H713_HCI_MGMT)")
     a = p.parse_args(argv)
     a.name = tuple(a.name) if a.name else NAMES
     try:

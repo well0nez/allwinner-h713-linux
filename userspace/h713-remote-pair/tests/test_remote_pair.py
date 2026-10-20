@@ -46,6 +46,49 @@ def frames(*events):
     return b"".join(struct.pack("<HHH", 3, 0, len(e)) + e for e in events)
 
 
+def add_device_command(addr, action, cookie=1):
+    """bluetoothd's mgmt Add Device as the monitor channel shows it (opcode 16: a program's mgmt command)"""
+    payload = struct.pack("<IH", cookie, 0x0033) + le_addr(addr) + bytes([1, action])
+    return struct.pack("<HHH", 16, 0, len(payload)) + payload
+
+
+def add_devices(path):
+    """(address, type, action) of the mgmt Add Device commands watch wrote to its mgmt file"""
+    out, data = [], open(path, "rb").read()
+    while len(data) >= 6:
+        op, _, size = struct.unpack_from("<HHH", data)
+        cp, data = data[6:6 + size], data[6 + size:]
+        if op == 0x0033:
+            out.append((":".join("%02X" % b for b in reversed(cp[:6])), cp[6], cp[7]))
+    return out
+
+
+#: an undirected advert without the pairing flag: a remote that wakes without a directed advert
+WAKE = adv_report(REMOTE, 0x00, b"")
+
+
+class FifoFeed:
+    """Opens the FIFO watch reads as its monitor channel, writes frames, keeps it open (so the stand-in can
+    add its own) until the block ends."""
+    def __init__(self, path, data):
+        self.path, self.data, self.done = path, data, threading.Event()
+
+    def _run(self):
+        with open(self.path, "wb") as w:
+            w.write(self.data)
+            w.flush()
+            self.done.wait(90)
+
+    def __enter__(self):
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.done.set()
+        self.thread.join(5)
+
+
 def load_tool():
     loader = importlib.machinery.SourceFileLoader("h713_remote_pair", TOOL)
     spec = importlib.util.spec_from_loader("h713_remote_pair", loader)
@@ -54,9 +97,11 @@ def load_tool():
     return mod
 
 
-def run(args, scenario="found", log=None, monitor=os.devnull, **extra):
-    """monitor: the HCI monitor frames watch reads (default none, never the host's own controller)"""
-    env = dict(os.environ, FAKE_SCENARIO=scenario, H713_BLUETOOTHCTL=CTL, H713_HCI_MONITOR=monitor, **extra)
+def run(args, scenario="found", log=None, monitor=os.devnull, mgmt=os.devnull, **extra):
+    """monitor: the HCI monitor frames watch reads, mgmt: where it writes mgmt commands (default nothing,
+    never the host's own controller)"""
+    env = dict(os.environ, FAKE_SCENARIO=scenario, H713_BLUETOOTHCTL=CTL, H713_HCI_MONITOR=monitor,
+               H713_HCI_MGMT=mgmt, **extra)
     if log:
         env["FAKE_LOG"] = log
     return subprocess.run([sys.executable, TOOL] + args, env=env, capture_output=True, text=True, timeout=60)
@@ -177,7 +222,8 @@ class Commands(unittest.TestCase):
     def test_watch_says_each_line_while_it_runs(self):
         """under systemd stdout is a pipe: the lines must come while watch keeps running, not at its end"""
         import select, time
-        env = dict(os.environ, FAKE_SCENARIO="empty", H713_BLUETOOTHCTL=CTL, H713_HCI_MONITOR=os.devnull)
+        env = dict(os.environ, FAKE_SCENARIO="empty", H713_BLUETOOTHCTL=CTL, H713_HCI_MONITOR=os.devnull,
+                   H713_HCI_MGMT=os.devnull)
         p = subprocess.Popen([sys.executable, TOOL, "watch", "--interval", "30", "--timeout", "3"], env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         try:
@@ -192,8 +238,13 @@ class Commands(unittest.TestCase):
             p.kill()
             p.wait()
 
-    def test_watch_once_reconnects_a_bonded_remote(self):
-        r = run(["watch", "--once", "--timeout", "5"], scenario="unconnected")
+    def test_watch_once_reconnects_a_remote_that_wakes_undirected(self):
+        """a directed advert is the kernel's to connect; an undirected one without the pairing flag is watch's"""
+        with tempfile.TemporaryDirectory() as d:
+            hci = os.path.join(d, "hci")
+            with open(hci, "wb") as f:
+                f.write(frames(WAKE))
+            r = run(["watch", "--once", "--timeout", "5"], scenario="unconnected", monitor=hci)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("ok connected " + REMOTE, r.stdout)
         r = run(["watch", "--once", "--timeout", "5"], scenario="found")
@@ -212,10 +263,26 @@ class Commands(unittest.TestCase):
         self.assertNotIn("cmd remove ", sent)
         self.assertNotIn("cmd scan ", sent)
 
+    def test_watch_lets_the_kernel_connect_on_directed_adverts_only(self):
+        """bluetoothd lets the kernel connect a bonded remote on any advert, also on its pairing advert
+        (Add Device action 2); watch sets action 1 and does not connect by itself without a waking advert"""
+        with tempfile.TemporaryDirectory() as d:
+            log, mgmt = os.path.join(d, "log"), os.path.join(d, "mgmt")
+            r = run(["watch", "--once", "--timeout", "3"], scenario="unconnected", log=log, mgmt=mgmt)
+            added = add_devices(mgmt)
+            with open(log) as f:
+                sent = f.read()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(added, [(REMOTE, 1, 1)])
+        self.assertIn("directed adverts only", r.stdout)
+        self.assertNotIn("cmd connect ", sent)
+
     def test_watch_does_not_repair_after_connection_failure(self):
         with tempfile.TemporaryDirectory() as d:
-            log = os.path.join(d, "log")
-            r = run(["watch", "--once", "--timeout", "3"], scenario="connectfail", log=log)
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            with open(hci, "wb") as f:
+                f.write(frames(WAKE))
+            r = run(["watch", "--once", "--timeout", "3"], scenario="connectfail", log=log, monitor=hci)
             self.assertEqual(r.returncode, 2, r.stderr)
             with open(log) as f:
                 sent = f.read()
@@ -326,8 +393,9 @@ class StaleBond(unittest.TestCase):
         with tempfile.TemporaryDirectory() as d:
             log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
             os.mkfifo(hci)
-            r = run(["watch", "--once", "--timeout", "5"], scenario="stale", log=log, monitor=hci,
-                    FAKE_HCI=hci, FAKE_HCI_FRAMES=frames(adv_report(REMOTE)).hex())
+            with FifoFeed(hci, frames(WAKE)):       # it woke undirected, watch connects, then Left + Right
+                r = run(["watch", "--once", "--timeout", "5"], scenario="stale", log=log, monitor=hci,
+                        FAKE_HCI=hci, FAKE_HCI_FRAMES=frames(adv_report(REMOTE)).hex())
             with open(log) as f:
                 sent = f.read()
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
@@ -340,8 +408,9 @@ class StaleBond(unittest.TestCase):
             log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
             os.mkfifo(hci)
             start = time.monotonic()
-            r = run(["watch", "--once", "--timeout", "20"], scenario="stalesilent", log=log, monitor=hci,
-                    FAKE_HCI=hci, FAKE_HCI_FRAMES=frames(adv_report(REMOTE)).hex())
+            with FifoFeed(hci, frames(WAKE)):
+                r = run(["watch", "--once", "--timeout", "20"], scenario="stalesilent", log=log, monitor=hci,
+                        FAKE_HCI=hci, FAKE_HCI_FRAMES=frames(adv_report(REMOTE)).hex())
             took = time.monotonic() - start
         self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
         self.assertIn("ok paired " + REMOTE, r.stdout)
@@ -355,7 +424,8 @@ class StaleBond(unittest.TestCase):
             log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
             os.mkfifo(hci)
             open(log, "w").close()
-            env = dict(os.environ, FAKE_SCENARIO="found", H713_BLUETOOTHCTL=CTL, FAKE_LOG=log, H713_HCI_MONITOR=hci)
+            env = dict(os.environ, FAKE_SCENARIO="found", H713_BLUETOOTHCTL=CTL, FAKE_LOG=log, H713_HCI_MONITOR=hci,
+                       H713_HCI_MGMT=os.devnull)
             p = subprocess.Popen([sys.executable, TOOL, "watch", "--interval", "30", "--timeout", "5"], env=env,
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             try:
@@ -404,7 +474,8 @@ class StaleBond(unittest.TestCase):
             with open(hci, "wb") as f:
                 f.write(frames(adv_report(REMOTE)))
             open(log, "w").close()
-            env = dict(os.environ, FAKE_SCENARIO="empty", H713_BLUETOOTHCTL=CTL, FAKE_LOG=log, H713_HCI_MONITOR=hci)
+            env = dict(os.environ, FAKE_SCENARIO="empty", H713_BLUETOOTHCTL=CTL, FAKE_LOG=log, H713_HCI_MONITOR=hci,
+                       H713_HCI_MGMT=os.devnull)
             p = subprocess.Popen([sys.executable, TOOL, "watch", "--interval", "0.5", "--timeout", "5"], env=env,
                                  stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
             try:
