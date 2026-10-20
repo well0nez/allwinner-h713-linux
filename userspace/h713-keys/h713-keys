@@ -6,7 +6,8 @@ Reads only the stock remote - the Bluetooth LE remote (1d5a:c081, kernel 0169) a
 No EVIOCGRAB, except while the launcher is open (Home): then Kodi gets no key. h713-power reads KEY_POWER from the
 same devices and stays the one that powers off; a Power press with the launcher open is handed on to it.
 A held key repeats on the Bluetooth remote as on the IR receiver (500 ms, then every 125 ms): the input core's
-own 250/33 ms ran the volume from 100 to 15 in 1.6 s. OK arrives as KEY_ENTER (70-h713-remote.rules) and is read as KEY_OK.
+own 250/33 ms ran the volume from 100 to 15 in 1.6 s. OK arrives as KEY_ENTER (70-h713-remote.rules) and is read as KEY_OK;
+in the remote's mouse mode it arrives as BTN_LEFT, and is read as KEY_OK while the launcher is open (it has no pointer).
 
 Volume and mute go straight to h713-tv's control socket (/run/h713-tv/ctl, one line per command), the
 focus to h713-focus (one run at a time, presses during a run add to the next). Louder and quieter both
@@ -65,6 +66,7 @@ LATER = {139, 127, 158, 103, 108, 105, 106, 352, 61, 64}    # recognised, no act
 # KEY_F6 is the IR code of the mouse and the microphone key (0x0266, PRJ_BRC_PAIR): over IR both only ask
 # for the Bluetooth pairing (kernel 0254). h713-remote-pair's watch pairs only while no remote is bonded.
 SELECT_IS_OK = {353: 352, 28: 352}          # OK: KEY_ENTER since 70-h713-remote.rules; Bluetooth's HID "Menu Pick" = KEY_SELECT without it (11.10.)
+BTN_LEFT = 272                              # the remote's mouse mode sends OK as the left button; the launcher has no pointer, so it is OK there (TODO 2.130)
 EVIOCSREP = 0x40084503                      # _IOW('E', 0x03, unsigned int[2])
 EVIOCGRAB = 0x40044590                      # _IOW('E', 0x90, int)
 SYSTEMCTL = shlex.split(os.environ.get("H713_KEYS_SYSTEMCTL", "systemctl"))
@@ -773,6 +775,8 @@ def run(once):
                 if TRACE:                    # the key-to-wall measurement: the kernel's stamp of the key and the time it was read, CLOCK_REALTIME
                     log("trace: %s value %d stamped %.4f read %.4f" % (NAMES.get(code, code), value, sec + usec / 1e6, time.time()))
                 code = SELECT_IS_OK.get(code, code)
+                if code == BTN_LEFT and launcher.entries is not None:
+                    code = 352               # closed, the click is a click: Kodi's, the desktop's, the browser's
                 acted = True
                 if launcher.entries is not None and launcher.key(code, value, devices):
                     continue

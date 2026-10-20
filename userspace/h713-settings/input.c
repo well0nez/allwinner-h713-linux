@@ -142,6 +142,7 @@ static int map(int code, int value)
 	case KEY_ENTER:			/* the remote's OK since 70-h713-remote.rules: a client (cage, Kodi) gets no code above 247 */
 	case 352:			/* KEY_OK: the same key without the rule */
 	case 353:			/* KEY_SELECT: the Bluetooth remote's "Menu Pick" without it */
+	case BTN_LEFT:			/* the remote in its mouse mode sends OK as the left button; the page has no pointer */
 		return KE_OK;
 	case KEY_BACK:
 		return KE_BACK;
