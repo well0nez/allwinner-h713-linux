@@ -101,7 +101,7 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | | Remote power key | `remote` of `power.conf` | `h713-power set remote on \| off` | the file |
 | Wi-Fi | Mode, Network, Signal, Address | `wifi.env` (never the password), `iw dev wlan0 link`, `ip -4 addr` | nothing: shown only | |
 
-**The Colour area is left out (since 20.10.2026).** The display firmware's colour manager - hue and saturation of the primaries - has no visible effect on the HY310 in any state, measured with the camera (the registers are written and read back, the picture does not change; whether it works under the vendor's system is open). The page shows eight areas; `H713_SETTINGS_COLOUR=1` brings the area back (the host tests use it), and `h713-tv ctl set cm_*` stays. White balance and colour temperature work.
+**The Colour area is left out (since 20.10.2026).** The display firmware's colour manager - hue and saturation of the primaries - has no visible effect on the HY310 in any state, measured with the camera (the registers are written and read back, the picture does not change). Under the vendor's system (HY350) the value step of the same block has no effect either; hue and saturation could not be judged there, its camera sees no colour - whether they work under the vendor's system is open. The page shows eight areas; `H713_SETTINGS_COLOUR=1` brings the area back (the host tests use it), and `h713-tv ctl set cm_*` stays. White balance and colour temperature work.
 
 Rows of hardware the board does not have (`h713-features status`: camera, accelerometer, focus motor) are hidden, not
 greyed out. So are Gamma and Colour temperature where `ctl get gamma` says `is not available` (a board whose curves h713-tv could not read; the two go
