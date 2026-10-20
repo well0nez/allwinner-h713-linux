@@ -492,6 +492,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.129 **Im Aus über crust verliert die HDMI-Quelle das Signal nicht** (Marco 20.10.2026 am G-EU, beim Summtest): unser Aus hält den Eingang
       für die Quelle sichtbar (HPD high? 5-V-Erkennung, EDID-Speicher versorgt?); Stock vermutlich nicht. Messen: HPD-Pegel und EDID-Antwort im
       Aus, Verhalten der Quelle (geht sie in Standby?); dann im Aus HPD low ziehen wie Stock (Ort: hdmirx-suspend/crust POWEROFF).
+- [ ] 2.130 Klein (Marco 20.10.2026 am G-EU): **im Mausmodus der Fernbedienung bestätigt OK nichts mehr** - OK sendet dort BTN_LEFT statt KEY_SELECT
+      (TODO-Notiz 11.10.), Launcher und Seiten haben keinen Zeiger. h713-keys soll BTN_LEFT bei offenem Launcher/offener Seite als OK nehmen. Dazu: nach
+      dem Aufwachen gehen die ersten 2-3 s Tasten nur über IR (Maustaste per IR = 0x0266, keine Maus) - Marco: "Maus geht nicht beim ersten Mal".
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
