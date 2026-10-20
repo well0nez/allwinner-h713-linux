@@ -493,7 +493,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Debian, snapshot.debian.org; MIT/BSD verlangen keine Quellen). Beim Release: die Forks pushen, crust eingeschlossen (das Repo fehlt noch, 1.6);
       eine Datei auf der Release-Seite = Repo mit Submodulen als Archiv (GitHubs "Source code" enthält keine Submodule); den Absatz "Source code"
       in rootfs/overlay/usr/local/share/doc/h713-linux/README danach ausrichten (heute verspricht er Archive für das ganze Abbild). Kein
-      Archiv-Skript mit Tor. Nichts davon jetzt pushen. Der Rest unten bleibt als Beleg:
+      Archiv-Skript mit Tor. Nichts davon jetzt pushen. **Mythos' Einwand dazu (Nachtrag 21.10., übernommen):** der Release-Tag zeigt auf den
+      Baukommit, gebaut aus sauberem Stand (SOURCES ohne "with N local changes"), damit Archiv und Abbild zum selben Commit gehören; der
+      README-Absatz sagt, dass Linux (kernel.org) und aic8800 nur als Patches, Konfiguration und Pins im Repository liegen. Der Rest unten bleibt als Beleg:
       R1 die Quellenaussage im Abbild (kein schriftliches Angebot, Marco 20.10.) trägt nur, wenn sie wahr ist: ein Skript, das die Quellarchive des
       genauen Stands erzeugt (Repo, U-Boot, TF-A, crust, Linux, aic8800, Mesa, libva, sunxi-fel, dazu die Debian-Quellpakete aus DEBIAN-SOURCES),
       ein Release-Schritt, der sie neben das Abbild legt, und ein Tor davor; zwei Sätze im README; sunxi-fel in SOURCES. R2 die Probeabbilder der
