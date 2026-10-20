@@ -13,7 +13,8 @@ mainline/ carry the licence they came with, or none: a file without a licence
 line that is not ours is not covered by this text.
 
     Copyright (C) 2026 well0nez
-    Copyright (C) 2026 Christopher Stenger (the parts marked as his in PROVENANCE.md)
+    Copyright (C) 2026 Christopher Stenger (his kernel patches as listed in PROVENANCE.md, and the nine
+    files under mainline/tools/ that carry his SPDX-License-Identifier line, named there)
 
 Keep the copyright notices, and say where the work came from. That is not
 politeness, it is the licence: section 1 requires the notices to stay, and
@@ -21,7 +22,7 @@ section 2 requires changed files to carry a note saying what was changed.
 
 Parts of this repository are derived from Linux and U-Boot and inherit their
 licence; they could not be relicensed even if we wanted to. Which part comes
-from whom is written down in PROVENANCE.md, file by file.
+from whom is written down in PROVENANCE.md.
 
 --------------------------------------------------------------------------
 

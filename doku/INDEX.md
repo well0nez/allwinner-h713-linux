@@ -12,7 +12,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 |---|---|
 | `BUILDING.md` | `doku/116`, `doku/121`, `doku/212`, `doku/50` |
 | `FLASHING.md` | `doku/109`, `doku/110` |
-| `PROVENANCE.md` | `doku/116`, `doku/213` |
+| `PROVENANCE.md` | `doku/116`, `doku/210`, `doku/213` |
 | `README.md` | `doku/88` |
 | `RELEASES.md` | `doku/134`, `doku/142`, `doku/211`, `doku/213` |
 | `ROADMAP.md` | `doku/104`, `doku/134`, `doku/70`, `doku/71` |
@@ -25,13 +25,13 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/188`, `doku/190`, `doku/70`, `doku/72`, `doku/94` |
-| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/212`, `doku/213`, `doku/80` |
+| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/210`, `doku/212`, `doku/213`, `doku/80` |
 | `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/193`, `doku/197`, `doku/198`, `doku/199`, `doku/200`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/60`, `doku/61` |
 | `docs/services.md` | `doku/107`, `doku/170`, `doku/213` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/184`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/206`, `doku/nachtlog/S21-re-audif-zugang` |
 | `docs/subsystems/board-mgr.md` | `doku/00`, `doku/171`, `doku/60` |
-| `docs/subsystems/cpu-comm.md` | `doku/165`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/203`, `doku/206`, `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/96` |
+| `docs/subsystems/cpu-comm.md` | `doku/165`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/182`, `doku/203`, `doku/206`, `doku/210`, `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/85`, `doku/96` |
 | `docs/subsystems/crypto-engine.md` | `doku/112`, `doku/114` |
 | `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/192`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
@@ -118,13 +118,14 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/tests/test_layout_v4.py` | `doku/109` |
 | `installer/tests/test_o1b_followups.py` | `doku/61` |
 | `installer/tests/test_py39_syntax.py` | `doku/61` |
+| `installer/tests/test_sperrscan_spdx.py` | `doku/210` |
 | `installer/tests/test_stock_gpt_crosscheck.py` | `doku/60`, `doku/61` |
 | `installer/tests/test_stock_guard.py` | `doku/121` |
 | `installer/tests/test_test_image.py` | `doku/109`, `doku/121` |
 | `release/build-all.sh` | `doku/107`, `doku/116`, `doku/120`, `doku/121`, `doku/148`, `doku/50`, `doku/60` |
 | `release/doku-index.py` | `doku/128`, `doku/128a`, `doku/nachtlog/S49-` |
 | `release/repo-skelett.sh` | `doku/116`, `doku/118`, `doku/121` |
-| `release/sperr-scan.py` | `doku/116`, `doku/121` |
+| `release/sperr-scan.py` | `doku/116`, `doku/121`, `doku/210` |
 | `rootfs/build-rootfs.sh` | `doku/107`, `doku/109`, `doku/116`, `doku/50` |
 | `rootfs/install-projekt.sh` | `doku/116`, `doku/60` |
 | `rootfs/packages-media.txt` | `doku/107` |
@@ -237,7 +238,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`179-missglueckter-standby-endet-dunkel-im-gate-20261009.md`](179-missglueckter-standby-endet-dunkel-im-gate-20261009.md) | Analyse | 2026-10-09 | 179 - Ein missglückter Standby endet dunkel im Gate (TODO 2.30) (09.10.2026, 18:40) | 5 |
 | [`180-hdcp-haertung-eingebaut-und-gemessen-20261009.md`](180-hdcp-haertung-eingebaut-und-gemessen-20261009.md) | Analyse | 2026-10-09 | 180 - HDCP-Härtung eingebaut und per FEL gemessen: Übergabe ohne Adresse, einmal pro Boot, Watchdog über den Treiber (09.10.2026, 20:30) | 1 |
 | [`181-leistung-standby-gate-betrieb-20261009.md`](181-leistung-standby-gate-betrieb-20261009.md) | Analyse | 2026-10-09 | 181 - Leistung am HY310: Standby 2,4 W, Aus (Gate) 2,9 W, Betrieb ~24 W (TODO 2.31) (09.10.2026, 21:00) | 6 |
-| [`182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`](182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md) | Analyse | 2026-10-10 | 182 - HY300PRO-G-EU: crust läuft, und der schwarze MIPS-Reload ist das Panel - es braucht einen Stromzyklus (09./10.10.2026, 21:00-02:00) | 3 |
+| [`182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`](182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md) | Analyse | 2026-10-10 | 182 - HY300PRO-G-EU: crust läuft, und der schwarze MIPS-Reload ist das Panel - es braucht einen Stromzyklus (09./10.10.2026, 21:00-02:00) | 4 |
 | [`183-handoff-20261010-nachts.md`](183-handoff-20261010-nachts.md) | Handoff | 2026-10-10 | 183 - Handoff 10.10.2026 nachts: Stand und Plan (HY300-Tests mit geucrust2 stehen an) | - |
 | [`184-hy300pro-g-eu-geucrust2-testreihe-20261010.md`](184-hy300pro-g-eu-geucrust2-testreihe-20261010.md) | Analyse | 2026-10-10 | 184 - HY300PRO-G-EU mit geucrust2: alles, was am HY310 bestätigt ist, bis auf die Standby-Leistung (10.10.2026, 01:00-02:30) | 7 |
 | [`185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md`](185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md) | Analyse | 2026-10-10 | 185 - HY300PRO-G-EU: Lüfter und Lampe im Standby aus - PB5 gehört dem Board-Manager (10.10.2026, 02:30-02:50) | 3 |
@@ -266,6 +267,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`207-hy310-auf-main-hy310main1-reihe-20261012.md`](207-hy310-auf-main-hy310main1-reihe-20261012.md) | Analyse | 2026-10-12 | 207 - HY310 auf `main`: Abbild hy310main1 gebaut und installiert, die offenen 2.x-Punkte gemessen; Handoff (12.10.2026, abends) | 1 |
 | [`208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`](208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md) | Analyse | 2026-10-12 | 208 - Die 5.x-Runde: Werkzeuge, Reste der Standby-Durchsicht, ARISC-Wahl, Panel-PR, Testabbild runde5x1 am HY310; Handoff (12.10.2026, nachts) | - |
 | [`209-runde-5x-teil-b-uebernahme-panel-20261013.md`](209-runde-5x-teil-b-uebernahme-panel-20261013.md) | Analyse | 2026-10-13 | 209 - Die 5.x-Runde, Teil B mit Marco am HY310, alles nach `main`, das Panel mit den Beamer-Begriffen; Handoff (13.10.2026, nachts) | - |
+| [`210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md`](210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md) | Analyse | 2026-10-13 | 210 - Entflechtung des Subtrees: cstengers Dateien ohne Lizenz sind aus dem Baum, was sie ersetzt (13.10.2026) | 5 |
 | [`211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md`](211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md) | Protokoll | 2026-10-15 | 211 - Das Nebenprojekt Medien: Dekoder, VA-API-Treiber, mesa, Kodi und der Wayland-Server im Warp; die Messungen am HY310 (13. bis 15.10.2026) | 6 |
 | [`212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md`](212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md) | Protokoll | 2026-10-16 | 212 - Das Nebenprojekt Medien, zweiter Teil: Launcher, Einstellungsseite, Desktop und Browser, Kodi als Nutzer, die VE mit 600 MHz, der VA-Treiber `0015` bis `0017`, der Endbau (15. und 16.10.2026) | 13 |
 | [`213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md`](213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md) | Protokoll | 2026-10-16 | 213 - Das Nebenprojekt Medien, dritter Teil: die Bildweiche, die Bedienung beim Start, die RTC am 24-MHz-Quarz (Patch `0320`), Fokus und Bluetooth, das Licht des HY310 (16. und 17.10.2026) | 12 |
@@ -300,7 +302,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`82-arisc-treiber.md`](82-arisc-treiber.md) | Analyse |  | `sun50i-h713-arisc` - der ARISC-Treiber | 3 |
 | [`83-cpu-comm-api.md`](83-cpu-comm-api.md) | Analyse |  | Die In-Kernel-API von `cpu_comm` | 3 |
 | [`84-re-capture-ring.md`](84-re-capture-ring.md) | Analyse |  | RE: INCAP-Felder, Ring-Folge und der zweite Descriptor-Anstoß (K1-K3) | 1 |
-| [`85-re-pq-register.md`](85-re-pq-register.md) | Analyse |  | 85 - PQ-Register der MIPS-Firmware (K5) und Vorstudie Compositing (K6) | 4 |
+| [`85-re-pq-register.md`](85-re-pq-register.md) | Analyse |  | 85 - PQ-Register der MIPS-Firmware (K5) und Vorstudie Compositing (K6) | 5 |
 | [`86-video-plane-nv16.md`](86-video-plane-nv16.md) | Plan |  | Die Video-Plane: NV16 aus dem HDMI-Capture-Ring (Patch 0093) | 6 |
 | [`87-gamma-ctm-kms.md`](87-gamma-ctm-kms.md) | Analyse |  | Gamma und Weißabgleich als KMS-Eigenschaften am H713-AFBD-CRTC | 3 |
 | [`88-v4l2-hdmirx.md`](88-v4l2-hdmirx.md) | Analyse |  | 88 - `sun50i-h713-hdmirx`: der HDMI-Eingang als V4L2-Gerät | 5 |
@@ -427,7 +429,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-51 von 273 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+51 von 274 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)

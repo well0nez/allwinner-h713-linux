@@ -4,6 +4,10 @@ mainline/build/*
 !mainline/build/uboot-build.sh
 !mainline/build/uboot-prove-fragments.sh
 mainline/patches-snapshots/
+# Kernel trees, rootfs staging and local scratch directly under mainline/
+mainline/linux-*/
+mainline/rootfs-build/
+mainline/local/
 # Installer / rootfs output and run logs
 installer/out/
 installer/logs/

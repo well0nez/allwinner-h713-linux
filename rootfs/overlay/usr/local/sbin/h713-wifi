@@ -192,7 +192,7 @@ runter() {
 # ---------------------------------------------------------------------------
 starte_ap() {
 	# The hostapd lines are the ones measured on the device, from cstenger's
-	# rootfs build (mainline/tools/rootfs/customize.sh): 2.4 GHz HT40
+	# rootfs build (tools/rootfs/customize.sh in his repository at 8860991): 2.4 GHz HT40
 	# 4.85/7.65 MB/s, 5 GHz VHT80 13.25/14.41 MB/s. This driver cannot do
 	# MAX-MPDU-11454 (it reports 7991); asking for it gives "Unable to setup
 	# interface". HT40 needs a neighbour channel: below for the low channels

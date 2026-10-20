@@ -137,7 +137,7 @@ host-wake auf PM0). Zwei Kandidaten, beide pruefbar:
 Das spricht dafuer, dass 385 richtig war: **am 21.08. lief WLAN auf diesem
 Geraet vollstaendig** — `mmc1: new UHS-I speed SDR104 SDIO card at address 6721`,
 8 und 128 MiB in beide Richtungen fehlerfrei, siehe
-`mainline/docs/handoff-wifi-sdio-2026-08-17.md`. Derselbe Treiber mit derselben
+`docs/handoff-wifi-sdio-2026-08-17.md` in cstengers Repo @`8860991`. Derselbe Treiber mit derselben
 385 im Code. Ob der Treiber den Chip damals einschaltete oder ob er schon an
 war, laesst sich aus den Protokollen nicht entscheiden.
 

@@ -35,7 +35,7 @@ regions. Old names: `BOARD=ddr3` (still an alias of `build/build.sh`) and `board
   (`installer/tests/fixtures/images/hy300-pro-plus-ddr3-0922.json`): boot0, boot package, both
   `panel_config.ini` copies, the display firmware and the stock device tree of `vendor_boot.fex`.
 - **The bench** - cstenger's `configs/hy200_qz713df_a1_defconfig` (624 MHz, his flash layout) and his
-  runs: `mainline/README.md` "All FEL/bring-up runs on this one", `versions.env` Linux 6.18.38
+  runs: his README at `8860991` "All FEL/bring-up runs on this one", `versions.env` Linux 6.18.38
   "boot-good". His run, not ours: it makes no variant `verified`.
 
 What is the same: the 23 boot0 words besides the clock (tpr0..tpr2 included; para2/tpr13 only differ
