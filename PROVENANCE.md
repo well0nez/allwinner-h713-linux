@@ -168,6 +168,12 @@ BSD-3-Clause, `crust-h713/` BSD-3-Clause or GPL-2.0-only, `uboot-h713/` GPL-2.0+
 on them (a file of his without a licence line is not covered by ours; "Left out on purpose" above says which of them are
 still in the tree and being rewritten).
 
+**In the image.** An image carries its licence notices under `/usr/local/share/doc/h713-linux/`: a README with every
+part's licence and the written offer of the source of every GPL or LGPL part, the revisions it was built from, the BSD
+notices of TF-A's BL31 and of crust (the copyright lines of every source file built into them), the kernel's licence,
+the copyright files of the libraries linked statically into `h713-osd` and `h713-settings`, and the list of Debian's
+source packages; Debian's own copyright files stay in `/usr/share/doc/` ([rootfs/README.md](rootfs/README.md)).
+
 **Documentation: CC BY-SA 4.0** ([LICENSE.docs](LICENSE.docs)) - `docs/`, `doku/` and the Markdown at the
 top level: share it, adapt it, credit **well0nez**, keep the same licence.
 

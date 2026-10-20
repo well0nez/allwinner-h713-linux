@@ -239,12 +239,12 @@ DELIVERY="$INSTALLER/out"
 # moved submodule counts as one), reused building blocks (--skip-*), a private
 # --wifi-env. The rootfs is reproducible only against the same mirror state.
 REPRO_GIT=$ROOT; git -C "$REPRO_GIT" rev-parse -q --verify HEAD >/dev/null 2>&1 || REPRO_GIT=$MAINLINE
-REPRO_WHY=()
+REPRO_WHY=() REPRO_DIRTY=
 if SOURCE_DATE_EPOCH=$(git -C "$REPRO_GIT" log -1 --format=%ct 2>/dev/null) && [[ -n "$SOURCE_DATE_EPOCH" ]]; then
-	REPRO_COMMIT=$(git -C "$REPRO_GIT" rev-parse --short HEAD)
-	n=$(git -C "$REPRO_GIT" status --short 2>/dev/null | wc -l); ((n)) && REPRO_WHY+=("$n local changes")
+	REPRO_COMMIT=$(git -C "$REPRO_GIT" rev-parse --short HEAD); REPRO_FULL=$(git -C "$REPRO_GIT" rev-parse HEAD)
+	n=$(git -C "$REPRO_GIT" status --short 2>/dev/null | wc -l); ((n)) && { REPRO_WHY+=("$n local changes"); REPRO_DIRTY=$n; }
 else
-	SOURCE_DATE_EPOCH=$(date +%s); REPRO_COMMIT=none; REPRO_WHY+=("not a git checkout")
+	SOURCE_DATE_EPOCH=$(date +%s); REPRO_COMMIT=none; REPRO_FULL=none; REPRO_WHY+=("not a git checkout")
 fi
 export SOURCE_DATE_EPOCH
 ((SKIP_BL31 || SKIP_UBOOT || SKIP_KERNEL || SKIP_ROOTFS)) && REPRO_WHY+=("--skip-* reused earlier building blocks")
@@ -311,12 +311,22 @@ else
 	in_container "cd $WORK/mainline && BOARD=$BOARD ${VARIANT:+VARIANT=$VARIANT }H713_STANDBY=$WANT_STANDBY H713_TEST_IMAGE=$TEST_IMAGE build/build.sh bl31" | tail -3 | sed 's/^/    /'
 fi
 [[ -f "$OUT/bl31.bin" ]] || die "no bl31.bin"
+# The notices that travel with BL31 (TODO 7.20 e; build-rootfs.sh lays $OUT/notice into the image): TF-A's licence, the copyright
+# lines of every file built into it (found through the build's dependency files, release/notice.py), and the BSD-2-Clause text
+# its libfdt is used under.
+NOTICE="$OUT/notice"; TFA="$MAINLINE/external/arm-trusted-firmware"
+rm -rf "$NOTICE/tf-a" "$NOTICE/licenses"; mkdir -p "$NOTICE/tf-a" "$NOTICE/licenses"
+install -m 0644 "$TFA/docs/license.rst" "$NOTICE/tf-a/license.rst"
+install -m 0644 "$MAINLINE/external/u-boot/Licenses/bsd-2-clause.txt" "$NOTICE/licenses/BSD-2-Clause"
+python3 "$ROOT/release/notice.py" copyrights "$TFA" "$TFA/build" --main BSD-3-Clause \
+	--title "Trusted Firmware-A $(git -C "$TFA" rev-parse --short=12 HEAD), BL31 of this image: the copyright notices of its sources" \
+	> "$NOTICE/tf-a/COPYRIGHTS" || die "no copyright notices for BL31 (release/notice.py; is the TF-A build directory there?)"
 
 # --- 1b. crust --------------------------------------------------------------
 # One build feeds the FIT and the rootfs. A few seconds, so always from scratch; the or1k
 # compiler is built once (mainline/tools/or1k-toolchain/, ~6 min) and then kept.
 CR_O="$MAINLINE/build/crust"; OR1K="$MAINLINE/build/toolchain/or1k"
-rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config"   # no crust of an earlier board in this one's image
+rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config" "$NOTICE/crust"   # no crust of an earlier board in this one's image
 if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
 	say "1b/11 crust $CRUST_DEFCONFIG (${CRUST_HEAD:0:12})"
 	# Reused only with the stamp the toolchain script writes last, for its pinned sources: an unfinished
@@ -347,6 +357,12 @@ if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
 	[[ -z "$CRUST_HASH" || "$CRUST_HASH" == "g${CRUST_HEAD:0:12}"* ]] \
 		|| die "crust's notify text names the commit '$CRUST_HASH', the checkout is at ${CRUST_HEAD:0:12}: git did not see it in the container"
 	info "crust $CRUST_VERSION${CRUST_HASH:+-$CRUST_HASH}, $(stat -c %s "$OUT/scp.bin") bytes, sha256 $(sha256sum "$OUT/scp.bin" | cut -c1-16)"
+	# its notices, as for BL31; the kconfig of the build is a host program and not in scp.bin
+	mkdir -p "$NOTICE/crust"
+	install -m 0644 "$CRUST_SRC/LICENSE.md" "$NOTICE/crust/LICENSE.md"
+	python3 "$ROOT/release/notice.py" copyrights "$CRUST_SRC" "$CR_O" --main "BSD-3-Clause OR GPL-2.0-only" --exclude 3rdparty/kconfig/ \
+		--title "crust ${CRUST_HEAD:0:12}, scp.bin of this image: the copyright notices of its sources" \
+		> "$NOTICE/crust/COPYRIGHTS" || die "no copyright notices for crust (release/notice.py)"
 fi
 
 # --- 2. U-Boot: build, split, environment -----------------------------------
@@ -449,12 +465,17 @@ else
 fi
 KREL=$(ls "$MODROOT/lib/modules" | head -1)
 info "tree $H, release $KREL, $(find "$MODROOT" -name '*.ko' | wc -l) modules"
+# the kernel's licence, with the syscall note it names, for the image's notices
+rm -rf "$NOTICE/linux"; mkdir -p "$NOTICE/linux"
+install -m 0644 "$TREE/COPYING" "$TREE/LICENSES/preferred/GPL-2.0" "$TREE/LICENSES/exceptions/Linux-syscall-note" "$NOTICE/linux/"
 
 # --- 4. aic8800 (always after the kernel, against the same tree) ------------
 say "4/11 aic8800 modules against tree $H"
 in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh aic8800" > "$OUT/aic8800-build.log" 2>&1 || { tail -20 "$OUT/aic8800-build.log"; die "aic8800 build failed"; }
 for k in aic8800_bsp aic8800_fdrv; do [[ -f "$OUT/modules/$k.ko" ]] || die "missing: $OUT/modules/$k.ko"; done
 info "bsp + fdrv are there ($(stat -c %s "$OUT/modules/aic8800_fdrv.ko") bytes fdrv)"
+KVER=$(basename "$TREE" | cut -d- -f2)                    # linux-<version>-<input hash>
+AIC_REV=$(basename "$(ls -dt "$MAINLINE"/build/aic8800-*/ | head -1)" | cut -d- -f2)   # aic8800-<revision>-<input hash>
 
 # --- 5. Debian keyring, pinned ----------------------------------------------
 say "5/11 Debian keyring for $DEBIAN_SUITE"
@@ -486,6 +507,12 @@ if [[ ! -f "$SYSROOT_STAMP" ]]; then
 	in_container_root "touch $(c "$SYSROOT_STAMP")"
 fi
 info "sysroot $SYSROOT ($(du -sh "$SYSROOT" 2>/dev/null | cut -f1))"
+# h713-osd and h713-settings link FreeType and its png, bz2, brotli and zlib archives statically (their Makefiles): the copyright
+# files of the -dev packages those archives come from go with the image (TODO 7.20 e). A new static library adds its package here.
+rm -rf "$NOTICE/static"
+for p in libfreetype-dev libpng-dev libbz2-dev libbrotli-dev zlib1g-dev; do
+	install -D -m 0644 "$SYSROOT/usr/share/doc/$p/copyright" "$NOTICE/static/$p/copyright" || die "no copyright file of $p in the sysroot"
+done
 in_container "cd $WORK/userspace/h713-tv && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-tv-cross.log" 2>&1 || { tail -20 "$OUT/h713-tv-cross.log"; die "cross-building h713-tv failed (log: $OUT/h713-tv-cross.log)"; }
 TV="$USERSPACE/h713-tv/h713-tv.aarch64-linux-gnu"; [[ -f "$TV" ]] || die "no $TV"
 info "h713-tv $(stat -c %s "$TV") bytes, $(file -b "$TV" 2>/dev/null | cut -d, -f1-2)"
@@ -505,8 +532,11 @@ AF="$USERSPACE/h713-autofocus/h713-afmetric.aarch64-linux-gnu"; [[ -f "$AF" ]] |
 info "h713-afmetric $(stat -c %s "$AF") bytes, $(file -b "$AF" 2>/dev/null | cut -d, -f1-2)"
 
 # --- 6b. mesa (panfrost only, no LLVM) for the GPU path -----------------------
+# The revision for the source notes of the mesa and libva tarballs comes from here, the host: in the container a git worktree's
+# .git points to a path that is not mounted, and the scripts would write "revision unknown"
+REPO_REV=$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo unknown)
 say "6b/11 mesa cross-built (panfrost, EGL vendor for glvnd, GBM, Wayland platform; rootfs/mesa/build-mesa.sh)"
-in_container "cd $WORK && rootfs/mesa/build-mesa.sh" > "$OUT/mesa-cross.log" 2>&1 || { tail -20 "$OUT/mesa-cross.log"; die "mesa build failed (log: $OUT/mesa-cross.log, $OUT/mesa-build.log)"; }
+in_container "cd $WORK && REPO_REV=$(printf %q "$REPO_REV") rootfs/mesa/build-mesa.sh" > "$OUT/mesa-cross.log" 2>&1 || { tail -20 "$OUT/mesa-cross.log"; die "mesa build failed (log: $OUT/mesa-cross.log, $OUT/mesa-build.log)"; }
 MESA="$OUT/mesa-panfrost-25.0.7.tar"; [[ -f "$MESA" ]] || die "no $MESA"
 grep -E "NEEDED|installed" "$OUT/mesa-cross.log" | sed 's/^ *//; s/^/    /'
 
@@ -530,16 +560,39 @@ info "h713-warp $(stat -c %s "$WARP") bytes, $(file -b "$WARP" 2>/dev/null | cut
 LIBVA_TAR=
 if ((WANT_LIBVA)); then
 	say "6d/11 libva-v4l2_request cross-built (VA-API driver on cedrus; rootfs/libva/build-libva.sh)"
-	# the revision for the tarball's SOURCE note comes from here, the host: in the container a git worktree's .git points to a
-	# path that is not mounted, and build-libva.sh would write "revision unknown"
-	LIBVA_REV=$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo unknown)
-	in_container "cd $WORK && REPO_REV=$(printf %q "$LIBVA_REV") rootfs/libva/build-libva.sh" > "$OUT/libva-cross.log" 2>&1 || { tail -20 "$OUT/libva-cross.log"; die "libva build failed (log: $OUT/libva-cross.log, $OUT/libva-build.log)"; }
+	in_container "cd $WORK && REPO_REV=$(printf %q "$REPO_REV") rootfs/libva/build-libva.sh" > "$OUT/libva-cross.log" 2>&1 || { tail -20 "$OUT/libva-cross.log"; die "libva build failed (log: $OUT/libva-cross.log, $OUT/libva-build.log)"; }
 	LIBVA_TAR="$OUT/libva-v4l2-request-1.2.tar"; [[ -f "$LIBVA_TAR" ]] || die "no $LIBVA_TAR"
 	LIBVA_COMMIT=$(sed -n 's/^LIBVA_COMMIT=\([0-9a-f]*\).*/\1/p' "$ROOT/rootfs/libva/build-libva.sh")
 	LIBVA_PATCHES=$(grep -cv '^#\|^$' "$ROOT/rootfs/libva/patches/series")
 	grep -E "NEEDED|patches applied|installed" "$OUT/libva-cross.log" | sed 's/^ *//; s/^/    /'
 	info "driver tarball $(stat -c %s "$LIBVA_TAR") bytes, upstream ${LIBVA_COMMIT:0:12} + $LIBVA_PATCHES patches"
 fi
+
+# --- the image's SOURCES (TODO 7.20 e) ---------------------------------------
+# The revisions the boot chain and the kernel were built from, for README's source offer; build-rootfs.sh adds the root file
+# system's part (the Debian suites, Mesa, libva) below it. No path of this machine and no build time in it.
+series_on() { # <mirror dir> -> "N patches on <base> (<what the mirror calls it>)"
+	awk '$1 == "base" { b = substr($2, 1, 12); $1 = $2 = ""; sub(/^ +/, ""); w = $0 } $1 == "count" { n = $2 }
+		END { printf "%s patches on %s %s", n, b, w }' "$ROOT/$1/SERIES.txt"
+}
+write_sources() {
+	local r sha
+	echo "H713 Linux $NAME for $UNIT, built by release/build-all.sh"
+	echo "repository:  https://github.com/well0nez/allwinner-h713-linux, commit $REPRO_FULL${REPRO_DIRTY:+ with $REPRO_DIRTY local changes}"
+	echo "source date: $(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%d') (SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH)"
+	echo
+	echo "boot chain (each fork's commit is the repository's mirror applied to its base)"
+	for r in u-boot:uboot-h713 arm-trusted-firmware:tfa-h713; do
+		sha=$(git -C "$MAINLINE/external/${r%%:*}" rev-parse HEAD)
+		echo "  ${r%%:*} $sha: ${r#*:}/, $(series_on "${r#*:}")"
+	done
+	[[ -n "${CRUST_DEFCONFIG:-}" ]] && echo "  crust $CRUST_HEAD: crust-h713/, $(series_on crust-h713), configuration $CRUST_DEFCONFIG"
+	echo
+	echo "kernel"
+	echo "  Linux $KVER (linux-$KVER.tar.xz of kernel.org) with mainline/patches/kernel/series: $(grep -cv '^#\|^$' "$MAINLINE/patches/kernel/series") patches, series sha256 $(sha256sum "$MAINLINE/patches/kernel/series" | cut -c1-16); configuration mainline/patches/kernel/board/$KDEF"
+	echo "  aic8800 https://github.com/radxa-pkg/aic8800 at $AIC_REV: the vendor's patches it carries, then mainline/patches/aic8800/series"
+	echo
+}
 
 # --- 7. rootfs --------------------------------------------------------------
 if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 rootfs -- skipped (--skip-rootfs)"
@@ -552,11 +605,12 @@ if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 ro
 	[[ "${recp:-none}" == "${PROFILES:-none}" ]] || die "the rootfs to reuse was built with profile '${recp:-?}', not '${PROFILES:-none}' -- build it again (no --skip-rootfs)"
 else
 	say "7/11 rootfs ($DEBIAN_SUITE/arm64${PROFILES:+, profile $PROFILES}, mmdebstrap in the container as root)"
+	write_sources > "$NOTICE/SOURCES"
 	CRUST_ARGS=; [[ -f "$OUT/scp.bin" ]] && CRUST_ARGS="--crust $(c "$OUT")/scp.bin"
 	((WANT_STANDBY)) && CRUST_ARGS="$CRUST_ARGS --standby"
 	# --no-ext4: only the tar goes on (step 8 makes the image's own ext4 out of it). build-rootfs.sh's bench ext4 is
 	# --image-size 1G and unread here; it broke the build when the profile tree grew past 1 GiB (16.10.2026, 1152 MiB).
-	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") --no-ext4 ${PROFILES:+--profile $PROFILES} ${LIBVA_TAR:+--libva $(c "$LIBVA_TAR")} ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") --notice $(c "$NOTICE") --no-ext4 ${PROFILES:+--profile $PROFILES} ${LIBVA_TAR:+--libva $(c "$LIBVA_TAR")} ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
@@ -613,6 +667,15 @@ python3 "$ROOT/release/check-crust.py" --board "$BOARD" \
 	&& info "crust gate: green ($(sed -n 's/^crust: //p' "$OUT/crust-gate.log"))" \
 	|| { grep -E "FAIL|Error" "$OUT/crust-gate.log" | sed 's/^/    /'
 	     die "crust gate failed (log: $OUT/crust-gate.log)"; }
+# The licence notices (TODO 7.20 e), in the artefact: the rootfs tar carries the README with the source offer, and its SOURCES
+# names this image's boot chain and kernel - every line write_sources gives now, but the repository's commit and date.
+NOTICE_TAR=$(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./usr/local/share/doc/h713-linux/SOURCES 2>/dev/null) || die "the rootfs carries no SOURCES (licence notices, build-rootfs.sh --notice)"
+tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./usr/local/share/doc/h713-linux/README 2>/dev/null | grep -q '^Written offer\.' || die "the rootfs carries no README with the written offer"
+while IFS= read -r l; do
+	[[ -z "$l" || "$l" == repository:* || "$l" == "source date:"* || "$l" == "H713 Linux "* ]] && continue
+	grep -qxF -- "$l" <<< "$NOTICE_TAR" || die "the rootfs's SOURCES does not name this build's \"$l\" -- an old rootfs?"
+done < <(write_sources)
+info "licence notices: README and SOURCES in the rootfs, SOURCES names this boot chain and kernel"
 if [[ -n "$VENDOR" ]]; then
 	( cd "$INSTALLER" && python3 mkimage-selftest.py "out/$NAME.tabelle.json" --vendor "$VENDOR" ) > "$OUT/selftest.log" 2>&1 || true
 	if grep -q "ALL GREEN" "$OUT/selftest.log"; then info "self-test with the vendor files: ALL GREEN"
