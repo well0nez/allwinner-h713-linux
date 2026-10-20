@@ -921,11 +921,17 @@ static bool display_take_master(struct display *d)
 }
 
 static void wall_black_end(struct display *d);	/* the black wall between a release and the ring: the console's framebuffer first */
+static void under_black_off(struct display *d);	/* the black frame under a page off the video plane, before the master goes */
+static struct {
+	uint32_t handle, fb_id;
+	bool up;		/* the video plane carries the black frame under a page (under_black_up()) */
+} under;
 
 static void display_release_master(struct display *d)
 {
 	if (!d->master)
 		return;
+	under_black_off(d);
 	wall_black_end(d);
 	if (drmDropMaster(d->fd))
 		warn("DROP_MASTER: %s", strerror(errno));
@@ -1374,6 +1380,7 @@ static bool display_show(struct display *d)
 	}
 
 	d->on = true;
+	under.up = false;
 	console_keys(false);
 	info("picture         plane %u on, %ux%u out of the capture ring at %u,%u %ux%u on the panel%s",
 	     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h,
@@ -1390,6 +1397,95 @@ static bool display_show(struct display *d)
  */
 static void console_restore(void);
 static void console_login_clean(void);
+
+/*
+ * Black under an opaque page, not nothing (20.10.2026). On the HY300PRO-G-EU the RGB channel lies two pixels to the right of the
+ * picture: the panel side reads the RGB layer's window at 50 + the layer's x origin (0x051C01A8; the origin 0x0528008C is 0
+ * already and does not go below), the picture's at 48 (0x051C0180, the display firmware's own window word 0x0520000C). So the
+ * first two columns of the panel always show the video plane, and with the plane off under a page that was the stopped
+ * source - green zeros, or the colours of its last frame: a narrow line at the left edge of every page (Marco, 20.10.2026; stock
+ * has the RGB layer on the picture's column and a video layer under its interface all the time). The video plane carries a still
+ * black NV12 frame of the panel's size under the page now: one commit from the straight ring or the warp's frame, one back to
+ * them, and no new descriptor - the ring's record stays published, the capture, the link and the claim stay as they did (the warp's
+ * frames have the same geometry, the driver only flips). The AFBD reads 1.4 MB a frame for it at 720p (3.1 MB at 1080p), nothing
+ * else runs. Without a page the plane goes off as before (display_hide()), and it never stays behind when the master goes.
+ */
+/* the black frame, made once: luma 16, chroma 128 (BT.709 limited range black), the chroma below the luma as the warp's */
+static bool under_black_fb(struct display *d)
+{
+	struct drm_mode_create_dumb creq = { .width = d->width, .height = d->height * 3 / 2, .bpp = 8 };
+	struct drm_mode_map_dumb mreq = { 0 };
+	uint32_t handles[4] = { 0 }, pitches[4] = { 0 }, offsets[4] = { 0 };
+	uint8_t *p;
+
+	if (under.fb_id)
+		return true;
+	if (drmIoctl(d->fd, DRM_IOCTL_MODE_CREATE_DUMB, &creq))
+		return false;
+	under.handle = mreq.handle = creq.handle;
+	p = drmIoctl(d->fd, DRM_IOCTL_MODE_MAP_DUMB, &mreq) ? MAP_FAILED :
+	    mmap(NULL, creq.size, PROT_WRITE, MAP_SHARED, d->fd, (off_t)mreq.offset);
+	if (p != MAP_FAILED) {
+		memset(p, 16, (size_t)creq.pitch * d->height);
+		memset(p + (size_t)creq.pitch * d->height, 128, (size_t)creq.pitch * d->height / 2);
+		munmap(p, creq.size);
+		handles[0] = handles[1] = creq.handle;
+		pitches[0] = pitches[1] = creq.pitch;
+		offsets[1] = creq.pitch * d->height;
+		if (!drmModeAddFB2(d->fd, d->width, d->height, DRM_FORMAT_NV12, handles, pitches, offsets, &under.fb_id, 0))
+			return true;
+	}
+	warn("cover           no black frame for under the page (%s) -- the video plane goes off as before", strerror(errno));
+	under.fb_id = 0;
+	return false;
+}
+
+/* the black frame on the video plane and the primary plane as it is to be without a picture (the page), in one commit */
+static bool under_black_up(struct display *d)
+{
+	static const char *const name[] = { "FB_ID", "CRTC_ID", "SRC_X", "SRC_Y", "SRC_W", "SRC_H", "CRTC_X", "CRTC_Y",
+					    "CRTC_W", "CRTC_H", "hdmi-ring" };
+	drmModeAtomicReq *req;
+	unsigned int i;
+	bool ok, primary = false;
+	int ret = -1;
+
+	if (!d->master || !under_black_fb(d) || !(req = drmModeAtomicAlloc()))
+		return false;
+	uint64_t val[11] = { under.fb_id, d->crtc_id, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16, 0, 0,
+			     d->width, d->height, 0 };
+
+	for (i = 0, ok = true; ok && i < 11; i++)
+		ok = add(req, d, name[i], val[i]);
+	if (ok && d->has_windows)
+		ok = add(req, d, "src-window", 0) && add(req, d, "dst-window", 0);
+	if (ok)
+		primary = osd_state_add(req, d, false);
+	if (ok && primary)
+		ret = drmModeAtomicCommit(d->fd, req, 0, NULL);
+	drmModeAtomicFree(req);
+	if (primary)
+		osd_state_committed(!ret, false);
+	if (ret) {
+		warn("cover           the black frame did not go under the page (%s) -- the video plane goes off as before",
+		     ok && primary ? strerror(errno) : "a property is missing");
+		return false;
+	}
+	if (!under.up)
+		info("cover           black under the page on the video plane (the RGB channel leaves the first two columns to it)");
+	under.up = true;
+	d->on = false;
+	return true;
+}
+
+static int display_plane_off(struct display *d);
+
+/* before the master goes, or when the page goes and no picture comes: the black frame off the video plane */
+static void under_black_off(struct display *d)
+{
+	if (under.up && d->master)
+		display_plane_off(d);
+}
 
 /*
  * The video plane off and the primary plane as it is to be without a picture, in one commit: the console's
@@ -1413,6 +1509,8 @@ static int display_plane_off(struct display *d)
 	drmModeAtomicFree(req);
 	if (primary && ok)
 		osd_state_committed(!ret, false);
+	if (!ret)
+		under.up = false;
 
 	return ret ? (ok ? -1 : -2) : 0;
 }
@@ -1421,7 +1519,7 @@ static bool display_hide(struct display *d)
 {
 	int ret;
 
-	if (!d->on) {
+	if (!d->on && !(under.up && osd_wanted(false) < 0)) {	/* the black frame under a page that goes: off as a picture */
 		if (!d->warped) {	/* the warp holds the master (A3) */
 			if (osd_wanted(false) >= 0) {	/* an opaque page stays, over black */
 				osd_resume(d);
@@ -1809,6 +1907,7 @@ static bool warp_commit(struct display *d, int n, int fence, bool *busy, int *fl
 		osd_state_committed(!ret, true);
 	if (!ret) {
 		warp.commits++;
+		under.up = false;	/* a frame of the warp's took the video plane from the black one */
 		*flip = out;
 		return true;
 	}
@@ -2455,6 +2554,8 @@ static bool hold_take(struct display *d)
 	     !drmModeAtomicCommit(d->fd, req, 0, NULL);
 	if (req)
 		drmModeAtomicFree(req);
+	if (ok)
+		under.up = false;	/* the video plane is off: no black frame of a page to take away before the master goes */
 	display_release_master(d);
 	if (!ok) {
 		warn("wall            the black framebuffer %u of PID %d did not go up (%s) -- the console, as without it", fb,
@@ -6797,7 +6898,7 @@ static void cover_follow(struct capture *cap, struct display *d, struct retry *r
 		/* the ring straight on the video plane (no warp): off under the page, and back from evaluate() after it */
 		info("cover           %s", on ? "an opaque page is on the wall -- the video plane goes off under it" :
 		     "the page is gone -- the picture comes back");
-		if (on && d->on)
+		if (on && d->on && !under_black_up(d))
 			display_hide(d);	/* the page stays, over black (osd_on_panel()) */
 		else if (!on)
 			reevaluate(cap, d, rt, a);
@@ -6817,7 +6918,7 @@ static void cover_follow(struct capture *cap, struct display *d, struct retry *r
 	info("cover           %s", on ? "an opaque page hides the picture -- h713-warp pauses, the video plane goes off, the HDMI sound is muted" :
 	     "the page is gone -- h713-warp draws again, its first frame turns the video plane on and carries the change");
 	if (on && d->warped) {
-		int rc = display_plane_off(d);	/* the page stays on the primary plane: osd_wanted() keeps an opaque page */
+		int rc = under_black_up(d) ? 0 : display_plane_off(d);	/* the page stays on the primary plane: osd_wanted() keeps it */
 
 		cover.plane_off = !rc;
 		if (rc)
@@ -6968,6 +7069,7 @@ static bool wall_black_up(struct display *d)
 		wall_black_free(d);
 		return false;
 	}
+	under.up = false;	/* the video plane is off */
 	osd.shown = false;	/* a popup that rode on the picture is off the plane now; the ring's commit lays it again */
 	return true;
 }
@@ -9260,7 +9362,7 @@ static void evaluate(struct capture *cap, struct display *d,
 	nosig_back(rt, &t);	/* the page without a signal goes with this - after h713-warp's claim, if one is to come */
 	if (cover.on) {
 		want_hold_end();
-		if (d->on)
+		if (d->on && !under_black_up(d))
 			display_hide(d);
 		if (warp_wants_ring())
 			want_note_claim();

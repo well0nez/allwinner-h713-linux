@@ -11,6 +11,8 @@
  * ring is to follow (a program is the mode, "off", a page on the wall, the signal gone, the way out) the release is what it was:
  * the console, or the page. A claim of h713-osd's while the wall is black never takes the black framebuffer for the console's, and a
  * popup on the wall at the release (the mute badge over Kodi) does not keep the console: black, and the ring's commit lays it again.
+ * Under an opaque page the video plane carries a black frame instead of nothing, one commit from the ring and one back, and it
+ * never stays behind - not when the page goes without a picture, not when the master goes, not at a held restart.
  *
  *   test_wall      exit 0 when every case passed
  */
@@ -31,7 +33,8 @@ static void check(bool ok, const char *what)
 #define PRIMARY	34
 #define VIDEO	38
 #define CONSOLE	46		/* fbcon's framebuffer */
-#define BLACK	90		/* what drmModeAddFB2() hands out */
+#define BLACK	90		/* what drmModeAddFB2() hands out for XRGB8888 */
+#define UNDER	92		/* ... and for NV12: the black frame under a page */
 static uint32_t primary_fb, video_fb;	/* what the planes hold: the committed FB_IDs */
 static int commits, creates, destroys, masters = 1;
 static uint32_t shown_seq[32];		/* every framebuffer committed on the primary plane, in order */
@@ -128,6 +131,10 @@ int drmIoctl(int fd, unsigned long request, void *arg)
 		destroys++;
 		return 0;
 	}
+	if (request == DRM_IOCTL_MODE_MAP_DUMB) {
+		((struct drm_mode_map_dumb *)arg)->offset = 0;	/* the black frame under a page is filled through this */
+		return 0;
+	}
 	errno = ENOTTY;
 	return -1;
 }
@@ -136,7 +143,7 @@ int drmModeAddFB2(int fd, uint32_t width, uint32_t height, uint32_t pixel_format
 		  const uint32_t pitches[4], const uint32_t offsets[4], uint32_t *buf_id, uint32_t flags)
 {
 	(void)fd, (void)width, (void)height, (void)pixel_format, (void)bo_handles, (void)pitches, (void)offsets, (void)flags;
-	*buf_id = BLACK;
+	*buf_id = pixel_format == DRM_FORMAT_NV12 ? UNDER : BLACK;
 	return 0;
 }
 
@@ -397,6 +404,73 @@ int main(void)
 	osd.claimed = osd.shown = false;
 	osd.want = -1;
 	osd.cover = false;
+
+	/* black under an opaque page, not nothing: the first two columns of the panel show the video plane (20.10.2026) */
+	{
+		int mfd = memfd_create("under", 0);
+		uint8_t px[2];
+		char line[64];
+
+		if (mfd < 0 || ftruncate(mfd, 1280 * 720 * 3 / 2))
+			return 2;
+		kodi(&d);
+		warp.claimed = warp.client = false;
+		d.warped = false;
+		d.on = true;
+		d.fd = mfd;
+		video_fb = 70;
+		osd.claimed = osd.shown = true;		/* the launcher over the ring, before the ring goes */
+		osd.fb_id[0] = 48;
+		osd.want = 0;
+		osd.cover = true;
+		primary_fb = 48;
+		c0 = commits;
+		check(under_black_up(&d) && commits == c0 + 1 && video_fb == UNDER && committed(&d.plane_props, VIDEO, "hdmi-ring") == 0 &&
+		      primary_fb == 48 && committed(&osd.props, PRIMARY, "zpos") == 2 && !d.on && under.up && d.master,
+		      "a page over the ring: the black frame on the video plane, the page over it, one commit, no picture");
+		check(pread(mfd, px, 1, 0) == 1 && px[0] == 16 && pread(mfd, px + 1, 1, 1280 * 720) == 1 && px[1] == 128,
+		      "... the frame is black: luma 16, chroma 128");
+		c0 = commits;
+		check(display_show(&d) && commits == c0 + 1 && video_fb == 70 && committed(&d.plane_props, VIDEO, "hdmi-ring") == 1 &&
+		      !under.up, "the page goes, the ring comes: from the black frame to the ring in one commit");
+		d.on = true;
+		under_black_up(&d);
+		osd.want = -1;
+		osd.cover = false;
+		c0 = commits;
+		check(display_hide(&d) && commits == c0 + 1 && video_fb == 0 && primary_fb == CONSOLE && !under.up && !d.master,
+		      "the page goes and no picture comes: the video plane off and the console, the black frame does not stay");
+		d.master = true;
+		masters = 1;
+		d.on = true;
+		osd.want = 0;
+		osd.cover = true;
+		under_black_up(&d);
+		c0 = commits;
+		display_release_master(&d);
+		check(commits == c0 + 1 && video_fb == 0 && !under.up && !d.master,
+		      "the master goes while the black frame is up: the video plane off first, by this program's commit");
+		d.master = true;
+		masters = 1;
+		d.on = true;
+		under_black_up(&d);
+		snprintf(line, sizeof(line), "%d 77\n", (int)getpid());
+		{
+			FILE *hf = fopen(cf, "w");
+
+			if (hf)
+				fputs(line, hf), fclose(hf);
+		}
+		c0 = commits;
+		check(hold_take(&d) && commits == c0 + 1 && video_fb == 0 && primary_fb == 77 && !under.up,
+		      "stopped for a restart under a page: the holder's black framebuffer, no second commit of the console over it");
+		unlink(cf);
+		osd.claimed = osd.shown = false;
+		osd.want = -1;
+		osd.cover = false;
+		d.fd = -1;
+		close(mfd);
+	}
 
 	unlink(cf);
 	rmdir(dir);
