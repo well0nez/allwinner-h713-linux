@@ -317,7 +317,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (schaltet die Box aus: nur mit Marco am Gerät), kurz -> `short press: countdown`. `h713-keys`, `h713-power`, `h713-settings` zusammen ausspielen.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** N-1 bestanden (Journal-Zeile, OK startet nichts, Modus hdmi). N-2 nicht gemacht (schaltet aus).
 
-- [ ] 2.92 **Bluetooth: LINKS+RECHTS koppelt auch bei veralteter Kopplung neu** (`doku/214` §1): hat der HY310 noch einen Bund, den die
+- [x] 2.92 (erledigt 20.10.2026 am G-EU, `arbeit/medien/bt-neukoppeln/`, Mythos go + Messauflagen M1-M3 mit Marco erfüllt: Aufwachen gerichtet ohne Vergessen, EIN LINKS+RECHTS koppelt in 6 s neu ohne "PIN or Key Missing", Batterie raus/rein + Lauter verbindet, Bund bleibt; Ursache: bluetoothds Auto-Connect verband die Koppelwerbung mit dem alten Schlüssel, Fix: Kernel-Auto-Connect der Fernbedienung nur auf gerichtete Werbung; offen: HY310 nachmessen, Randnotizen Mythos - Aktion 2 am Ausgang zurück, set_direct merkt vor dem Erfolg) **Bluetooth: LINKS+RECHTS koppelt auch bei veralteter Kopplung neu** (`doku/214` §1): hat der HY310 noch einen Bund, den die
       Fernbedienung nicht mehr kennt (sie wurde an einer anderen Box gekoppelt), ignoriert `h713-remote-pair watch` das LINKS+RECHTS des
       Nutzers - nur `h713-remote-pair forget` per ssh hilft. Wurzel: `watch` koppelt nur ohne Bund. Zu klären am Mitschnitt (`btmon`
       während LINKS+RECHTS mit altem Bund): woran der HY310 erkennt, dass sich die bekannte Fernbedienung zum Koppeln anbietet, und dann
