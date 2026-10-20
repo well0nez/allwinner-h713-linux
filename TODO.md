@@ -114,9 +114,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Aufwachen geht die Ebene im Bypass auf **volle** Ringplätze (3 Läufe, `ebene-wach.py`), der erste Warp-Puffer ist beim Flip
         gefenct (afbd nutzt `drm_atomic_helper_commit`). Offen: Inhalt des ersten Warp-Puffers (nicht über `/dev/mem` lesbar), die
         Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
-- [ ] 2.42 **Netzteil fiept auch im Aus über crust** (Marco 10.10. abends, HY310, Lauf `hy2`): im Standby fiept es leise (2.31),
-      im Aus über crust ebenso. Mit dem Stock-Abzug gegenhalten (Stock-Android aus: fiept es da auch?) - erst dann ist es ein Befund
-      über unser System oder über das Netzteil bei kleiner Last
+- [ ] 2.42 **Netzteil summt/fiept im Standby (2,4 W) und im Aus über crust (0,3 W), im Gate (2,9 W) nicht** (Marco 09./10.10., HY310;
+      Marco 20.10.: "das spricht dafür, dass wir irgendwas falsch machen"). Hypothesen und Testplan: `arbeit/medien/standby-summen/`
+      (HYPOTHESEN.md H1-H7, TESTPLAN.md T0-T8). Reihenfolge mit Marco zu Hause, USB-Kabel ab: **T0** Ort und Tonhöhe mit Handy-Mikro
+      (Netzteil / Platine / Lautsprecher, Standby und Aus getrennt, Kontrollarm Gate/Betrieb) → **T1** Stock-Aus am HY350 (gleiches
+      Netzteil? Kreuztausch) → **T3** Last dazu im Standby (Handy an USB-A, falls VBUS steht) → **T4** WLAN aus. Erst wenn T0 das Gerät
+      als Ort nennt: **T5** crust-Testbau vdd-cpu im Standby auf 0,81 V (R_PWM Kanal 1, Kopie, FEL, Marcos Ja). Erwartung nach Lage der
+      Belege (`doku/181/188/190`): H1 Netzteil im Burst-Modus bei kleiner Last, wie Stock-Aus - dann kein Fehler unsererseits, Satz in
+      `docs/hardware.md`. Vorab von Marco: Fotos Typenschild Netzteil und Platine (Regler-ICs).
 - [ ] 2.45 **Regel: wer auf Kanal 2 zeichnet, zeichnet verzerrt - Vorplanung Desktop** (`doku/192` §5.3-5.4): ein späterer
       Compositor setzt die Trapez-Matrix als letzten Durchgang und zeichnet die Einblendung davor; Kanal 2 gehört dann dem Desktop
       (Alpha je Bildpunkt über der Video-Ebene); Zeichnen und Ausgabeort trennen; DRM-Master heute `h713-tv`, später der
