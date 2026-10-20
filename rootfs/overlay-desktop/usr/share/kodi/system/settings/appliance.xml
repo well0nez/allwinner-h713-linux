@@ -1,0 +1,86 @@
+<?xml version="1.0" encoding="utf-8" ?>
+<!-- Kodi's own place for what an appliance sets: it reads this file after its platform files (settings.xml, linux.xml) and the defaults
+     it works out itself, so what is named here is KODI'S DEFAULT on this image. guisettings.xml, which Kodi writes anew whenever it ends,
+     then holds only what the owner changed (an owner's value is explicit and stays); every other setting is written as default="true"
+     and takes the default from here at the next start, whatever Kodi could do at the moment it ended. Section, category and group ids
+     are those of settings.xml: a setting with an id that is not found there is not applied. -->
+<settings version="1">
+    <section id="system">
+        <category id="audio">
+            <group id="1">
+                <!-- sound: ALSA `default` = the DSP bridge, no PulseAudio/PipeWire. Kodi lists that device as "@" (its name for ALSA default);
+                     the string "ALSA:default" is not in its list and was replaced at the first start by the codec's own PCM, which is
+                     silent while `DAC Source` = I2S (measured 14.10.2026) -->
+                <setting id="audiooutput.audiodevice">
+                    <default>ALSA:@|Default (hy310hdmi Device sounds, mixed into HDMI)</default>
+                </setting>
+            </group>
+        </category>
+        <category id="powermanagement">
+            <group id="1">
+                <!-- a projector shows the picture for hours: no display-off timer -->
+                <setting id="powermanagement.displaysoff">
+                    <default>0</default>
+                </setting>
+            </group>
+        </category>
+    </section>
+    <section id="services">
+        <category id="general">
+            <group id="2">
+                <!-- no zeroconf -->
+                <setting id="services.zeroconf">
+                    <default>false</default>
+                </setting>
+            </group>
+        </category>
+        <category id="control">
+            <group id="1">
+                <!-- no web server -->
+                <setting id="services.webserver">
+                    <default>false</default>
+                </setting>
+            </group>
+            <group id="2">
+                <!-- JSON-RPC on TCP 127.0.0.1:9090 for scripts (the event server's switch), localhost only -->
+                <setting id="services.esenabled">
+                    <default>true</default>
+                </setting>
+                <setting id="services.esallinterfaces">
+                    <default>false</default>
+                </setting>
+            </group>
+        </category>
+        <category id="smb">
+            <group id="3">
+                <!-- no WS-Discovery (it lists SMB hosts while browsing the Windows network; a share is still added by name or address): its
+                     listener thread is joined after a poll of up to 1 s, which is 0.9 s of the 3 s Kodi needs to end (measured on the HY310,
+                     2.8-3.1 s -> 1.9-2.3 s) -->
+                <setting id="services.wsdiscovery">
+                    <default>false</default>
+                </setting>
+            </group>
+        </category>
+    </section>
+    <section id="interface">
+        <category id="screensaver">
+            <group id="1">
+                <!-- a projector shows the picture for hours: no dimming screensaver -->
+                <setting id="screensaver.mode">
+                    <default></default>
+                </setting>
+            </group>
+        </category>
+    </section>
+    <section id="player">
+        <category id="videoplayer">
+            <group id="3">
+                <!-- MPEG-2 on the VE: Kodi's default is software for MPEG-2. Measured on the HY310 (1080p30, 60 s, 15.10.2026): software 134 % of a core
+                     (CPU 841 MHz mean, 14.7 ms GPU per frame), VAAPI 56 % (586 MHz, 11.1 ms); VAAPI ran 10 minutes without a dropped frame or a driver event -->
+                <setting id="videoplayer.usevaapimpeg2">
+                    <default>true</default>
+                </setting>
+            </group>
+        </category>
+    </section>
+</settings>

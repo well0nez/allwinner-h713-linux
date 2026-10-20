@@ -23,7 +23,7 @@ cannot enumerate is a system you cannot trust.
 | `h713-keys` | the stock remote's keys: volume, mute, focus, the HDMI input; Home opens the launcher, and while it is open Kodi gets no key ([h713-keys](tools/h713-keys.md)) |
 | `h713-osd` | draws the overlays over the picture - volume, mute, focus, input - and the launcher and settings pages ([h713-osd](tools/h713-osd.md)) |
 | `h713-cpufreq` | the CPU clock under the warp's load: the schedutil rate limit and the policy of the GPU's interrupt threads |
-| `h713-tv-rescue` | `OnFailure=` of `h713-tv@`: reloads the display MIPS once when `h713-tv` gave up, and restarts `h713-warp` |
+| `h713-tv-rescue` | `OnFailure=` of `h713-tv@`: reloads the display MIPS once when `h713-tv` gave up, restarts `h713-warp`, and brings the mode that ran (Kodi, desktop, browser) back (`h713-mode rescue`) |
 | `h713-sleep-pre`, `h713-sleep-post` | only on an image built with `--standby`: `-pre` (`Before=sleep.target`) remembers the running mode in `/run/h713-mode.resume` and ends it; `-post` (`After=suspend.target`) brings the picture path back when the display MIPS is parked (`h713-mips-restart`) and starts the remembered mode again ([h713-power](tools/h713-power.md)) |
 
 `hostapd` and `wpa_supplicant` are installed but their own units are masked: `h713-wifi` generates their
