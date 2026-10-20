@@ -3,7 +3,9 @@
 
 Scenario from FAKE_SCENARIO: found (default), none, pairfail, unconnected, empty, stale (a bond the remote
 has lost: a connect gives a link that drops right after, until the bond is removed and paired afresh),
-stalesilent (the same, but a connect gets no answer at all).
+stalesilent (the same, but a connect gets no answer at all). As on the HY300PRO-G-EU (20.10.2026), the
+kernel's last connect to the stale remote outlives its removal and makes bluez' object again: after a
+remove the scan shows the remote only as "[CHG] ... RSSI", never "[NEW]".
 Every received command and the argv are appended to FAKE_LOG when it is set. In "stale" a connect also
 writes the hex frames of FAKE_HCI_FRAMES to the file or FIFO FAKE_HCI, as the remote's adverts would reach
 the HCI monitor while it asks to be paired. The prompt carries bluetoothctl's colour escapes so the
@@ -22,6 +24,7 @@ connected = scenario not in ("unconnected", "connectfail", "flakyconnect", "abor
 bonded = scenario not in ("none", "empty")
 stale = scenario in ("stale", "stalesilent")
 brief = False       # a stale link: info sees it connected once, then it is gone
+raced = False       # the stale remote's object outlived its removal
 
 
 def note(text):
@@ -53,6 +56,8 @@ for raw in sys.stdin:
         say("Discovery started", "[CHG] Controller %s Discovering: yes" % CTRL)
         if scenario == "speaker_advert":
             say("[NEW] Device %s JVIN Soundbar" % REMOTE)
+        elif raced:
+            say("[NEW] Device %s Foo Remote" % FOREIGN, "[CHG] Device %s RSSI: 0xffffffc1 (-63)" % REMOTE)
         elif scenario not in ("none", "speaker"):
             say("[NEW] Device %s Foo Remote" % FOREIGN, "[NEW] Device %s BLE_X_RMC" % REMOTE)
     elif cmd == "scan off":
@@ -113,6 +118,7 @@ for raw in sys.stdin:
                 connected = brief = False
     elif cmd.startswith("remove "):
         if cmd[7:] == REMOTE:
+            raced = stale
             bonded = connected = stale = False
         say("Device has been removed")
     elif cmd == "quit":

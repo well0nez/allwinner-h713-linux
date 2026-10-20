@@ -215,11 +215,14 @@ def device_info(ctl: Ctl, addr: str):
             if line in ("Connected: yes", "Connected: no"):
                 connected = line == "Connected: yes"
     return {"hog": any(line.startswith("UUID:") and HOG_UUID in line for line in block),
-            "connected": connected}
+            "connected": connected, "name": next((line[6:] for line in block if line.startswith("Name: ")), "")}
 
 
-def scan_for(ctl: Ctl, names, timeout: float):
-    """LE scan for HoG advertisers until a name matches -> (addr, name) or None."""
+def scan_for(ctl: Ctl, names, timeout: float, addr=None):
+    """LE scan for HoG advertisers until a name matches, or until the remote addr shows -> (addr, name) or None.
+    A remote that asked to be paired is followed by its address: its bluez object can outlive the forget (the
+    kernel's last connect makes it again, HY300PRO-G-EU 20.10.2026), and a sighting is then only a
+    "[CHG] ... RSSI" line, never "[NEW]" or its name."""
     ctl.send("power on")
     done, line = ctl.wait(r"Changing power on succeeded|Powered: yes", r"No default controller", 5)
     if done is False and "No default controller" in line:
@@ -228,9 +231,12 @@ def scan_for(ctl: Ctl, names, timeout: float):
     ctl.send("scan le")
     for line in ctl.lines(timeout):
         m = DEVICE_LINE.search(line)
-        if m and name_matches(m.group(2).strip(), names) and device_info(ctl, m.group(1))["hog"]:
+        if not m or (m.group(1).upper() != addr if addr else not name_matches(m.group(2).strip(), names)):
+            continue
+        info = device_info(ctl, m.group(1))
+        if info["hog"]:
             ctl.send("scan off")
-            return m.group(1).upper(), m.group(2).strip()
+            return m.group(1).upper(), info["name"] if addr else m.group(2).strip()
     ctl.send("scan off")
 
 
@@ -265,8 +271,8 @@ def bonded(ctl: Ctl, names):                     # [(addr, name, connected)] of 
     return [tuple(d[:3]) for d in out if d[3]]
 
 
-def run_pair(ctl: Ctl, names, timeout: float) -> int:
-    found = scan_for(ctl, names, timeout)
+def run_pair(ctl: Ctl, names, timeout: float, addr=None) -> int:
+    found = scan_for(ctl, names, timeout, addr)
     if found is None:
         print("no remote in pairing mode within %ds (hold LEFT + RIGHT on the stock remote)" % timeout)
         return EXIT_NOT_FOUND
@@ -355,7 +361,7 @@ def cmd_watch(ctl: Ctl, a) -> int:
                   "pairing afresh" % stale)
             rc = forget(ctl, stale)
             if rc == EXIT_OK:
-                rc = run_pair(ctl, a.name, a.timeout)
+                rc = run_pair(ctl, a.name, a.timeout, stale)
             offers.paired()
         if a.once:
             return rc
