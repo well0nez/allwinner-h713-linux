@@ -400,6 +400,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Block wirkt. RE und Einbau sind richtig, der Augentest vom 18.10. trug nicht (vorformulierte Antwort). Entscheidung Marco: Hue/Saturation
       in Settings und Panel ausblenden bis geklärt (ctl set cm_* bleibt, Doku-Satz) - Mythos' Empfehlung. Offen: wirkt er unter Stock (HY350-
       Werksmenü + Kamera, nur mit Marcos Ja)? Takt-/Blockfreigabe unterhalb der Firmware (TVTOP/CCU, ~halber Tag RE). Der Weißabgleich wirkt.
+      Nachtrag 20.10. früh (Mythos §8/§9): alle Stock-Blöcke vom Mai verglichen - kein Enable-/Takt-/Routingbit unterscheidet unseren
+      Videoweg; Stock-HY350 per adb/root: Farbmanager-Register byte-gleich, Wert-Komponente auch unter Stock ohne Wirkung (HY350-Kamera
+      monochrom, Farbton/Sättigung dort nicht messbar).
+- [ ] 2.119 **Farbmanager: Stock-Beweis für Farbton/Sättigung am HY350 mit Farbkamera** (Marco 20.10.: "als TODO einplanen"): Rezept fertig in
+      `arbeit/medien/cm-diagnose/laeufe/hy350/` (Register-Tür /sys/class/sunxi_dump/write, Testbild-Video in Kodi); braucht eine Farbkamera vor
+      der HY350-Wand (Logitech am PC/ThinkPad, feste Belichtung) oder den HY350 vor der Kamera des HY310 - Marco schaltet ein und stellt die Kamera.
+      Wirkt Gelb-Farbton 100 / Sättigung 0 unter Stock? Ja -> Unterschied in unserem Bildweg suchen; nein -> Block auf dem H713 tot, 2.120.
+- [ ] 2.120 **Settings/Panel: Hue und Saturation (Colour) ausblenden, bis 2.119 steht**; `ctl set cm_*` bleibt; Doku-Satz in docs/tools/h713-tv.md
+      und docs/subsystems/pq.md ("am HY310 keine sichtbare Wirkung, cm-diagnose 20.10.2026"). Journal-Eintrag cm-diagnose. Aufräumen am HY350
+      (Marco): /data/local/tmp/cam350, v350.sh, regread350.sh, /data/local/tmp/k350/ (42 MB), /sdcard/Download/testbild120.mp4.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
