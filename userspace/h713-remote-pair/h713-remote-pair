@@ -7,15 +7,24 @@ HY300PRO-G-EU, the same remote); other remotes may use a different combination. 
 whenever no remote is connected and bonds without a dialog (FB-REMOTE). This does the
 same with bluez: bluetoothctl (bluez's D-Bus client) runs with a NoInputNoOutput agent,
 the remote is bonded, trusted and connected, and from then on bluez reconnects it.
+A remote keeps one bond: paired with another box since, it has lost the key this box keeps, and
+Left + Right here gave a connection that fails while bluez kept the stale bond. watch therefore also
+listens to the HCI monitor channel (as btmon does, no scanning of its own): a bonded remote that
+advertises in pairing mode (LE Limited Discoverable) asks for a new bond, so the old one is forgotten
+and the remote paired afresh.
 Commands: pair [--timeout 60], reconnect [--timeout 30], status, forget [ADDR],
-watch (reconnect a known remote; pair only when none is bonded). Exit: 0 done, 1 no remote seen, 2 bluez refused, 3 usage or no bluetoothctl.
+watch (reconnect a known remote; pair when none is bonded or when the bonded one is in pairing mode).
+Exit: 0 done, 1 no remote seen, 2 bluez refused, 3 usage or no bluetoothctl.
 """
 
 import argparse
+import ctypes
 import os
 import queue
 import re
 import shlex
+import socket
+import struct
 import subprocess
 import sys
 import threading
@@ -26,6 +35,14 @@ NAMES = ("BLE_X_RMC", "Great Wall", "RGE_A_CE1504", "Bt_Remote", "Bluetooth remo
 HOG_UUID = "00001812-0000-1000-8000-00805f9b34fb"
 EXIT_OK, EXIT_NOT_FOUND, EXIT_REFUSED, EXIT_USAGE = 0, 1, 2, 3
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]|[\x01\x02]")
+#: Advertising data flag of a remote in pairing mode: the stock remote sends ADV_IND with flags 0x05
+#: (LE Limited Discoverable, no BR/EDR) only after Left + Right (btmon, 20.10.2026); a bonded remote wakes
+#: with a directed advert, which carries no flags.
+LIMITED_DISCOVERABLE = 0x01
+MONITOR_HEADER = struct.Struct("<HHH")      # opcode, controller index, length (the HCI monitor channel)
+MONITOR_EVENT = 3                           # an HCI event from the controller
+#: Pairing adverts until this many seconds after a pairing of our own are the ones that led to it.
+OFFER_GRACE = 5.0
 DEVICE_LINE = re.compile(r"(?:\[NEW\] )?Device ([0-9A-Fa-f]{2}(?::[0-9A-Fa-f]{2}){5}) (?:Name: )?(.+)$")
 
 
@@ -62,19 +79,19 @@ class Ctl:
             self.p.stdin.write(cmd + "\n")
         self.p.stdin.flush()
 
-    def lines(self, timeout: float):     # the lines of the next timeout seconds
+    def lines(self, timeout: float, stop=None):     # the lines of the next timeout seconds, or until stop is set
         end = time.monotonic() + timeout
-        while end > time.monotonic():
+        while end > time.monotonic() and not (stop and stop.is_set()):
             try:
-                line = self.q.get(timeout=end - time.monotonic())
+                line = self.q.get(timeout=min(end - time.monotonic(), 0.2) if stop else end - time.monotonic())
             except queue.Empty:
-                return
+                continue
             if line == "":
                 return
             yield line
 
-    def wait(self, ok: str, bad: str, timeout: float):   # (True|False, line) or (None, "")
-        for line in self.lines(timeout):
+    def wait(self, ok: str, bad: str, timeout: float, stop=None):   # (True|False, line) or (None, "")
+        for line in self.lines(timeout, stop):
             if re.search(ok, line):
                 return True, line
             if re.search(bad, line):
@@ -87,6 +104,98 @@ class Ctl:
             self.p.wait(timeout=5)
         except (OSError, ValueError, subprocess.TimeoutExpired):
             self.p.kill()
+
+
+def pairing_adverts(event: bytes):
+    """Addresses of the connectable undirected adverts with the LE Limited Discoverable flag in one HCI
+    event (LE Advertising Report and LE Extended Advertising Report). bluez's AdvertisingFlags property
+    cannot tell: it keeps the flags of the last pairing (05 on a remote that is bonded and connected)."""
+    if len(event) < 4 or event[0] != 0x3E or event[2] not in (0x02, 0x0D):
+        return
+    extended, pos = event[2] == 0x0D, 4
+    head = 24 if extended else 9                        # a report's fields up to its data length
+    for _ in range(event[3]):
+        if pos + head > len(event) or pos + head + event[pos + head - 1] > len(event):
+            return
+        if extended:                                    # connectable, not directed, not a scan response
+            undirected = (struct.unpack_from("<H", event, pos)[0] & 0x0D) == 0x01
+            addr = event[pos + 3:pos + 9]
+        else:
+            undirected = event[pos] == 0x00             # ADV_IND
+            addr = event[pos + 2:pos + 8]
+        data = event[pos + head:pos + head + event[pos + head - 1]]
+        pos += head + len(data) + (0 if extended else 1)    # legacy: the RSSI follows the data
+        flags = ad_field(data, 0x01)
+        if undirected and flags and flags[0] & LIMITED_DISCOVERABLE:
+            yield ":".join("%02X" % b for b in reversed(addr))
+
+
+def ad_field(data: bytes, kind: int) -> bytes:
+    pos = 0
+    while pos + 1 < len(data) and data[pos]:
+        if data[pos + 1] == kind:
+            return data[pos + 2:pos + 1 + data[pos]]
+        pos += data[pos] + 1
+    return b""
+
+
+def monitor_frames(source: str):
+    """(opcode, payload) of the kernel's HCI monitor channel, or of a file of such frames (tests)."""
+    if source:
+        with open(source, "rb") as f:
+            while True:
+                head = f.read(MONITOR_HEADER.size)
+                if len(head) < MONITOR_HEADER.size:
+                    return
+                op, _, size = MONITOR_HEADER.unpack(head)
+                yield op, f.read(size)
+    sock = socket.socket(socket.AF_BLUETOOTH, socket.SOCK_RAW, socket.BTPROTO_HCI)
+    # Python's bind() knows no HCI channel: sockaddr_hci {family, HCI_DEV_NONE, HCI_CHANNEL_MONITOR}
+    addr = struct.pack("<HHH", socket.AF_BLUETOOTH, 0xFFFF, 2)
+    libc = ctypes.CDLL(None, use_errno=True)
+    if libc.bind(sock.fileno(), addr, len(addr)) != 0:
+        err = ctypes.get_errno()
+        sock.close()
+        raise OSError(err, os.strerror(err))
+    with sock:
+        while True:
+            frame = sock.recv(65536)
+            if len(frame) < MONITOR_HEADER.size:
+                continue
+            op, _, size = MONITOR_HEADER.unpack_from(frame)
+            yield op, frame[MONITOR_HEADER.size:MONITOR_HEADER.size + size]
+
+
+class PairingOffers:
+    """Pairing adverts per address, read in a thread. A bonded remote is connected by the kernel as soon
+    as it advertises; with a stale bond that connection fails and bluez keeps the bond without a word on
+    D-Bus, so the advert is the one sign that the remote asks for a new bond. event wakes watch."""
+
+    def __init__(self, source: str):
+        self.seen, self.quiet, self.watched = {}, 0.0, set()
+        self.lock, self.event = threading.Lock(), threading.Event()
+        threading.Thread(target=self._read, args=(source,), daemon=True).start()
+
+    def _read(self, source: str):
+        try:
+            for op, payload in monitor_frames(source):
+                for addr in pairing_adverts(payload) if op == MONITOR_EVENT else ():
+                    with self.lock:
+                        self.seen[addr] = time.monotonic()
+                        if addr in self.watched:
+                            self.event.set()
+        except (OSError, AttributeError) as e:
+            print("note: no HCI monitor channel (%s): Left + Right cannot replace a stale bond, "
+                  "use h713-remote-pair forget" % e, file=sys.stderr)
+
+    def asking(self, addrs):       # the first of addrs that advertised in pairing mode since our last pairing
+        with self.lock:
+            self.watched = set(addrs)
+            return next((a for a in self.watched if self.seen.get(a, 0.0) > self.quiet), None)
+
+    def paired(self):              # the adverts until now and a little after led to this pairing
+        with self.lock:
+            self.quiet = time.monotonic() + OFFER_GRACE
 
 
 def device_info(ctl: Ctl, addr: str):
@@ -176,25 +285,33 @@ def cmd_status(ctl: Ctl, a) -> int:
     return EXIT_OK if devs else EXIT_NOT_FOUND
 
 
+def forget(ctl: Ctl, addr: str) -> int:
+    ctl.send("remove " + addr)
+    ok, line = ctl.wait(r"Device has been removed", r"not available|Failed to remove", 10)
+    if not ok:
+        print("error: forget %s: %s" % (addr, line or "no answer"), file=sys.stderr)
+        return EXIT_REFUSED
+    print("ok forgot " + addr)
+    return EXIT_OK
+
+
 def cmd_forget(ctl: Ctl, a) -> int:
     addrs = [a.addr] if a.addr else [d[0] for d in bonded(ctl, a.name)]
     for addr in addrs:
-        ctl.send("remove " + addr)
-        ok, line = ctl.wait(r"Device has been removed", r"not available|Failed to remove", 10)
-        if not ok:
-            print("error: forget %s: %s" % (addr, line or "no answer"), file=sys.stderr)
+        if forget(ctl, addr) != EXIT_OK:
             return EXIT_REFUSED
-        print("ok forgot " + addr)
     return EXIT_OK if addrs else EXIT_NOT_FOUND
 
 
-def reconnect(ctl: Ctl, addr: str, timeout: float) -> int:
+def reconnect(ctl: Ctl, addr: str, timeout: float, stop=None) -> int:
     deadline = time.monotonic() + timeout
     line = "no answer"
     while time.monotonic() < deadline:
         ctl.send("connect " + addr)
         done, line = ctl.wait(r"Connection successful", r"Failed to connect|not available",
-                              max(0, deadline - time.monotonic()))
+                              max(0, deadline - time.monotonic()), stop)
+        if stop and stop.is_set():
+            return EXIT_REFUSED
         info = device_info(ctl, addr)
         if info["hog"] and info["connected"]:
             print("ok connected " + addr)
@@ -222,16 +339,27 @@ def cmd_reconnect(ctl: Ctl, a) -> int:
 
 
 def cmd_watch(ctl: Ctl, a) -> int:
+    offers = PairingOffers(a.monitor)
     while True:
+        offers.event.clear()
         devs = bonded(ctl, a.name)
         rc = EXIT_OK
         if not devs:
             rc = run_pair(ctl, a.name, a.timeout)
-        elif not any(connected for _, _, connected in devs):
-            rc = reconnect(ctl, devs[0][0], a.timeout)
+            offers.paired()
+        elif not offers.asking(d[0] for d in devs) and not any(connected for _, _, connected in devs):
+            rc = reconnect(ctl, devs[0][0], a.timeout, offers.event)
+        stale = devs and offers.asking(d[0] for d in devs)
+        if stale:
+            print("%s asks to be paired (Left + Right) while bonded here: forgetting the old bond, "
+                  "pairing afresh" % stale)
+            rc = forget(ctl, stale)
+            if rc == EXIT_OK:
+                rc = run_pair(ctl, a.name, a.timeout)
+            offers.paired()
         if a.once:
             return rc
-        time.sleep(a.interval)
+        offers.event.wait(a.interval)
 
 
 def main(argv=None) -> int:
@@ -253,6 +381,8 @@ def main(argv=None) -> int:
     s.add_argument("--interval", type=float, default=3.0)
     s.add_argument("--timeout", type=int, default=20)
     s.add_argument("--once", action="store_true", help="one round, then exit")
+    s.add_argument("--monitor", default=os.environ.get("H713_HCI_MONITOR", ""),
+                   help="read HCI monitor frames from this file instead of the kernel (tests; env H713_HCI_MONITOR)")
     a = p.parse_args(argv)
     a.name = tuple(a.name) if a.name else NAMES
     try:
