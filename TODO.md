@@ -468,6 +468,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       bleiben - die Ursache muss geklärt werden.** Abdeckung: launcher-rand b63044e (schwarzes NV12 unter Seiten, ~83 MB/s Abruf solange eine
       Seite steht); offen bleiben Konsole (ctl off) und die Seite ohne Signal ohne vorheriges Bild. Nächster Schritt: RE, wer bei Stock die
       RGB-Ebene auf den Bildanfang legt (Display-Firmware/MIPS-Aufrufe, U-Boot), Abzüge des G-EU unter Stock lesen; danach Abdeckung zurückbauen.
+- [ ] 2.127 **MAC-Adressen im Repo maskieren und sperr-scan um eine MAC-Regel ergänzen** (Mythos 20.10.2026, Prüfung bt-neukoppeln; vor dem
+      nächsten Push): die Adresse von Marcos Fernbedienung steht in doku/134 (3x), 135, 140 (nur lokal, nicht auf GitHub); auf GitHub (`origin/main`)
+      stehen schon zwei Client-Adressen in den Beschreibungen von aic8800-0008/-0010 und eine eth-Adresse in analyse/boot/v3-spl-tausch-20260910.txt.
+      Maskieren (xx:xx:xx:xx:xx:xx, wie im Testzweig versuch/hy300pro-test11 e2ebea5), sperr-scan-Regel mit Ausnahmen für Testattrappen
+      (AA:BB:CC:..., 00:11:22:...); was schon auf GitHub ist, bleibt in der Historie - Marco entscheidet, ob das reicht.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
