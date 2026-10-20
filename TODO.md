@@ -515,6 +515,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.130 Klein (Marco 20.10.2026 am G-EU): **im Mausmodus der Fernbedienung bestätigt OK nichts mehr** - OK sendet dort BTN_LEFT statt KEY_SELECT
       (TODO-Notiz 11.10.), Launcher und Seiten haben keinen Zeiger. h713-keys soll BTN_LEFT bei offenem Launcher/offener Seite als OK nehmen. Dazu: nach
       dem Aufwachen gehen die ersten 2-3 s Tasten nur über IR (Maustaste per IR = 0x0266, keine Maus) - Marco: "Maus geht nicht beim ersten Mal".
+      **Gebaut und gemergt 21.10.2026** (medien 119ca0f3, Paket `arbeit/medien/maus-ok/`, Mythos go): BTN_LEFT ist OK im Launcher (h713-keys),
+      auf einer Seite (h713-settings) und im Ausschalt-Countdown (h713-power liest dafür den Mausknoten der Fernbedienung). Nur Host-Tests;
+      offen: Sichtprüfung mit Marcos Fernbedienung (`maus-ok/PRUEFPAKET.md`, dazu `/proc/bus/input/devices` vorher und `top` auf h713-power
+      bei bewegtem Zeiger - über ~2 % den Mausknoten erst mit dem Countdown öffnen). Die Wecken-Lücke ist Bluetooth (2.130b).
+- [ ] 2.130a Klein, nach der Sichtprüfung von 2.130: **Pfeiltasten im Mausmodus** - schicken Hoch/Runter dort KEY_UP/KEY_DOWN oder nur
+      REL_Y? Im zweiten Fall bewegt sich der Launcher im Mausmodus nicht; dann REL in Auswahlschritte übersetzen (Mythos 21.10.2026).
+- [ ] 2.130b **Wecken-Lücke der Fernbedienung messen** (btmon am G-EU): wie lange nach dem Wecken bis Bluetooth steht, wo die Zeit bleibt
+      (Werbung, Verbindung, Diensterkennung); bis dahin nur IR, keine Maus. Gehört zu Bluetooth, nicht zu h713-keys.
+- [ ] 2.130c Klein: **Journalrauschen** - h713-keys setzt EVIOCSREP auf jeden Knoten der Fernbedienung, auch auf den Mausknoten (kein EV_REP,
+      ENOSYS -> eine Warnzeile je Öffnung); EVIOCSREP nur bei EV_REP (Mythos 21.10.2026).
 - [ ] 2.131 **G-EU: schwarzer Block unten im Launcher bei jedem zweiten Zug, nur ab und zu** (Marco 20.10.2026, Foto
       `arbeit/medien/launcher-rand/foto-box-schatten.webp`, 18:06 und 21:01 bei Zügen über die uhid-Fernbedienung, nicht bei Marcos eigenem Aufruf).
       Der Block sitzt dort, wo die Einblendung (Lautstärke-Pille) erscheint, rechts neben "Standby". Gemessen 21:06/21:08 UTC
