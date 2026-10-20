@@ -329,6 +329,7 @@ class Box:
         absent = "not present on this board"
         have = lambda on: present if features in ("all", on) else absent
         self.env = dict(os.environ, H713_SETTINGS_ETC=self.etc, H713_SETTINGS_BIN=self.bin, LOG=self.log, ETC=self.etc,
+                        H713_SETTINGS_COLOUR="1",                # the Colour area (left out on the board since 20.10.2026): the tests keep it
                         H713_SETTINGS_TV=os.path.join(self.dir, "tv.sock"),
                         H713_SETTINGS_WARP=os.path.join(self.dir, "warp.sock"),
                         CAM=have("camera"), ACC=have("accelerometer"), MOTOR=have("focus-motor"), STANDBY=standby)
@@ -702,6 +703,19 @@ class WhiteBalance(Base):
         self.assertIn("Warm - Cool slider 0 ", d)
         self.assertIn('Reset action "Done"', d)
         self.assertEqual(b.tv.saved, 1)                             # and kept: a reset is a decision
+        b.finish()
+
+    def test_the_colour_area_is_left_out(self):
+        # cm-diagnose 20.10.2026: the colour manager has no visible effect on the HY310; Marco: "Colour ausblenden"
+        b = self.box(extra_env={"H713_SETTINGS_COLOUR": ""}).start("White balance")
+        b.keys("down")                                              # the area after White balance
+        self.assertIn("area Keystone", b.dump())
+        b.keys("up", "up")
+        self.assertIn("area Picture", b.dump())
+        b.finish()
+        b = self.box(extra_env={"H713_SETTINGS_COLOUR": ""}).start("Sound")    # the areas after it are found by their new places
+        b.keys("volup")                                             # the hot key refreshes the Sound area when it is the open one
+        self.assertIn("Volume slider 95", b.dump())
         b.finish()
 
     def test_done_goes_with_the_area(self):
