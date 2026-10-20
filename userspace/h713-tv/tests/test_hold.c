@@ -6,7 +6,8 @@
  * plane off in one commit and gives the master back, and without one commits nothing; the start after a held restart leaves the
  * console dark only while the holder's framebuffer is on the plane and the console's framebuffer is known and real; no later look
  * at the plane (h713-osd's claim) takes the holder's framebuffer for the console's; the console's framebuffer is written down for
- * that start, never the holder's.
+ * that start, never the holder's; an opaque page that goes while the straight ring is to come stays
+ * on the plane for the ring's own commit, and goes as before when no picture is to come.
  *
  *   test_hold      exit 0 when every case passed
  */
@@ -271,6 +272,66 @@ int main(void)
 	if (f)
 		fclose(f);
 	unlink(hf);
+
+	/* an opaque page goes, the straight ring is to come: the page stays for the ring's commit */
+	osd.claimed = true;
+	osd.peer = sv[0];
+	osd.fb_id[0] = 48;
+	osd.fb_id[1] = 50;
+	osd.console_fb = 46;
+	osd.console_known = true;
+	osd.want = 0;
+	osd.cover = true;
+	osd.shown = true;
+	cover.on = true;
+	d.on = d.warped = d.master = false;
+	nosig.lost = false;
+	ctl.policy = POLICY_AUTO;
+	ctl.source = SOURCE_AUTO;
+	c0 = commits;
+	check(send(sv[1], "osd hide\n", 9, 0) == 9, "h713-osd takes the page away (the launcher closed, the signal is back)");
+	osd_serve(&d);
+	check(!strcmp(heard(sv[1], 200), "ok\n") && commits == c0 && osd.shown && osd.want < 0,
+	      "... no commit: the page stays on the plane, display_show() takes the wall with the ring");
+	check(osd_wanted(true) < 0, "... and that commit puts the console's framebuffer under the ring");
+
+	/* the same, but no picture is to come: the page goes as before */
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	nosig.lost = true;
+	c0 = commits;
+	check(send(sv[1], "osd hide\n", 9, 0) == 9, "the page goes while there is no signal");
+	osd_serve(&d);
+	check(!strcmp(heard(sv[1], 200), "ok\n") && commits == c0 + 1 && committed(&osd.props, PRIMARY, "FB_ID") == 46 &&
+	      !osd.shown, "... the console's framebuffer goes up at once, as before");
+	nosig.lost = false;
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	ctl.policy = POLICY_OFF;
+	c0 = commits;
+	send(sv[1], "osd hide\n", 9, 0);
+	osd_serve(&d);
+	check(commits == c0 + 1 && !osd.shown, "\"ctl off\" (the console forced): at once");
+	ctl.policy = POLICY_AUTO;
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	ctl.source = SOURCE_CLIENT;
+	c0 = commits;
+	send(sv[1], "osd hide\n", 9, 0);
+	osd_serve(&d);
+	check(commits == c0 + 1 && !osd.shown, "a program is the mode: at once");
+	ctl.source = SOURCE_AUTO;
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	cover.on = false;
+	c0 = commits;
+	send(sv[1], "osd hide\n", 9, 0);
+	osd_serve(&d);
+	check(commits == c0 + 1 && !osd.shown, "a page that did not cover (it waited for a picture): at once");
+	cover.on = true;
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	d.on = true;
+	c0 = commits;
+	send(sv[1], "osd hide\n", 9, 0);
+	osd_serve(&d);
+	check(commits == c0 + 1 && !osd.shown, "a picture under the page already: the overlay goes at once, as before");
+	d.on = false;
 
 	unlink(cf);
 	rmdir(dir);

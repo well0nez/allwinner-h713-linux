@@ -10,7 +10,7 @@
 #   test_edid   the EDID without Deep Colour: edid_strip_dc() on made-up EDIDs, with edid_prune() in both orders
 #   test_nosig  the page without a signal (P5): what h713-osd is told, when the last picture stands for the page, the way back
 #   test_hold   the wall held black over a restart of the picture path (TODO 2.96): the holder's file, the way out with and
-#               without a holder, the start after it, the console's framebuffer written down
+#               without a holder, the start after it, the console's framebuffer written down; a page that goes before the ring
 #   test_color  the firmware's white balance and colour management (bm-wb2): the registers a value gives, all six words every
 #               time, the colour management as a step on the board's own value, the firmware that forgets, the slots, the file werte
 #   test_gamma  the gamma curve and the colour temperature: the arithmetic of the display firmware's library against checksums

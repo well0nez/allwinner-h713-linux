@@ -1943,6 +1943,7 @@ static const char *nosig_word(void);		/* what h713-osd is to hear now: "none", o
 static void nosig_said(bool said);
 static void hold_console_note(uint32_t fb);	/* the console's framebuffer, for the start after a held restart (TODO 2.96) */
 static uint32_t hold_console_fb(struct display *d, uint32_t fb);	/* fb is the holder's: the console's from the note, 0 */
+static bool osd_handover(const struct display *d);	/* a page that goes leaves the wall to the ring's own commit */
 
 /* a claim of the ring was made: that needed a signal, so the signal is back and the page can go (nosig_follow() says so) */
 static void nosig_claimed(void)
@@ -2324,6 +2325,8 @@ static void osd_serve(struct display *d)
 		if (d->warped && osd.shown && !osd_alone(d)) {
 			osd.queued = true;	/* the console's framebuffer back with the next frame */
 			answer = "ok\n";
+		} else if (osd_handover(d)) {
+			answer = "ok\n";	/* the page stays until the ring's commit takes the wall, or display_hide() drops it */
 		} else {
 			osd_drop(d);
 			answer = osd.shown ? "error the console framebuffer could not go back\n" : "ok\n";
@@ -6787,6 +6790,21 @@ static void capture_follow(void)
 static bool nosig_page_ok(void)
 {
 	return osd.claimed && osd.peer >= 0 && ctl.policy != POLICY_OFF && ctl.source != SOURCE_CLIENT && !(warp.claimed && warp.client);
+}
+
+/*
+ * An opaque page goes ("osd hide") with no picture under it, and evaluate() is to put the straight ring up next: the page was
+ * covering, the mode is HDMI with a signal, no console forced, no claim of h713-warp's (whose first frame carries a page's end
+ * already, cover_follow()). Then the page stays on the plane as it is: cover_follow() re-evaluates at once, and display_show()
+ * puts the ring on the video plane and the console's framebuffer under it in one commit - from the page to the picture with
+ * nothing between. If evaluate() decides on no picture after all, display_hide() drops the page and gives the console back as
+ * before. Until 20.10.2026 the page went first, alone, and the console stood on the wall for the 0.1 s until the ring came
+ * (HY300PRO-G-EU without a keystone: after every closed launcher and after the page without a signal - so after every wake).
+ */
+static bool osd_handover(const struct display *d)
+{
+	return !d->on && !d->warped && osd.shown && cover.on && !warp.claimed && !nosig.lost && ctl.policy != POLICY_OFF &&
+	       ctl.source != SOURCE_CLIENT;
 }
 
 /* what h713-osd is to hear: "none" while the page is wanted; "off" when there is no signal and no page (console forced, a program);
