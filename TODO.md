@@ -115,13 +115,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         gefenct (afbd nutzt `drm_atomic_helper_commit`). Offen: Inhalt des ersten Warp-Puffers (nicht über `/dev/mem` lesbar), die
         Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
 - [ ] 2.42 **Netzteil summt/fiept im Standby (2,4 W) und im Aus über crust (0,3 W), im Gate (2,9 W) nicht** (Marco 09./10.10., HY310;
-      Marco 20.10.: "das spricht dafür, dass wir irgendwas falsch machen"). Hypothesen und Testplan: `arbeit/medien/standby-summen/`
-      (HYPOTHESEN.md H1-H7, TESTPLAN.md T0-T8). Reihenfolge mit Marco zu Hause, USB-Kabel ab: **T0** Ort und Tonhöhe mit Handy-Mikro
-      (Netzteil / Platine / Lautsprecher, Standby und Aus getrennt, Kontrollarm Gate/Betrieb) → **T1** Stock-Aus am HY350 (gleiches
-      Netzteil? Kreuztausch) → **T3** Last dazu im Standby (Handy an USB-A, falls VBUS steht) → **T4** WLAN aus. Erst wenn T0 das Gerät
-      als Ort nennt: **T5** crust-Testbau vdd-cpu im Standby auf 0,81 V (R_PWM Kanal 1, Kopie, FEL, Marcos Ja). Erwartung nach Lage der
-      Belege (`doku/181/188/190`): H1 Netzteil im Burst-Modus bei kleiner Last, wie Stock-Aus - dann kein Fehler unsererseits, Satz in
-      `docs/hardware.md`. Vorab von Marco: Fotos Typenschild Netzteil und Platine (Regler-ICs).
+      Marco 20.10.: "das spricht dafür, dass wir irgendwas falsch machen"; Stock ist bei denselben 0,3 W still). Hypothesen und Testplan:
+      `arbeit/medien/standby-summen/` (Mythos 20.10.2026, HYPOTHESEN.md mit Nachtrag H0a-e, TESTPLAN.md). Das Netzteil allein (H1) ist
+      damit widerlegt, es ist nur der Verstärker; Kandidaten sind Dinge, die bei uns im Aus und im Standby laufen und bei Stock nicht:
+      ARISC auf OSC24M in einer Dauer-Poll-Schleife statt langsam/idle (crust system.c), WLAN-Chip bleibt versorgt (aic8800 ohne
+      shutdown-Haken, `wlan_regon` high), R_PWM vdd-cpu läuft weiter; nur im Standby dazu PLLs an und vdd-cpu ohne Last.
+      Reihenfolge mit Marco zu Hause, USB-Kabel ab: **T0** Ort und Tonhöhe mit Handy-Mikro (Netzteil / Platine / Lautsprecher,
+      Standby und Aus getrennt, Kontrollarm Gate/Betrieb) -> **T4a/T4b** WLAN entladen vor `poweroff`/`suspend` (ohne Bau, ~10 min)
+      -> **T1** Stock-Aus am HY350 als stilles Referenzspektrum -> **T3** Last dazu im Standby -> **T5c** crust-Variante "ARISC langsam"
+      (Bau, FEL, Marcos Ja) -> **T6'** Tiefschlaf-Bau build-deep-0034 (liegt). Vorab von Marco: Fotos Typenschild Netzteil und Platine
+      (Regler-ICs).
 - [ ] 2.45 **Regel: wer auf Kanal 2 zeichnet, zeichnet verzerrt - Vorplanung Desktop** (`doku/192` §5.3-5.4): ein späterer
       Compositor setzt die Trapez-Matrix als letzten Durchgang und zeichnet die Einblendung davor; Kanal 2 gehört dann dem Desktop
       (Alpha je Bildpunkt über der Video-Ebene); Zeichnen und Ausgabeort trennen; DRM-Master heute `h713-tv`, später der
