@@ -485,6 +485,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       ein Release-Schritt, der sie neben das Abbild legt, und ein Tor davor; zwei Sätze im README; sunxi-fel in SOURCES. R2 die Probeabbilder der
       Lizenzarbeit tragen noch "Written offer" - nur fürs Gerät, nie weitergeben. Vor dem Release build-all von vorn (build-rootfs.sh/build-all.sh mit
       Änderungen beider Seiten nie zusammen gebaut). Randnotiz: build-all.sh liest AIC_REV aus dem jüngsten aic8800-Ordner statt aus versions.env.
+      Offen am Gerät: das neu gebaute aic8800_fdrv.ko (nur der Baumname ändert sich) mit dem nächsten G-EU-/HY310-Abbild laden und WLAN prüfen.
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
