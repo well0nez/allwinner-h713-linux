@@ -10,7 +10,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Zeitpunkt**): (1) Release-Bau von vorn mit genau dem medien-Kopf (Bauverzeichnisse gelöscht); (2) installieren auf HY310 und G-EU,
       `abnahme.sh` ganz, WLAN-Check (das neu gebaute aic8800_fdrv lädt, 2.128); der HY310 kennt die Pakete vom 20.10. noch nicht (wach-wand,
       kodi-93, launcher-rand, bt-neukoppeln, Lizenz-Bauweg); (3) 2.125 und 2.131 bewusst entscheiden (beheben oder als bekannt führen);
-      (4) Merge medien -> main (369 Commits am 21.10., TODO.md-Konflikte von Hand); (5) Doku-Runde durch Mythos; (6) Push nur mit Marcos Ja.
+      (4) Merge medien -> main (369 Commits am 21.10., TODO.md-Konflikte von Hand); (5) **Mythos, in einem Auftrag: die Doku komplett
+      neu erzeugen** (Marco 17.10.: ganz in Mythos' Hand - README, docs/, STATUS, ROADMAP, known-issues, RELEASES-Entwurf, Release-Seite aus
+      Fremdensicht; 7.19 und 5.16 gehen darin auf) **und die Identitäts- und Leck-Prüfung 1.7a** über alles, was rausgeht (Marco 21.10.);
+      die Aufsicht schreibt den Auftrag, Marco startet Mythos, die Aufsicht prüft und merged; (6) Push nur mit Marcos Ja.
 - [ ] 1.1a **Release-Neubau** mit allem seit dem v0.96-Bau vom 05.10. (Baustand `be4f8e1`; der alte Hash `819a09a` ist seit dem
       Identitäts-Rewrite unerreichbar): Kernel 0184/0185 und pwm-sun8i (`5e4475a`), Warp (Zoom, Moduswechsel,
       Stale-Schwelle, Import), EDID-Beschnitt, Panel (Auth, Zoom-Schieber), h713-tv (Aspect zoom), Installer-Texte, die neu
@@ -82,7 +85,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **10.10. mittags:** alter G-EU-Worktree gelöscht (vorher geprüft: Commit in `main`, Arbeitsbaum sauber, Submodul-Köpfe im
         Haupt-Klon, Kernelbaum nur um `0249` anders); die sechs lokalen Zweige `integration/r2-main`, `versuch/{crust-release,
         geu-crust,hdcp-haertung,r2-standby,standby-gate}` gelöscht. In `repo-neu` gibt es nur noch `main`
-- [ ] 1.7a **Vor jedem Push: Identitäts- und Leck-Prüfung** (Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
+- [ ] 1.7a **Vor jedem Push: Identitäts- und Leck-Prüfung** (vor dem nächsten Release macht sie Mythos zusammen mit der Doku, 1.0 (5); Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
       Spiegel-Patches trugen die private Adresse, ein Kernel-Patch einen Firmennamen, bemerkt kurz vor dem Push). Über **alles, was
       rausgeht**, nicht nur den neuen Teil: `main` und jeder Fork-Kopf (U-Boot, TF-A, crust) samt Submodul-Commits; je Commit Autor,
       Committer, `Co-Authored-By`/`Signed-off-by`, Nachricht; je Datei der Inhalt, auch `From:`-Zeilen der Spiegel-Patches
@@ -672,7 +675,7 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       - 12.10. nachts: MemPalace und Graphify ausgebaut (8.2) - es bleiben `referenz/` und das Journal
 - [ ] 7.16 Testskripte veröffentlichen — Auswahl, was ohne unseren Tisch läuft (aus `61`)
 - [ ] 7.17 Fotos: Standbilder der projizierten Bilder (ROADMAP „Pictures")
-- [ ] 7.19 **Doku-Runde: die Neuerungen auf beiden Geräten** (Marco 10.10.): seit R2 kamen dazu - HY310: dunkles Gate nach
+- [ ] 7.19 **Doku-Runde: die Neuerungen auf beiden Geräten** (geht in Mythos' kompletter Doku-Runde auf, 1.0 (5); Marco 10.10.): seit R2 kamen dazu - HY310: dunkles Gate nach
       missglücktem Standby (0245), HDCP-Härtung, Leistung; HY300PRO-G-EU: crust, Standby, Panel-Zyklus, PB5 (0246-0249,
       `doku/182`/`184`/`185`). Nachziehen: README (Board-Liste: G-EU-Status), `docs/README.md`, `STATUS.md`, `ROADMAP.md`,
       `docs/known-issues.md` durchsehen, `boards/README.md`, `RELEASES.md`-Entwurf für 1.8; die Subsystem-Seiten sind schon
