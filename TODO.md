@@ -126,7 +126,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
 - [ ] 2.42 **Netzteil summt/fiept im Standby (2,4 W) und im Aus über crust (0,3 W), im Gate (2,9 W) nicht** (Marco 09./10.10., HY310;
       Marco 20.10.: "das spricht dafür, dass wir irgendwas falsch machen"; Stock ist bei denselben 0,3 W still). Hypothesen und Testplan:
-      `arbeit/medien/standby-summen/` (Mythos 20.10.2026, HYPOTHESEN.md mit Nachtrag H0a-e, TESTPLAN.md). **T5c gebaut 21.10.2026, nicht gemessen, Mythos go für den Hörtest:** crust `versuch/arisc-langsam` 4f076d7 (Fix der
+      `arbeit/medien/standby-summen/` (Mythos 20.10.2026, HYPOTHESEN.md mit Nachtrag H0a-e, TESTPLAN.md). **Hörtest 21.10.2026 abends am G-EU (Marco): T5c lief nicht wie gedacht** - im ersten B-Standby `slow_gestoppt=ja`
+      nach 124 Wartungen (2 % auf LOSC, Uhr +0,99 s; Verdacht: Takt oder Tick-Zähler folgen der Quelle 1 nicht), abgebrochen nach Protokoll,
+      Release-crust zurück; gehört wurde nur A: Standby "surrt, minimal andere Frequenz" (mit WLAN) bzw. "surren" (ohne), **Aus "lautes surren"**
+      (BERICHT-T5c §9). Nächster Hebel: Ursache am Code/mit einer Messung ohne Marco, sonst T5d. Vorher:
+      **T5c gebaut 21.10.2026, nicht gemessen, Mythos go für den Hörtest:** crust `versuch/arisc-langsam` 4f076d7 (Fix der
       Startphase nach Mythos; vorher a0b00d9)
       (HY310/G-EU, check-crust grün): die ARISC wartet im Standby/Aus zwischen ihren Polls auf LOSC statt durchzulaufen; Hörtest A-B-B0-B-A nach
       `standby-summen/TESTABLAUF-T5c.md` mit Marco, HY310 zuerst (Sonoff), Mythos prüft vorher. Nebenbefund: H0a (Stock-ARISC läuft langsam) ist am
@@ -525,6 +529,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       auf einer Seite (h713-settings) und im Ausschalt-Countdown (h713-power liest dafür den Mausknoten der Fernbedienung). Nur Host-Tests;
       offen: Sichtprüfung mit Marcos Fernbedienung (`maus-ok/PRUEFPAKET.md`, dazu `/proc/bus/input/devices` vorher und `top` auf h713-power
       bei bewegtem Zeiger - über ~2 % den Mausknoten erst mit dem Countdown öffnen). Die Wecken-Lücke ist Bluetooth (2.130b).
+- [ ] 2.132 **G-EU: Knarzen aus den Lautsprechern beim Einschalten nach dem Aus** (Marco 21.10.2026 beim Hörtest, Kaltstart nach
+      dem Aus über crust und Wecken per Fernbedienung). Nicht untersucht; erst den Zeitpunkt im Boot finden (Codec/DSP-Initialisierung, Mute vor
+      dem ersten Ton?).
 - [ ] 2.130a Klein, nach der Sichtprüfung von 2.130: **Pfeiltasten im Mausmodus** - schicken Hoch/Runter dort KEY_UP/KEY_DOWN oder nur
       REL_Y? Im zweiten Fall bewegt sich der Launcher im Mausmodus nicht; dann REL in Auswahlschritte übersetzen (Mythos 21.10.2026).
 - [ ] 2.130b **Wecken-Lücke der Fernbedienung messen** (btmon am G-EU): wie lange nach dem Wecken bis Bluetooth steht, wo die Zeit bleibt
