@@ -16,13 +16,13 @@ h713-keys run            # what the unit runs
 |---|---|
 | `KEY_VOLUMEUP` / `KEY_VOLUMEDOWN` | `h713-tv ctl volume N` in steps of `volume_step`; both lift a mute first (the owner's choice of 11.10.2026) |
 | `KEY_MUTE` | toggles `h713-tv ctl mute`; held down it does not repeat |
-| `KEY_F4` / `KEY_F5` (the BLE remote's focus keys, kernel 0169; IR 0x0251/0x0250) | `h713-focus up/down` with `focus_steps`; one run at a time, presses during a run wait for the next (at most two presses' worth, so a held key keeps the motor going and it stops one run after the release), a press the other way replaces what was waiting. At the end of the travel (`h713-focus` exit 3) the overlay shows the end stop and nothing more is queued that way. The end stop picture is the other direction's: a run up ends with `focus down edge`, a run down with `focus up edge` (the owner's eye at the wall, 16.10.2026: the run he drove down to its stop showed the top edge picture; `doku/213` §6 - his instruction, not a root cause: why the direction is reported the wrong way round is open) |
+| `KEY_F4` / `KEY_F5` (the BLE remote's focus keys, kernel 0169; IR 0x0251/0x0250, on the HY300's IR remote 0x0098/0x0093) | `h713-focus up/down` with `focus_steps`; one run at a time, presses during a run wait for the next (at most two presses' worth, so a held key keeps the motor going and it stops one run after the release), a press the other way replaces what was waiting. At the end of the travel (`h713-focus` exit 3) the overlay shows the end stop and nothing more is queued that way. The end stop picture is the other direction's: a run up ends with `focus down edge`, a run down with `focus up edge` (the owner's eye at the wall, 16.10.2026: the run he drove down to its stop showed the top edge picture; `doku/213` §6 - his instruction, not a root cause: why the direction is reported the wrong way round is open) |
 | `input_keys` (none by default) | `h713-tv ctl off` (console) when the picture is on automatic, `h713-tv ctl auto` otherwise. The remote has no record key; which key gets this is open |
 | `KEY_POWER` | left alone: logind powers off, or [h713-power](h713-power.md) decides on an image with standby |
 | `KEY_HOMEPAGE` | opens the launcher (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
 | Menu, Back, arrows, OK | with the launcher closed: logged once as "recognised, no action yet" (they are Kodi's); OK arrives as `KEY_ENTER` and Menu as `KEY_COMPOSE` (the udev rule below) and is read as `KEY_OK` |
 | `BTN_LEFT` (OK in the remote's mouse mode, where `REL_X`/`REL_Y` move a pointer) | with the launcher open it is read as OK, and the settings page does the same (it reads the remote itself); with both closed it stays a click for Kodi, the desktop and the browser. Host tests only, not yet tried on a box |
-| `KEY_F6` (IR `0x0266`: the mouse **and** the microphone key) | logged once. Over IR both keys send this one code, the vendor's `PRJ_BRC_PAIR`; their own functions run over Bluetooth only. *Superseded 17.10.2026:* "they ask for the Bluetooth pairing, and a second later the remote offers itself (measured 11.10.2026)" - the owner: pairing begins with Left+Right, and these two keys are no way to pair; the fix built on it was dropped (`doku/214` §1). Nothing acts on it: `h713-remote-pair` pairs only while no remote is bonded - a remote paired with another box since needs `h713-remote-pair forget`, then Left+Right (TODO 2.54) |
+| `KEY_F6` (IR `0x0266`: the mouse **and** the microphone key; the HY300's IR remote: its mouse key `0x0082`) | logged once. Over IR both keys send this one code, the vendor's `PRJ_BRC_PAIR`; their own functions run over Bluetooth only. *Superseded 17.10.2026:* "they ask for the Bluetooth pairing, and a second later the remote offers itself (measured 11.10.2026)" - the owner: pairing begins with Left+Right, and these two keys are no way to pair; the fix built on it was dropped (`doku/214` §1). Nothing acts on it: `h713-remote-pair` pairs only while no remote is bonded - a remote paired with another box since needs `h713-remote-pair forget`, then Left+Right (TODO 2.54) |
 
 Volume and mute work without an HDMI signal: `h713-tv` keeps them as long as its two sound cards are there.
 
@@ -131,7 +131,7 @@ xkb names evdev codes only up to 247, so cage's libinput hands a Wayland client 
 with the stock codes OK and Menu never reached Kodi (gate H2, 15.10.2026), and would not reach labwc or Firefox either. The rule
 `/etc/udev/rules.d/70-h713-remote.rules` (installed with h713-keys) lets udev's `keyboard` builtin change the codes in the kernel, as hwdb's `KEYBOARD_KEY_` does:
 OK becomes `KEY_ENTER` (28, Return to every client) and Menu `KEY_COMPOSE` (127, keysym Menu, the context-menu key). IR matches by the device name `sunxi-ir`
-(scancodes `0x20b`, `0x21e` of the keymap `rc-h713-fd02`), Bluetooth by the ids 1d5a:c081. h713-keys reads `KEY_ENTER` as OK (and still `KEY_SELECT`/`KEY_OK`, should the
+(scancodes `0x20b`, `0x21e` of the keymap `rc-h713-fd02`, and `0x7`, `0x13` of the HY300's remote in the same keymap), Bluetooth by the ids 1d5a:c081. h713-keys reads `KEY_ENTER` as OK (and still `KEY_SELECT`/`KEY_OK`, should the
 rule not have run); h713-power took `KEY_ENTER` for OK already. `udevadm trigger --subsystem-match=input --action=change` applies the rule to a running box.
 
 ## Why it reads only the remote
@@ -160,13 +160,39 @@ The IR receiver (`sunxi-cir`, `r_ir`) decodes with kernel 0252-0254. Before 0252
 at 0.75 of its length, and NEC never decoded (measured 02.10.2026, leader 6752/3348 us instead of
 9000/4500). Without the property the driver runs at 8 MHz, an exact 8 us. 0253 removes the vendor register
 values of 0021, which belonged to the vendor's own sample model. 0254 adds the keymap `rc-h713-fd02`
-(NEC customer code 0xfd02, scancode = address << 8 | command), built into the kernel and named in the
-HY310 device tree, which the HY300PRO-G-EU's includes. The table comes from the stock firmware; seven
-navigation keys were tested on the HY300PRO-G-EU on 03.10.2026 (`doku/138`).
+(NEC customer code 0xfd02, scancode = address << 8 | command), built into the kernel. The table comes from the
+stock firmware; seven navigation keys were tested on the HY300PRO-G-EU on 03.10.2026 (`doku/138`).
 
-The pin sleep state and the re-apply of PL9 from the IR package of 03.10. are not part of it: they answered
-the vendor's ARISC firmware, which disabled PL8/PL9 when it started. crust leaves PL9 to Linux (measured
-11.10.2026 on the HY310: PL9 function 3, `s_cir`).
+**Two remotes, one keymap (kernel 0329, 22.10.2026).** The H713 projectors ship with one of two IR remotes:
+the HY310's (and the HY300PRO-G-EU's) sends NEC address 0x02, the HY300's address 0x00 (customer code 0xff00).
+`rc-h713-fd02` holds both - the name stayed for the tools and trees that load it - and the device tree names it
+for every board (`sun50i-h713.dtsi`; before 0329 only the HY310's tree did, which two other boards include).
+Each key of the 0x00 remote gives the code of the same key on the 0x02 remote:
+
+| Key on the HY300's remote | Scancode | Code |
+|---|---|---|
+| Power, Mute, Volume up, Volume down | `0x14`, `0x01`, `0x0b`, `0x58` | `KEY_POWER`, `KEY_MUTE`, `KEY_VOLUMEUP`, `KEY_VOLUMEDOWN` |
+| Up, Down, Left, Right, OK | `0x03`, `0x02`, `0x0e`, `0x1a`, `0x07` | `KEY_UP`, `KEY_DOWN`, `KEY_LEFT`, `KEY_RIGHT`, `KEY_OK` (udev: `KEY_ENTER`) |
+| Home, Back, Menu | `0x48`, `0x5c`, `0x13` | `KEY_HOMEPAGE`, `KEY_BACK`, `KEY_MENU` (udev: `KEY_COMPOSE`) |
+| Mouse | `0x82` | `KEY_F6`, like the other remote's `0x66` (the vendor names it MOUSE; there is no IR mouse here) |
+| the key with a double arrow | `0x98` | `KEY_F4` - the vendor's PRJ_FOCUS_UP |
+| the key with a screen symbol | `0x93` | `KEY_F5` - the vendor's PRJ_FOCUS_DN |
+
+The 15 scancodes were read on the HY300PRO-G-EU on 22.10.2026 with the HY300's stock remote; they are the 15 of
+the vendor's table `customer_ir_ff00.kl`, which is also the first entry of the stock wake list. Which way the
+focus runs from the two focus keys is not measured yet. Address 0x00 is the one many cheap remotes use
+([known issues](../known-issues.md)).
+
+**The pin after the vendor ARISC firmware's start (kernel 0328, 22.10.2026).** The vendor ARISC firmware writes
+`0x222222ff` to `PL_CFG1` when it starts and so switches PL9, the receiver's input, off. Stock starts it before
+the kernel muxes the pin; here the `sun50i-h713-arisc` module starts it after the receiver has probed, and no IR
+key arrived (`v0.97-beta`, which runs the vendor firmware by default). `sunxi-cir` now applies its pin again a
+second after the arisc driver has bound, through the pin's sleep state (stock's, `gpio_in`), because pinctrl writes
+only a state that changes. The journal says `PL9 applied again after the ARISC start`. crust leaves PL9 to Linux,
+under it the pin ends where it began. *Superseded 22.10.2026:* "The pin sleep state and the re-apply of PL9 from
+the IR package of 03.10. are not part of it: they answered the vendor's ARISC firmware, which disabled PL8/PL9 when
+it started. crust leaves PL9 to Linux (measured 11.10.2026 on the HY310: PL9 function 3, `s_cir`)." - true while
+crust was the default; with the vendor firmware as the default (`0327`) the re-apply is needed again.
 
 ## Configuration
 

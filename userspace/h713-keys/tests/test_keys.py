@@ -528,16 +528,20 @@ class KeysTest(unittest.TestCase):
         self.assertFalse([m for m in out if "no meaning here" in m], out)
 
     def test_the_udev_rule_names_the_scancodes_of_the_ir_keymap(self):
-        """the rule's IR scancodes are the keymap's for KEY_OK and KEY_MENU (kernel 0254) - they must not drift apart"""
+        """the rule's IR scancodes are the keymap's for KEY_OK and KEY_MENU, of both remotes (kernel 0254: NEC address
+        0x02, 0329: address 0x00) - they must not drift apart"""
         root = os.path.join(HERE, "..", "..", "..")
-        with open(glob.glob(os.path.join(root, "mainline", "patches", "kernel", "0254-*.patch"))[0]) as f:
-            keymap = f.read()
+        keymap = ""
+        for number in ("0254", "0329"):
+            with open(glob.glob(os.path.join(root, "mainline", "patches", "kernel", number + "-*.patch"))[0]) as f:
+                keymap += f.read()
         with open(os.path.join(HERE, "..", "70-h713-remote.rules")) as f:
             rule = f.read()
-        ok = re.search(r"\{ 0x0([0-9a-f]{3}), KEY_OK \}", keymap).group(1)
-        menu = re.search(r"\{ 0x0([0-9a-f]{3}), KEY_MENU \}", keymap).group(1)
-        self.assertIn('ENV{KEYBOARD_KEY_%s}="enter"' % ok, rule)
-        self.assertIn('ENV{KEYBOARD_KEY_%s}="compose"' % menu, rule)
+        for key, name in (("KEY_OK", "enter"), ("KEY_MENU", "compose")):
+            codes = re.findall(r"\{ 0x([0-9a-f]{4}), %s \}" % key, keymap)
+            self.assertEqual(sorted(int(c, 16) >> 8 for c in codes), [0x00, 0x02], codes)    # one per remote
+            for code in codes:
+                self.assertIn('ENV{KEYBOARD_KEY_%x}="%s"' % (int(code, 16), name), rule)
         self.assertGreater(rule.index('IMPORT{builtin}="keyboard"'), rule.rindex('ENV{KEYBOARD_KEY_'))    # udev runs an IMPORT before the assignments of its own line
 
     def test_the_launcher_opens_when_the_box_has_started(self):
