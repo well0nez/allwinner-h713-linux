@@ -1,6 +1,7 @@
 # The power-on gate
 
-Plug the projector in and it waits: dark, red LED lit, until the power key or the remote's power key is pressed. U-Boot
+Plug the projector in and it waits: dark, red LED lit, until the power key on the projector is pressed - the gate polls
+that key alone (PL4), so the remote cannot start the box from here; it can only where crust holds the off state (below). U-Boot
 waits itself, 2.4-2.9 W (09.10.2026, `doku/181`) - below; that is what an image does since 22.10.2026, which runs the
 vendor's ARISC firmware and whose boot chain starts no crust ([arisc](../subsystems/arisc.md#crust-experimental)). Where
 the boot chain starts a crust that can power off (an image built with the standby), it waits in crust's off state

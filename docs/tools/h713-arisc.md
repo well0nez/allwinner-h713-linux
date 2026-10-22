@@ -13,7 +13,7 @@ h713-arisc set vendor          # the vendor firmware from your dump again, from 
 image from your own dump): it carries `/etc/modprobe.d/h713-arisc.conf` with `options sun50i_h713_arisc
 firmware=vendor`, and the driver loads that file instead of the crust image the device tree names (kernel
 patch `0267`). With it there is no standby, and a power-off ends in the [power-on gate](../uboot/power-gate.md),
-2.9 W, where the key starts the next boot. The owner decided so on 22.10.2026, for the HY310 and the
+2.9 W, where the key on the projector, not the remote, starts the next boot. The owner decided so on 22.10.2026, for the HY310 and the
 HY300PRO-G-EU alike: with crust the power supply hums or whines - in standby (2.0 W) and when off through crust
 (0.3 W) - and a night of measurements with a microphone at the supply found no crust change that is quiet at
 the same power; in the gate it is silent (TODO 2.42, and the whine in standby already noted in `doku/181`).
