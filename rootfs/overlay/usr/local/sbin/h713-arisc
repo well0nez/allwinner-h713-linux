@@ -1,12 +1,12 @@
 #!/usr/bin/env python3
-"""h713-arisc - which firmware runs on the ARISC, and the way back to the vendor's.
+"""h713-arisc - which firmware runs on the ARISC: the vendor's, or crust, ours, as an experiment.
 
-crust (ours, built with the image) is the default on every board with a measured crust configuration: only with
-it the standby and the 0.3 W power-off exist. The vendor's firmware (h713-arisc.bin, from your own dump) stays
-one command away: `set vendor` writes /etc/modprobe.d/h713-arisc.conf (options sun50i_h713_arisc
-firmware=vendor), `set crust` removes that choice; both take effect at the next boot. `status` says which runs
-now, where the choice came from and what it means (TODO 5.20). Commands: status, set vendor|crust. Exit: 0,
-1 not possible on this image or not written, 2 usage. Tests only: H713_ARISC_ROOT goes before /sys, /etc, /lib.
+An image runs the vendor's firmware (h713-arisc.bin, from your own dump): /etc/modprobe.d/h713-arisc.conf says
+firmware=vendor. crust, built with the image, brings the standby (on an image built with it) and a 0.3 W
+power-off, and stays experimental: with it the power supply hums or whines in standby and when off (HY310,
+HY300PRO-G-EU). `set crust` and `set vendor` write that file and take effect at the next boot. `status` says
+which runs now, where the choice came from and what it means (TODO 5.20). Commands: status, set vendor|crust.
+Exit: 0, 1 not possible on this image or not written, 2 usage. Tests only: H713_ARISC_ROOT goes before /sys, /etc, /lib.
 """
 import argparse
 import glob
@@ -76,7 +76,9 @@ def status():
             off = int(st.get("build2", "0"), 16) & BUILD2_POWER_OFF
         except ValueError:
             off = 0
+        no_sleep = "AllowSuspend=no" in read(path("etc/systemd/sleep.conf.d/10-h713.conf")).replace(" ", "")
         print("this means: standby %s; a power-off %s" % (
+            "not on this image (built without it)" if no_sleep else
             "ready" if st.get("ready") == "1" else "not ready (ready=%s)" % st.get("ready", "-"),
             "switches the rails off, about 0.3 W" if off else "ends in the power-on gate"))
     want = configured()
@@ -107,6 +109,8 @@ def set_value(choice):
         print("h713-arisc: %s not written: %s (root?)" % (p, e.strerror), file=sys.stderr)
         return 1
     print("firmware = %s (from the next boot on; h713-arisc status shows what runs now)" % choice)
+    if choice == "crust":
+        print("crust is experimental: the power supply may hum in standby and when off (docs/tools/h713-arisc.md)")
     return 0
 
 

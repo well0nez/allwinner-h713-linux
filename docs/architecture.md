@@ -65,9 +65,10 @@ BROM -> SPL (DRAM init) -> BL31 (EL3) -> U-Boot proper -> Linux
 This is the opposite of stock Android, where the vendor BL31 loads the ARISC firmware before anything
 else runs. Mainline TF-A does not do that, so the job moved into a Linux driver instead - one more
 reason the ARISC is unreachable, by design, until that driver has bound and its firmware request has
-resolved. With crust (the HY310) our BL31 starts the ARISC again, from the FIT's `scp` image before
-U-Boot proper, and the driver keeps that running image when it is the one its device tree names
-([arisc.md](subsystems/arisc.md)). `cpu_comm` needs no such handoff: the MIPS core is already running display.bin by the time
+resolved. On an image built with the standby, which runs crust, our BL31 starts the ARISC again, from the
+FIT's `scp` image before U-Boot proper, and the driver keeps that running image when it is the one its device
+tree names ([arisc.md](subsystems/arisc.md)); an image without it runs the vendor's firmware and leaves the job
+to the driver, as above (since 22.10.2026, [h713-arisc](tools/h713-arisc.md)). `cpu_comm` needs no such handoff: the MIPS core is already running display.bin by the time
 Linux starts, so its first RPC call can succeed immediately.
 
 Neither vendor firmware file, nor the HDMI EDID blob, nor the panel/picture tables ship in this

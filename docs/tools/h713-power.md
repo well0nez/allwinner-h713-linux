@@ -5,13 +5,16 @@ seconds, standby on its left, off on its right, the choice bright and underlined
 OK or a second press of the power key carries the choice out at once, Back cancels and the projector stays on; when the
 time is up the choice is carried out. It starts on `default` of `/etc/h713/power.conf` - `poweroff`, the owner's choice.
 Standby is offered only where it can happen (an image built with `--standby`, `[deep]` in `/sys/power/mem_sleep`,
-crust `ready=1`); elsewhere the ring stands alone and ends in a power-off. Without a page or picture of ours on the wall (the console, no h713-osd)
+crust `ready=1`); elsewhere the ring stands alone and ends in a power-off - on a release image, which runs the vendor
+ARISC firmware since 22.10.2026 ([h713-arisc](h713-arisc.md)), always. Without a page or picture of ours on the wall (the console, no h713-osd)
 nobody would see a countdown, and the default happens at once. The overlay is drawn by [h713-osd](h713-osd.md); each of
 its frames keeps it one second, so a dead h713-power leaves nothing on the wall.
 
-Where crust can take the power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`, the HY310 since
-`doku/190`) that is a real off at 0.3 W, and the key or the remote wakes into a fresh boot of about 30 s; elsewhere it
-is the power-on gate. The standby: 2.4 W, the picture back about 5 s after the wake.
+Where crust runs and can take the power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`, the HY310
+since `doku/190`; experimental, `h713-arisc set crust`) that is a real off at 0.3 W, and the key or the remote wakes into
+a fresh boot of about 30 s; elsewhere - under the vendor's ARISC firmware, what an image runs - it is the power-on gate,
+2.9 W. The standby: 2.4 W on the HY310, 2.0 W on the HY300PRO-G-EU, the picture back about 5 s after the wake; with crust
+the power supply hums in standby and when off (TODO 2.42).
 
 ```
 h713-power set default standby   # the countdown starts on standby

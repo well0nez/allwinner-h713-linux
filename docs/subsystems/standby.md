@@ -5,8 +5,17 @@ is which, what the standby through crust does, what wakes it, what a failed wake
 get out of it. Status: the standby has run on the HY310 in test images (`doku/165` - `doku/167`), and since
 09.10.2026 the picture comes back after a wake in the R2 test image (`doku/171`, `doku/172`); on 10.10.2026 the
 same ran on the HY300PRO-G-EU (board HY200 QZ713DF A1, test image `geucrust2`, `doku/184`: woken by the RTC, the
-power key and the remote's IR key, picture and sound back after each). A release image does **not** offer it
-yet (TODO 3.3: the hang going to sleep, C1, is open).
+power key and the remote's IR key, picture and sound back after each). A release image does **not** offer it.
+
+**An image runs the vendor ARISC firmware and offers no standby** (the owner's decision of 22.10.2026, for the
+HY310 and the HY300PRO-G-EU): with crust the power supply hums or whines in standby (2.0 W by the owner's
+wattmeter, 22.10.2026) and when off through crust (0.3 W), and no crust change found in a night with a
+microphone at the supply made it quiet at the same power (TODO 2.42, [arisc](arisc.md#crust-experimental)). A
+power-off and a mains-on end in U-Boot's [gate](../uboot/power-gate.md), 2.9 W and silent. The standby stays
+what this page describes, for an image built with `--standby` ("Building it" below), and `h713-arisc set crust`
+brings crust's 0.3 W power-off to any image with crust ([h713-arisc](../tools/h713-arisc.md)).
+*Superseded (22.10.2026):* "A release image does not offer it yet (TODO 3.3: the hang going to sleep, C1, is
+open)."
 
 **Lamp and fan go off in standby on both boards.** The board manager switches the fan rail off late in suspend
 and on again at resume, but only when the board's device tree hands it the rail (`0211`). PB5 carries the lamp's
@@ -17,9 +26,9 @@ board manager said `fan power rail not ours, left as it is`, and the fan kept tu
 
 | State | What runs | Power | How you get there | How you leave |
 |---|---|---|---|---|
-| **off through crust** (HY300PRO-G-EU, HY310) | crust on the ARISC, the board's rails off (PL6): ARM cluster, DRAM, PLLs unpowered; fan, lamp, USB low | **0.3 W**, as stock Android off (10.10.2026, `doku/188`; on the HY310 not measured, `doku/190`) | `poweroff` or a short press with `short = poweroff` (the default), on a board whose crust takes it; plugging in, too (since 10.10.2026, [power-gate](../uboot/power-gate.md)) | the power key, the remote's IR code - a fresh boot |
-| **off (the gate)** | the SoC in U-Boot's [power-on gate](../uboot/power-gate.md); fan, lamp, panel unpowered (PB5, PL3 low); LED red | 2.9 W (09.10.2026, `doku/181`; 4 W on 09.09.2026, before crust) | `poweroff` or plugging in, on a board whose ARISC firmware cannot take it (the vendor's, or a crust older than the board's measurement); a reset while off; a standby that did not finish | the power key |
-| **standby** | crust on the ARISC, everything else asleep: the ARM cluster off, the DRAM in self-refresh | **2.4 W**, less than off (09.10.2026, `doku/181`) | a short press of the power key on an image with standby (`h713-power`), `systemctl suspend` | the power key, the remote's IR code, a wake timer |
+| **off through crust** (HY300PRO-G-EU, HY310; experimental) | crust on the ARISC, the board's rails off (PL6): ARM cluster, DRAM, PLLs unpowered; fan, lamp, USB low | **0.3 W**, as stock Android off (10.10.2026, `doku/188`; on the HY310 not measured, `doku/190`); the power supply hums (TODO 2.42) | `poweroff` or a short press with `short = poweroff` (the default), where crust runs and takes it (`h713-arisc set crust`, or an image built with `--standby`); plugging in, too, where the boot chain starts crust (an image built with `--standby`, [power-gate](../uboot/power-gate.md)) | the power key, the remote's IR code - a fresh boot |
+| **off (the gate)** | the SoC in U-Boot's [power-on gate](../uboot/power-gate.md); fan, lamp, panel unpowered (PB5, PL3 low); LED red | 2.9 W (09.10.2026, `doku/181`; 4 W on 09.09.2026, before crust); silent (21.10.2026, TODO 2.42) | `poweroff` or plugging in under the vendor's ARISC firmware - what an image runs since 22.10.2026 - or a crust older than the board's measurement; a reset while off; a standby that did not finish | the power key |
+| **standby** (experimental) | crust on the ARISC, everything else asleep: the ARM cluster off, the DRAM in self-refresh | **2.4 W**, less than off (09.10.2026, HY310, `doku/181`); 2.0 W on the HY300PRO-G-EU (22.10.2026, TODO 2.42); the power supply whines | a short press of the power key on an image with standby (`h713-power`), `systemctl suspend` | the power key, the remote's IR code, a wake timer |
 | `h713-tv` idle | everything; the HDMI input has no signal | full | no source | a source |
 
 The last row is not a power state at all; `h713-tv` calls it STANDBY in its own log. "Standby" on this
@@ -171,11 +180,14 @@ vendor block differs from the vendor firmware's on port 0 (1.0.0.0 against 0.0.0
 
 `release/build-all.sh --standby` offers the standby, and only for a verified board whose `board.env`
 names a `CRUST_DEFCONFIG` - or, since 10.10.2026, for a `--test-image` of such a board (the HY300PRO-G-EU's
-`geucrust2`): BL31 with `SYSTEM_SUSPEND`, the sleep file above, h713-power on the key.
-Without `--standby` BL31 has no `SYSTEM_SUSPEND`, the sleep file says `AllowSuspend=no`, and the key
-powers off as it always did; crust still runs the HDMI front end. `release/check-crust.py` (step 10)
-refuses an image whose parts disagree about it ([build-container.md](../build-container.md) for the
-compiler).
+`geucrust2`): BL31 with `SYSTEM_SUSPEND`, crust in the release FIT, which BL31 starts, the sleep file above,
+h713-power on the key; the image runs crust (no `h713-arisc.conf`). Without `--standby` - the release - BL31
+has no `SYSTEM_SUSPEND`, the sleep file says `AllowSuspend=no`, the FIT carries no crust, the rootfs carries it
+as `/lib/firmware/<board>-crust.bin` behind `/etc/modprobe.d/h713-arisc.conf` with `firmware=vendor`, and the
+key powers off into the gate. `release/check-crust.py` (step 10) refuses an image whose parts disagree about it
+([build-container.md](../build-container.md) for the compiler).
+*Superseded (22.10.2026):* "Without `--standby` [...] the key powers off as it always did; crust still runs
+the HDMI front end."
 
 The variant is DRAM self-refresh. Deeper sleep (PLLs off, root clocks on the 24 MHz oscillator) is ported
 and built but has never run, and the release refuses it. A design limit stays even then: crust polls at

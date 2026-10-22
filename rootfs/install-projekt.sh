@@ -25,7 +25,8 @@
 #       + udev rule (starts the unit when an accelerometer appears)
 #   5e. h713-panel + page + unit (enabled; port 8080, password made at the first start)
 #   5g. h713-features + unit (enabled), /etc/h713/features from boards/$H713_BOARD/board.env
-#   5h. crust (H713_CRUST_BIN, our own build) as /lib/firmware/$H713_BOARD-crust.bin; with
+#   5h. crust (H713_CRUST_BIN, our own build) as /lib/firmware/$H713_BOARD-crust.bin, without
+#       H713_STANDBY=1 as the experimental choice behind /etc/modprobe.d/h713-arisc.conf firmware=vendor; with
 #       H713_STANDBY=1 the standby sleep.conf.d and h713-power + unit (enabled) + power.conf,
 #       and h713-mips-restart, which h713-sleep-post.service (h713-mode sleep-post) runs after a sleep to start the parked MIPS
 #       (h713-mode everywhere, the two sleep units with --standby)
@@ -385,6 +386,7 @@ if ((DRY_RUN)); then
        /etc/h713/features: $DRY_FEAT
     5h. crust and the standby
        ${H713_CRUST_BIN:-no crust image} -> /lib/firmware/${H713_BOARD:-<board>}-crust.bin
+       ARISC: $( [[ -n "$H713_CRUST_BIN" ]] && ! ((H713_STANDBY)) && echo "the vendor firmware by default - /etc/modprobe.d/h713-arisc.conf firmware=vendor, crust experimental" || echo "what the device tree names (no h713-arisc.conf)")
        standby: $( ((H713_STANDBY)) && echo "offered - sleep.conf.d mem/deep, h713-power enabled,
                 /usr/local/sbin/h713-mips-restart (the picture after a standby)" || echo "not offered - AllowSuspend=no (overlay)")
     5i. h713-keys, h713-osd
@@ -650,6 +652,17 @@ if [[ -n "$H713_CRUST_BIN" ]]; then
 	say "crust"
 	install -D -m 0644 "$H713_CRUST_BIN" "$TREE/lib/firmware/$H713_BOARD-crust.bin"
 	info "/lib/firmware/$H713_BOARD-crust.bin ($(stat -c %s "$H713_CRUST_BIN") B, sha256 $(sha256sum "$H713_CRUST_BIN" | cut -c1-16))"
+	# The owner's decision of 22.10.2026: an image without the standby runs the vendor ARISC firmware from the
+	# dump, and crust stays the experimental choice - with it the power supply hums in standby and when off
+	# (TODO 2.42). The device tree still names crust; this option goes over it (kernel 0267), and
+	# 'h713-arisc set crust' rewrites the line (docs/tools/h713-arisc.md). With --standby the image runs crust.
+	if ! ((H713_STANDBY)); then
+		install -d "$TREE/etc/modprobe.d"
+		printf '%s\n' "# Written by install-projekt.sh: the ARISC runs the vendor firmware from your dump (no standby, a power-off" \
+			"# ends in the power-on gate). crust, built with this image, is experimental: 'h713-arisc set crust'." \
+			"options sun50i_h713_arisc firmware=vendor" > "$TREE/etc/modprobe.d/h713-arisc.conf"
+		info "/etc/modprobe.d/h713-arisc.conf: firmware=vendor (crust experimental, h713-arisc set crust)"
+	fi
 fi
 if ((H713_STANDBY)); then
 	say "standby"

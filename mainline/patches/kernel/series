@@ -409,3 +409,6 @@
 
 # --- section 23 The hdmirx driver and the firmware's allocator.
 0326-media-h713-hdmirx-leave-out-a-block-whose-page-the-firmware-s-allocator-has-reached.patch
+
+# --- section 24 The vendor ARISC firmware by default, crust as the experimental choice.
+0327-soc-sunxi-h713-arisc-a-missing-vendor-image-loads-the-device-tree-s-crust.patch

@@ -88,6 +88,26 @@ class Arisc(unittest.TestCase):
         self.assertIn("firmware=crust\n", r.read("etc/modprobe.d/h713-arisc.conf"))
         self.assertIn("next boot: crust (", self.run_tool(r, "status")[1])
 
+    def test_the_release_default_and_crust_tried_on_it(self):
+        # 22.10.2026: the image says firmware=vendor; crust chosen on an image without the standby
+        r = Root(firmware="hy310-crust.bin", source="module option")
+        r.put("etc/modprobe.d/h713-arisc.conf", "options sun50i_h713_arisc firmware=crust\n")
+        r.put("etc/systemd/sleep.conf.d/10-h713.conf", "[Sleep]\nAllowSuspend=no\n")
+        rc, out, _ = self.run_tool(r, "status")
+        self.assertIn("standby not on this image (built without it); a power-off switches the rails off", out)
+        rc, out, _ = self.run_tool(r, "set", "crust")
+        self.assertEqual(rc, 0)
+        self.assertIn("crust is experimental: the power supply may hum", out)
+        self.assertNotIn("experimental", self.run_tool(r, "set", "vendor")[1])
+
+    def test_status_when_the_vendor_image_is_missing(self):
+        # kernel 0327: the option asked for the vendor image, the dump lacked it, the driver loaded crust
+        r = Root(source="device tree, the vendor image missing", vendor=False)
+        r.put("etc/modprobe.d/h713-arisc.conf", "options sun50i_h713_arisc firmware=vendor\n")
+        rc, out, _ = self.run_tool(r, "status")
+        self.assertIn("running: crust (hy310-crust.bin), chosen by the device tree, the vendor image missing", out)
+        self.assertIn("this image carries: no vendor firmware, hy310-crust.bin", out)
+
     def test_set_refuses_what_the_image_does_not_carry(self):
         rc, _, err = self.run_tool(Root(vendor=False), "set", "vendor")
         self.assertEqual(rc, 1)

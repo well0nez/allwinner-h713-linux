@@ -9,16 +9,24 @@ on 2026-09-06 before the rule was understood; the hardware survived every one of
 
 ## Firmware and driver
 
-**The choice, and the way back.** The device tree names the firmware, and the module option
-`firmware=vendor|crust` of `sun50i-h713-arisc` overrides it (kernel patch `0267`): `h713-arisc set vendor`
-writes it to `/etc/modprobe.d/h713-arisc.conf`, and from the next boot on the owner's `h713-arisc.bin` runs
-instead of crust - no standby, a power-off through the gate - without a reinstall; `set crust` goes back.
-`h713-arisc status` and the driver's state file (`firmware=`, `firmware_from=`) say which runs and why
-([h713-arisc](../tools/h713-arisc.md), decision 1.1b of 10.10.2026, TODO 5.20).
+**The choice.** The device tree names the firmware, and the module option `firmware=vendor|crust` of
+`sun50i-h713-arisc` overrides it (kernel patch `0267`). An image runs the vendor's firmware: it carries
+`/etc/modprobe.d/h713-arisc.conf` with `firmware=vendor`, so the owner's `h713-arisc.bin` runs - no standby, a
+power-off through the gate. The owner decided so on 22.10.2026: with crust the power supply hums or whines in
+standby and when off, and no crust change made it quiet at the same power (TODO 2.42; "crust, experimental"
+below). `h713-arisc set crust` switches to crust from the next boot on, `set vendor` back, without a reinstall;
+an image built with the standby runs crust from the start. `h713-arisc status` and the driver's state file
+(`firmware=`, `firmware_from=`) say which runs and why ([h713-arisc](../tools/h713-arisc.md), TODO 5.20).
+Should the option ask for `h713-arisc.bin` and the file be missing, the driver loads the device tree's image
+instead and says so (`firmware_from=device tree, the vendor image missing`, kernel `0327`).
+*Superseded (22.10.2026):* "`h713-arisc set vendor` writes it to `/etc/modprobe.d/h713-arisc.conf`, and from
+the next boot on the owner's `h713-arisc.bin` runs instead of crust [...]; `set crust` goes back" (decision 1.1b
+of 10.10.2026: crust as the default).
 
 Two firmwares can run here, and the board's device tree names which (`firmware-name`). On the HY310 and the
-HY200 QZ713DF A1 (HY300PRO-G-EU, since kernel `0246`, measured 10.10.2026 in `doku/184`) it is **crust**, our own,
-built with the image ("crust and the contract page" below). On every other board it is the vendor's (`h713-arisc.bin`, the vendor's `scp.bin`), which never ships - like the MIPS
+HY200 QZ713DF A1 (HY300PRO-G-EU, since kernel `0246`, measured 10.10.2026 in `doku/184`) it names **crust**, our own,
+built with the image ("crust and the contract page" below) - which runs only where the module option does not
+choose the vendor's (above). On every other board it is the vendor's (`h713-arisc.bin`, the vendor's `scp.bin`), which never ships - like the MIPS
 artifacts in [mips.md](mips.md), it comes from the user's own device dump via `h713-extract`. The
 driver, `sun50i-h713-arisc`, loads it into SRAM, releases the core's reset, and then must complete
 a startup handshake before the firmware services anything at all - a notification on one channel,
@@ -176,11 +184,15 @@ display MIPS's frames - so the kernel API above works the same with it, and it a
 frames as with the vendor's firmware, then started by BL31, then the first standby cycles (`doku/163` -
 `doku/167`). Three things are different:
 
-- **Who starts it.** BL31 starts crust at every boot from the FIT's `scp` image, before U-Boot proper.
-  The driver finds it running and keeps it when the file its device tree names (`hy310-crust.bin`, our
-  build, in `/lib/firmware` of the image) is the same image; a different or a vendor file is loaded over
-  it, with a warning. FIT and file come from one build, and `release/check-crust.py` refuses an image
-  where they differ.
+- **Who starts it.** On an image built with the standby, BL31 starts crust at every boot from the FIT's `scp`
+  image, before U-Boot proper. The driver finds it running and keeps it when the file its device tree names
+  (`hy310-crust.bin`, our build, in `/lib/firmware` of the image) is the same image; a different or a vendor
+  file is loaded over it, with a warning. FIT and file come from one build, and `release/check-crust.py`
+  refuses an image where they differ. An image without the standby carries no `scp` in its FIT (since
+  22.10.2026): BL31 starts nothing ("no SCP firmware staged, the ARISC is Linux's to load"), U-Boot's gate
+  finds no crust and waits itself, and the driver loads whichever firmware is chosen onto the ARISC - crust
+  from `/lib/firmware` too, when `h713-arisc set crust` asked for it. *Superseded (22.10.2026):* "BL31 starts
+  crust at every boot from the FIT's `scp` image" on every image with crust.
 - **The contract page.** 1 KiB in SRAM A2 (ARM `0x00123800`), in which crust, BL31 and Linux each own
   their words. Version 4 is what ran on the device; version 5 adds what a release needs and has not run
   yet. Its one table is crust's `platform/h713/include/platform/memory.h`; the kernel's and BL31's
@@ -203,6 +215,24 @@ frames as with the vendor's firmware, then started by BL31, then the first stand
   until its watchdog is measured, and the DRAM checksum of the test image (`h713_hy310_sr_test_defconfig`)
   until the device stages show it raises no false alarm. The driver's `state` file shows version, build word, standby phase,
   last wake and the error bits, read without disturbing the firmware.
+
+## crust, experimental
+
+What crust brings: a standby at 2.0 W on the HY300PRO-G-EU (22.10.2026; 2.4 W on the HY310, `doku/181`; suspend to
+RAM, the picture back about 5 s after the wake;
+[standby.md](standby.md)) and a power-off at 0.3 W, the board's rails off, woken by the key or the remote into a
+fresh boot ([power-gate](../uboot/power-gate.md)) - against 2.9 W in the gate under the vendor's firmware. Why it
+is not what an image runs: on the HY310 and the HY300PRO-G-EU the power supply hums or whines with it, in standby
+and when off through crust; in the gate it is silent. A night with a microphone at the supply (21./22.10.2026)
+moved neither tone with the ARISC's clock, the LEDs, the CPU supply's PWM, the PLL regulator or the crystal; a
+standby without DRAM self-refresh was quiet to the microphone, but drew 2.4 W at the owner's wattmeter, and there
+the owner still heard it whine; the power-off stayed as it was (TODO 2.42; the whine in standby was first noted on 09.10.2026, `doku/181`). Stock is
+silent at the same 0.3 W, so the question is open, not closed.
+
+How to switch it on: `h713-arisc set crust` and a reboot ([h713-arisc](../tools/h713-arisc.md)) - then a power-off
+from Linux goes through crust; a mains-on still waits in the gate, since that image's boot chain starts no crust.
+The standby needs an image built with `release/build-all.sh --standby`, which runs crust from the start: BL31
+with `SYSTEM_SUSPEND`, crust in the FIT, suspend allowed in the rootfs.
 
 ## What it does not do
 

@@ -191,16 +191,18 @@ class MkimageArisc(unittest.TestCase):
             # what build-all passed on 12.10.2026: "crust" glued to the defconfig's name
             module.parser().parse_args(["build", "-o", "x.img", "--arisc", "crusth713_hy310_sr_defconfig"])
 
-    def test_build_all_passes_crust_for_a_crust_board_and_vendor_else(self):
+    def test_build_all_passes_crust_for_a_standby_image_and_vendor_else(self):
+        # the owner's decision of 22.10.2026: a release runs the vendor firmware, crust only with --standby
         script = os.path.join(os.path.dirname(support.TOOLS), "release", "build-all.sh")
         support.need([script])
         with open(script, encoding="utf-8") as fh:
             line = [l for l in fh.read().splitlines() if l.startswith("ARISC_FW=")]
         self.assertEqual(len(line), 1, "build-all.sh sets ARISC_FW in one line")
-        for defconfig, want in (("h713_hy310_sr_defconfig", "crust"), ("", "vendor")):
+        for defconfig, standby, want in (("h713_hy310_sr_defconfig", "1", "crust"), ("h713_hy310_sr_defconfig", "0", "vendor"),
+                                         ("", "0", "vendor")):
             got = subprocess.run(["bash", "-c", line[0] + '\necho "$ARISC_FW"'], capture_output=True, text=True,
-                                 env=dict(os.environ, CRUST_DEFCONFIG=defconfig)).stdout.strip()
-            self.assertEqual(got, want, defconfig)
+                                 env=dict(os.environ, CRUST_DEFCONFIG=defconfig, WANT_STANDBY=standby)).stdout.strip()
+            self.assertEqual(got, want, (defconfig, standby))
 
 
 class Decision(unittest.TestCase):

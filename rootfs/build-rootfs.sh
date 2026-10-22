@@ -142,11 +142,13 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
   --crust FILE          the crust image of this build (release/build-all.sh 1b)
                         as /lib/firmware/<board>-crust.bin, the name the
                         board's device tree gives the ARISC driver. Needs a
-                        --board whose board.env names CRUST_DEFCONFIG
+                        --board whose board.env names CRUST_DEFCONFIG.
+                        Without --standby it is the experimental choice:
+                        /etc/modprobe.d/h713-arisc.conf says firmware=vendor
   --standby             offer the standby: suspend to RAM through crust only
-                        (sleep.conf.d); h713-power (on every image) then
-                        offers it in its countdown. Needs
-                        --crust; without it the image never suspends
+                        (sleep.conf.d), and the image runs crust; h713-power
+                        (on every image) then offers it in its countdown.
+                        Needs --crust; without it the image never suspends
   --profile NAME[,NAME] packages-NAME.txt on top of packages.txt: 'media' (ffmpeg, mpv, GStreamer, PipeWire, and the
                         VA-API driver for the hardware decoders) and/or 'desktop' (cage, labwc, Kodi, seatd).
                         A profile NAME with an overlay-NAME/ directory lays it over overlay/. A profile
@@ -1064,6 +1066,12 @@ t "h713-mode"                 test -x "$TREE/usr/local/sbin/h713-mode"
 t "h713-tv-rescue brings the mode back (h713-mode rescue, not h713-mips-restart alone: its stop of h713-warp ends Kodi)" grep -qx 'ExecStart=/usr/local/sbin/h713-mode rescue' "$TREE/etc/systemd/system/h713-tv-rescue.service"
 if [[ -n "$CRUST_BIN" ]]; then
 	t "crust as $BOARD-crust.bin" cmp -s "$CRUST_BIN" "$TREE/lib/firmware/$BOARD-crust.bin"
+	# the vendor ARISC firmware by default, crust the experimental choice; with --standby the image runs crust
+	if ((STANDBY)); then
+		t "ARISC: crust, as the device tree names it" test ! -e "$TREE/etc/modprobe.d/h713-arisc.conf"
+	else
+		t "ARISC: the vendor firmware by default" grep -qx 'options sun50i_h713_arisc firmware=vendor' "$TREE/etc/modprobe.d/h713-arisc.conf"
+	fi
 else
 	t "no crust image"            test -z "$(find "$TREE/usr/lib/firmware" "$TREE/lib/firmware" -maxdepth 1 -name '*-crust.bin' -print -quit 2>/dev/null)"
 fi
