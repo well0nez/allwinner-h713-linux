@@ -2,7 +2,8 @@
 
 One script, `h713-keys`, Python 3, without dependencies; a daemon run by `h713-keys.service`. It gives the
 stock remote's keys their meaning on our image - over Bluetooth (the BLE remote 1d5a:c081, kernel 0169) and
-over IR (the `sunxi-ir` receiver with the keymap `rc-h713-fd02`, kernel 0254):
+over IR (the `sunxi-ir` receiver with the keymap `rc-h713-fd02`, kernel 0254; since 0329 the same keymap holds the
+HY300's IR remote, NEC address 0x00, each key on the code of the same key):
 
 | Key | Does |
 |---|---|
@@ -13,7 +14,7 @@ over IR (the `sunxi-ir` receiver with the keymap `rc-h713-fd02`, kernel 0254):
 | power | nothing here: logind, or `h713-power` on an image with standby, powers off |
 | Home | opens the **launcher** (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
 | Menu, Back, arrows, OK | recognised and logged once with the launcher closed (they are Kodi's); OK arrives as `KEY_ENTER` and Menu as `KEY_COMPOSE`, see `70-h713-remote.rules` (below), and `KEY_ENTER` is read as `KEY_OK` |
-| mouse, microphone over IR (`KEY_F6`) | both send the same code `0x0266` - over IR they only ask for the Bluetooth pairing; logged once. Their own functions work over Bluetooth only |
+| mouse, microphone over IR (`KEY_F6`) | both send the same code `0x0266` - over IR they only ask for the Bluetooth pairing; logged once. Their own functions work over Bluetooth only. The HY300's IR remote: its mouse key `0x0082`, the same |
 
 After each action it sends one line to the overlay daemon `h713-osd` (`/run/h713-osd/ctl`), if that runs:
 `volume N`, `mute on|off N`, `focus up|down [edge]`, `input console|hdmi`. Without it nothing is shown and

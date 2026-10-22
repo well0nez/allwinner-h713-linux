@@ -11,15 +11,17 @@
 # read the new codes too: h713-keys takes KEY_ENTER for OK, h713-power already did.
 #
 # The scancodes: the IR keymap rc-h713-fd02 (kernel 0254) gives NEC address 0x02 << 8 | command, OK 0x020b and
-# Menu ("SETTINGS" in the vendor table) 0x021e; the Bluetooth remote (1d5a:c081, kernel 0169) sends the consumer
-# usages 0x0c0041 (Menu Pick) and 0x0c0040 (Menu). The Bluetooth match is on the ids, not on a name.
+# Menu ("SETTINGS" in the vendor table) 0x021e; the HY300's IR remote (kernel 0329, NEC address 0x00) OK 0x0007 and
+# Menu 0x0013; the Bluetooth remote (1d5a:c081, kernel 0169) sends the consumer usages 0x0c0041 (Menu Pick) and
+# 0x0c0040 (Menu). The Bluetooth match is on the ids, not on a name.
 ACTION=="remove", GOTO="h713_remote_end"
 SUBSYSTEM!="input", GOTO="h713_remote_end"
 KERNEL!="event[0-9]*", GOTO="h713_remote_end"
 
 # The properties first, the builtin after them on a line of its own: udev evaluates IMPORT as a match, before the assignments of the
 # same line, so a builtin on the line that sets KEYBOARD_KEY_* would run before they exist (measured on the HY310, 15.10.2026).
-ATTRS{name}=="sunxi-ir", ENV{KEYBOARD_KEY_20b}="enter", ENV{KEYBOARD_KEY_21e}="compose", ENV{.H713_REMOTE}="1"
+ATTRS{name}=="sunxi-ir", ENV{KEYBOARD_KEY_20b}="enter", ENV{KEYBOARD_KEY_21e}="compose", \
+    ENV{KEYBOARD_KEY_7}="enter", ENV{KEYBOARD_KEY_13}="compose", ENV{.H713_REMOTE}="1"
 ATTRS{id/bustype}=="0005", ATTRS{id/vendor}=="1d5a", ATTRS{id/product}=="c081", \
     ENV{KEYBOARD_KEY_c0041}="enter", ENV{KEYBOARD_KEY_c0040}="compose", ENV{.H713_REMOTE}="1"
 ENV{.H713_REMOTE}=="1", IMPORT{builtin}="keyboard"

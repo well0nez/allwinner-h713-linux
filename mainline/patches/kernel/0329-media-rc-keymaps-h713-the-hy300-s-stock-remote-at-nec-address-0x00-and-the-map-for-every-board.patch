@@ -1,0 +1,115 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: rc: keymaps: h713 - the HY300's stock remote at NEC address 0x00, and the map for every board
+
+The H713 projectors come with one of two IR remotes. The HY310's (and the
+HY300PRO-G-EU's) sends NEC address 0x02 and has its table since 0254. The
+HY300's sends address 0x00 (customer code 0xff00): measured on the
+HY300PRO-G-EU on 22.10.2026, 15 keys, the same 15 as the vendor's
+customer_ir_ff00.kl, which is also the first entry of the stock wake
+list. Until now none of its keys was mapped; a tester's HY300 has this
+remote as well.
+
+Both now share one table: each key of the 0x00 remote gives the code of
+the same key on the 0x02 remote. OK is KEY_OK (udev turns it into
+KEY_ENTER as for the other remote), the mouse key KEY_F6 like the 0x02
+remote's 0x66, and the two keys the vendor names PRJ_FOCUS_UP (0x98, a
+double arrow on the key) and PRJ_FOCUS_DN (0x93, a screen symbol) KEY_F4
+and KEY_F5, the focus keys. Which way the focus runs from these two is
+not measured yet. The map keeps its name rc-h713-fd02, which the tools
+and the documentation use.
+
+The map is named in the dtsi now, not in the HY310's tree only, so every
+board gets it: the HY310 and the two boards whose trees include it had it
+already, the HY200 QZ713 v2 had rc-empty.
+
+Address 0x00 is the one many cheap remotes use; one of them in the room
+can now press keys on the projector. This is the stock firmware's
+behaviour too.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../boot/dts/allwinner/sun50i-h713-hy310.dts  |  2 --
+ .../arm64/boot/dts/allwinner/sun50i-h713.dtsi |  2 ++
+ drivers/media/rc/keymaps/rc-h713-fd02.c       | 32 ++++++++++++++++++-
+ 3 files changed, 33 insertions(+), 3 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+index f0d5ba6b9..06886f449 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy310.dts
+@@ -54,8 +54,6 @@ chosen {
+ /* the restart of the display MIPS brought the picture back here (08.10.2026) */
+ &mips { status = "okay"; };
+ &motor_ctr { status = "okay"; };	/* range gate PH14 measured 12.09., see doku/94 */
+-/* the stock IR remote, NEC customer code 0xfd02 (the HY200 QZ713DF A1's too) */
+-&r_ir { linux,rc-map-name = "rc-h713-fd02"; };
+ &adc_keys { status = "disabled"; };
+ &board_mgr { status = "okay"; };	/* temperature + fan speed, see doku/60 */
+ 
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+index cedd50408..4d9d5c445 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1985,6 +1985,8 @@ r_ir: ir@7040000 {
+ 			pinctrl-names = "default", "sleep";
+ 			pinctrl-0 = <&r_ir_rx_pin>;
+ 			pinctrl-1 = <&r_ir_rx_sleep_pin>;
++			/* both stock remotes, NEC addresses 0x02 and 0x00 */
++			linux,rc-map-name = "rc-h713-fd02";
+ 			status = "okay";
+ 		};
+ 
+diff --git a/drivers/media/rc/keymaps/rc-h713-fd02.c b/drivers/media/rc/keymaps/rc-h713-fd02.c
+index cdb9a4b6d..d9444cc5b 100644
+--- a/drivers/media/rc/keymaps/rc-h713-fd02.c
++++ b/drivers/media/rc/keymaps/rc-h713-fd02.c
+@@ -14,6 +14,19 @@
+  * the rfkill input handler would read that as "switch Bluetooth on/off".
+  * Which of 0x50/0x51 is focus up was measured both ways (02.10. and
+  * 03.10.); the table's naming is kept until it is settled.
++ *
++ * The same table holds the other stock remote of these projectors, the
++ * HY300's: NEC address 0x00 (customer code 0xff00), the vendor's
++ * customer_ir_ff00.kl, the first entry of the stock wake list. Its 15 keys
++ * were measured on the HY300PRO-G-EU (22.10.2026) and are the vendor
++ * table's 15. Each one gives the code of the same key on the 0x02 remote:
++ * OK is KEY_OK (udev turns both into KEY_ENTER), the mouse key KEY_F6 like
++ * 0x66 (the vendor names it MOUSE; nothing here has an IR mouse), and the
++ * two keys the vendor names PRJ_FOCUS_UP (0x98, a double arrow) and
++ * PRJ_FOCUS_DN (0x93, a screen symbol) KEY_F4 and KEY_F5. The name of the
++ * map stays, for the device trees and the tools that load it by name.
++ * Address 0x00 is shared by many cheap remotes: any of them that reaches
++ * the receiver may press a key here.
+  */
+ 
+ #include <linux/module.h>
+@@ -36,6 +49,23 @@ static struct rc_map_table h713_fd02[] = {
+ 	{ 0x0266, KEY_F6 },		/* PRJ_BRC_PAIR: mouse and microphone */
+ 	{ 0x0251, KEY_F4 },		/* PRJ_FOCUS_UP */
+ 	{ 0x0250, KEY_F5 },		/* PRJ_FOCUS_DN */
++
++	/* the HY300's remote, NEC address 0x00 */
++	{ 0x0014, KEY_POWER },
++	{ 0x0001, KEY_MUTE },
++	{ 0x000b, KEY_VOLUMEUP },
++	{ 0x0058, KEY_VOLUMEDOWN },
++	{ 0x0003, KEY_UP },
++	{ 0x0002, KEY_DOWN },
++	{ 0x000e, KEY_LEFT },
++	{ 0x001a, KEY_RIGHT },
++	{ 0x0007, KEY_OK },
++	{ 0x005c, KEY_BACK },
++	{ 0x0013, KEY_MENU },		/* SETTINGS */
++	{ 0x0048, KEY_HOMEPAGE },
++	{ 0x0082, KEY_F6 },		/* MOUSE */
++	{ 0x0098, KEY_F4 },		/* PRJ_FOCUS_UP: the double arrow */
++	{ 0x0093, KEY_F5 },		/* PRJ_FOCUS_DN: the screen key */
+ };
+ 
+ static struct rc_map_list h713_fd02_map = {
+@@ -61,4 +91,4 @@ module_init(init_rc_map_h713_fd02)
+ module_exit(exit_rc_map_h713_fd02)
+ 
+ MODULE_LICENSE("GPL");
+-MODULE_DESCRIPTION("H713 projectors' stock IR remote (NEC 0xfd02) keytable");
++MODULE_DESCRIPTION("H713 projectors' stock IR remotes (NEC 0xfd02 and 0xff00) keytable");
