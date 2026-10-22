@@ -572,7 +572,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.137 **Installer: `--keep-env` übernahm `h713_gate=0` aus der Sicherung im Abzug, nicht den Wert vom Gerät** (G-EU 22.10.2026: auf
       dem Gerät stand 1, "carried over from the old one: h713_gate=0 (image: 1)"; `install-dump/uboot-env.bin` vom 20.10. trug 0). Der Installer
       soll die Umgebung vom Gerät lesen, wie er es für Secure Storage tut, oder den Unterschied laut melden. Danach `fw_setenv h713_gate 1` von Hand.
-- [ ] 2.139 **RELEASE-BLOCKER: unter der Hersteller-ARISC kommt bei Linux kein IR an** (G-EU v0.97-beta, 22.10.2026 ~19:10, Marco): HY310-
+- [x] 2.139 (**behoben 22.10.2026, medien f711ffc9**: Kernel 0328 setzt PL9 nach dem ARISC-Bind zurück, 0329 Tabelle der originalen HY300-
+      Fernbedienung NEC 0x00; am G-EU mit Marco alle Tasten der originalen erkannt, Tabelle für beide gelesen; Mythos go. HY310 und Kaltstart mit
+      dem Release-Neubau prüfen) **RELEASE-BLOCKER: unter der Hersteller-ARISC kommt bei Linux kein IR an** (G-EU v0.97-beta, 22.10.2026 ~19:10, Marco): HY310-
       Fernbedienung per `bluetoothctl block` auf IR gezwungen - keine Reaktion, `sunxi-ir` 1 Interrupt seit dem Start, CIR-Register und R_CIR-Takt
       (0x81000002) wie bei der Probe; mit crust (21.10.) öffnete Home per IR den Launcher. Die originale HY300-Fernbedienung (IR, wie die des
       Testers) liefert ebenso nichts, auch roh nicht. Vermutung (nicht gemessen): die Hersteller-Firmware hält den CIR selbst (dekodiert IR und
