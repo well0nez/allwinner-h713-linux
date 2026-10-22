@@ -15,11 +15,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (Paket `arbeit/medien/arisc-default/`). (ohne Standby: Abbild ohne
       `--standby`, der Countdown bietet nur Aus; Achtung: das Aus über crust surrt am 20.10. auch, nur weniger); (1) Release-Bau von vorn mit genau dem medien-Kopf (Bauverzeichnisse gelöscht); (2) installieren auf HY310 und G-EU,
       `abnahme.sh` ganz, WLAN-Check (das neu gebaute aic8800_fdrv lädt, 2.128); der HY310 kennt die Pakete vom 20.10. noch nicht (wach-wand,
-      kodi-93, launcher-rand, bt-neukoppeln, Lizenz-Bauweg); (3) 2.125 und 2.131 bewusst entscheiden (beheben oder als bekannt führen);
+      kodi-93, launcher-rand, bt-neukoppeln, Lizenz-Bauweg); (3) 2.125 und 2.131 bewusst entscheiden - **entschieden 22.10.2026: beide bekannt, nicht vor dem Release; Gate auf den Boxen wieder 1**;
       (4) Merge medien -> main (369 Commits am 21.10., TODO.md-Konflikte von Hand); (5) **Mythos, in einem Auftrag: die Doku komplett
       neu erzeugen** (Marco 17.10.: ganz in Mythos' Hand - README, docs/, STATUS, ROADMAP, known-issues, RELEASES-Entwurf, Release-Seite aus
       Fremdensicht; 7.19 und 5.16 gehen darin auf) **und die Identitäts- und Leck-Prüfung 1.7a** über alles, was rausgeht (Marco 21.10.);
-      die Aufsicht schreibt den Auftrag, Marco startet Mythos, die Aufsicht prüft und merged; (6) Push nur mit Marcos Ja.
+      die Aufsicht schreibt den Auftrag, Marco startet Mythos, die Aufsicht prüft und merged; **Marcos Vorgaben 22.10.2026 dafür:
+      `arbeit/medien/doku-runde/VORGABEN-MARCO.md`** (alles neu, Bilder der Menüs/Einblendungen, Anleitungen gemischt mit Präsentation, klarer
+      Disclaimer "KI-generiert und experimentell", bekannte Probleme: ARISC/Standby, IR am HY300 des Testers, Flackern); (6) Push nur mit Marcos Ja.
 - [ ] 1.1a **Release-Neubau** mit allem seit dem v0.96-Bau vom 05.10. (Baustand `be4f8e1`; der alte Hash `819a09a` ist seit dem
       Identitäts-Rewrite unerreichbar): Kernel 0184/0185 und pwm-sun8i (`5e4475a`), Warp (Zoom, Moduswechsel,
       Stale-Schwelle, Import), EDID-Beschnitt, Panel (Auth, Zoom-Schieber), h713-tv (Aspect zoom), Installer-Texte, die neu
@@ -382,7 +384,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Start mit `edid =` ohne VIC-Beschnitt prüfen; abnahme.sh-Zelle ns-seite nach der Regel von p5-seiten; h713-osd: eine Einblendung in den
       0,2 s einer Seitenübergabe bricht sie ab (handover_until); K1 (getöntes Bild an der Kante NV16 -> NV12) nur noch am Dienstschalter `warp ctl on` -
       Marcos Augentest entscheidet.
-- [ ] 2.99 **Flackern vorher/nachher** (Marco 17.10.): mit Mythos' Licht-Detektor und Marcos Auge Launcher offen, Kodi im Hintergrund, Wechsel -
+- [ ] 2.99 **Flackern vorher/nachher** (Marco 17.10.; **22.10.: Marco und der Tester sehen weiter Flackern während der Ausgabe, nicht
+      vollständig geklärt** - so in die Doku): mit Mythos' Licht-Detektor und Marcos Auge Launcher offen, Kodi im Hintergrund, Wechsel -
       rend5 gegen rend6; Hypothese: unsichtbare Arbeit (Warp unter Seiten, Programme dahinter) war eine Lastquelle für die Lichtkopplung.
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -486,7 +489,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [x] 2.124 (erledigt 20.10.2026 am G-EU, `arbeit/medien/launcher-rand/`, Mythos go mit Auflagen A/B, eingebaut 9c7b53b: Kodi -> HDMI vorher 3/3 bzw. 5/5 mit Stumm-Zeichen Konsole, nachher 0/7 und 0/3 schwarz 84-117 ms; dazu Launcher-Schließen mit bleibendem Zeichen 5/5 -> 0/14; HY310 nicht gemessen) Klein (wach-wand §9, Mythos 20.10.2026): **Wechsel Kodi -> HDMI ohne Trapez zeigt 0,15-0,17 s Konsole** ("console back with the
       warp's release", dann der Ring; G-EU 2x gesehen) - derselbe Mechanismus wie die Seite in wach-wand Commit 2, über die Freigabe des
       Client-Claims; die Wand bis zum Commit des Rings halten. Test fällt heute, besteht danach.
-- [ ] 2.125 Klein (wach-wand §5.1/§9, Mythos 20.10.2026): **schlägt h713-tvs Commit beim Weg hinaus fehl, bleibt die CRTC ohne Ebene und kein
+- [ ] 2.125 Klein (**Marco 22.10.2026: für jetzt egal, nicht vor dem Release (nicht generell); bis dahin bekannter Fehler in der Doku**; wach-wand §5.1/§9, Mythos 20.10.2026): **schlägt h713-tvs Commit beim Weg hinaus fehl, bleibt die CRTC ohne Ebene und kein
       h713-tv startet mehr** (`no CRTC drives a mode`, bis jemand fbcon entblankt). Beim Start den Kernel-Zustand wiederherstellen
       (console_restore(), dann noch einmal suchen) - Wiederherstellung, kein Netz (Mythos).
       Dazu (kodi-93 §6, Mythos 20.10.): ein zweiter Absturz von h713-tv im selben Boot bekommt keine Rettung (Einmal-Marke `/run/h713-tv-rescued`,
@@ -518,7 +521,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (AA:BB:CC:..., 00:11:22:...); was schon auf GitHub ist, bleibt in der Historie - **Marco 21.10.2026: so lassen, kein Force-Push**; nur ab jetzt maskieren und sperren.
       **Erledigt 21.10.2026** (medien c1f2c926, Mythos go): Regel 10 (genau sechs Hexpaare, nur ganze Testattrappen frei, gibt nur Datei:Zeile aus),
       10 Adressen maskiert (doku/134/135/140 mit Schwärzungsvermerk, aic8800 0008/0010 im Commit-Text, vier Boot-Mitschnitte). **Offen für Marco vor
-      dem nächsten Push (Mythos C):** die Adresse der Fernbedienung steht noch in vier **unveröffentlichten** Commits (doku 134/135/140); vor dem
+      dem nächsten Push (Mythos C) - Marco 22.10.2026: für jetzt egal (nicht generell) - Achtung, nach dem Push geht es nicht mehr:** die Adresse der Fernbedienung steht noch in vier **unveröffentlichten** Commits (doku 134/135/140); vor dem
       Push ließe sich das lokal herausschreiben (replace-text nur auf dem unveröffentlichten Bereich, ohne Force-Push), danach nicht mehr.
 - [ ] 2.128 **Lizenzen: Auflagen fürs Release aus Mythos' Prüfung des Lizenz-Abschlusses** (20.10.2026, arbeit/lizenz-abschluss-20261020/MYTHOS-PRUEFUNG.md):
       **Entscheidung Marco 21.10.2026 - R1 klein statt groß:** keine Debian-, Mesa- oder libva-Archive (Debians Quellen liegen dauerhaft bei
@@ -544,6 +547,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       auf einer Seite (h713-settings) und im Ausschalt-Countdown (h713-power liest dafür den Mausknoten der Fernbedienung). Nur Host-Tests;
       offen: Sichtprüfung mit Marcos Fernbedienung (`maus-ok/PRUEFPAKET.md`, dazu `/proc/bus/input/devices` vorher und `top` auf h713-power
       bei bewegtem Zeiger - über ~2 % den Mausknoten erst mit dem Countdown öffnen). Die Wecken-Lücke ist Bluetooth (2.130b).
+- [ ] 2.134 **HY300 (Pro) des Testers (Issue #1, sehr altes Modell): IR-Fernbedienung funktioniert noch nicht** (Marco 22.10.2026). Für die
+      Doku als bekannter Fehler; zur Klärung braucht es von ihm, was der IR-Empfänger bekommt (Skript aus der Gabelung vom 21.10.: Signal kommt
+      nicht / anderer Code / Regel greift nicht).
 - [ ] 2.133 Klein (summen-fix 22.10.2026, gemessen): **Verstärker-Enable PL2 und WLAN-Enable PM1 stehen im Standby und im Aus high** - Linux
       lässt sie stehen, crust hält sie so. Strom, unabhängig vom Summen; vor dem Schlaf abschalten und nach dem Wecken zurück (Verstärker-Plopp
       und WLAN-Wiederkehr dabei prüfen).
@@ -556,7 +562,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (Werbung, Verbindung, Diensterkennung); bis dahin nur IR, keine Maus. Gehört zu Bluetooth, nicht zu h713-keys.
 - [ ] 2.130c Klein: **Journalrauschen** - h713-keys setzt EVIOCSREP auf jeden Knoten der Fernbedienung, auch auf den Mausknoten (kein EV_REP,
       ENOSYS -> eine Warnzeile je Öffnung); EVIOCSREP nur bei EV_REP (Mythos 21.10.2026).
-- [ ] 2.131 **G-EU: schwarzer Block unten im Launcher bei jedem zweiten Zug, nur ab und zu** (Marco 20.10.2026, Foto
+- [ ] 2.131 (**Marco 22.10.2026: für jetzt egal, nicht vor dem Release (nicht generell); bis dahin bekannter Fehler**) **G-EU: schwarzer Block unten im Launcher bei jedem zweiten Zug, nur ab und zu** (Marco 20.10.2026, Foto
       `arbeit/medien/launcher-rand/foto-box-schatten.webp`, 18:06 und 21:01 bei Zügen über die uhid-Fernbedienung, nicht bei Marcos eigenem Aufruf).
       Der Block sitzt dort, wo die Einblendung (Lautstärke-Pille) erscheint, rechts neben "Standby". Gemessen 21:06/21:08 UTC
       (`launcher-rand/laeufe/box-210559`, `pille-210831`): der Launcher wechselt je Zug zwischen zwei Puffern (fb 49/50), beide nach jedem Zug
