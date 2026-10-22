@@ -572,6 +572,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.137 **Installer: `--keep-env` übernahm `h713_gate=0` aus der Sicherung im Abzug, nicht den Wert vom Gerät** (G-EU 22.10.2026: auf
       dem Gerät stand 1, "carried over from the old one: h713_gate=0 (image: 1)"; `install-dump/uboot-env.bin` vom 20.10. trug 0). Der Installer
       soll die Umgebung vom Gerät lesen, wie er es für Secure Storage tut, oder den Unterschied laut melden. Danach `fw_setenv h713_gate 1` von Hand.
+- [ ] 2.139 **RELEASE-BLOCKER: unter der Hersteller-ARISC kommt bei Linux kein IR an** (G-EU v0.97-beta, 22.10.2026 ~19:10, Marco): HY310-
+      Fernbedienung per `bluetoothctl block` auf IR gezwungen - keine Reaktion, `sunxi-ir` 1 Interrupt seit dem Start, CIR-Register und R_CIR-Takt
+      (0x81000002) wie bei der Probe; mit crust (21.10.) öffnete Home per IR den Launcher. Die originale HY300-Fernbedienung (IR, wie die des
+      Testers) liefert ebenso nichts, auch roh nicht. Vermutung (nicht gemessen): die Hersteller-Firmware hält den CIR selbst (dekodiert IR und
+      meldet Tasten per msgbox an den ARM, wie unter Stock-Android?). Folge: ohne Fix gehen nur Bluetooth-Fernbedienungen, kein IR-Wecken des
+      Launchers, die Fernbedienung des Testers gar nicht. Entscheidung Marco nötig (Fix suchen / doch crust als Vorgabe / so lassen).
 - [ ] 2.138 **Abnahme-Kamera am HY310: die Eichung trennt 'Bild mit Trapez' und 'gerade' nicht mehr** (22.10.2026: Abstand 0,5-19 statt
       mindestens 30 mit Sperrbildschirm, hellem Raster und Schachbrett als Quelle; früher ging es). Ursache finden (Kamera-Ausschnitt, Belichtung,
       Licht im Raum, Quellbild) - bis dahin urteilt Marcos Auge (`arbeit/medien/abnahme/laeufe/v097-hy310*.log`).
