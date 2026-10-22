@@ -550,6 +550,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.134 **HY300 (Pro) des Testers (Issue #1, sehr altes Modell): IR-Fernbedienung funktioniert noch nicht** (Marco 22.10.2026). Für die
       Doku als bekannter Fehler; zur Klärung braucht es von ihm, was der IR-Empfänger bekommt (Skript aus der Gabelung vom 21.10.: Signal kommt
       nicht / anderer Code / Regel greift nicht).
+- [ ] 2.135 Klein (arisc-default, Mythos 22.10.2026): unter der Hersteller-ARISC meldet ein Dienst "status brief timed out" nach ~17 s -
+      Ursache finden (Abfrage an die Firmware, die das Herstellerbild nicht beantwortet?); Belege `arbeit/medien/arisc-default/laeufe/`.
 - [ ] 2.133 Klein (summen-fix 22.10.2026, gemessen): **Verstärker-Enable PL2 und WLAN-Enable PM1 stehen im Standby und im Aus high** - Linux
       lässt sie stehen, crust hält sie so. Strom, unabhängig vom Summen; vor dem Schlaf abschalten und nach dem Wecken zurück (Verstärker-Plopp
       und WLAN-Wiederkehr dabei prüfen).

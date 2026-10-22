@@ -278,6 +278,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md`](215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md) | Protokoll | 2026-10-17 | 215 - Das Nebenprojekt Medien: das Bedienmodell - Rückwege, Pause unter Seiten, HDMI als Modus, Start ohne geraden Ring, EDID ohne Deep Colour, Seite ohne Signal (17.10.2026) | 1 |
 | [`216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`](216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md) | Protokoll | 2026-10-20 | 216 Lizenzen: die offenen Teile von TODO 7.20 (a, b, c, d, e, g) - Protokoll | - |
 | [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 1 |
+| [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | - |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -434,7 +435,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-52 von 276 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+53 von 277 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -480,6 +481,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`
 * `209-runde-5x-teil-b-uebernahme-panel-20261013.md`
 * `216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`
+* `218-summen-crust-arisc-entscheidung-protokoll-20261022.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)
