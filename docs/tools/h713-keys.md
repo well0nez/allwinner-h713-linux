@@ -189,7 +189,10 @@ the kernel muxes the pin; here the `sun50i-h713-arisc` module starts it after th
 key arrived (`v0.97-beta`, which runs the vendor firmware by default). `sunxi-cir` now applies its pin again a
 second after the arisc driver has bound, through the pin's sleep state (stock's, `gpio_in`), because pinctrl writes
 only a state that changes. The journal says `PL9 applied again after the ARISC start`. crust leaves PL9 to Linux,
-under it the pin ends where it began. *Superseded 22.10.2026:* "The pin sleep state and the re-apply of PL9 from
+under it the pin ends where it began. Measured on the HY300PRO-G-EU on 22.10.2026: `PL_CFG1` `0x222222ff` after a warm
+start without 0328, `0x2222223f` with it (three warm starts with the vendor firmware, one with crust). With the vendor
+firmware rc-core logs once `nonsensical timing event of duration 0` at that moment - the end of the second in which
+the input was off, no key. *Superseded 22.10.2026:* "The pin sleep state and the re-apply of PL9 from
 the IR package of 03.10. are not part of it: they answered the vendor's ARISC firmware, which disabled PL8/PL9 when
 it started. crust leaves PL9 to Linux (measured 11.10.2026 on the HY310: PL9 function 3, `s_cir`)." - true while
 crust was the default; with the vendor firmware as the default (`0327`) the re-apply is needed again.

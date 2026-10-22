@@ -27,6 +27,15 @@ bind waits for. crust does not write PL_CFG1: under crust the pin ends
 where it began. Not taken from the package: the re-apply after a resume
 (its 0003a), since an image with the vendor firmware has no standby.
 
+Measured on the HY300PRO-G-EU on 22.10.2026, v0.97-beta with this kernel:
+a warm start without the patch reads PL_CFG1 0x222222ff; with it, three
+warm starts under the vendor firmware read 0x2222223f, the line "PL9
+applied again" one second after the startup notify, and one under crust
+the same with no IR interrupt. Under the vendor firmware rc-core logs
+once "nonsensical timing event of duration 0" when the pin comes back:
+the end of the second in which the input was off, no key. Key presses
+were not part of this measurement.
+
 Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
 ---
  .../arm64/boot/dts/allwinner/sun50i-h713.dtsi | 13 ++++-
