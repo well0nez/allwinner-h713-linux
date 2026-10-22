@@ -218,14 +218,15 @@ frames as with the vendor's firmware, then started by BL31, then the first stand
 
 ## crust, experimental
 
-What crust brings: a standby at 2.0 W (suspend to RAM, the picture back about 5 s after the wake;
+What crust brings: a standby at 2.0 W on the HY300PRO-G-EU (22.10.2026; 2.4 W on the HY310, `doku/181`; suspend to
+RAM, the picture back about 5 s after the wake;
 [standby.md](standby.md)) and a power-off at 0.3 W, the board's rails off, woken by the key or the remote into a
 fresh boot ([power-gate](../uboot/power-gate.md)) - against 2.9 W in the gate under the vendor's firmware. Why it
 is not what an image runs: on the HY310 and the HY300PRO-G-EU the power supply hums or whines with it, in standby
 and when off through crust; in the gate it is silent. A night with a microphone at the supply (21./22.10.2026)
 moved neither tone with the ARISC's clock, the LEDs, the CPU supply's PWM, the PLL regulator or the crystal; a
-standby without DRAM self-refresh was quiet but drew 2.4 W by the owner's wattmeter and whined too, and the
-power-off stayed as it was (TODO 2.42; the whine in standby was first noted on 09.10.2026, `doku/181`). Stock is
+standby without DRAM self-refresh was quiet to the microphone, but drew 2.4 W at the owner's wattmeter, and there
+the owner still heard it whine; the power-off stayed as it was (TODO 2.42; the whine in standby was first noted on 09.10.2026, `doku/181`). Stock is
 silent at the same 0.3 W, so the question is open, not closed.
 
 How to switch it on: `h713-arisc set crust` and a reboot ([h713-arisc](../tools/h713-arisc.md)) - then a power-off

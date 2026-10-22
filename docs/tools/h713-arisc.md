@@ -49,5 +49,9 @@ from your dump ...` or, on an image with the standby, `ARISC: crust ...`, from t
 `h713-mkimage --arisc`).
 
 Exit: 0, 1 not possible on this image or the file not written, 2 usage. Measured: at the PC against a made-up
-`/sys`, `/etc` and `/lib` (`userspace/h713-power/tests/test_arisc.py`); the switch on the device is TODO 5.20's
-measurement.
+`/sys`, `/etc` and `/lib` (`userspace/h713-power/tests/test_arisc.py`), and on the HY300PRO-G-EU on 22.10.2026, on an
+image whose FIT still started crust: the image's `h713-arisc.conf` -> the vendor firmware at the next boot, the EDID
+sequence as under crust, `h713-power` offering no standby and the launcher without its Standby entry; `set crust` ->
+crust, `set vendor` -> the vendor firmware again, each after a warm start; the HDMI picture the same under both (599
+warp frames in 10.08 s); `h713-arisc.bin` moved away -> crust kept, with `0327` loaded from the device tree. Not
+measured: an image without crust in its FIT (the release), and its cold start.
