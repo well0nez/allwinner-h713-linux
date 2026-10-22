@@ -1,0 +1,164 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: sunxi-cir: h713 - apply PL9 again after the vendor ARISC firmware has started
+
+The vendor ARISC firmware writes 0x222222ff to PL_CFG1 (R_PIO 0x07022004)
+in its first init call, without reading it: PL10 - PL15 become its S_TWI
+lines, PL8 and PL9 function 0xf, switched off. PL9 is the IR input
+(s_cir, function 3). Stock starts the firmware in BL31, before the kernel
+muxes the pin. Here the arisc driver, a module from the root file system,
+starts it after sunxi-cir (built in) has probed, so the receiver saw no
+pulse at all (measured 03.10.2026, doku/138: PL_CFG1 0xffffff3f at the
+probe, 0x222222ff after the firmware's start).
+
+0252 left out the re-apply of the IR package of 03.10.2026 (its 0003),
+because crust had become the default and crust leaves PL9 to Linux. With
+0327 the vendor firmware is the default again (22.10.2026), and on
+v0.97-beta no IR key arrived: PL_CFG1 read 0x222222ff on the
+HY300PRO-G-EU, and after an unbind and bind of sunxi-cir 0x2222223f, with
+every key of the remote decoded.
+
+sunxi-cir now watches the platform bus for the bind of
+allwinner,sun50i-h713-arisc, or for a failed probe, which may have
+started the firmware as well, and a second later selects the pin's sleep
+state and then its default state. pinctrl writes only a state that
+changes, hence the way through the sleep state; it is stock's (s_cir0@1,
+gpio_in). The firmware's write comes before its startup notify, which the
+bind waits for. crust does not write PL_CFG1: under crust the pin ends
+where it began. Not taken from the package: the re-apply after a resume
+(its 0003a), since an image with the vendor firmware has no standby.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ .../arm64/boot/dts/allwinner/sun50i-h713.dtsi | 13 ++++-
+ drivers/media/rc/sunxi-cir.c                  | 56 +++++++++++++++++++
+ 2 files changed, 68 insertions(+), 1 deletion(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+index 6cc170e36..cedd50408 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1934,6 +1934,16 @@ r_ir_rx_pin: r-ir-rx-pin {
+ 				input-enable;
+ 			};
+ 
++			/*
++			 * Stock's sleep state for PL9 (s_cir0@1). sunxi-cir passes
++			 * through it to apply r_ir_rx_pin again after the vendor
++			 * ARISC firmware's start has switched PL8/PL9 off.
++			 */
++			r_ir_rx_sleep_pin: r-ir-rx-sleep-pin {
++				pins = "PL9";
++				function = "gpio_in";
++			};
++
+ 			s_pwm1_pin: s-pwm1-pin {
+ 				pins = "PL7";
+ 				function = "s_pwm1";
+@@ -1972,8 +1982,9 @@ r_ir: ir@7040000 {
+ 			 * never decoded.
+ 			 */
+ 			resets = <&r_ccu RST_BUS_R_IR_RX>;
+-			pinctrl-names = "default";
++			pinctrl-names = "default", "sleep";
+ 			pinctrl-0 = <&r_ir_rx_pin>;
++			pinctrl-1 = <&r_ir_rx_sleep_pin>;
+ 			status = "okay";
+ 		};
+ 
+diff --git a/drivers/media/rc/sunxi-cir.c b/drivers/media/rc/sunxi-cir.c
+index fae8df144..c9a626d32 100644
+--- a/drivers/media/rc/sunxi-cir.c
++++ b/drivers/media/rc/sunxi-cir.c
+@@ -15,8 +15,10 @@
+ #include <linux/io.h>
+ #include <linux/module.h>
+ #include <linux/of.h>
++#include <linux/pinctrl/consumer.h>
+ #include <linux/platform_device.h>
+ #include <linux/reset.h>
++#include <linux/workqueue.h>
+ #include <media/rc-core.h>
+ 
+ #define SUNXI_IR_DEV "sunxi-ir"
+@@ -97,6 +99,8 @@ struct sunxi_ir {
+ 	struct reset_control *rst;
+ 	const char      *map_name;
+ 	bool		is_h713_vendor_init;
++	struct notifier_block arisc_nb;
++	struct delayed_work repin_work;
+ };
+ 
+ static irqreturn_t sunxi_ir_irq(int irqno, void *dev_id)
+@@ -261,6 +265,48 @@ static int __maybe_unused sunxi_ir_resume(struct device *dev)
+ 
+ static SIMPLE_DEV_PM_OPS(sunxi_ir_pm_ops, sunxi_ir_suspend, sunxi_ir_resume);
+ 
++/*
++ * H713: the vendor ARISC firmware's start writes 0x222222ff to PL_CFG1
++ * without reading it, which switches PL8 and PL9 off (function 0xf), and
++ * PL9 is this receiver's input. Stock starts that firmware in BL31, before
++ * the kernel sets the pin; here the arisc driver, a module, starts it long
++ * after this probe. The write comes before the firmware's startup notify,
++ * which that driver's bind waits for, so once the bind is over the pin is
++ * applied again. pinctrl writes only a state that changes, hence the way
++ * through the sleep state. crust leaves PL9 alone; there this ends where
++ * it began.
++ */
++static void sunxi_ir_repin(struct work_struct *work)
++{
++	struct sunxi_ir *ir = container_of(to_delayed_work(work),
++					   struct sunxi_ir, repin_work);
++	struct device *dev = ir->rc->dev.parent;
++	int ret;
++
++	ret = pinctrl_pm_select_sleep_state(dev);
++	if (!ret)
++		ret = pinctrl_pm_select_default_state(dev);
++	if (ret)
++		dev_err(dev, "PL9 not applied again after the ARISC start: %d\n",
++			ret);
++	else
++		dev_info(dev, "PL9 applied again after the ARISC start\n");
++}
++
++static int sunxi_ir_arisc_event(struct notifier_block *nb,
++				unsigned long action, void *data)
++{
++	struct sunxi_ir *ir = container_of(nb, struct sunxi_ir, arisc_nb);
++	struct device *dev = data;
++
++	/* a failed probe may have started the firmware too */
++	if ((action == BUS_NOTIFY_BOUND_DRIVER ||
++	     action == BUS_NOTIFY_DRIVER_NOT_BOUND) &&
++	    of_device_is_compatible(dev->of_node, "allwinner,sun50i-h713-arisc"))
++		mod_delayed_work(system_dfl_wq, &ir->repin_work, HZ);
++
++	return NOTIFY_DONE;
++}
+ 
+ static int sunxi_ir_probe(struct platform_device *pdev)
+ {
+@@ -372,6 +418,12 @@ static int sunxi_ir_probe(struct platform_device *pdev)
+ 
+ 	dev_info(dev, "initialized sunXi IR driver\n");
+ 
++	if (ir->is_h713_vendor_init) {
++		INIT_DELAYED_WORK(&ir->repin_work, sunxi_ir_repin);
++		ir->arisc_nb.notifier_call = sunxi_ir_arisc_event;
++		bus_register_notifier(&platform_bus_type, &ir->arisc_nb);
++	}
++
+ 	return 0;
+ 
+ exit_free_dev:
+@@ -384,6 +436,10 @@ static void sunxi_ir_remove(struct platform_device *pdev)
+ {
+ 	struct sunxi_ir *ir = platform_get_drvdata(pdev);
+ 
++	if (ir->is_h713_vendor_init) {
++		bus_unregister_notifier(&platform_bus_type, &ir->arisc_nb);
++		cancel_delayed_work_sync(&ir->repin_work);
++	}
+ 	rc_unregister_device(ir->rc);
+ 	rc_free_device(ir->rc);
+ 	sunxi_ir_hw_exit(&pdev->dev);

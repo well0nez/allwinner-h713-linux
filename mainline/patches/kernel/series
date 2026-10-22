@@ -412,3 +412,7 @@
 
 # --- section 24 The vendor ARISC firmware by default, crust as the experimental choice.
 0327-soc-sunxi-h713-arisc-a-missing-vendor-image-loads-the-device-tree-s-crust.patch
+
+# --- section 25 Infrared under the vendor ARISC firmware, and the HY300's stock remote.
+0328-media-sunxi-cir-h713-apply-pl9-again-after-the-vendor-arisc-firmware-has-started.patch
+0329-media-rc-keymaps-h713-the-hy300-s-stock-remote-at-nec-address-0x00-and-the-map-for-every-board.patch

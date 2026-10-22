@@ -8,7 +8,7 @@ Who made what, where it comes from, and what is deliberately absent.
 [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline) at commit `8860991`. What of his tree
 is still in the working tree, and what is not, is told in "Left out on purpose" below; his kernel patches are the part
 that stayed. His commits up to `8860991` are still in this repository's git history. On top of them,
-`mainline/patches/kernel/series` carries 349 patches:
+`mainline/patches/kernel/series` carries 351 patches:
 
 | Origin | Patches | Note |
 |---|---|---|
@@ -27,6 +27,7 @@ that stayed. His commits up to `8860991` are still in this repository's git hist
 | well0nez | `0325` | the R_PIO header comment and the power key note in the dtsi name the EINT function 0xe as `0140`'s table has it (the pinctrl comment is the same correction as in cstenger's `0171`, whose code part `0140` already carries); comments only |
 | well0nez | `0326` | the hdmirx driver checks the break of the display firmware's allocator before it writes a block into the shared memory (the HDCP 2.2 key, the window structures, the backlight PWM words) and leaves the step out when the allocator has reached the block's page; two comments of `0094`/`0101` corrected (SetWhiteBalance's argument, white balance versus CTM). Own work, no foreign material; the layout of the allocator is read from our own `cpu_comm` port |
 | well0nez | `0327` | the arisc driver loads the device tree's crust image when the module option asked for the vendor image and the file is missing - the image runs the vendor ARISC firmware by default since 22.10.2026, and its boot chain starts no crust that could be kept |
+| well0nez | `0328`, `0329` | `0328` applies the IR pin PL9 again after the vendor ARISC firmware has started (its start switches PL8/PL9 off); the code is the IR package of 03.10.2026, which `0252` left out while crust was the default. `0329` adds the HY300's stock IR remote (NEC address 0x00) to `rc-h713-fd02`, from the vendor's key table and a measurement of 22.10.2026, and names the map for every board. Own work |
 
 cstenger says the same in his own `PROVENANCE.md` (in his repository at `8860991`): "the bulk of the H713 driver support … originates
 from well0nez". The direction of the debt runs both ways - his arm64 work is what made the 6.18 line
