@@ -215,6 +215,16 @@ class ThePlan(unittest.TestCase):
         self.assertIn("1 file(s) are missing", str(caught.exception))
         self.assertIn("boot/mips/database.TSE", str(caught.exception))
 
+    def test_a_dump_without_the_vendor_arisc_firmware_stops_the_run(self):
+        # An image runs the vendor ARISC firmware by default (22.10.2026; crust is the experimental choice):
+        # without the file the HDMI front end would boot without one, so the run stops before anything is
+        # written - and the layout this installer ships says the same.
+        from h713 import layout
+        with self.assertRaises(RuntimeError) as caught:
+            self.sources(leave_out=("lib/firmware/h713-arisc.bin",))
+        self.assertIn("1 file(s) are missing, e.g. lib/firmware/h713-arisc.bin", str(caught.exception))
+        self.assertEqual([f.optional for f in layout.FILES if f.name == "lib/firmware/h713-arisc.bin"], [False])
+
     def test_a_missing_file_of_a_group_that_is_not_optional_is_not_talked_away(self):
         left = say_optional(self.tab, self.files, ["lib/firmware/hy310-edid.bin"],
                             "in the dump", "not there", self.log)

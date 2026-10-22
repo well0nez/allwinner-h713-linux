@@ -1,8 +1,10 @@
 # The power-on gate
 
-Plug the projector in and it waits: dark, red LED lit, until the power key or the remote's power key is pressed. With a
-crust that can power off, it waits in crust's off state, 0.3-0.6 W at the wall (FEL, HY300PRO-G-EU, `doku/191`); otherwise
-U-Boot waits itself, 2.4-2.9 W (09.10.2026, `doku/181`) - below. That is how the device behaves with the stock firmware, and reproducing it is what this gate is
+Plug the projector in and it waits: dark, red LED lit, until the power key or the remote's power key is pressed. U-Boot
+waits itself, 2.4-2.9 W (09.10.2026, `doku/181`) - below; that is what an image does since 22.10.2026, which runs the
+vendor's ARISC firmware and whose boot chain starts no crust ([arisc](../subsystems/arisc.md#crust-experimental)). Where
+the boot chain starts a crust that can power off (an image built with the standby), it waits in crust's off state
+instead, 0.3-0.6 W at the wall (FEL, HY300PRO-G-EU, `doku/191`), and the power supply hums there (TODO 2.42). That is how the device behaves with the stock firmware, and reproducing it is what this gate is
 for (measured 09.09.2026, `doku/103-plan-einschaltgate.md` §3 M5). Without it, our boot chain would start
 Linux the moment the socket is switched on - convenient on a bench, wrong for something that stands in a
 living room.
@@ -92,8 +94,10 @@ phase poweroff for 97 s (`doku/191`). Not measured yet: a real mains-on (needs t
 
 ## With crust and the standby
 
-Apart from the cold start above, the gate's code does not change for crust. BL31 starts crust from the FIT before U-Boot proper runs
-([README](README.md)), so on the HY310 the ARISC firmware is already up while the gate waits; the gate draws 2.9 W with it, the
+Apart from the cold start above, the gate's code does not change for crust. On an image built with the standby BL31 starts crust from
+the FIT before U-Boot proper runs ([README](README.md)), so the ARISC firmware is already up while the gate waits; on an image without
+it (since 22.10.2026) the FIT carries no crust, a cold start prints `gate: no crust on the ARISC` and waits in the loop, and a
+power-off under the vendor's firmware resets into it as before. On an image with the standby the gate draws 2.9 W with it, the
 standby 2.4 W (`doku/181`). A standby ([standby.md](../subsystems/standby.md)) never passes through here: crust
 releases CPU0 straight into BL31, which resumes Linux. Nothing in crust writes GP5, and the RTC general-purpose
 words, GP5 among them, were unchanged after every standby cycle read back (`doku/165` - `doku/167`). Since

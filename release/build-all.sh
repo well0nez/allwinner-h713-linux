@@ -21,13 +21,18 @@
 #
 # crust, the ARISC firmware: a board that names CRUST_DEFCONFIG in board.env gets one crust build
 # (step 1b, from mainline/external/crust or CRUST_SRC=<checkout>, the series crust-h713/ mirrors).
-# It goes into the release U-Boot's FIT as "scp", which BL31 starts, and into the rootfs as
-# /lib/firmware/<board>-crust.bin, the name the board's device tree gives the arisc driver; step
-# 10 checks that both are this build (release/check-crust.py). The installer and the probe U-Boot
-# never carry it.
-# --standby offers the standby, experimental (TODO 2.29): BL31 with PSCI SYSTEM_SUSPEND and the rootfs
-# with suspend allowed, so that h713-power (on every image) offers it in its countdown; power.conf's
-# default stays poweroff. Only for STANDBY=sr, which follows from CRUST_DEFCONFIG on a verified board.
+# It goes into the rootfs as /lib/firmware/<board>-crust.bin, the name the board's device tree gives the
+# arisc driver - there it is the experimental choice: the image runs the vendor ARISC firmware from the
+# owner's dump (/etc/modprobe.d/h713-arisc.conf firmware=vendor, the owner's decision of 22.10.2026:
+# with crust the power supply hums in standby and when off, TODO 2.42), and 'h713-arisc set crust' on
+# the device switches. Without --standby the release U-Boot's FIT carries no crust, so that BL31 starts
+# none and a mains-on waits in the power-on gate as a power-off does. Step 10 checks all of it
+# (release/check-crust.py). The installer and the probe U-Boot never carry crust.
+# --standby offers the standby, experimental (TODO 2.29): BL31 with PSCI SYSTEM_SUSPEND, crust in the
+# release FIT as "scp", which BL31 starts, the rootfs with suspend allowed and without the vendor default,
+# so that the image runs crust and h713-power (on every image) offers the standby in its countdown;
+# power.conf's default stays poweroff. Only for STANDBY=sr, which follows from CRUST_DEFCONFIG on a
+# verified board.
 #
 # --profile NAME[,NAME] (media side project): the rootfs gets the packages-NAME.txt lists and the overlay-NAME/ trees on top of the
 # base (build-rootfs.sh --profile), e.g. --profile media,desktop. With a profile of the media family (media, desktop) the VA-API
@@ -274,6 +279,7 @@ say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
 info "root $ROOT"
 info "board $UNIT ($STATUS, profile $TEST_PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles${DRAM_CLK:+, DRAM $DRAM_CLK MHz})"
 info "crust ${CRUST_DEFCONFIG:-none}, standby $STANDBY$( ((WANT_STANDBY)) && echo ', offered (--standby)' )"
+info "ARISC: $( [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && echo 'crust, in the release FIT (--standby)' || echo "the vendor firmware from the owner's dump${CRUST_DEFCONFIG:+, crust in the rootfs as the experimental choice (h713-arisc set crust)}" )"
 info "rootfs profile ${PROFILES:-none (base image)}$( ((WANT_LIBVA)) && echo ', with the VA-API driver (step 6d)' )"
 info "$REPRO_LINE"
 ((TEST_IMAGE)) && { say "TEST IMAGE for $UNIT (STATUS=$STATUS) -- not a release"
@@ -298,7 +304,7 @@ for f in "$INSTALLER/h713-mkimage" "$INSTALLER/mkimage-inputs.sh" "$ROOTFS/build
 done
 [[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR does not look like an h713-extract output (no boot/mips/)"
 mkdir -p "$OUT" "$DELIVERY"
-((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}${CRUST_DEFCONFIG:+ + scp}) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv${PROFILES:+, libva (profile $PROFILES)}, rootfs${PROFILES:+ (profile $PROFILES)}, inputs, image $NAME"; exit 0; }
+((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}$( [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && echo " + scp")) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv${PROFILES:+, libva (profile $PROFILES)}, rootfs${PROFILES:+ (profile $PROFILES)}, inputs, image $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
 if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- skipped (--skip-bl31, $OUT/bl31.bin is there)"
@@ -372,8 +378,9 @@ if ((SKIP_UBOOT)) && [[ -f "$OUT/spl-release.bin" && -f "$OUT/uboot-proper-relea
 else
 	say "2/11 U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE"
 	rm -rf "$UB_O"   # as with bl31: no old objects, no old .config
-	# SCP= for this role alone: crust in the release FIT, never in the installer's or the probe's
-	SCP_ENV=; [[ -f "$OUT/scp.bin" ]] && SCP_ENV="SCP=$(c "$OUT")/scp.bin "
+	# SCP= for this role alone and only with --standby: crust in the release FIT, which BL31 starts; never
+	# in the installer's or the probe's. Without it BL31 starts no crust and the vendor default runs (header).
+	SCP_ENV=; [[ -f "$OUT/scp.bin" ]] && ((WANT_STANDBY)) && SCP_ENV="SCP=$(c "$OUT")/scp.bin "
 	in_container "cd $WORK/mainline && ${UB_ENV}${SCP_ENV}build/uboot-build.sh $(c "$UB_O") $UBOOT_BASE $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot build failed (log: $OUT/uboot-build.log)"; }
 	B="$UB_O/u-boot-sunxi-with-spl.bin"; [[ -f "$B" ]] || die "no $B"
 	spl_size_ok "$UB_O/spl/sunxi-spl.bin"
@@ -630,7 +637,7 @@ grep -c "  OK" "$OUT/inputs.log" | sed 's/^/    OK lines: /'
 say "9/11 image $NAME"
 TEST_FOR=(); ((TEST_IMAGE)) && TEST_FOR=(--test-for "$TEST_PROFILE")
 # --board: the table is cut for this board's eMMC (its profile's layout.disk_sectors), a release image too
-ARISC_FW=vendor; [[ -n "${CRUST_DEFCONFIG:-}" ]] && ARISC_FW=crust      # the table's "arisc" (TODO 5.20)
+ARISC_FW=vendor; [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && ARISC_FW=crust      # the table's "arisc" (TODO 5.20)
 ( cd "$INSTALLER" && python3 h713-mkimage build -o "out/$NAME.img" "${TEST_FOR[@]+"${TEST_FOR[@]}"}" \
 	--board "$TEST_PROFILE" --arisc "$ARISC_FW" \
 	--spl "$OUT/spl-release.bin" --uboot "$OUT/uboot-proper-release.bin" --env "$OUT/hy310-env-release.bin" \
@@ -699,6 +706,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	done
 	if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
 		echo "crust: ${CRUST_HEAD:0:12}${CRUST_SRC_GIVEN:+ (CRUST_SRC)} $CRUST_DEFCONFIG $CRUST_VERSION, $(sed -n 's/^build word //p' "$OUT/crust-gate.log"), or1k $(cut -d' ' -f1,3 "$OR1K/.h713-or1k-toolchain" 2>/dev/null)"
+		echo "arisc: $( ((WANT_STANDBY)) && echo 'crust from the start (release FIT and rootfs)' || echo "the vendor firmware from the owner's dump by default (h713-arisc.conf); crust in the rootfs only, experimental (h713-arisc set crust)" )"
 	else
 		echo "crust: none - the ARISC runs the vendor firmware from the owner's dump"
 	fi
@@ -722,7 +730,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	for f in spl-release.bin uboot-proper-release.bin hy310-env-release.bin u-boot-installer.bin h713-kernel.fit modules/aic8800_bsp.ko modules/aic8800_fdrv.ko; do
 		printf '  %-28s %s\n' "$f" "$(sha256sum "$OUT/$f" | cut -c1-16)"
 	done
-	[[ -f "$OUT/scp.bin" ]] && printf '  %-28s %s\n' "scp.bin (crust)" "$(sha256sum "$OUT/scp.bin" | cut -c1-16)"
+	[[ -f "$OUT/scp.bin" ]] && printf '  %-28s %s\n' "scp.bin (crust$( ((WANT_STANDBY)) || echo ', rootfs only' ))" "$(sha256sum "$OUT/scp.bin" | cut -c1-16)"
 	printf '  %-28s %s\n' "h713-tv.aarch64-linux-gnu" "$(sha256sum "$TV" | cut -c1-16)"
 	printf '  %-28s %s\n' "mesa-panfrost-25.0.7.tar" "$(sha256sum "$MESA" | cut -c1-16)"
 	[[ -n "$LIBVA_TAR" ]] && printf '  %-28s %s\n' "libva-v4l2-request-1.2.tar" "$(sha256sum "$LIBVA_TAR" | cut -c1-16)"

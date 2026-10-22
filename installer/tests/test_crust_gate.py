@@ -89,11 +89,13 @@ class Gate(unittest.TestCase):
         arisc = {"compatible": b"allwinner,sun50i-h713-arisc\0", "firmware-name": firmware.encode() + b"\0hy310-edid.bin\0"}
         self.put("board.dtb", fdt({"soc": {"watchdog@2051000": {"compatible": wdt}, "arisc@100000": arisc}}))
 
-    def rootfs(self, crust=None, standby=False, watchdog=False, extra=None, power=None):
+    def rootfs(self, crust=None, standby=False, watchdog=False, extra=None, power=None, arisc=None):
         files = {"./etc/systemd/sleep.conf.d/10-h713.conf":
                  b"[Sleep]\nAllowSuspend=yes\nSuspendState=mem\nMemorySleepMode=deep\n" if standby else b"[Sleep]\nAllowSuspend=no\n"}
         if crust is not None:
             files["./usr/lib/firmware/hy310-crust.bin"] = crust
+        if arisc is not None:
+            files["./etc/modprobe.d/h713-arisc.conf"] = b"# the image's default\noptions sun50i_h713_arisc firmware=%s\n" % arisc.encode()
         if watchdog:
             files["./etc/systemd/system.conf.d/h713-watchdog.conf"] = b"[Manager]\nRuntimeWatchdogSec=16s\n"
         files.update(extra or {})
@@ -191,7 +193,8 @@ class Gate(unittest.TestCase):
     def test_h713_power_is_on_every_image(self):
         # TODO 2.38 put it on every image: a build without --standby carries it too and passes
         self.put("bl31.bin", T1_TEXT)
-        self.rootfs(crust=CRUST, standby=False, power=True)
+        self.put("uboot-proper-release.bin", fit(b""))
+        self.rootfs(crust=CRUST, standby=False, power=True, arisc="vendor")
         rc, out = self.run_gate(standby=False)
         self.assertEqual(rc, 0, out)
         self.rootfs(crust=CRUST, standby=True, power=False)
@@ -236,6 +239,44 @@ class Gate(unittest.TestCase):
         self.assertEqual(self.run_gate()[0], 0)
         self.put("bl31.bin", STANDBY_TEXTS)
         self.assert_refused("binds the SoC watchdog with its real layout")
+
+    def release_without_standby(self, **kw):
+        """The release of 22.10.2026: no scp in the FIT, crust in the rootfs, the vendor firmware by default."""
+        self.put("uboot-proper-release.bin", fit(b""))
+        self.put("bl31.bin", T1_TEXT)
+        self.rootfs(**dict(dict(crust=CRUST, standby=False, power=True, arisc="vendor"), **kw))
+
+    def test_a_release_without_standby_runs_the_vendor_firmware(self):
+        for scp in (b"", None):                   # the SPL skips an empty loadable; no node at all is as good
+            self.release_without_standby()
+            self.put("uboot-proper-release.bin", fit(scp))
+            rc, out = self.run_gate(standby=False)
+            self.assertEqual(rc, 0, out)
+            self.assertIn("release FIT carries no crust: BL31 starts none", out)
+            self.assertIn("rootfs ARISC default firmware=vendor (etc/modprobe.d/h713-arisc.conf)", out)
+
+    def test_a_release_without_standby_must_not_start_crust(self):
+        # with crust in the FIT a mains-on hands the gate's wait to crust (U-Boot 0101), and that power-off hums
+        self.release_without_standby()
+        self.put("uboot-proper-release.bin", fit(CRUST))
+        self.assert_refused("release FIT carries this crust without --standby", standby=False)
+
+    def test_a_release_without_standby_needs_the_vendor_default(self):
+        self.release_without_standby(arisc=None)
+        self.assert_refused("the device tree's crust (no modprobe.d option)", standby=False)
+        self.release_without_standby(arisc="crust")
+        self.assert_refused("rootfs ARISC default is firmware=crust", standby=False)
+        # as kmod reads it: a later file wins, /etc hides the same name in /lib
+        self.release_without_standby(extra={"./usr/lib/modprobe.d/zz-x.conf": b"options sun50i-h713-arisc firmware=crust\n"})
+        self.assert_refused("firmware=crust (lib/modprobe.d/zz-x.conf)", standby=False)
+        self.release_without_standby(extra={"./usr/lib/modprobe.d/h713-arisc.conf": b"options sun50i_h713_arisc firmware=crust\n"})
+        self.assertEqual(self.run_gate(standby=False)[0], 0)
+
+    def test_a_standby_image_runs_crust(self):
+        self.rootfs(crust=CRUST, standby=True, arisc="vendor")
+        self.assert_refused("rootfs sets firmware=vendor (etc/modprobe.d/h713-arisc.conf), the build has --standby")
+        self.rootfs(crust=CRUST, standby=True, arisc="crust")
+        self.assertEqual(self.run_gate()[0], 0)
 
     def test_a_board_without_crust(self):
         self.put("uboot-proper-release.bin", fit(b""))
