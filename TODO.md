@@ -12,7 +12,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `standby-summen/mythos-analyse/`, Messung mit einem Mikrofon am Netzteil; 2.42)
       **Neu entschieden 22.10.2026 morgens (Marco, nach Wattmeter: Release-Standby 2,0 W fiept, stiller Kandidat 2,4 W fiept auch):
       das Release läuft fest mit der Hersteller-ARISC und ohne Standby (Aus = Gate, 2,9 W, still); crust bleibt im Abbild, aber experimentell**
-      (Paket `arbeit/medien/arisc-default/`). (ohne Standby: Abbild ohne
+      (Paket `arbeit/medien/arisc-default/`).
+      **(1) erledigt 22.10.2026 ~14:45:** Release-Bau v0.97-beta von vorn aus medien 77edd267 (`arbeit/medien/R-rel/`, frische Worktrees, nur der
+      Download-Cache übernommen), HY310 und G-EU je `--profile media,desktop` ohne `--standby`: beide rc 0, Prüfschritt grün (HDCP, crust-Tor,
+      Lizenzhinweise), ARISC = Hersteller-Firmware, crust nur im rootfs; aic8800-Module in beiden Bauten byte-gleich. Nebenbefund: das libva-Tar
+      unterscheidet sich zwischen den beiden Bauten (7c0fdc55 / 237ec304, mesa gleich) - vermutlich der Baupfad im Ergebnis, TODO 2.136. (ohne Standby: Abbild ohne
       `--standby`, der Countdown bietet nur Aus; Achtung: das Aus über crust surrt am 20.10. auch, nur weniger); (1) Release-Bau von vorn mit genau dem medien-Kopf (Bauverzeichnisse gelöscht); (2) installieren auf HY310 und G-EU,
       `abnahme.sh` ganz, WLAN-Check (das neu gebaute aic8800_fdrv lädt, 2.128); der HY310 kennt die Pakete vom 20.10. noch nicht (wach-wand,
       kodi-93, launcher-rand, bt-neukoppeln, Lizenz-Bauweg); (3) 2.125 und 2.131 bewusst entscheiden - **entschieden 22.10.2026: beide bekannt, nicht vor dem Release; Gate auf den Boxen wieder 1**;
@@ -552,6 +556,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       nicht / anderer Code / Regel greift nicht).
 - [ ] 2.135 Klein (arisc-default, Mythos 22.10.2026): unter der Hersteller-ARISC meldet ein Dienst "status brief timed out" nach ~17 s -
       Ursache finden (Abfrage an die Firmware, die das Herstellerbild nicht beantwortet?); Belege `arbeit/medien/arisc-default/laeufe/`.
+- [ ] 2.136 Klein: **libva-Tar nicht reproduzierbar über verschiedene Baupfade** (Release-Bau 22.10.2026: gleicher Commit, Tar 7c0fdc55 in
+      `R-rel/repo-hy310`, 237ec304 in `R-rel/repo-geu`; mesa gleich). Vermutlich Pfade im Ergebnis (`-ffile-prefix-map` in `build-libva.sh`); prüfen.
 - [ ] 2.133 Klein (summen-fix 22.10.2026, gemessen): **Verstärker-Enable PL2 und WLAN-Enable PM1 stehen im Standby und im Aus high** - Linux
       lässt sie stehen, crust hält sie so. Strom, unabhängig vom Summen; vor dem Schlaf abschalten und nach dem Wecken zurück (Verstärker-Plopp
       und WLAN-Wiederkehr dabei prüfen).
