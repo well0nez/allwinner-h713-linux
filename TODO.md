@@ -20,7 +20,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       **(2) G-EU erledigt 22.10.2026 ~15:10-16:20:** v0.97-beta installiert (h713-fel, Probe/Schreiben rc 0, Schlüssel byte-gleich, HDCP 1.4,
       Schritt F, UART-Reset), Boot: 'no SCP firmware staged', Hersteller-ARISC, kein Standby, Aus = Gate, --failed leer, **WLAN-Check bestanden**
       (aic8800 des neuen Bauwegs lädt, ssh über WLAN), Hostschlüssel unverändert; **Abnahme -K: 25 bestanden, 0 nicht bestanden, 5 nicht gemessen**
-      (Kamera-Zellen) - `arbeit/medien/abnahme/laeufe/v097-geu.log`. Offen am G-EU: Gate-Aus mit der Taste (Marco), Wechsel mit dem Auge.
+      (Kamera-Zellen) - `arbeit/medien/abnahme/laeufe/v097-geu.log`. **Augen (Marco, 22.10. ~15:40-15:57):** 3 Wechselrunden Kodi/Desktop/Browser/HDMI
+      ohne Probleme (das "No signal" kam von der eingeschlafenen Quelle, nach dem Wecken Bild von selbst zurück); **Aus über die Power-Taste ins
+      Gate: normal aus, Netzteil still** (Marco), Taste an der Box startet neu (13:56 UTC, Hersteller-ARISC, Gate 1, Signal 1080p60, --failed leer).
       Installer-Fund 2.137. **HY310: später** (Marco). (ohne Standby: Abbild ohne
       `--standby`, der Countdown bietet nur Aus; Achtung: das Aus über crust surrt am 20.10. auch, nur weniger); (1) Release-Bau von vorn mit genau dem medien-Kopf (Bauverzeichnisse gelöscht); (2) installieren auf HY310 und G-EU,
       `abnahme.sh` ganz, WLAN-Check (das neu gebaute aic8800_fdrv lädt, 2.128); der HY310 kennt die Pakete vom 20.10. noch nicht (wach-wand,
