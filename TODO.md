@@ -19,7 +19,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (4) Merge medien -> main (369 Commits am 21.10., TODO.md-Konflikte von Hand); (5) **Mythos, in einem Auftrag: die Doku komplett
       neu erzeugen** (Marco 17.10.: ganz in Mythos' Hand - README, docs/, STATUS, ROADMAP, known-issues, RELEASES-Entwurf, Release-Seite aus
       Fremdensicht; 7.19 und 5.16 gehen darin auf) **und die Identitäts- und Leck-Prüfung 1.7a** über alles, was rausgeht (Marco 21.10.);
-      die Aufsicht schreibt den Auftrag, Marco startet Mythos, die Aufsicht prüft und merged; (6) Push nur mit Marcos Ja.
+      die Aufsicht schreibt den Auftrag, Marco startet Mythos, die Aufsicht prüft und merged; **Marcos Vorgaben 22.10.2026 dafür:
+      `arbeit/medien/doku-runde/VORGABEN-MARCO.md`** (alles neu, Bilder der Menüs/Einblendungen, Anleitungen gemischt mit Präsentation, klarer
+      Disclaimer "KI-generiert und experimentell", bekannte Probleme: ARISC/Standby, IR am HY300 des Testers, Flackern); (6) Push nur mit Marcos Ja.
 - [ ] 1.1a **Release-Neubau** mit allem seit dem v0.96-Bau vom 05.10. (Baustand `be4f8e1`; der alte Hash `819a09a` ist seit dem
       Identitäts-Rewrite unerreichbar): Kernel 0184/0185 und pwm-sun8i (`5e4475a`), Warp (Zoom, Moduswechsel,
       Stale-Schwelle, Import), EDID-Beschnitt, Panel (Auth, Zoom-Schieber), h713-tv (Aspect zoom), Installer-Texte, die neu
@@ -382,7 +384,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Start mit `edid =` ohne VIC-Beschnitt prüfen; abnahme.sh-Zelle ns-seite nach der Regel von p5-seiten; h713-osd: eine Einblendung in den
       0,2 s einer Seitenübergabe bricht sie ab (handover_until); K1 (getöntes Bild an der Kante NV16 -> NV12) nur noch am Dienstschalter `warp ctl on` -
       Marcos Augentest entscheidet.
-- [ ] 2.99 **Flackern vorher/nachher** (Marco 17.10.): mit Mythos' Licht-Detektor und Marcos Auge Launcher offen, Kodi im Hintergrund, Wechsel -
+- [ ] 2.99 **Flackern vorher/nachher** (Marco 17.10.; **22.10.: Marco und der Tester sehen weiter Flackern während der Ausgabe, nicht
+      vollständig geklärt** - so in die Doku): mit Mythos' Licht-Detektor und Marcos Auge Launcher offen, Kodi im Hintergrund, Wechsel -
       rend5 gegen rend6; Hypothese: unsichtbare Arbeit (Warp unter Seiten, Programme dahinter) war eine Lastquelle für die Lichtkopplung.
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -544,6 +547,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       auf einer Seite (h713-settings) und im Ausschalt-Countdown (h713-power liest dafür den Mausknoten der Fernbedienung). Nur Host-Tests;
       offen: Sichtprüfung mit Marcos Fernbedienung (`maus-ok/PRUEFPAKET.md`, dazu `/proc/bus/input/devices` vorher und `top` auf h713-power
       bei bewegtem Zeiger - über ~2 % den Mausknoten erst mit dem Countdown öffnen). Die Wecken-Lücke ist Bluetooth (2.130b).
+- [ ] 2.134 **HY300 (Pro) des Testers (Issue #1, sehr altes Modell): IR-Fernbedienung funktioniert noch nicht** (Marco 22.10.2026). Für die
+      Doku als bekannter Fehler; zur Klärung braucht es von ihm, was der IR-Empfänger bekommt (Skript aus der Gabelung vom 21.10.: Signal kommt
+      nicht / anderer Code / Regel greift nicht).
 - [ ] 2.133 Klein (summen-fix 22.10.2026, gemessen): **Verstärker-Enable PL2 und WLAN-Enable PM1 stehen im Standby und im Aus high** - Linux
       lässt sie stehen, crust hält sie so. Strom, unabhängig vom Summen; vor dem Schlaf abschalten und nach dem Wecken zurück (Verstärker-Plopp
       und WLAN-Wiederkehr dabei prüfen).
