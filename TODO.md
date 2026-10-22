@@ -580,7 +580,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Testers) liefert ebenso nichts, auch roh nicht. Vermutung (nicht gemessen): die Hersteller-Firmware hält den CIR selbst (dekodiert IR und
       meldet Tasten per msgbox an den ARM, wie unter Stock-Android?). Folge: ohne Fix gehen nur Bluetooth-Fernbedienungen, kein IR-Wecken des
       Launchers, die Fernbedienung des Testers gar nicht. Entscheidung Marco nötig (Fix suchen / doch crust als Vorgabe / so lassen).
-- [ ] 2.140 **Einschalten aus dem Aus per Fernbedienung fehlt unter der Hersteller-ARISC** (crust-audit, Mythos 22.10.2026,
+- [x] 2.140 (**erledigt 22.10.2026**: U-Boot 0102 / Fork daa35622b0b, Spiegel uboot-h713 102 Patches; FEL-Test am G-EU mit Marco: Power der
+      originalen und der HY310-Fernbedienung startet aus dem Gate, andere Tasten nicht, Taste am Gerät wie bisher, Gate still; Watt nicht gemessen
+      (Marco); HY310 beim Neuinstallieren; Mythos go) **Einschalten aus dem Aus per Fernbedienung fehlt unter der Hersteller-ARISC** (crust-audit, Mythos 22.10.2026,
       `arbeit/medien/crust-audit/BERICHT.md` §3): das Gate von U-Boot pollt nur die Taste PL4; IR-Wecken gab es nur über crust. Wege: A NEC-Dekoder
       im U-Boot-Gate (mittel, ~150-200 Zeilen, still bei 2,9 W), B Aus wie Stock über die Hersteller-ARISC (groß). **Marco 22.10.2026: muss vor
       dem Release gehen, Weg A** - Paket `arbeit/medien/gate-ir/`. Dazu für die Abnahme eines Firmware-Wechsels: Zeilen IR-Taste kommt an, HPD/Quelle im Gate, RTC-Rate, Kodis Power-Menü ohne

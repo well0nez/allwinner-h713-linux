@@ -1,0 +1,477 @@
+From daa35622b0bf708dc72afa1a2d1146adae2e4bfd Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Thu, 22 Oct 2026 19:58:04 +0200
+Subject: [PATCH] sunxi: h713: the remote's power key starts the board from the
+ gate
+
+With the vendor's ARISC firmware nothing watches the remote while the
+power gate waits on the ARM core, so only the key on the device started
+the board: the power key of the remote did nothing in the gate, where
+crust used to take it in its own off state.
+
+The gate now reads the IR receiver itself, in the loop that polls the
+key: R_CIR on PL9 set up as Linux's sunxi-cir sets it up (hosc / 3 =
+8 MHz, 8 us samples, input inverted), its FIFO drained every 10 ms and
+NEC decoded in software. A whole frame - header, 32 bits with both
+complements, stop pulse, then the gap or the receiver's idle - with the
+power code of either stock remote starts the board as the key does:
+the HY310's (address 0x02, command 0x1d) and the original HY300's
+(address 0x00, command 0x14). Repeat frames carry no code and start
+nothing. Pin, clock and receiver go back to what the gate found before
+U-Boot goes on, so Linux finds them as before. With crust running on
+the ARISC (an image with standby) the remote stays crust's and the loop
+waits for the key alone, as it did. crust's page in SRAM outlives a
+reset and a change of firmware, so "crust runs" is BL31's test: the
+page says running and the heartbeat moves.
+
+Tested on the host against the raw pulses of the original HY300 remote
+as Linux recorded them, and frames re-encoded from them: frames,
+repeats, jitter, every single bit error, noise, FIFO overflow, a 48 bit
+frame, both ways the receiver may end a packet. Not yet run on a board.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/Kconfig |  13 ++
+ board/sunxi/Makefile        |   1 +
+ board/sunxi/board.c         |  84 ++++++++++++-
+ board/sunxi/h713_gate_ir.c  | 244 ++++++++++++++++++++++++++++++++++++
+ 4 files changed, 337 insertions(+), 5 deletions(-)
+ create mode 100644 board/sunxi/h713_gate_ir.c
+
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index 9191d935f26..b23f30f9e36 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -94,6 +94,19 @@ config H713_POWER_GATE
+ 	  For shipping images. Leave this off for bench, netboot and recovery
+ 	  builds, which must come up on mains alone.
+ 
++config H713_POWER_GATE_IR
++	bool "H713: the remote's power key starts the board from the gate too"
++	depends on H713_POWER_GATE
++	default y
++	help
++	  While the gate waits on the ARM core, read the IR receiver (R_CIR on
++	  PL9) in the same loop as the key and decode NEC: the power key of
++	  either stock remote - the HY310's (address 0x02, command 0x1d) or
++	  the original HY300's (address 0x00, command 0x14) - starts the board
++	  as the power key does. Pin, clock and receiver go back to what the
++	  gate found before U-Boot goes on. With crust running on the ARISC
++	  the gate leaves the remote alone and waits for the key, as before.
++
+ config DRAM_SUN50I_A133
+ 	bool
+ 	help
+diff --git a/board/sunxi/Makefile b/board/sunxi/Makefile
+index eaabb71bc85..c51fe525476 100644
+--- a/board/sunxi/Makefile
++++ b/board/sunxi/Makefile
+@@ -7,6 +7,7 @@
+ # (C) Copyright 2000-2003
+ # Wolfgang Denk, DENX Software Engineering, wd@denx.de.
+ obj-y	+= board.o
++obj-$(CONFIG_H713_POWER_GATE_IR)	+= h713_gate_ir.o
+ obj-$(CONFIG_H713_VENDOR_CHAINLOAD)	+= h713_vendor_chain.o \
+ 					   h713_vendor_chain_tramp.o
+ obj-$(CONFIG_SUN7I_GMAC)	+= gmac.o
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index 3aa2adfa6f4..90aa04786df 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -1086,6 +1086,11 @@ static void h713_poweron_lines(void)
+  * waits.  "GATE" and "STBY" wait in the loop as before - asking crust again
+  * after a failed standby would overwrite crust's record of the failure that
+  * the next boot reports.
++ *
++ * Without crust no firmware watches the remote while the loop waits, so the
++ * loop reads the IR receiver itself (h713_gate_ir.c): the power key of a
++ * stock remote starts the board as the key on the device does.  With crust
++ * on the ARISC the remote stays crust's and the loop waits for the key alone.
+  */
+ #define H713_RTC_GP5_REG	0x07090114UL
+ #define H713_GATE_RUN1		0x52554e31UL	/* "RUN1": system is up */
+@@ -1105,10 +1110,17 @@ static void h713_poweron_lines(void)
+ #define H713_SCP_SHARED		0x00123800UL
+ #define H713_SCP_MAGIC_REG	(H713_SCP_SHARED + 0x000)
+ #define H713_SCP_VERSION_REG	(H713_SCP_SHARED + 0x004)
++#define H713_SCP_STATUS_REG	(H713_SCP_SHARED + 0x008)	/* 31:16 heartbeat */
+ #define H713_SCP_BUILD2_REG	(H713_SCP_SHARED + 0x264)	/* contract v5 on */
+ #define H713_SCP_MAGIC		0x33313748UL	/* "H713" */
+ #define H713_SCP_VERSION	5
+ #define H713_SCP_POWER_OFF	BIT(24)		/* BUILD2: H713_POWER_OFF */
++#define H713_SCP_RUNNING	BIT(0)		/* STATUS */
++
++/* h713_gate_ir.c */
++void h713_gate_ir_start(void);
++int h713_gate_ir_poll(void);
++void h713_gate_ir_stop(void);
+ 
+ /*
+  * The power key is PL4 in R_PIO: active low against an external pull-up, so no
+@@ -1173,12 +1185,17 @@ static bool h713_gate_key_held(struct gpio_desc *key, unsigned int ms)
+  * alone did, a key still held from the back-door check above -- or simply held
+  * a moment too long -- would start the boot the instant the gate opened, and
+  * nobody would ever see the standby state.
++ *
++ * With @remote the same pass drains the IR receiver, and a power code ends
++ * the wait at once: a remote sends no release, and its repeat frames carry
++ * no code.  Returns that code, or -1 for the key.
+  */
+-static void h713_gate_wait(struct gpio_desc *key)
++static int h713_gate_wait(struct gpio_desc *key, bool remote)
+ {
+ 	unsigned int low_ms = 0, high_ms = 0;
+ 	bool idle_seen = false, pressed = false, noted = false;
+ 	ulong last_note = get_timer(0);
++	int code = -1;
+ 
+ 	printf("gate: waiting for power key\n");
+ 
+@@ -1200,6 +1217,12 @@ static void h713_gate_wait(struct gpio_desc *key)
+ 			}
+ 		}
+ 
++		if (remote) {
++			code = h713_gate_ir_poll();
++			if (code >= 0)
++				break;
++		}
++
+ 		/* One dot a minute: proof of life without flooding the log. */
+ 		if (get_timer(last_note) >= H713_GATE_NOTE_MS) {
+ 			last_note = get_timer(0);
+@@ -1213,6 +1236,8 @@ static void h713_gate_wait(struct gpio_desc *key)
+ 
+ 	if (noted)
+ 		printf("\n");
++
++	return code;
+ }
+ 
+ /*
+@@ -1242,13 +1267,56 @@ static bool h713_gate_crust_can_hold(void)
+ 	return true;
+ }
+ 
++/*
++ * Does crust run on the ARISC?  Its page in SRAM A2 outlives a reset and a
++ * change of firmware, so the page alone does not say: crust runs when the
++ * page says running and its main loop moves the heartbeat, microseconds
++ * apart - BL31's test before it hands crust the power off.
++ */
++static bool h713_gate_crust_runs(void)
++{
++	u32 status = readl(H713_SCP_STATUS_REG);
++	unsigned int i;
++
++	if (readl(H713_SCP_MAGIC_REG) != H713_SCP_MAGIC ||
++	    !(status & H713_SCP_RUNNING))
++		return false;
++
++	for (i = 0; i < 100; i++) {
++		udelay(100);
++		if (readl(H713_SCP_STATUS_REG) != status)
++			return true;
++	}
++	return false;
++}
++
++/*
++ * The remote's power key wakes the loop too, unless crust runs on the ARISC:
++ * on an image with standby the remote is crust's, which reads it in its own
++ * off state, and the loop stays as it was there.
++ */
++static bool h713_gate_remote_start(void)
++{
++	if (!IS_ENABLED(CONFIG_H713_POWER_GATE_IR))
++		return false;
++
++	if (h713_gate_crust_runs()) {
++		printf("gate: crust runs on the ARISC, the remote is not read here\n");
++		return false;
++	}
++
++	h713_gate_ir_start();
++	printf("gate: the remote's power key starts the board too\n");
++	return true;
++}
++
+ static void h713_power_gate(void)
+ {
+ 	struct gpio_desc key;
+ 	const char *sel;
+-	bool gate = true;
++	bool gate = true, remote;
+ 	u32 flag;
+-	int ret;
++	int ret, code;
+ 
+ 	/*
+ 	 * The flag goes into every line so a console log from the field
+@@ -1307,8 +1375,14 @@ static void h713_power_gate(void)
+ 	}
+ 
+ 	if (gate) {
+-		h713_gate_wait(&key);
+-		printf("gate: power key, booting\n");
++		remote = h713_gate_remote_start();
++		code = h713_gate_wait(&key, remote);
++		if (remote)
++			h713_gate_ir_stop();
++		if (code < 0)
++			printf("gate: power key, booting\n");
++		else
++			printf("gate: remote power key (NEC %04x), booting\n", code);
+ 	}
+ 
+ 	/*
+diff --git a/board/sunxi/h713_gate_ir.c b/board/sunxi/h713_gate_ir.c
+new file mode 100644
+index 00000000000..7d125822d66
+--- /dev/null
++++ b/board/sunxi/h713_gate_ir.c
+@@ -0,0 +1,244 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * H713 power gate: the remote's power key starts the board as well.
++ *
++ * In the gate (board.c) no firmware runs that watches the remote - the
++ * release image starts nothing on the ARISC - so the gate reads the IR
++ * receiver itself. R_CIR samples PL9 on its own and queues runs of one level
++ * in its FIFO; the gate's loop drains the FIFO every 10 ms and decodes NEC
++ * here. Both stock remotes send NEC: the HY310's (address 0x02, power 0x1d,
++ * the kernel's rc-h713-fd02) and the original HY300's (address 0x00, power
++ * 0x14, measured on 22.10.2026).
++ *
++ * The receiver is set up as Linux's sunxi-cir sets it up on this SoC: module
++ * clock hosc / 3 = 8 MHz, one sample per 64 clocks = 8 us, input inverted so
++ * that a burst of carrier reads as a pulse. A FIFO byte is one run: bit 7 the
++ * level, bits 6:0 its length in samples minus one; a longer run goes on in
++ * the next byte. A NEC frame queues at most about 20 bytes in 10 ms, so the
++ * 64-byte FIFO lets the loop keep the pace it polls the key at.
++ *
++ * Pin, clock and receiver go back to what the gate found before U-Boot goes
++ * on, so Linux finds them as it did before this file.
++ */
++
++#include <asm/io.h>
++#include <linux/bitops.h>
++#include <linux/kernel.h>
++#include <linux/types.h>
++
++#define H713_R_CCU_IR_CLK	0x070101c0UL	/* R_IR_RX module clock */
++#define   H713_IR_CLK_8MHZ	(BIT(31) | (1 << 24) | 2)	/* on, hosc, /3 */
++#define H713_R_CCU_IR_BGR	0x070101ccUL
++#define   H713_IR_BGR_ON	(BIT(16) | BIT(0))	/* reset released, bus on */
++#define H713_PL_CFG1		0x07022004UL	/* PL8-PL15, 4 bits a pin */
++#define   H713_PL9_FUNC		(0xf << 4)
++#define   H713_PL9_S_CIR	(3 << 4)
++#define H713_PL_PULL0		0x07022024UL	/* PL0-PL15, 2 bits a pin */
++#define   H713_PL9_PULL		(3 << 18)
++#define   H713_PL9_PULL_UP	(1 << 18)
++
++#define H713_CIR_CTL		0x07040000UL
++#define   H713_CIR_ON		(BIT(0) | BIT(1))	/* global, rx */
++#define   H713_CIR_MODE		(3 << 4)
++#define H713_CIR_RXCTL		0x07040010UL
++#define   H713_CIR_INVERT	BIT(2)
++#define H713_CIR_RXFIFO		0x07040020UL
++#define H713_CIR_RXINT		0x0704002cUL
++#define   H713_CIR_RXINT_ALL	(BIT(0) | BIT(1) | BIT(4) | (31 << 8))
++#define H713_CIR_RXSTA		0x07040030UL
++#define   H713_CIR_OVERFLOW	BIT(0)
++#define   H713_CIR_PACKET_END	BIT(1)
++#define   H713_CIR_COUNT(s)	(((s) >> 8) & 0x7f)
++#define H713_CIR_CFG		0x07040034UL
++/* noise below 1 sample; idle after 20 x 128 samples = 20.5 ms */
++#define   H713_CIR_THRESHOLDS	((1 << 2) | (19 << 8))
++#define H713_CIR_FIFO		64
++#define H713_CIR_SAMPLE_US	8
++
++/* NEC, in us, units of 562.5 us; each bound holds a remote 15 % off */
++#define NEC_HEADER_PULSE(us)	((us) >= 7500 && (us) <= 10500)	/* 16 */
++#define NEC_HEADER_SPACE(us)	((us) >= 3500 && (us) <= 5500)	/* 8 */
++#define NEC_UNIT(us)		((us) >= 300 && (us) <= 900)	/* 1 */
++#define NEC_THREE(us)		((us) >= 1300 && (us) <= 2100)	/* 3 */
++#define NEC_GAP			5000	/* after the stop pulse; NEC leaves 40 ms */
++
++enum nec_state { NEC_IDLE, NEC_SPACE, NEC_PULSE, NEC_BIT, NEC_GAP_WAIT };
++
++static struct {
++	enum nec_state state;
++	unsigned int bits;
++	u32 data;
++	bool pulse;		/* level of the run being measured */
++	u32 run;		/* its length so far */
++} nec;
++
++static u32 saved_clk, saved_bgr, saved_cfg1, saved_pull0;
++
++static const u16 h713_gate_ir_power[] = {
++	0x021d,			/* HY310 remote */
++	0x0014,			/* original HY300 remote */
++};
++
++/*
++ * A frame is address, ~address, command, ~command, each LSB first. Both
++ * remotes send the plain form, so both complements are checked.
++ */
++static int nec_frame(u32 data)
++{
++	u8 addr = data, naddr = data >> 8, cmd = data >> 16, ncmd = data >> 24;
++
++	if ((u8)~addr != naddr || (u8)~cmd != ncmd)
++		return -1;
++	return addr << 8 | cmd;
++}
++
++/* A run of one level ended: one step through header, 32 bits, stop pulse. */
++static void nec_step(bool pulse, u32 us)
++{
++	switch (nec.state) {
++	case NEC_IDLE:
++		break;
++	case NEC_SPACE:
++		/* 2.25 ms here is a repeat: it carries no code and starts nothing */
++		if (!pulse && NEC_HEADER_SPACE(us)) {
++			nec.state = NEC_PULSE;
++			nec.bits = 0;
++			nec.data = 0;
++			return;
++		}
++		break;
++	case NEC_PULSE:
++		if (pulse && NEC_UNIT(us)) {
++			nec.state = nec.bits == 32 ? NEC_GAP_WAIT : NEC_BIT;
++			return;
++		}
++		break;
++	case NEC_BIT:
++		if (!pulse && (NEC_UNIT(us) || NEC_THREE(us))) {
++			if (NEC_THREE(us))
++				nec.data |= BIT(nec.bits);
++			nec.bits++;
++			nec.state = NEC_PULSE;
++			return;
++		}
++		break;
++	case NEC_GAP_WAIT:	/* a pulse soon after the stop pulse: not NEC */
++		break;
++	}
++	nec.state = pulse && NEC_HEADER_PULSE(us) ? NEC_SPACE : NEC_IDLE;
++}
++
++/* One FIFO run; returns the code of a frame it completes, else -1. */
++static int nec_feed(bool pulse, u32 us)
++{
++	if (pulse != nec.pulse) {
++		if (nec.run)
++			nec_step(nec.pulse, nec.run);
++		nec.pulse = pulse;
++		nec.run = 0;
++	}
++	nec.run += us;
++	if (nec.state == NEC_GAP_WAIT && !nec.pulse && nec.run >= NEC_GAP) {
++		nec.state = NEC_IDLE;
++		return nec_frame(nec.data);
++	}
++	return -1;
++}
++
++static void nec_reset(void)
++{
++	nec.state = NEC_IDLE;
++	nec.pulse = false;
++	nec.run = 0;
++}
++
++/*
++ * The receiver saw the line idle for its threshold. Whether it wrote the
++ * space up to there or not, a frame that has its stop pulse is whole; a
++ * stop pulse still open ends here. Anything else is left to the next run.
++ */
++static int nec_idle(void)
++{
++	int code;
++
++	if (nec.state == NEC_PULSE && nec.bits == 32 && nec.pulse)
++		nec_step(true, nec.run);
++	if (nec.state != NEC_GAP_WAIT)
++		return -1;
++	code = nec_frame(nec.data);
++	nec_reset();
++	return code;
++}
++
++void h713_gate_ir_start(void)
++{
++	saved_clk = readl(H713_R_CCU_IR_CLK);
++	saved_bgr = readl(H713_R_CCU_IR_BGR);
++	saved_cfg1 = readl(H713_PL_CFG1) & H713_PL9_FUNC;
++	saved_pull0 = readl(H713_PL_PULL0) & H713_PL9_PULL;
++
++	/* through reset, whatever ran the receiver before */
++	clrbits_le32(H713_R_CCU_IR_BGR, H713_IR_BGR_ON);
++	writel(H713_IR_CLK_8MHZ, H713_R_CCU_IR_CLK);
++	setbits_le32(H713_R_CCU_IR_BGR, H713_IR_BGR_ON);
++	clrsetbits_le32(H713_PL_PULL0, H713_PL9_PULL, H713_PL9_PULL_UP);
++	clrsetbits_le32(H713_PL_CFG1, H713_PL9_FUNC, H713_PL9_S_CIR);
++
++	writel(H713_CIR_MODE, H713_CIR_CTL);
++	writel(H713_CIR_THRESHOLDS, H713_CIR_CFG);
++	writel(H713_CIR_INVERT, H713_CIR_RXCTL);
++	writel(0xff, H713_CIR_RXSTA);
++	/* as Linux sets them; U-Boot takes no interrupt, the status is polled */
++	writel(H713_CIR_RXINT_ALL, H713_CIR_RXINT);
++	writel(H713_CIR_MODE | H713_CIR_ON, H713_CIR_CTL);
++	nec_reset();
++}
++
++static int h713_gate_ir_power_key(int code)
++{
++	unsigned int i;
++
++	for (i = 0; code >= 0 && i < ARRAY_SIZE(h713_gate_ir_power); i++)
++		if (code == h713_gate_ir_power[i])
++			return code;
++	return -1;
++}
++
++/* Drain the FIFO; the code of a power key, else -1. */
++int h713_gate_ir_poll(void)
++{
++	u32 sta = readl(H713_CIR_RXSTA);
++	unsigned int n = H713_CIR_COUNT(sta);
++	int code;
++	u8 b;
++
++	writel(sta | 0xff, H713_CIR_RXSTA);
++	if (n > H713_CIR_FIFO)
++		n = H713_CIR_FIFO;
++	if (sta & H713_CIR_OVERFLOW)	/* runs were lost: start over */
++		nec_reset();
++
++	while (n--) {
++		b = readb(H713_CIR_RXFIFO);
++		if (sta & H713_CIR_OVERFLOW)
++			continue;
++		code = nec_feed(b & 0x80, ((b & 0x7f) + 1) * H713_CIR_SAMPLE_US);
++		if (h713_gate_ir_power_key(code) >= 0)
++			return code;
++	}
++
++	if (sta & H713_CIR_PACKET_END)
++		return h713_gate_ir_power_key(nec_idle());
++	return -1;
++}
++
++void h713_gate_ir_stop(void)
++{
++	writel(0, H713_CIR_RXINT);
++	writel(0, H713_CIR_CTL);
++	writel(0xff, H713_CIR_RXSTA);
++	clrsetbits_le32(H713_PL_CFG1, H713_PL9_FUNC, saved_cfg1);
++	clrsetbits_le32(H713_PL_PULL0, H713_PL9_PULL, saved_pull0);
++	writel(saved_clk, H713_R_CCU_IR_CLK);
++	writel(saved_bgr, H713_R_CCU_IR_BGR);
++}
