@@ -8,7 +8,7 @@ Who made what, where it comes from, and what is deliberately absent.
 [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline) at commit `8860991`. What of his tree
 is still in the working tree, and what is not, is told in "Left out on purpose" below; his kernel patches are the part
 that stayed. His commits up to `8860991` are still in this repository's git history. On top of them,
-`mainline/patches/kernel/series` carries 348 patches:
+`mainline/patches/kernel/series` carries 349 patches:
 
 | Origin | Patches | Note |
 |---|---|---|
@@ -26,6 +26,7 @@ that stayed. His commits up to `8860991` are still in this repository's git hist
 | well0nez | `0321` | the stock BLE remote's focus keys: usage 0x0de is focus down and 0x0df focus up, the other way round from `0169` (measured with the owner at the wall, 18.10.2026; the infrared table of `0254` was right). Own work |
 | well0nez | `0325` | the R_PIO header comment and the power key note in the dtsi name the EINT function 0xe as `0140`'s table has it (the pinctrl comment is the same correction as in cstenger's `0171`, whose code part `0140` already carries); comments only |
 | well0nez | `0326` | the hdmirx driver checks the break of the display firmware's allocator before it writes a block into the shared memory (the HDCP 2.2 key, the window structures, the backlight PWM words) and leaves the step out when the allocator has reached the block's page; two comments of `0094`/`0101` corrected (SetWhiteBalance's argument, white balance versus CTM). Own work, no foreign material; the layout of the allocator is read from our own `cpu_comm` port |
+| well0nez | `0327` | the arisc driver loads the device tree's crust image when the module option asked for the vendor image and the file is missing - the image runs the vendor ARISC firmware by default since 22.10.2026, and its boot chain starts no crust that could be kept |
 
 cstenger says the same in his own `PROVENANCE.md` (in his repository at `8860991`): "the bulk of the H713 driver support … originates
 from well0nez". The direction of the debt runs both ways - his arm64 work is what made the 6.18 line
