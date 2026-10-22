@@ -136,7 +136,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       im Standby/Aus high) verschieben nur das Muster. **Still ist der Standby ohne DRAM-Self-Refresh** (crust `versuch/summen-light` 85eb99f, eine
       Defconfig-Zeile; -67,4 dBFS = Gate, Netzteil im Dauerbetrieb 20,7 kHz; 13/13 Wecken mit Uhr und Bild) - **Watt nicht gemessen** (über 2,4 W);
       liegt als updates-Datei auf dem G-EU. Das Aus (0,3 W) summt weiter. Offen mit Marco: Wattmeter, A5 Netzteil ohne Box, blinder Hörtest;
-      Entscheidung mehr Strom im Standby für Ruhe ja/nein. Mythos prüft den Kandidaten.
+      Entscheidung mehr Strom im Standby für Ruhe ja/nein. **Mythos 22.10. früh (`fix-bericht/MYTHOS-PRUEFUNG.md`): go als Teststand, technisch
+      sauber** (ohne Self-Refresh frischt der Controller selbst auf; PLL_DDR/Controller/Rails laufen im Release-Standby ohnehin; Wecken einfacher) -
+      die Entscheidung ist allein die Leistung. **Auflagen vor einem Release:** Watt, Block R3 (Stille am Anfang/Ende) + A5 (Netzteil ohne Box),
+      Taste/IR-Wecken, HY310 getrennt (anderes Netzteil, dessen Defconfig bleibt mit Self-Refresh bis gemessen), `check-crust --standby`, Doku.
+      Eine Zwischenstufe (nur die DRAM-Chips im Self-Refresh, Takte an) spart 50-100 mW, lohnt nur nahe 2,9 W. Aus: kein crust-Hebel mehr; summt
+      das leere Netzteil (A5) gleich, endet die Arbeit am Aus; sonst bleibt eine Zelle DCXO aus + RTC auf RC.
       **T5c gebaut 21.10.2026, nicht gemessen, Mythos go für den Hörtest:** crust `versuch/arisc-langsam` 4f076d7 (Fix der
       Startphase nach Mythos; vorher a0b00d9)
       (HY310/G-EU, check-crust grün): die ARISC wartet im Standby/Aus zwischen ihren Polls auf LOSC statt durchzulaufen; Hörtest A-B-B0-B-A nach
@@ -536,6 +541,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       auf einer Seite (h713-settings) und im Ausschalt-Countdown (h713-power liest dafür den Mausknoten der Fernbedienung). Nur Host-Tests;
       offen: Sichtprüfung mit Marcos Fernbedienung (`maus-ok/PRUEFPAKET.md`, dazu `/proc/bus/input/devices` vorher und `top` auf h713-power
       bei bewegtem Zeiger - über ~2 % den Mausknoten erst mit dem Countdown öffnen). Die Wecken-Lücke ist Bluetooth (2.130b).
+- [ ] 2.133 Klein (summen-fix 22.10.2026, gemessen): **Verstärker-Enable PL2 und WLAN-Enable PM1 stehen im Standby und im Aus high** - Linux
+      lässt sie stehen, crust hält sie so. Strom, unabhängig vom Summen; vor dem Schlaf abschalten und nach dem Wecken zurück (Verstärker-Plopp
+      und WLAN-Wiederkehr dabei prüfen).
 - [ ] 2.132 **G-EU: Knarzen aus den Lautsprechern beim Einschalten nach dem Aus** (Marco 21.10.2026 beim Hörtest, Kaltstart nach
       dem Aus über crust und Wecken per Fernbedienung). Nicht untersucht; erst den Zeitpunkt im Boot finden (Codec/DSP-Initialisierung, Mute vor
       dem ersten Ton?).
