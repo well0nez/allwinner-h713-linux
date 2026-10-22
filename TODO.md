@@ -23,7 +23,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (Kamera-Zellen) - `arbeit/medien/abnahme/laeufe/v097-geu.log`. **Augen (Marco, 22.10. ~15:40-15:57):** 3 Wechselrunden Kodi/Desktop/Browser/HDMI
       ohne Probleme (das "No signal" kam von der eingeschlafenen Quelle, nach dem Wecken Bild von selbst zurück); **Aus über die Power-Taste ins
       Gate: normal aus, Netzteil still** (Marco), Taste an der Box startet neu (13:56 UTC, Hersteller-ARISC, Gate 1, Signal 1080p60, --failed leer).
-      Installer-Fund 2.137. **HY310: später** (Marco). (ohne Standby: Abbild ohne
+      Installer-Fund 2.137. **HY310 erledigt 22.10.2026 ~16:10-18:06:** v0.97-beta installiert (wie G-EU; Hostschlüssel SBcC…, Gate von Hand 1),
+      Hersteller-ARISC, kein Standby, Aus = Gate, --failed leer, WLAN-Check bestanden, HDMI 1080p60. Kamera-Abnahme: Lauf 3 28 bestanden / 15 nicht,
+      die 15 an der Kamera-Eichung (Vergleichsbilder 'mit/ohne Trapez' zu ähnlich) und ns-seite; **Marcos Auge für diese Punkte: Einstellungen
+      über HDMI/Kodi/Desktop/Browser erscheinen, beim Neustart kein unverzerrtes Bild, No signal -> Home 'sieht gut aus'.** Die Eichung der
+      Kamera bleibt eine Messfrage (2.138). **Schritt (2) damit für beide Boxen erledigt.** (ohne Standby: Abbild ohne
       `--standby`, der Countdown bietet nur Aus; Achtung: das Aus über crust surrt am 20.10. auch, nur weniger); (1) Release-Bau von vorn mit genau dem medien-Kopf (Bauverzeichnisse gelöscht); (2) installieren auf HY310 und G-EU,
       `abnahme.sh` ganz, WLAN-Check (das neu gebaute aic8800_fdrv lädt, 2.128); der HY310 kennt die Pakete vom 20.10. noch nicht (wach-wand,
       kodi-93, launcher-rand, bt-neukoppeln, Lizenz-Bauweg); (3) 2.125 und 2.131 bewusst entscheiden - **entschieden 22.10.2026: beide bekannt, nicht vor dem Release; Gate auf den Boxen wieder 1**;
@@ -568,6 +572,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.137 **Installer: `--keep-env` übernahm `h713_gate=0` aus der Sicherung im Abzug, nicht den Wert vom Gerät** (G-EU 22.10.2026: auf
       dem Gerät stand 1, "carried over from the old one: h713_gate=0 (image: 1)"; `install-dump/uboot-env.bin` vom 20.10. trug 0). Der Installer
       soll die Umgebung vom Gerät lesen, wie er es für Secure Storage tut, oder den Unterschied laut melden. Danach `fw_setenv h713_gate 1` von Hand.
+- [ ] 2.138 **Abnahme-Kamera am HY310: die Eichung trennt 'Bild mit Trapez' und 'gerade' nicht mehr** (22.10.2026: Abstand 0,5-19 statt
+      mindestens 30 mit Sperrbildschirm, hellem Raster und Schachbrett als Quelle; früher ging es). Ursache finden (Kamera-Ausschnitt, Belichtung,
+      Licht im Raum, Quellbild) - bis dahin urteilt Marcos Auge (`arbeit/medien/abnahme/laeufe/v097-hy310*.log`).
 - [ ] 2.133 Klein (summen-fix 22.10.2026, gemessen): **Verstärker-Enable PL2 und WLAN-Enable PM1 stehen im Standby und im Aus high** - Linux
       lässt sie stehen, crust hält sie so. Strom, unabhängig vom Summen; vor dem Schlaf abschalten und nach dem Wecken zurück (Verstärker-Plopp
       und WLAN-Wiederkehr dabei prüfen).
