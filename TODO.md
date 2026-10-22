@@ -580,8 +580,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Launchers, die Fernbedienung des Testers gar nicht. Entscheidung Marco nötig (Fix suchen / doch crust als Vorgabe / so lassen).
 - [ ] 2.140 **Einschalten aus dem Aus per Fernbedienung fehlt unter der Hersteller-ARISC** (crust-audit, Mythos 22.10.2026,
       `arbeit/medien/crust-audit/BERICHT.md` §3): das Gate von U-Boot pollt nur die Taste PL4; IR-Wecken gab es nur über crust. Wege: A NEC-Dekoder
-      im U-Boot-Gate (mittel, ~150-200 Zeilen, still bei 2,9 W), B Aus wie Stock über die Hersteller-ARISC (groß). Marco entscheidet, ob vor dem
-      Release. Dazu für die Abnahme eines Firmware-Wechsels: Zeilen IR-Taste kommt an, HPD/Quelle im Gate, RTC-Rate, Kodis Power-Menü ohne
+      im U-Boot-Gate (mittel, ~150-200 Zeilen, still bei 2,9 W), B Aus wie Stock über die Hersteller-ARISC (groß). **Marco 22.10.2026: muss vor
+      dem Release gehen, Weg A** - Paket `arbeit/medien/gate-ir/`. Dazu für die Abnahme eines Firmware-Wechsels: Zeilen IR-Taste kommt an, HPD/Quelle im Gate, RTC-Rate, Kodis Power-Menü ohne
       Suspend, Zeit Taste -> Bild beim Kaltstart. TODO 2.65 beantwortet: im Gate weckt nur die Taste.
 - [ ] 2.138 **Abnahme-Kamera am HY310: die Eichung trennt 'Bild mit Trapez' und 'gerade' nicht mehr** (22.10.2026: Abstand 0,5-19 statt
       mindestens 30 mit Sperrbildschirm, hellem Raster und Schachbrett als Quelle; früher ging es). Ursache finden (Kamera-Ausschnitt, Belichtung,
