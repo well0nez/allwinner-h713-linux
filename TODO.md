@@ -131,6 +131,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       nach 124 Wartungen (2 % auf LOSC, Uhr +0,99 s; Verdacht: Takt oder Tick-Zähler folgen der Quelle 1 nicht), abgebrochen nach Protokoll,
       Release-crust zurück; gehört wurde nur A: Standby "surrt, minimal andere Frequenz" (mit WLAN) bzw. "surren" (ohne), **Aus "lautes surren"**
       (BERICHT-T5c §9). Nächster Hebel: Ursache am Code/mit einer Messung ohne Marco, sonst T5d. Vorher:
+      **Nacht 21./22.10.2026 (summen-fix, Mikrofon am Netzteil, `standby-summen/fix-bericht/BERICHT.md`):** ARISC-Takt, LEDs, vdd-cpu-PWM,
+      PLL-LDO, Quarz-Bit bewegen die Töne nicht; weniger Last ist lauter (Tiefschlaf-Standby -60,6 statt -64 dBFS); Verstärker-/WLAN-Enable (PL2/PM1,
+      im Standby/Aus high) verschieben nur das Muster. **Still ist der Standby ohne DRAM-Self-Refresh** (crust `versuch/summen-light` 85eb99f, eine
+      Defconfig-Zeile; -67,4 dBFS = Gate, Netzteil im Dauerbetrieb 20,7 kHz; 13/13 Wecken mit Uhr und Bild) - **Watt nicht gemessen** (über 2,4 W);
+      liegt als updates-Datei auf dem G-EU. Das Aus (0,3 W) summt weiter. Offen mit Marco: Wattmeter, A5 Netzteil ohne Box, blinder Hörtest;
+      Entscheidung mehr Strom im Standby für Ruhe ja/nein. Mythos prüft den Kandidaten.
       **T5c gebaut 21.10.2026, nicht gemessen, Mythos go für den Hörtest:** crust `versuch/arisc-langsam` 4f076d7 (Fix der
       Startphase nach Mythos; vorher a0b00d9)
       (HY310/G-EU, check-crust grün): die ARISC wartet im Standby/Aus zwischen ihren Polls auf LOSC statt durchzulaufen; Hörtest A-B-B0-B-A nach
