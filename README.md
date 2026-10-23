@@ -31,12 +31,17 @@ each line measured on a device and dated in [STATUS.md](STATUS.md):
 | **HDMI input** | 1080p60 and the other modes of the display firmware's own table, hot plug, picture controls, aspect, the firmware's magnifier; HDCP 1.4 and 2.2 with the keys of your own device; sound through the speaker, lip-sync, one volume |
 | **The launcher** | the stock remote's Home key opens a menu over the whole picture: HDMI input, Kodi, Browser, Desktop, Settings. It is also what the projector shows when it has started ([guide](docs/guides/launcher.md)) |
 | **Kodi, a desktop, a browser** | Debian's Kodi, labwc with a terminal, and Firefox, each as a mode of the box, drawn through the keystone; hardware video decode (H.264, HEVC, VP8, VP9) behind the IOMMU ([h713-desktop](docs/tools/h713-desktop.md)) |
-| **Settings on the wall** | a settings page driven by the remote: picture, white balance, keystone, sound, focus, input, power, Wi-Fi ([guide](docs/guides/settings.md)) - and the same from a browser at `http://<the projector>:8080/` ([guide](docs/guides/settings-page.md)) |
+| **Settings on the wall** | a settings page driven by the remote: picture, white balance, keystone, sound, focus, input, power, Wi-Fi ([guide](docs/guides/settings.md)) |
+| **Settings in a browser** | the web panel at `http://<the projector>:8080/` for a phone or a PC, in seven sections (Projection, Picture, Colour, Sound, Remote, Network, System) - among them the keystone as a drawing whose corners you drag; password protected, the way without the remote ([guide](docs/guides/settings-page.md), picture below) |
 | **The stock remote** | over Bluetooth (hold Left+Right to pair) and over infrared, both stock remotes of these projectors; volume, mute, focus, Home, the launcher and the pages; overlays over the picture ([guide](docs/guides/remote.md)) |
 | **Keystone and zoom** | the picture squared up on the Mali GPU, by hand or from the tilt sensor, four projection modes, the vendor's soft edge ([guide](docs/guides/keystone.md)) |
 | **Autofocus and focus** | the vendor's search rebuilt with the built-in camera and the focus motor, and the focus by hand ([guide](docs/guides/autofocus.md)) |
 | **Wi-Fi, Bluetooth, camera** | AIC8800 as access point or client; the camera as a V4L2 device |
 | **Recovery** | FEL from software, the eMMC as a USB drive, stock Android restorable byte for byte from your dump |
+
+![The web panel in a browser: the keystone as a drawing with draggable corners, the state line above](docs/images/panel/panel-projection.png)
+
+*The web panel (`h713-panel`) in a PC browser, rendered from the real page with test values.*
 
 **What it does not do, and what is wrong**, in one place: [docs/known-issues.md](docs/known-issues.md). The three that
 matter most:

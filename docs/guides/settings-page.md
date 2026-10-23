@@ -6,6 +6,8 @@ it carries more - the keystone as a drawing with corners you drag, the colour sl
 it is the way without the remote. Everything on it is one command this project already has; the page starts
 that command and shows you the first `ok` or `error` line it answers.
 
+![The web panel, section Projection: the keystone as a drawing, the arrows and step sizes, zoom](../images/panel/panel-projection.png)
+
 ## Getting to it
 
 The service is enabled from the first boot (`rootfs/install-projekt.sh` step 5e), listens on every
