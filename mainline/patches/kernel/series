@@ -358,6 +358,7 @@
 0275-media-cedrus-separate-compose-from-capture-canvas.patch
 0276-media-cedrus-expose-h264-hardware-rotation.patch
 0277-media-cedrus-skip-invalid-h264-reference-list-entries.patch
+0277a-media-cedrus-h264-let-cedrus-set-params-fail-the-job.patch
 0278-media-cedrus-fix-missing-cleanup-in-error-path.patch
 0279-media-cedrus-require-per-frame-controls-in-a-request.patch
 0280-media-cedrus-size-the-reconstruction-buffer-for-10-bit-side-data.patch

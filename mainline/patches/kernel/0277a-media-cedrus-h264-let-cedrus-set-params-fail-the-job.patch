@@ -1,0 +1,55 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: [PATCH] media: cedrus: h264: let cedrus_set_params() fail the job
+
+cedrus_set_params() returns int and cedrus_h264_setup() passes its result on, so
+a step inside it can fail the job instead of the request ioctl carrying on. No
+step fails here yet; 0322 (the bounded skip-bits wait) is the first to return an
+error through it.
+
+Until 23.10.2026 this plumbing came with our earlier 0277 (Pengpeng Hou's v2,
+which rejected invalid H.264 reference indices). 0277 is now the upstream fix
+that skips such entries (commit 10358ea986c3) and needs no error path, so the
+plumbing that 0322 builds on stands here on its own.
+
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_h264.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_h264.c
+@@ -341,8 +341,8 @@
+ 	}
+ }
+ 
+-static void cedrus_set_params(struct cedrus_ctx *ctx,
+-			      struct cedrus_run *run)
++static int cedrus_set_params(struct cedrus_ctx *ctx,
++			     struct cedrus_run *run)
+ {
+ 	const struct v4l2_ctrl_h264_decode_params *decode = run->h264.decode_params;
+ 	const struct v4l2_ctrl_h264_slice_params *slice = run->h264.slice_params;
+@@ -355,6 +355,7 @@
+ 	unsigned int pic_width_in_mbs;
+ 	bool mbaff_pic;
+ 	u32 reg;
++	int ret;
+ 
+ 	cedrus_write(dev, VE_H264_VLD_LEN, slice_bytes * 8);
+ 	cedrus_write(dev, VE_H264_VLD_OFFSET, 0);
+@@ -481,6 +482,8 @@
+ 		     VE_H264_CTRL_SLICE_DECODE_INT |
+ 		     VE_H264_CTRL_DECODE_ERR_INT |
+ 		     VE_H264_CTRL_VLD_DATA_REQ_INT);
++
++	return 0;
+ }
+ 
+ static enum cedrus_irq_status
+@@ -534,9 +537,7 @@
+ 	if (ret)
+ 		return ret;
+ 
+-	cedrus_set_params(ctx, run);
+-
+-	return 0;
++	return cedrus_set_params(ctx, run);
+ }
+ 
+ static int cedrus_h264_start(struct cedrus_ctx *ctx)
