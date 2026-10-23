@@ -20,9 +20,11 @@ watchdog timeouts behind them (five in one run next to an AV1 stream)
 were gone once the reference's MV column buffer was required. No other
 job had either; valid streams never do.
 
-Like H.264 (0277), such a job is refused with -EINVAL before the engine
-is touched, after the capture buffer's MV column buffer exists, so a
-refused job leaves no picture without one.
+Such a job is refused with -EINVAL before the engine is touched, after the
+capture buffer's MV column buffer exists, so a refused job leaves no picture
+without one. (Written after 0277 as it stood then, which refused invalid H.264
+indices; since 23.10.2026 0277 is the upstream fix that skips them, and
+upstream prefers skipping for H.265 too - TODO 2.146 before 0309 goes upstream.)
 ---
 --- a/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
 +++ b/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
