@@ -279,6 +279,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`](216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md) | Protokoll | 2026-10-20 | 216 Lizenzen: die offenen Teile von TODO 7.20 (a, b, c, d, e, g) - Protokoll | - |
 | [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 1 |
 | [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | - |
+| [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | - |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -435,7 +436,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-53 von 277 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+54 von 278 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
@@ -481,7 +482,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`
 * `209-runde-5x-teil-b-uebernahme-panel-20261013.md`
 * `216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`
-* `218-summen-crust-arisc-entscheidung-protokoll-20261022.md`
+* `218-summen-crust-arisc-entscheidung-protokoll-20261022.md` (ueberholt)
+* `219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)

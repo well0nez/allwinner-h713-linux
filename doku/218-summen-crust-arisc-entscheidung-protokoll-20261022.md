@@ -1,5 +1,7 @@
 # 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll
 
+*Nachtrag 23.10.2026: "Aus dem Gate startet die Taste am Gerät, nicht die Fernbedienung" (§3) ist überholt - seit U-Boot `0102` startet auch die Power-Taste der Fernbedienung aus dem Gate, und unter der Hersteller-ARISC braucht die Fernbedienung Kernel `0328` (`doku/219`).*
+
 Datum: 20.-22.10.2026. Gerät HY300PRO-G-EU (Abbild geu3, `medien`), Marco am Netzteil bzw. ein USB-Mikrofon am Host wenige cm neben dem
 Netzteil. Pakete und Belege (lokal): `arbeit/medien/standby-summen/` (HYPOTHESEN, TESTPLAN, T5c, `mythos-analyse/`, `fix-bericht/`,
 `laeufe/`), `arbeit/medien/arisc-default/`, `arbeit/medien/AUFSICHT.md`. TODO 2.42, 1.0 (0).
