@@ -5,7 +5,8 @@ Three different numbers exist in this project, and mixing them up is easy. This 
 ## What a release is
 
 A release is a git tag plus the files a user needs to install without building anything. Tags are named `vX.Y` or
-`vX.Y-beta`, and every file carries the same string. Since `v0.97-beta` a release has one file set per board:
+`vX.Y-beta`, and every file carries the same string. Since `v0.97-beta` a release has one archive per board, `<image>.tar`, holding that
+board's release folder, plus the files every board shares:
 
 | File | What it is |
 |---|---|
@@ -14,7 +15,7 @@ A release is a git tag plus the files a user needs to install without building a
 | `<image>.sha256` | checksums of the parts and of the table |
 | `<image>-README.txt` | what to do with all of it, next to the files themselves |
 | `<image>.BUILD.txt` | the build stamp - see below |
-| `u-boot-installer.bin`, `sunxi-fel` | what [`h713-install`](FLASHING.md) needs to expose the eMMC over USB |
+| `u-boot-installer.bin`, `sunxi-fel` | in each board's archive: what [`h713-install`](FLASHING.md) needs to expose the eMMC over USB; the installer U-Boot is built for that board (the two boards' differ) |
 | `u-boot-h713-probe.bin` | the read-only probe for an H713 board nobody has measured ([docs/tools/h713-probe.md](docs/tools/h713-probe.md)) |
 | `allwinner-h713-linux-vX.Y-with-submodules.tar` | the repository at the tag with its submodules checked out - GitHub's own "Source code" archive has no submodules, and the image's licence file points at this one for the corresponding source |
 
@@ -32,10 +33,10 @@ someone who did not write the installer.
 ## What the build stamp is
 
 Every image carries `<image>.BUILD.txt`. That, not the version string, identifies a build. The stamp of the HY310's
-`v0.97-beta` (22.10.2026):
+`v0.97-beta` (23.10.2026):
 
 ```
-h713-hy310-v0.97-beta-media-desktop  built 2026-10-22T20:19:18Z in 35 min 56 s
+h713-hy310-v0.97-beta-media-desktop  built 2026-10-23T11:06:20Z in 33 min 48 s
 board:    hy310 (verified; profile hy310, DTB sun50i-h713-hy310, U-Boot hy310 + release/installer, probe h713_probe_defconfig)
 series:   e8469bb799ee1c1f  351 patches
 kernel defconfig: hy200_qz713df_a1_defconfig 7082d74940ac998f
@@ -46,25 +47,27 @@ sunxi-tools: 269dfa2
 crust: 54e4a08ab9f3 (CRUST_SRC) h713_hy310_sr_defconfig v0.6.89, 0x05005128 (dram_self_refresh ir_wake_necx), or1k binutils-2.42 gcc-13.3.0
 arisc: the vendor firmware from the owner's dump by default (h713-arisc.conf); crust in the rootfs only, experimental (h713-arisc set crust)
 standby: sr, not offered: BL31 without SYSTEM_SUSPEND, AllowSuspend=no
-repo: 8da300c2 (0 local changes)
-source date: 1792698182 (2026-10-22T19:43:02Z, committer date of 8da300c2)
-reproducible: yes (SOURCE_DATE_EPOCH=1792698182, commit 8da300c2)
+repo: 43417440 (0 local changes)
+source date: 1792750705 (2026-10-23T10:18:25Z, committer date of 43417440)
+reproducible: yes (SOURCE_DATE_EPOCH=1792750705, commit 43417440)
 profile:  media,desktop -- not a release image: over the 500 MiB of doku/107 section 7.1, the base rootfs tar is replaced by the profile tar
-libva:    libva-v4l2_request cac6ece0e23a + 17 patches (rootfs/libva/patches/series), tar sha256 d229345c215c9585
-sources:  Debian trixie,trixie-updates,trixie-security (http://deb.debian.org/debian, security: security.debian.org/debian-security)
-rootfs packages: dpkg status d4338f4b5850f311
+libva:    libva-v4l2_request cac6ece0e23a + 17 patches (rootfs/libva/patches/series), tar sha256 b1b24d820fbed386
+sources:  Debian trixie,trixie-updates,trixie-security (http://deb.debian.org/debian, security: security.debian.org/debian-security) -- a profile image bootstraps from the suite, its -updates and its -security, the base image from the suite alone
+rootfs packages: dpkg status 568ab820f4afcdc7 -- the tar repeats only while those Debian suites are at this state
 U-Boot:   U-Boot 2026.07-rc5-gdaa35622b0bf
 building blocks (sha256, 16 characters):
-  spl-release.bin              6617a72553f42682
-  uboot-proper-release.bin     3e8047b6c9d794b2
+  spl-release.bin              d59b5af64b7e22d6
+  uboot-proper-release.bin     1ad8f54db0dc8802
   hy310-env-release.bin        c357143066e56b6c
-  u-boot-installer.bin         3f6c10197a015d25
-  h713-kernel.fit              91ecca326c71514b
+  u-boot-installer.bin         2a275c2e02b9aa38
+  h713-kernel.fit              226e4c452db8bf60
   modules/aic8800_bsp.ko       cac577a9e9656fd1
   modules/aic8800_fdrv.ko      f594d9524475a0ce
   scp.bin (crust, rootfs only) 8934680a6405f1ce
   h713-tv.aarch64-linux-gnu    8fa6348f51a99948
-  mesa-panfrost-25.0.7.tar     19889eba8313a723
+  mesa-panfrost-25.0.7.tar     39bba6901aaf5cee
+  libva-v4l2-request-1.2.tar   b1b24d820fbed386
+  hy310-rootfs.tar             916c9d4c75fc90a9
 ```
 
 Two builds of the same commit give the same building-block hashes: the build clock is the commit's date (`source date:`),
@@ -82,14 +85,14 @@ occasionally in [STATUS.md](STATUS.md). Test images for boards in test carry the
 suffix (`hy300-pro-test11`, 22.10.2026, is the last for the HY300 Pro of issue #1); they are built for one owner and are
 not releases.
 
-## v0.97-beta (draft - the tag follows the last build from `main`)
+## v0.97-beta (23.10.2026)
 
 Mainline Linux 6.18.38 on the HY310 and, for the first time, a release image for a second board: the HY200 QZ713DF A1
 with the HY300PRO-G-EU's firmware (`projector05061226`, verified 11.10.2026). Both are `media,desktop` images: the base
 system plus Kodi, a labwc desktop and Firefox as modes, the launcher and the settings page driven by the remote. Layout v4
 and the installer's way of working are unchanged since `v0.95-beta`, so the upgrade is an ordinary reinstall over our own
-layout, and so is the way back. The images of 22.10.2026 were built from `medien` `8da300c2`, the commit `main` carries
-since the merge of 23.10.2026; the release build repeats it from `main` after the documentation round (`TODO.md` 1.0 (5b)).
+layout, and so is the way back. The release images were built on 23.10.2026 from `main` `43417440`, the commit the tag `v0.97-beta`
+points at, after the documentation round.
 
 **Before you install,** take the full dump of your device ([FLASHING.md](FLASHING.md)). The display firmware, the ARISC
 firmware, the picture tables and the boot logo are not in this repository, and the keys and MAC addresses in your secure

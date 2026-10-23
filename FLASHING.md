@@ -33,20 +33,23 @@ until you have a dump of what was there before.
 ## Getting the files together
 
 From a release you need two things: **this repository** (the installer lives in `installer/`) and **the
-release files**. Put all release files into one folder; the installer finds the image parts next to the
-table.
+release files**. The release page has one archive per board, `<image>.tar`, and it holds that board's whole
+release folder; unpack the one for your board. Keep its files together: the installer finds the image parts,
+`u-boot-installer.bin` and `sunxi-fel` next to the table, and the installer U-Boot is built for that board.
 
 ```bash
 git clone https://github.com/well0nez/allwinner-h713-linux.git
-mkdir ~/hy310-v0.97-beta && cd ~/hy310-v0.97-beta
-#   download every file of the v0.97-beta release into this folder, then:
+#   download your board's archive from the v0.97-beta release page - the HY310's is
+#   h713-hy310-v0.97-beta-media-desktop.tar, the HY300PRO-G-EU's
+#   h713-hy200-qz713df-a1-projector05061226-v0.97-beta-media-desktop.tar - then:
+cd ~ && tar -xf h713-hy310-v0.97-beta-media-desktop.tar && cd h713-hy310-v0.97-beta-media-desktop
 zstd -d *.img.zst                            # optional, see below - the installer does it too
 sha256sum -c h713-hy310-v0.97-beta-media-desktop.sha256    # lists the unpacked .img parts, so unpack first
 chmod +x sunxi-fel
 ```
 
 The folder then holds the three `.img` parts, `h713-hy310-v0.97-beta-media-desktop.tabelle.json`, `u-boot-installer.bin`
-(the U-Boot that exposes the eMMC over USB) and `sunxi-fel` (the FEL tool, built with the H713 trap door -
+(the U-Boot that exposes the eMMC over USB, built for this board) and `sunxi-fel` (the FEL tool, built with the H713 trap door -
 the stock `sunxi-fel` from your distribution does **not** work here). `sunxi-fel` needs `libusb-1.0` on your
 PC; on Debian and Ubuntu that is `apt install libusb-1.0-0`.
 
@@ -58,7 +61,7 @@ If you built the image yourself with `release/build-all.sh`, the same files are 
 ```bash
 # 1. put the device into FEL: hold the reset button, then plug in power
 # 2. run the installer (it loads U-Boot over USB - nothing is written yet)
-sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.97-beta \
+sudo allwinner-h713-linux/installer/h713-install install ~/h713-hy310-v0.97-beta-media-desktop \
     --ssh-key ~/.ssh/id_ed25519.pub \
     --full --dump ~/hy310-dump
 # 3. it dumps, extracts your device's own files, copies them into the image, writes it, verifies
@@ -71,7 +74,7 @@ the `zstd` binary on an older Python. `--uboot` and `--sunxi-fel` override that 
 elsewhere. Run from inside the release folder, even the folder can be left out:
 
 ```bash
-cd ~/hy310-v0.97-beta && sudo ~/allwinner-h713-linux/installer/h713-install install
+cd ~/h713-hy310-v0.97-beta-media-desktop && sudo ~/allwinner-h713-linux/installer/h713-install install
 ```
 
 finds the table in the directory it is run from (or beside the tool itself) and asks for the two things
