@@ -76,6 +76,14 @@ off. `0024e` adds the four points PLL-GPU reaches with M = 1, **288, 432, 600 an
 rail, with a passive trip at 85 C and a critical one at 105 C on `gpu-thermal` and the GPU as its own cooling
 device. What that costs is measured too: the same shader runs 33.3 fps at 864 MHz and 26.8 fps at 696.
 
+*Superseded 12.10.2026 (kernel `0268`, `0269`, cstenger's, measured on the HY310):* the clock model was off by two.
+PLL_GPU's output divide-by-two was not modelled, so what the kernel called 864 MHz ran at 432, and each of the four
+points above ran at half its name (Panfrost's own cycle counters: 144, 216, 300 and 348 MHz). Since `0268` the clock
+tree says what the GPU runs and has the module clock's M divider; `0269` pins PLL_GPU at 600 MHz, as stock does in
+every capture, and the table is 600 MHz divided by M - **150, 200, 300 and 600 MHz**, stock's own points for this die,
+all at 960 mV. The real ceiling rose from 348 to 600 MHz. The frame rates above stand; their clock labels are the old
+model's.
+
 **What was switched off around it.** `CONFIG_DRM_LIMA` bound nothing - Lima is for Utgard (Mali-400/450) and
 this is a Bifrost G31 - and is gone. `CONFIG_SUN50I_IOMMU` was `y` while the tree's own comment said not to
 enable it: the node is disabled, no node carries an `iommus` property, and Panfrost maps its buffers through the

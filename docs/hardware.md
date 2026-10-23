@@ -34,10 +34,11 @@ thread cost as much CPU as the warp (11.10.2026): the kernel's own `rate_limit_u
 clock follow every burst, and - the larger part - schedutil asks for the **maximum** clock whenever a real-time
 task is runnable, and the GPU's interrupt handlers are real-time threads (SCHED_FIFO 50) that run four times a
 frame with the warp on: the clock swung 480 <-> 1296 MHz forty times a second whatever the rate limit.
-`h713-cpufreq.service` sets both once per boot - 20 ms, and the three `irq/*-panfrost` threads to SCHED_OTHER -
-after which the clock stays at 480 MHz under the warp (0.3-1.6 changes a second, `sugov:0` 0.1 %, 59.7 fps, no
-frame dropped; the table with all four combinations is in `userspace/h713-cpufreq/h713-cpufreq`). The kernel's
-own way would be `CONFIG_UCLAMP_TASK` with `sched_util_clamp_min_rt_default` (TODO 2.60). *Superseded 11.10.2026
+`h713-cpufreq.service` sets both once per boot - 20 ms, and `sched_util_clamp_min_rt_default = 0`, so that a real-time
+task asks for no minimum clock (the kernel has `CONFIG_UCLAMP_TASK`; without it the three `irq/*-panfrost` threads would
+go to SCHED_OTHER instead) - after which the clock stays at 480 MHz under the warp (0.3-1.6 changes a second, `sugov:0` 0.1 %, 59.7 fps, no
+frame dropped; the table with all four combinations is in [h713-cpufreq](tools/h713-cpufreq.md) - measured was the thread
+variant, the uclamp variant is the kernel's own way, TODO 2.60). *Superseded 11.10.2026
 (evening):* "`/etc/tmpfiles.d/h713-cpufreq.conf` sets 20 ms at boot" - it ran before the governor had its sysfs
 directory, so three boots in a row came up with 462 µs again.
 
@@ -46,11 +47,11 @@ Two more processors run on the same die and are already alive by the time Linux 
 | Core | Firmware | Owns |
 |---|---|---|
 | MIPS32 LE co-processor | `display.bin`, ~1.25 MB | display engine, HDMI-RX state machine, picture-quality pipeline |
-| OR1K BE "ARISC" | HY310: **crust**, our own build ([crust-h713/](../crust-h713/README.md)); other boards: the vendor's `h713-arisc.bin`, 172 KiB (176 132 bytes on the HY300PRO-G-EU) | PMU power sequencing, HDMI hot-plug pin, EDID/DDC RAM; with crust also the standby |
+| OR1K BE "ARISC" | the vendor's `h713-arisc.bin` from the owner's dump, 172 KiB (176 132 bytes on the HY300PRO-G-EU) - what every image runs since 22.10.2026; **crust**, our own build ([crust-h713/](../crust-h713/README.md)), as the experiment (`h713-arisc set crust`) and in `--standby` images | PMU power sequencing, HDMI hot-plug pin, EDID/DDC RAM; with crust also the standby and a 0.3 W power-off |
 
-The MIPS firmware, and the vendor's ARISC firmware on the boards that run it, ship neither in this repo nor on the
-built image; both come out of **your own** device dump via `h713-extract` at install time. On the HY310 crust is
-built with the image and BL31 starts it at every boot ([arisc.md](subsystems/arisc.md),
+The MIPS firmware and the vendor's ARISC firmware ship neither in this repo nor on the built image; both come out of
+**your own** device dump via `h713-extract` at install time. crust is built with the image and lies in its rootfs; BL31
+starts it at every boot only in an image built with `--standby` ([arisc.md](subsystems/arisc.md),
 [U-Boot chain](uboot/README.md)). How the three processors talk to each other, and why you cannot
 just poke a MIPS or ARISC register from Linux, is in [architecture.md](architecture.md).
 
@@ -75,7 +76,8 @@ and `STATUS.md`.
 
 Mali-G31, driven by the mainline Panfrost driver, with our own mesa (panfrost only) under `/usr/local`.
 Since `v0.95-beta` the keystone renders on it - `h713-warp` warps the HDMI picture into NV12 for the video
-plane, measured on the HY310 (`docs/guides/keystone.md`).
+plane, measured on the HY310 (`docs/guides/keystone.md`); since `v0.97-beta` Kodi, the desktop and the browser reach the
+wall through it as well. Clocks, import rules and measurements: [GPU](subsystems/gpu.md).
 
 ## Wi-Fi and Bluetooth
 
@@ -144,7 +146,10 @@ H6 layout the device tree first gave it hits nothing (`doku/72`); the kernel now
 - The R_WDOG **stays armed across its own reset**, so a net that fired would reset the box every 16 s; BL31 feeds
   and stops an armed one at every boot (`doku/170`). No journal entry provokes a reset in the middle of a sleep, so
   the sleep net is not measured ([standby.md](subsystems/standby.md)).
-- The RTC runs from its internal RC oscillator; whether a 32 kHz crystal is fitted is unknown (`doku/168`).
+- The RTC takes its 32 kHz from the 24 MHz crystal, divided, since kernel `0320` (16.10.2026), as the vendor kernel does;
+  on the internal RC oscillator it ran 26 % slow and the kernel's clock sync swallowed every alarm
+  ([standby](subsystems/standby.md), `doku/213` §5). *Superseded (16.10.2026):* "The RTC runs from its internal RC
+  oscillator; whether a 32 kHz crystal is fitted is unknown (`doku/168`)."
 
 ## Power draw
 
@@ -154,12 +159,13 @@ source (`doku/181`):
 | State | Draw |
 |---|---|
 | standby - suspended to RAM through crust ([standby](subsystems/standby.md)): the ARM cores off, the DRAM in self-refresh | **2.4 W** |
-| off - the power gate: U-Boot waits for the key on one ARM core, the rest dark; since 10.10.2026 only where crust cannot hold the board off ([power-gate](uboot/power-gate.md)) | **2.9 W** |
+| off - the power gate: U-Boot waits for the key, and since `0102` for either remote's power key, on one ARM core, the rest dark - what every image does since 22.10.2026 ([power-gate](uboot/power-gate.md)); measured before the IR decoder, with it not measured | **2.9 W** |
 | off through crust - the rails off (PL6), only crust and the RTC awake; measured on the HY300PRO-G-EU (`doku/188`); on the HY310 the power off and the wake are measured, the draw is not (`doku/190`) | **0.3 W** |
 | on, no signal: the console on the wall, lamp and fan on | about 24 W |
 
 So the standby draws less than "off". The power supply whines faintly in standby, and in the off through crust
-as well (HY310, 10.10.2026, `doku/190`); whether it does with stock Android off is not compared yet. On 09.09.2026, before
+as well (HY310, 10.10.2026, `doku/190`); stock Android is silent at the same 0.3 W, and the gate is silent (the owner,
+21./22.10.2026, `doku/218`) - which is why the release runs the vendor's ARISC firmware (TODO 2.42). On 09.09.2026, before
 crust, the same kind of meter read 4 W in the gate and **47 W with a 1080p picture** (`doku/103`); how
 much of the 4 W was a smart plug or the USB cable in the path is not recorded, and the draw with a
 picture was not measured again. *Superseded (09.10.2026):* "Measured: about 4 W when off [...] The draw
@@ -169,11 +175,12 @@ in standby [...] has not been measured either."
 
 | Component | Pin / bus | What it does |
 |---|---|---|
-| Fan | on/off through `PB5`, tachometer on PH17 (GPIO interrupt) | a plain 3-wire load, no speed control ([board-mgr](subsystems/board-mgr.md), patch `0030`); the vendor boot loader's tree puts pwm1 on PH18, which no kernel tree uses (`doku/70`); 4860 RPM measured. `PB5` gates the fan **and** the panel backlight together - never drive it low while the lamp runs; for a standby the board manager drops it with both off (not measured) |
+| Fan | on/off through `PB5`, tachometer on PH17 (GPIO interrupt) | a plain 3-wire load, no speed control ([board-mgr](subsystems/board-mgr.md), patch `0030`); the vendor boot loader's tree puts pwm1 on PH18, which no kernel tree uses (`doku/70`); 4860 RPM measured. `PB5` gates the fan **and** the panel backlight together - never drive it low while the lamp runs; for a standby the board manager drops it with both off (the journal line on both boards, `doku/185`; the lamp itself not measured) |
 | Temperature | - | this unit's board-management firmware reports `ntc_num = 0`: **no NTC is fitted**, and overheat protection relies on the fan tachometer alone. An earlier assumption of a fitted thermistor was wrong (`doku/00-STATUS.md`, 2026-09-11) |
 | Focus motor | 4-phase stepper, GPIO-driven; PH14 sense pin | PH14 is a **range sensor** - it reads high while the mechanism is inside its travel window and drops at either end - not a one-directional end-stop |
 | Camera | see USB port 1 above | |
-| Power key | `PL4` (R_PIO), `KEY_POWER`, edge IRQ | a press starts the device from the gate and wakes it from standby (key and IR power key measured 09.10.2026, `doku/174`). Under Linux, `systemd` maps it to `poweroff` - so does the Power key of the paired Bluetooth remote; on an image with standby [h713-power](tools/h713-power.md) decides instead: short press standby, held 3 s power-off. Governs the power-on gate: [docs/uboot/power-gate.md](uboot/power-gate.md) |
+| Power key | `PL4` (R_PIO), `KEY_POWER`, edge IRQ | a press starts the device from the gate and wakes it from a standby (key and IR power key measured 09.10.2026, `doku/174`). Under Linux [h713-power](tools/h713-power.md) reads it, and the remotes' power keys with it: a short press the 15 s countdown ending in a power-off (or a standby where the image offers one), held 3 s power-off at once. Governs the power-on gate: [docs/uboot/power-gate.md](uboot/power-gate.md) |
+| IR receiver | `PL9` (R_PIO), `sunxi-cir` at its default 8 MHz (kernel `0252`), keymap `rc-h713-fd02` (`0254`, `0329`) | both stock remotes (NEC address `0x02`, and the HY300's `0x00`); the vendor's ARISC firmware switches the pin away at its start and the kernel applies it again (`0328`); in the gate U-Boot decodes the power key itself (`0102`) ([remote](subsystems/remote.md)) |
 | Status LED | follows `PB5` | red while PB5 is low (the gate, standby), blue while it is high - measured, so the LED cannot tell those two apart. `PL0`/`PL1`, which the vendor device tree calls the LEDs, have no visible effect on the HY310; the vendor firmware and crust still drive them in standby |
 | UART pads | UART0, **115200 8N1**, 3.3 V | the boot and kernel console, and the way in when there is no SSH key in the image. The pads are on the mainboard and unlabelled; the thread that found them on several units is linked from the README's issue reference - no photograph in this repository yet |
 

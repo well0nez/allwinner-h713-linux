@@ -27,7 +27,7 @@ Diese Regeln stammen von Marco und aus teuer bezahlten Fehlern dieser Woche. Sie
 3. **Das Board ist eine Ressource, nicht zwei.** Es gibt genau **einen Board-Agenten** zur Zeit (Abschnitt 6).
    Alle anderen arbeiten offline: Quelltext, Patches, RE, Dokumentation. Wer das Board braucht, stellt eine
    Anfrage in den Nachtlog und wartet, bis der Board-Agent sie einplant.
-4. **Kaltstart ist der Normalfall.** Jeder Messlauf beginnt mit `sonoff_ctl restart --host 192.168.8.179`; nach
+4. **Kaltstart ist der Normalfall.** Jeder Messlauf beginnt mit `sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>`; nach
    einem Hänger nie auf Selbstheilung warten (kein Watchdog). Vor jedem Neustart prüfen, ob TFTP lauscht
    (`ss -ulnp | grep -w :69`); wenn nicht: **Stopp**, in den Nachtlog schreiben, nicht reparieren (braucht sudo).
 5. **Kurze Schritte, harte Timeouts.** Jeder Board-Befehl mit `timeout` (20-60 s), nie minutenlang in einem Aufruf
@@ -38,8 +38,8 @@ Diese Regeln stammen von Marco und aus teuer bezahlten Fehlern dieser Woche. Sie
 7. **Webcam-Belichtung nicht anfassen** (`analyse/hdmi-seq/cam_exposure.py` nur, wenn zwingend, und danach
    `auto`). Bilder ansehen, nicht nur Kennzahlen; Positivkontrolle vor jeder Negativaussage
    (Memory `messung-instrument-erst-pruefen`).
-8. **UART/`tio` gehört Marco.** Nicht öffnen. Der Board-Zugang ist `ssh root@192.168.8.141` (NFS-Root, TFTP-Kernel),
-   der Zuspieler `ssh user@192.168.8.162` (ThinkPad, HDMI-2, `DISPLAY=:0 xrandr`).
+8. **UART/`tio` gehört Marco.** Nicht öffnen. Der Board-Zugang ist `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>` (NFS-Root, TFTP-Kernel),
+   der Zuspieler `ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>` (ThinkPad, HDMI-2, `DISPLAY=:0 xrandr`).
 9. **Keine Passwörter, keine Schlüssel, keine Vendor-Binärdaten ins öffentliche Repo.** Kein `git commit`/`push`
    in Marcos Repos ohne ausdrücklichen Auftrag; Patches und Dokumente werden als Dateien abgelegt.
 10. **Alles in den Nachtlog** `doku/79-nachtlog-20260907.md`: pro Agent ein Abschnitt, jede Board-Aktion mit
@@ -71,11 +71,11 @@ Vor jeder Abnahme: `grep` die entscheidende Zeile im **Patch**, nicht im Baum.
 | Was | Wert / Zugang |
 |---|---|
 | Arbeitsrechner (hier) | Linux Mint, `/opt/Projekte/h713`; Container `h713-build` (`podman exec h713-build …`, `/opt/Projekte/h713` = `/work`) |
-| **Board** (HY310-Beamer, H713) | `ssh root@192.168.8.141` (Schlüssel, `-o BatchMode=yes -o ConnectTimeout=3`); Root-Dateisystem per NFS vom Arbeitsrechner, über SSH beschreibbar; Kernel per TFTP aus `/opt/Projekte/h713/tftp/` |
-| **Strom / Kaltstart** | `sonoff_ctl restart --host 192.168.8.179` (immer mit `--host`); ~40 s bis SSH; Kaltstart an `/proc/uptime` prüfen. Kein Watchdog: ein hängendes Board erholt sich nie von selbst |
+| **Board** (HY310-Beamer, H713) | `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>` (Schlüssel, `-o BatchMode=yes -o ConnectTimeout=3`); Root-Dateisystem per NFS vom Arbeitsrechner, über SSH beschreibbar; Kernel per TFTP aus `/opt/Projekte/h713/tftp/` |
+| **Strom / Kaltstart** | `sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>` (immer mit `--host`); ~40 s bis SSH; Kaltstart an `/proc/uptime` prüfen. Kein Watchdog: ein hängendes Board erholt sich nie von selbst |
 | TFTP-Server | `dnsmasq` auf dem Arbeitsrechner, Port 69; prüfen mit `ss -ulnp \| grep -w :69`; läuft er nicht, kann ihn nur Marco starten (sudo) - dann Nachtlog und **nicht** neu starten |
 | UART | `/dev/ttyACM0` - **gehört Marco (`tio`), nicht öffnen** |
-| **Zuspieler** | ThinkPad, `ssh user@192.168.8.162` (NOPASSWD-sudo), Ausgang **HDMI-2** am einzigen HDMI-Eingang des Beamers (Firmware-Port 0, `SetSource(3)` = HDMI-1); Befehle mit `DISPLAY=:0`: `xrandr --output HDMI-2 --off/--auto` (Quelle aus/an), `--gamma 1:0.2:0.2` (Farbstich als Reiz, `1:1:1` zurück), Verbindung: `cat /sys/class/drm/card0-HDMI-A-2/status` |
+| **Zuspieler** | ThinkPad, `ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>` (NOPASSWD-sudo), Ausgang **HDMI-2** am einzigen HDMI-Eingang des Beamers (Firmware-Port 0, `SetSource(3)` = HDMI-1); Befehle mit `DISPLAY=:0`: `xrandr --output HDMI-2 --off/--auto` (Quelle aus/an), `--gamma 1:0.2:0.2` (Farbstich als Reiz, `1:1:1` zurück), Verbindung: `cat /sys/class/drm/card0-HDMI-A-2/status` |
 | Zuspieler-Bildinhalt | derzeit Firefox mit bunter Regenbogenspirale (otto.de-Seite); sperrt sich der Schirm, ist das Bild fast schwarz → `sudo loginctl unlock-sessions` versuchen, sonst Sperrbildschirm mit Gamma-Reiz nutzen (Uhr und Logo sind hell genug). Bildschirmschoner aus: `xset s off -dpms` |
 | **Webcam** | am Arbeitsrechner, `/dev/video0`, zeigt die Projektionsfläche (Wand). Aufnahme und Kennzahlen: `python3 analyse/hdmi-seq/wandcheck.py shot NAME` (Bild + JSON nach `re/captures/weltneuheit/wand-aktuell/`, anderer Ordner per `WAND_DIR=…`; ROI 220,40,1090,560 = Projektion, in `roi.txt` dort); Vergleich `wandcheck.py diff A B`. **Belichtung nicht verstellen**; steht auf `auto` (`analyse/hdmi-seq/cam_exposure.py auto` stellt zurück). Bilder immer ansehen (Read), nicht nur Zahlen. Nachts ist der Raum dunkel - für die Projektion gut; Positivkontrolle: Testbild auf `/dev/fb0` oder Gamma-Reiz am Zuspieler, erst dann Negativaussagen. Firefox am Arbeitsrechner kann die Kamera blockieren |
 | Projektion | Beamer wirft auf eine weiße Wand; Bild ist im Foto links/mitte, Lampe strahlt links über; Schwarz des Beamers ist grau. Ein Foto von Marco mit eingezeichnetem Bildrahmen: `re/captures/weltneuheit/ours-20260906-source0/fotos/` (Vergleich) |
@@ -105,14 +105,14 @@ Vor jeder Abnahme: `grep` die entscheidende Zeile im **Patch**, nicht im Baum.
 Board und in `analyse/hdmi-seq/`):
 
 ```bash
-sonoff_ctl restart --host 192.168.8.179                     # Kaltstart, ~40 s bis SSH
-ssh root@192.168.8.141 'bash /root/prep_after_boot.sh'      # ARISC, cpu_comm, tvcap, arisc-hdmi, Phase 2+3
-ssh root@192.168.8.141 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>                     # Kaltstart, ~40 s bis SSH
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'bash /root/prep_after_boot.sh'      # ARISC, cpu_comm, tvcap, arisc-hdmi, Phase 2+3
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
      --source 3 --portmap stock --gap 500 --pre-source-wait 1 --listen-after 3'
-ssh root@192.168.8.141 'bash /root/arisc_edid_init.sh'      # ~30 s, enthält HPD down 10 s
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'bash /root/arisc_edid_init.sh'      # ~30 s, enthält HPD down 10 s
 sleep 6                                                     # Signal-Lock; INCAP 0x06940104 zählt 60/s
-ssh root@192.168.8.141 'python3 /root/viddec_descriptor.py set'   # GENAU EINMAL
-ssh root@192.168.8.141 'python3 /root/afbd_source0.py on'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/viddec_descriptor.py set'   # GENAU EINMAL
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/afbd_source0.py on'
 python3 analyse/hdmi-seq/wandcheck.py shot NAME             # Foto; ROI 220,40,1090,560
 ```
 
@@ -488,7 +488,7 @@ Stufen 5-7; er ist wiederholbar, ohne Stufen 1-4 zu wiederholen (belegt: Quellen
 U-Boot startet die MIPS-Firmware, legt den SMM-Heap an (`h713_mips_init_smm_heap()`, doku/74 - ohne ihn stirbt
 der SoC bei `SetSource`), lädt TSE/PQ-Datenbanken und stellt das Fabric-Routing. Der Kernel bootet per TFTP,
 Rootfs per NFS.
-**Prüfung:** `ssh root@192.168.8.141 'dmesg | grep -c elog:'` > 0.
+**Prüfung:** `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -c elog:'` > 0.
 **Wenn nicht:** MIPS ist nicht hochgekommen - Kaltstart. Nie ohne MIPS weiterarbeiten.
 
 ### Stufe 2 - ARISC starten und quittieren
@@ -608,7 +608,7 @@ Die Firmware erkennt TMDS, geht `SwitchState 3→4→5`, setzt `Set Valid Signal
 
 **Prüfung (beide nötig):**
 ```bash
-ssh root@192.168.8.141 'python3 /root/chroma_stat.py'   # Cb ~130, Cr ~137 = echtes YUV
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/chroma_stat.py'   # Cb ~130, Cr ~137 = echtes YUV
 # Frames/s: 0x06940104 zweimal lesen, obere 16 Bit differenzieren -> 60
 ```
 Ein **statischer** Bildschirm erzeugt keine Änderung im Puffer - Standbild ist kein Stillstand. Liveness immer
@@ -619,9 +619,9 @@ mit einem erzwungenen Reiz prüfen (`xrandr --output HDMI-2 --gamma 1:0.2:0.2`, 
 **7a. Zustandsmaschine öffnen - genau einmal pro Boot, und danach die Capture wieder scharf machen:**
 
 ```bash
-ssh root@192.168.8.141 'python3 /root/viddec_descriptor.py set'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/viddec_descriptor.py set'
 # danach ZWINGEND ein HPD-Zyklus, sonst bleibt das Bild ein Standbild:
-ssh root@192.168.8.141 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; \
      sleep 8; python3 arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'
 ```
 

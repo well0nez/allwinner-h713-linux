@@ -1,7 +1,7 @@
 # Paket F - `hy310-tv` startklar gemacht (offline, 07.09. ab 07:5x)
 
-**Agent:** Unteragent F-startklar (offline). **Kein Board angefasst:** kein `ssh root@192.168.8.141`,
-kein `ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts
+**Agent:** Unteragent F-startklar (offline). **Kein Board angefasst:** kein `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`,
+kein `ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts
 nach `tftp/`. Kein `sudo`, kein `git commit`/`push`. **`patches/kernel/series` nicht angefasst**,
 `build/build.sh` nicht aufgerufen, **kein Kernel-Patch angefasst** (F ist Userspace).
 `/srv/h713-rootfs` nur **gelesen**. Der Baubaum wurde nicht berührt; der Prüfbau lief in
@@ -256,7 +256,7 @@ Plane aus, DRM-Master abgegeben                 Plane an (hdmi-ring=1), Master g
 > hervorgegangen, Schritte 0-3 und 5-7 sind unverändert.
 
 **Voraussetzungen:** der Kernel mit der integrierten Serie läuft (0091-0095), die Wand zeigt die
-Konsole, der Zuspieler `192.168.8.162` ist wach und auf 1080p60. Board-Sperre halten.
+Konsole, der Zuspieler `<geschwaerzt 23.10.2026: Heimnetz-Adresse>` ist wach und auf 1080p60. Board-Sperre halten.
 
 **Instrumente statt Werkzeuge** - beide Statusseiten sind Teil der Patches, kein Zusatz:
 
@@ -277,25 +277,25 @@ cd /opt/Projekte/h713/userspace/hy310-tv
 make cross                                                     # Pruefbau, muss gruen sein
 #  /srv/h713-rootfs gehoert root. Zwei Wege, einer davon ohne sudo am Arbeitsrechner:
 #  (a) ueber das Board, das sein eigenes NFS-Root als root schreibt -- bevorzugt:
-scp hy310-tv.aarch64-linux-gnu root@192.168.8.141:/usr/local/sbin/hy310-tv
-scp hy310-tv.service            root@192.168.8.141:/etc/systemd/system/hy310-tv.service
-scp 99-hy310-tv.rules           root@192.168.8.141:/etc/udev/rules.d/99-hy310-tv.rules
-ssh root@192.168.8.141 'chmod 0755 /usr/local/sbin/hy310-tv'
+scp hy310-tv.aarch64-linux-gnu root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/usr/local/sbin/hy310-tv
+scp hy310-tv.service            root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/etc/systemd/system/hy310-tv.service
+scp 99-hy310-tv.rules           root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/etc/udev/rules.d/99-hy310-tv.rules
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'chmod 0755 /usr/local/sbin/hy310-tv'
 #  (b) direkt ins Board-Root, braucht root am Arbeitsrechner:
 #      sudo make install-cross DESTDIR=/srv/h713-rootfs
-ssh root@192.168.8.141 'systemctl daemon-reload; udevadm control --reload'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'systemctl daemon-reload; udevadm control --reload'
 make clean                                                     # kein Binaerartefakt im Repo
 
 # --- 1. Kaltstart ------------------------------------------------------------
 ss -ulnp | grep -w :69 || { echo "TFTP laeuft nicht -- STOPP, Nachtlog, nicht reparieren"; exit 1; }
-sonoff_ctl restart --host 192.168.8.179                        # ~40 s bis SSH
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
-ssh root@192.168.8.141 'cut -d" " -f1 /proc/uptime'            # < 60 = echter Kaltstart
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>                        # ~40 s bis SSH
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cut -d" " -f1 /proc/uptime'            # < 60 = echter Kaltstart
 
 # --- 2. Kam alles von selbst hoch? KEIN prep-Skript, KEIN hdmi_seq.py --------
-ssh root@192.168.8.141 'grep -H . /sys/class/video4linux/video*/name; ls -l /dev/dri/'
-ssh root@192.168.8.141 'systemctl status hy310-tv --no-pager -l | head -25'
-ssh root@192.168.8.141 'journalctl -u hy310-tv -n 30 --no-pager'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep -H . /sys/class/video4linux/video*/name; ls -l /dev/dri/'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'systemctl status hy310-tv --no-pager -l | head -25'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'journalctl -u hy310-tv -n 30 --no-pager'
 #  erwartet: von der udev-Regel gestartet, ohne Handgriff; im Journal
 #    aufnahme    /dev/video1 (sun50i-h713-hdmirx, ...)
 #    anzeige     /dev/dri/card1 (sun50i-h713-afbd)
@@ -303,23 +303,23 @@ ssh root@192.168.8.141 'journalctl -u hy310-tv -n 30 --no-pager'
 #    plane       38, NV16, Betriebsart hdmi-ring
 
 # --- 3. Zustand vor dem ersten Bild ------------------------------------------
-ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status'
 #  erwartet: signal: vorhanden (Flip-Zeiger wandern) -- sonst haengt es an B/E, nicht an F
 
 # --- 4. Bild da? -------------------------------------------------------------
-ssh root@192.168.8.141 'journalctl -u hy310-tv -n 10 --no-pager'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'journalctl -u hy310-tv -n 10 --no-pager'
 #  erwartet: signal 1920x1080p ...   bild Plane 38 an ...
 #  und 3 s spaeter GENAU EINE dieser beiden Zeilen:
 #    ring        laeuft 3000 ms nach dem Einschalten weiter   <- Gutfall
 #    warnung: der Ring steht 3000 ms nach dem Einschalten ... <- Descriptor-Effekt, siehe Schritt 7
-ssh root@192.168.8.141 'cat /sys/kernel/debug/dri/1/state | sed -n "/plane\[38\]/,/^plane/p"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/dri/1/state | sed -n "/plane\[38\]/,/^plane/p"'
 #  erwartet: crtc=36, fb=<id>, NV16, hdmi-ring=1
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-bild
 
 # --- 5. LEBENDIGKEITSBEWEIS: Standbild ist kein Stillstand ------------------
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:0.25:0.25'; sleep 3
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:0.25:0.25'; sleep 3
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-bild-reiz
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:1:1'; sleep 3
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:1:1'; sleep 3
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-bild-zurueck
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py diff F-bild F-bild-reiz
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py diff F-bild F-bild-zurueck
@@ -328,8 +328,8 @@ python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py diff F-bild F-bild-zuru
 #  Nur der Sprung zaehlt. Ohne Sprung ist es ein Standbild, egal wie gut es aussieht.
 
 # --- 6. Stecker raus: Konsole -- die eigentliche Aufgabe von F ---------------
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --off'; sleep 8
-ssh root@192.168.8.141 'journalctl -u hy310-tv -n 10 --no-pager'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --off'; sleep 8
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'journalctl -u hy310-tv -n 10 --no-pager'
 #  erwartet: ereignis SOURCE_CHANGE ... / signal kein Signal ... / konsole Plane aus ...
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-konsole
 #  MUSS Konsolentext zeigen. Ein Standbild der Quelle hier ist der Durchfall schlechthin --
@@ -337,20 +337,20 @@ python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-konsole
 
 # --- 7. Nur falls Schritt 4 den Descriptor-Effekt gemeldet hat ---------------
 #  Einmal von Hand freigeben (Stock-RPC, kein Poke), dann Schritt 4-5 wiederholen:
-ssh root@192.168.8.141 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; sleep 1; python3 arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'
-ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | head -8'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; sleep 1; python3 arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | head -8'
 #  Das ist ein Befund fuer D/E (§6), KEIN Fehler von F.
 
 # --- 8. Und wieder rein: Wiederholbarkeit -----------------------------------
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 10
-ssh root@192.168.8.141 'journalctl -u hy310-tv -n 10 --no-pager'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 10
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'journalctl -u hy310-tv -n 10 --no-pager'
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-bild2
 #  Hier MUSS die ring-Zeile die langweilige sein (0093 schreibt den Descriptor
 #  nicht ein zweites Mal). Steht sie auf "steht still", ist das ein NEUER Befund.
 #  Und noch einmal den Reiz aus Schritt 5 -- ein zweites Bild ist auch nur ein Foto.
 
 # --- 9. Sauberes Beenden -----------------------------------------------------
-ssh root@192.168.8.141 'systemctl stop hy310-tv; echo rc=$?'; sleep 3
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'systemctl stop hy310-tv; echo rc=$?'; sleep 3
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-nach-stop
 #  erwartet: Journal "ende Signal 15 erhalten" + "konsole Plane aus ...", rc=0,
 #  Wand = Konsole. KEIN Standbild.
@@ -370,7 +370,7 @@ python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-nach-stop
 
 **Fotos ansehen (Read), nicht nur Kennzahlen.** Vor jeder Negativaussage die Positivkontrolle -
 **erst die Unit stoppen**, sonst misst man nur den gehaltenen DRM-Master:
-`ssh root@192.168.8.141 'systemctl stop hy310-tv'` und dann
+`ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'systemctl stop hy310-tv'` und dann
 `setsid sh -c "nohup /root/hdmi_plane_test --pattern -t 30 > /root/pk.out 2>&1 &"` (die SSH-Sitzung
 danach **nicht** abwürgen, sonst stirbt die Prozessgruppe mit - D-Nebenbefund). Kommen die acht
 Farbbalken, liegt der Fehler auf der Capture-Seite, nicht in Plane, Mux oder Panel.
@@ -414,14 +414,14 @@ wenn `elog_tail` auf Stufe 5 mitläuft.
    Werkzeug; die Abnahme in §5 kommt weiterhin ohne es aus.
    ```bash
    # Ausgangslage: Bild steht, Ring frisch eingefroren (hy310-tv hat den Descriptor-Effekt gemeldet)
-   ssh root@192.168.8.141 'python3 /root/dump_state.py mf1_vor'
-   ssh root@192.168.8.141 'grep -m1 ^0x06940928: /root/dumps/mf1_vor.txt'    # erwartet 0x60020438
+   ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py mf1_vor'
+   ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep -m1 ^0x06940928: /root/dumps/mf1_vor.txt'    # erwartet 0x60020438
 
-   ssh root@192.168.8.141 'v4l2-ctl -d /dev/video1 --set-input=0'            # NUR SetSource(3), kein Umweg
+   ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'v4l2-ctl -d /dev/video1 --set-input=0'            # NUR SetSource(3), kein Umweg
    sleep 2
-   ssh root@192.168.8.141 'python3 /root/dump_state.py mf1_nach'
-   ssh root@192.168.8.141 'grep -m1 ^0x06940928: /root/dumps/mf1_nach.txt'
-   ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | head -8'
+   ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py mf1_nach'
+   ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep -m1 ^0x06940928: /root/dumps/mf1_nach.txt'
+   ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | head -8'
    ```
    Und dann **zwingend** der Reiz aus §5 Schritt 5: ein zurückgekehrtes Registerbit ist kein Beweis,
    dass wieder **geschrieben** wird - genau diese Verwechslung hat die Nacht eine Stunde gekostet.

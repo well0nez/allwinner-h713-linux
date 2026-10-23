@@ -6,6 +6,10 @@ While muted, a small crossed-out speaker stays in the top right corner. At the e
 arrow of the pressed direction turns red. With a keystone the overlay is distorted like the picture, so it sits
 in the picture, not on the panel's straight edges.
 
+![The focus overlay while the motor runs](../images/osd/focus-up.png)
+
+![The input overlay: the HDMI input active](../images/osd/input-hdmi.png)
+
 `h713-keys` sends the events after each key of the remote; by hand:
 
 ```
@@ -171,4 +175,5 @@ a milder one (both measured 11.10.2026).
   distorted, and an overlay over it would freeze it).
 - No fade-out.
 - The launcher is not an overlay over the picture any more: while it is open the picture is hidden behind its page.
-- In the image since 11.10.2026 (`rootfs/install-projekt.sh` 5i, enabled); an image with it is not built and installed yet.
+- In the image since 11.10.2026 (`rootfs/install-projekt.sh` 5i, enabled); installed on both boards with `v0.97-beta`
+  (22./23.10.2026, `doku/219`).

@@ -240,18 +240,18 @@ Module und `hy310-hdcp22.bin`/`hy310-edid.bin` auf dem Board, `depmod -a` gelauf
 ss -ulnp | grep -w :69 || { echo "TFTP laeuft nicht -- STOPP, Nachtlog, nicht reparieren"; exit 1; }
 
 # --- 1. Kaltstart, KEIN prep_after_boot.sh ----------------------------------
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
 
 # --- 2. Haengt der Verbraucher am Erzeuger? ---------------------------------
-ssh root@192.168.8.141 'lsmod | grep -E "sun50i-h713-(afbd|hdmirx)"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'lsmod | grep -E "sun50i-h713-(afbd|hdmirx)"'
 # erwartet: sun50i_h713_afbd ... 1 sun50i_h713_hdmirx     <- Benutzerzahl 1, nicht 0
-ssh root@192.168.8.141 'dmesg | grep hdmirx | tail -5'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep hdmirx | tail -5'
 # erwartet: sun50i-h713-hdmirx ...: /dev/video0, Slot-Quelle: AFBD vsync notifier (GIC 142)
 # NICHT erwartet: "kein AFBD-Vsync-Notifier ..."  und NICHT "-EBUSY"
 
 # --- 3. Der eigentliche Beleg: zaehlt der Notifier? -------------------------
-ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status'
 ```
 
 Erwartet, mit Signal am Eingang:
@@ -270,8 +270,8 @@ den Notifier an. Der Beweis ist der Lauf:
 
 ```bash
 # --- 4. 300 Bilder holen, danach die Zaehler lesen --------------------------
-ssh root@192.168.8.141 '/root/hdmirx_test /dev/video0 300 /root/hdmi300.nv16m; echo rc=$?'
-ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | grep -E "^vsync|^frames"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> '/root/hdmirx_test /dev/video0 300 /root/hdmi300.nv16m; echo rc=$?'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | grep -E "^vsync|^frames"'
 ```
 
 **Die Abnahme ist bestanden, wenn:**
@@ -288,7 +288,7 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | grep -
 
 ```bash
 # --- 5. Gegenprobe "kein Verbraucher = kein Mehraufwand" --------------------
-ssh root@192.168.8.141 'grep h713-afbd /proc/interrupts; sleep 5; grep h713-afbd /proc/interrupts'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep h713-afbd /proc/interrupts; sleep 5; grep h713-afbd /proc/interrupts'
 ```
 
 Im Ruhezustand (kein Streaming, keine Plane im Passthrough, kein KMS-Client) darf der Zähler
@@ -297,9 +297,9 @@ Aussagen.
 
 ```bash
 # --- 6. Signalverlust ------------------------------------------------------
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --off'; sleep 3
-ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | grep -E "^flip|^signal"'
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --off'; sleep 3
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | grep -E "^flip|^signal"'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --auto'
 ```
 
 Erwartet ohne Signal: `signal: kein Signal (Flip-Zeiger stehen)`. Die `flip:`-Zeile kommt weiterhin -

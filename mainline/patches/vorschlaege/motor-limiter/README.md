@@ -1,5 +1,8 @@
 # Fokusmotor: wie Stock den Anschlag erkennt — und warum wir nichts sehen
 
+**Stand 23.10.2026:** erledigt - Kernel-Patches `0153` - `0157` (`docs/kernel-patches.md`, Abschnitt 11); was aus dem
+Bereichswächter wurde, steht in `docs/subsystems/focus-motor.md`. Der Rest dieser Seite ist der Befund vom 12.09.2026.
+
 Stand 12.09.2026. Quelle für alles Folgende ist der **echte** Vendor-Stand:
 `re/vendor/HY310/hy310_factory.dts`, `re/vendor/HY310/extracted/bootpkg-full.dts`
 (beide vom Gerät dekompiliert) und `re/vendor/HY310/extracted/vmlinux.elf`

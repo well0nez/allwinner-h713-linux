@@ -53,7 +53,7 @@ h713-tv cross 373.936 B (7a3406e0), Kernelbaum mainline/build/linux-6.18.38-421f
 Memory "Release-Bauten immer von vorn": vor dem Auslieferungsbau build/out, uboot-*, linux-*, rootfs/build loeschen.
 
 ## 2. Geraete
-- HY310 (Marcos Hauptgeraet): ssh hy310 (192.168.8.132 ueber dem eigenen WLAN, DHCP, kann wechseln; ~/.ssh/config).
+- HY310 (Marcos Hauptgeraet): ssh hy310 (*geschwärzt am 23.10.2026: Heimnetz-Adresse* ueber dem eigenen WLAN, DHCP, kann wechseln; ~/.ssh/config).
   Stand: main-Kernel 6.18.38 (FIT 2d9b6514), U-Boot 2026.07-rc5 = C0-Kette (SPL c0a53b5d, Proper 2eb0caf977e4 an
   LBA 2048), h713-tv d98e774f, Bluetooth UP mit FB-BTRESET-Unit und /usr/local/sbin/h713-bt-reset (vom Agenten
   gelassen; Original in /root/btreset/before/). Verzeichnisse /root/integ (to-stufeb.sh, to-main.sh, payload,
@@ -61,13 +61,13 @@ Memory "Release-Bauten immer von vorn": vor dem Auslieferungsbau build/out, uboo
   Moduldirs /lib/modules/6.18.38 (main), .stufeB-c0, .prev, .old. Secure Storage byteidentisch mit der Sicherung
   vom 10.09. (sha256 cf2805fc...). Heute 5 warme Reboots, 0 Stromzyklen; der HY310 war 00:30-03:00 von selbst vom
   Netz (Ursache unbekannt, Marco hat ihn wieder eingeschaltet).
-- HY300 Pro = HY300PRO-G-EU (Marcos zweites Geraet, Platine HY200 QZ713DF A1): ssh hy300pro (192.168.8.246),
+- HY300 Pro = HY300PRO-G-EU (Marcos zweites Geraet, Platine HY200 QZ713DF A1): ssh hy300pro (*geschwärzt am 23.10.2026: Heimnetz-Adresse*),
   Zweig hy300pro-g-eu / TEST-Image, Einstieg doku/136, 137. Hat sc7a20, keine Kamera, keinen Motor, Luefter PH13,
   LVDS 8 Bit (U-Boot 2de0cc8), Lampe schwach (3.4 offen). BT-Kaltstart dort offen (0x1003).
-- UART: nc 192.168.8.180 2000 (ser2net am Orange Pi), EIN Client, Bruecke haengt wahlweise am HY310 oder HY300
+- UART: nc *geschwärzt am 23.10.2026: Heimnetz-Adresse* 2000 (ser2net am Orange Pi), EIN Client, Bruecke haengt wahlweise am HY310 oder HY300
   (04.10. nachts am HY310). Lesen mit timeout; senden nur bei eigenen Tests. bootdelay 1: Prompt faengt man mit
   Leerzeichen alle 0,2 s ab (hat 04.10. geklappt).
-- Laptop als HDMI-Quelle: mint-thinkpad 192.168.8.164 (ssh, xrandr, i915; kann nur HDCP 1.4).
+- Laptop als HDMI-Quelle: mint-thinkpad *geschwärzt am 23.10.2026: Heimnetz-Adresse* (ssh, xrandr, i915; kann nur HDCP 1.4).
 - FEL: A-auf-A-Kabel speist parallel (Memory): erst Kabel ziehen, dann Steckdose, dann Taste.
 
 ## 3. Fable-Welle - was sie ist und was davon wo steht
@@ -224,7 +224,7 @@ Parallel, wenn Marco Zeit hat: 3.4 HY300-Lampe; HDCP-Entscheidungstests (Abschni
   a830902 (alt). Das Worktree-Submodul hat ein eigenes Git-Verzeichnis (.git/worktrees/src3/modules/...) und steht auf
   6fb736c. Vor Stufe 5 also nicht anlegen, sondern nachziehen (fetch aus dem Worktree-Submodul, Zweig auf 6fb736c setzen).
 - fable-main = 75a0169, 25 Commits ueber main, sauber; umbau/src main 64f78a2 sauber, 14 vor origin/main. Nichts neuer als 143.
-- HY310 10:28 erreichbar: 6.18.38, FIT 2d9b6514, hci0 UP, --failed leer (= main, wie Abschnitt 2). HY300 Pro 192.168.8.246
+- HY310 10:28 erreichbar: 6.18.38, FIT 2d9b6514, hci0 UP, --failed leer (= main, wie Abschnitt 2). HY300 Pro *geschwärzt am 23.10.2026: Heimnetz-Adresse*
   NICHT erreichbar (wie schon 01:15), Orange Pi erreichbar, ThinkPad aus. Container h713-build laeuft (25 h).
 - Issue #1: keine Rueckmeldung des Melders seit 27.09. (test9: /dev/video1 fehlt, Boot bleibt zufaellig haengen);
   Marco hat dort am 01.10. die Fernentwicklung pausiert -> 3.6 ist nicht eilig.
@@ -392,7 +392,7 @@ Parallel, wenn Marco Zeit hat: 3.4 HY300-Lampe; HDCP-Entscheidungstests (Abschni
   lesender Geraeteplan. Ausdruecklich KEIN Schluesselmaterial, geschlossene Ordner bleiben zu, kein Geraet.
   Ausgabe umbau/work/FB-HDCP14e/. Der stock Ablauf selbst steht schon in doku/112 Abschnitt 2.
 - 17:4x Marco: FB-HDCP14e darf den HY300 live nutzen (auslesen, U-Boot abfangen, Logs). Dem Agenten weitergegeben mit
-  Grenzen: ssh mit Test-known_hosts, UART nc 192.168.8.180 2000 mit timeout, nur lesen (dmesg/sysfs/mmap-Reads),
+  Grenzen: ssh mit Test-known_hosts, UART nc *geschwärzt am 23.10.2026: Heimnetz-Adresse* 2000 mit timeout, nur lesen (dmesg/sysfs/mmap-Reads),
   hoechstens 3 warme Reboots mit Begruendung, am U-Boot-Prompt nur lesende Befehle und Ausstieg per `run boot_emmc`
   (nie `boot`), KEIN eMMC-Schreiben/fw_setenv/saveenv, keine Schreibzugriffe auf SID/CE/Senke/SPC, kein Stromzyklus,
   kein h713-hdcp-key, kein Gate. Parallel test10-Bau (hy300-pro, v0.96-beta, aus e77130f).
@@ -504,10 +504,10 @@ Parallel, wenn Marco Zeit hat: 3.4 HY300-Lampe; HDCP-Entscheidungstests (Abschni
 - test10 fuer Issue #1: gebaut, Upload-Ordner umbau/build/upload-hy300-pro-test10, Text
   umbau/build/release-notes-hy300-pro-test10.md, Antwortentwurf umbau/work/ST3-FOREIGN/drafts/issue1-reply.md.
 - GERAETE: HY310 auf v0.96-beta (Release-Modul wieder drauf, neu gestartet, --failed 0). HY300PRO-G-EU auf
-  STOCK-Android mit Magisk-Root (boot_a gepatcht, vbmeta_a Pruefung aus), IP 192.168.8.198, Root ueber
+  STOCK-Android mit Magisk-Root (boot_a gepatcht, vbmeta_a Pruefung aus), IP *geschwärzt am 23.10.2026: Heimnetz-Adresse*, Root ueber
   `/debug_ramdisk/su -c`, FEL per `adb reboot efex`. Rueckwege: Vollabzug re/device-dumps/hy300pro-plus-marco/
   emmc-full.img (geprueft) oder TEST-Abbild umbau/build/release-v0.96-beta-geu-TEST.
-- HDMI-Kabel liegt am HY300; UART-Bruecke am HY300. ThinkPad 192.168.8.164 (Content Protection steht auf Undesired).
+- HDMI-Kabel liegt am HY300; UART-Bruecke am HY300. ThinkPad *geschwärzt am 23.10.2026: Heimnetz-Adresse* (Content Protection steht auf Undesired).
 - HDCP 1.4: UEBERHOLT, siehe Abschnitt 14 (Korrektur 19:xx). Der naechste Schritt liegt NICHT im U-Boot:
   Stock laedt den Schluessel per SMC Op 5 still im Bootloader, und der echte Senken-Lauf ist inzwischen
   gemessen und scheitert ebenfalls mit ESR 0x11. Eintrag 18:5x und der 19:00-Nachtrag in doku/144 sind

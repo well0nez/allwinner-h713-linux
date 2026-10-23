@@ -27,8 +27,8 @@ Einstieg für die nächste Sitzung. Davor: `doku/177` (R2 in `main`), `doku/179`
 
 | Gerät | Adresse | Stand |
 |---|---|---|
-| HY310 | `.131`, UART Orange Pi `192.168.8.180:2000` | r2test4 + Schnell-Deploy `0245` (FIT mit DTB-Gate-Wort, Modul), `h713_gate=1` (Netz-Ein wartet auf die Taste), `power.conf` Standby an |
-| HY300PRO-G-EU | `.245`, UART-ESP `192.168.8.105` (2001 lesen, 2000 schreiben nur nach Rückfrage) | `geucrust1-TEST` + Schnell-Deploy (Kernel mit PF6, DTB mit Panel-Pins, Modul mit Panel-Zyklus; Sicherung `/root/sicherung-panel/`); crust läuft, Reload bringt das Bild zurück (3/3) |
+| HY310 | `.131`, UART Orange Pi `<geschwaerzt 23.10.2026: Heimnetz-Adresse>:2000` | r2test4 + Schnell-Deploy `0245` (FIT mit DTB-Gate-Wort, Modul), `h713_gate=1` (Netz-Ein wartet auf die Taste), `power.conf` Standby an |
+| HY300PRO-G-EU | `.245`, UART-ESP `<geschwaerzt 23.10.2026: Heimnetz-Adresse>` (2001 lesen, 2000 schreiben nur nach Rückfrage) | `geucrust1-TEST` + Schnell-Deploy (Kernel mit PF6, DTB mit Panel-Pins, Modul mit Panel-Zyklus; Sicherung `/root/sicherung-panel/`); crust läuft, Reload bringt das Bild zurück (3/3) |
 
 ## 4 Plan für die nächsten Schritte
 

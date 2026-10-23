@@ -59,7 +59,7 @@ IR (Marco), `0257` (braucht ein Aus über crust), die UCLAMP-Messreihe (2.60).
 ## 4 Gate und Sonoff am G-EU
 
 Marco (unterwegs, Fernbedienung über mich): `fw_setenv h713_gate 0` (vorher 1, Umgebung in `/root/uboot-env-vor-gate0.txt`). Nach
-dem Umstecken auf den Sonoff (jetzt `192.168.8.179`) bootete die Box selbst: UART `gate: off (h713_gate=0, GP5 00000000)`. Ein
+dem Umstecken auf den Sonoff (jetzt `<geschwaerzt 23.10.2026: Heimnetz-Adresse>`) bootete die Box selbst: UART `gate: off (h713_gate=0, GP5 00000000)`. Ein
 gescheiterter Standby und Netz-Ein booten jetzt durch; Standby und "Aus über crust" weckt weiter nur Taste/Fernbedienung/RTC - aus
 der Ferne über den Sonoff zurückholbar. UART-Schreiben im Notfall erlaubt (Marco).
 

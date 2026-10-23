@@ -64,6 +64,15 @@ be held means no page: a page whose keys Kodi shares is worse than none.
 | OK | into the rows | switch: flip; choice: open its options; action: run it; corners: start; a slider judged on the picture: open its pill | take the option | next corner |
 | Back | close the page (exit 0: the launcher opens again) | back to the areas | cancel | done |
 
+The areas, rendered from the program on the host (1920x1080, the release's font):
+
+![White balance](../images/settings/white-balance.png)
+![Sound](../images/settings/sound.png)
+![Focus](../images/settings/focus.png)
+![Input](../images/settings/input.png)
+![Power](../images/settings/power.png)
+![Turn to wall as a pill over the picture](../images/settings/pill-turn-to-wall.png)
+
 **The pill** (a slider judged on the picture): the label, the track and the number over the real picture, the keys under it;
 Left/Right change the value, Up/Down go to the next such slider of the area (Brightness, Contrast, ...), OK or Back bring the
 opaque page back. Gamma and Colour temperature are sliders with **named stops**: the track has a dot at each stop, the pill names them under
@@ -106,7 +115,7 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 Rows of hardware the board does not have (`h713-features status`: camera, accelerometer, focus motor) are hidden, not
 greyed out. So are Gamma and Colour temperature where `ctl get gamma` says `is not available` (a board whose curves h713-tv could not read; the two go
 together), and the White balance and Colour rows where `ctl wb` says `[not available: ...]` (another display firmware, or no
-`/dev/mem`): the area then shows one line, "Not available". There are nine areas since 18.10.2026; the left column keeps the pitch
+`/dev/mem`): the area then shows one line, "Not available". There were nine areas from 18.10.2026 and eight since 20.10.2026 (Colour left out); the left column keeps the pitch
 of the rows (94 design pixels) and the key hint at the foot stands under the note, so that the last area's pill stays clear of it.
 Picture has nine rows with Gamma: above eight rows the pitch of the rows is 82 design pixels (73 at ten, the page's limit) and the lit pill a little lower,
 so that the last row still clears the note; a page of up to eight rows is drawn exactly as before (a test compares nine areas, 234 states, picture for picture with the

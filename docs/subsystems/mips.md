@@ -186,7 +186,7 @@ moving the pointer, `tail` for a live, destructive read) - **run `dump` before `
 A one-byte global level gates verbosity; the release image ships the boot default, level 1 (errors
 only, about 1.9 KB in a typical run). Raising it - `elog=<level>` at `init`, or writing the level byte at
 `0x4b48bd9c` from Linux at runtime - only makes sense with a consumer already running
-(the reader lives in the working tree, not in this repository: `tools/mipslog.c` builds one): without one, a higher level fills the ring in seconds and the log
+(`tools/mipslog.c` in this repository builds one): without one, a higher level fills the ring in seconds and the log
 goes dead exactly when a fault would need it (`doku/63`, measured 01.09. and 06.09.2026). **Mode 2
 must stay off** - turning it on is recorded as breaking MIPS init, a note from the working
 knowledge base, unverified beyond that note itself.

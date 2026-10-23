@@ -83,7 +83,14 @@ repository at the commit SOURCES names. SOURCES also names, for each
 upstream, the revision the patches apply to. Debian's source packages
 are on deb.debian.org and, by version, on snapshot.debian.org.
 
-Source code. The complete corresponding source of this image goes with
-it: next to the image where it is published (its source archives), and
-in the repository at the commit SOURCES names. Whoever passes the
-image on passes these archives on with it.
+The complete corresponding source of this image is the repository with
+its submodules at the commit SOURCES names: it is archived next to the
+image where it is published (allwinner-h713-linux-<version>-with-
+submodules.tar) and reachable as the tag of the same name, which points
+at that commit. Linux (kernel.org), the aic8800 driver, crust and
+libva-v4l2-request are not copied into it: the repository carries this
+project's patches to them, the configurations and the pinned upstream
+revisions, and SOURCES names each one. Whoever passes the image on
+passes that archive, or the way to it, on with it. Debian's source
+packages are on deb.debian.org and, by version, on snapshot.debian.org
+(DEBIAN-SOURCES).

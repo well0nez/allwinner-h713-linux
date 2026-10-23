@@ -1,9 +1,10 @@
-# h713-panel - the projector's settings page
+# h713-panel - the settings as a web page
 
-`h713-panel` is the projector's own web page: opened on a phone over the projector's Wi-Fi or in a browser
+`h713-panel` is the projector's web page: opened on a phone over the projector's Wi-Fi or in a browser
 over the LAN, it carries the entries of the vendor's "Projection Settings" and "Display settings" - in our
 own style, not a copy. One dependency-free Python 3 script plus the page beside it, no framework, no build
-step, nothing fetched from the internet.
+step, nothing fetched from the internet. The settings page on the wall, driven by the remote, is
+[h713-settings](h713-settings.md); both call the same tools.
 
 **Nothing is decided in the page.** Every button is one command this project already has, and the first
 `ok`/`error` line of that command's answer is what appears at the bottom of the screen. The browser never

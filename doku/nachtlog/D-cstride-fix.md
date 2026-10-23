@@ -164,7 +164,7 @@ gelockt, **`viddec_descriptor.py` NICHT von Hand aufrufen** - der Descriptor geh
 `hdmi_plane_test` immer so starten, dass die Sitzung ihn nicht mitreißt (D-abnahme-board.md, Nebenbefund).
 
 ```bash
-B=root@192.168.8.141
+B=root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>
 plane_on()  { ssh $B 'cd /root && setsid sh -c "nohup ./hdmi_plane_test -t 60 >/root/plane.out 2>&1 &"'; }
 plane_off() { ssh $B 'pkill -f hdmi_plane_test'; }
 regs()      { ssh $B 'for r in 0x05600044 0x05600098 0x05600040 0x05600020 0x0560004c 0x051c006c; do \

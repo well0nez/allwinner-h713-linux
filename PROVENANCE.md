@@ -46,8 +46,8 @@ Three git submodules under `mainline/external/`, pinned to forks under the same 
 
 | Component | Branch | Why a fork |
 |---|---|---|
-| `u-boot` | `h713-hy310` | 82 commits on top of cstenger's `h713` (base `8fe568c`): CCU tables, USB PHY, the MIPS display bring-up with the boot logo, the power gate, the boot paths, the eMMC at HS200 with DMA in U-Boot and in the SPL, and the LogoRegData container read by its own group boundaries |
-| `arm-trusted-firmware` | `sun50i-h713` | BL31 for this SoC, plus entering the boot gate on `SYSTEM_OFF` |
+| `u-boot` | `h713-hy310` | 102 commits on top of cstenger's `h713` (base `8fe568c`): CCU tables, USB PHY, the MIPS display bring-up with the boot logo, the power gate and its infrared decoder (`0102`, 22.10.2026), the boot paths, the eMMC at HS200 with DMA in U-Boot and in the SPL, the LogoRegData container read by its own group boundaries, the staging of crust for BL31 and the HDCP 1.4 key path |
+| `arm-trusted-firmware` | `sun50i-h713` | 32 commits: BL31 for this SoC, entering the boot gate on `SYSTEM_OFF`, the EL3 service for the HDCP 1.4 key, starting a staged crust and PSCI `SYSTEM_SUSPEND` through it (built only with `--standby`) |
 | `sunxi-tools` | `h713` | `sunxi-fel` with the EL3 trap door the H713 needs to return to FEL |
 
 `uboot-h713/` and `tfa-h713/` mirror the U-Boot and TF-A commits as patch files (`git format-patch`
@@ -58,12 +58,14 @@ the same hash as the fork head. The build uses the submodules, not the mirrors.
 
 **crust**, the firmware for the SoC's small OR1K core, is the fourth source tree: upstream
 [crust](https://github.com/crust-firmware/crust) at `499a362` (after v0.6), with our H713 port on a branch
-`h713` of a fork that is not published yet, so there is no submodule; `release/build-all.sh` takes the
-checkout as `CRUST_SRC`. `crust-h713/` mirrors the branch the same way (80 patches, the tree hash of the
-fork head checked). The port keeps crust's licence, BSD-3-Clause or GPL-2.0-only, and every file it adds
-says so in its SPDX line. It was written from the vendor ARISC firmware's behaviour and disassembly -
-its message contract, its DRAM self-refresh sequence register by register - not from vendor source. The
-compiler it needs is built from GNU source tarballs pinned by SHA-256 (`mainline/tools/or1k-toolchain/`).
+`h713` of a fork that is published with the release (`TODO.md` 1.6), so there is no submodule yet;
+`release/build-all.sh` takes the checkout as `CRUST_SRC`. `crust-h713/` mirrors the branch the same way (88 patches,
+head `54e4a08ab9f3`, the tree hash of the fork head checked). The port keeps crust's licence, BSD-3-Clause or
+GPL-2.0-only, and every file it adds says so in its SPDX line. It was written from the vendor ARISC firmware's
+behaviour and disassembly - its message contract, its DRAM self-refresh sequence register by register - not from vendor
+source. The compiler it needs is built from GNU source tarballs pinned by SHA-256 (`mainline/tools/or1k-toolchain/`).
+Since 22.10.2026 an image runs the vendor's ARISC firmware by default and carries crust only as an experiment
+([arisc](docs/subsystems/arisc.md)); crust is still built with every image of a board that names a `CRUST_DEFCONFIG`.
 
 `tfa-h713/` exists only since 05.10.2026, and its absence had been actively misleading: U-Boot had a
 mirror and the kernel had `mainline/patches/kernel/`, so TF-A looked covered. It was not - the EL3
@@ -179,10 +181,14 @@ on them (a file of his without a licence line is not covered by ours; since 20.1
 written anew, "Left out on purpose" above).
 
 **In the image.** An image carries its licence notices under `/usr/local/share/doc/h713-linux/`: a README with every
-part's licence and where the source of every part is (it goes with the image, as source archives next to it), the revisions it was built from, the BSD
-notices of TF-A's BL31 and of crust (the copyright lines of every source file built into them), the kernel's licence,
-the copyright files of the libraries linked statically into `h713-osd` and `h713-settings`, and the list of Debian's
-source packages; Debian's own copyright files stay in `/usr/share/doc/` ([rootfs/README.md](rootfs/README.md)).
+part's licence and where the source of every part is, the revisions it was built from (`SOURCES`), the BSD notices of
+TF-A's BL31 and of crust (the copyright lines of every source file built into them), the kernel's licence, the copyright
+files of the libraries linked statically into `h713-osd` and `h713-settings`, and the list of Debian's source packages;
+Debian's own copyright files stay in `/usr/share/doc/` ([rootfs/README.md](rootfs/README.md)). The source of this
+project's own parts and of its patches is the repository at the commit `SOURCES` names, which the release tag points at
+and which the release page carries as one archive with the submodules checked out; Linux and the aic8800 driver are in it
+as patches, configuration and pinned revisions, their trees come from kernel.org and the pinned vendor tarball, and
+Debian's source packages are on deb.debian.org and snapshot.debian.org (the owner's decision of 21.10.2026, `TODO.md` 2.128).
 
 **Documentation: CC BY-SA 4.0** ([LICENSE.docs](LICENSE.docs)) - `docs/`, `doku/` and the Markdown at the
 top level: share it, adapt it, credit **well0nez**, keep the same licence.

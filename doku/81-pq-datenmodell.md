@@ -284,7 +284,7 @@ Es **rechnet und druckt**; es öffnet kein `/dev/mem` und fasst kein Register an
 Der ausgegebene Schreibpfad ist der RPC:
 
 ```
-ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetSaturation 60'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py rpc SetSaturation 60'
 ```
 
 **Nicht** mehr `pq_saturation.py`: dieses Ad-hoc-Skript schreibt das Gain-Byte direkt ins Register (umgeht damit

@@ -158,7 +158,10 @@ GPT partition names starting `hy310-` mean the device already runs this system; 
 against the board profiles by several features at once, not by one fingerprint string. On a reinstall over
 our own layout the intent keys `h713_gate` and `h713_boot` are carried over from the old U-Boot
 environment and the declared project id is written as `h713_project`; everything else comes from the image,
-so a stale setting cannot silently survive an upgrade. `--fresh-env` carries nothing over.
+so a stale setting cannot silently survive an upgrade. `--fresh-env` carries nothing over. **Known (`TODO.md` 2.137):**
+with `--dump` pointing at the directory of a first install, the carried-over values came from the environment saved in that
+dump, not from the device - on 22.10.2026 a `h713_gate=0` set for a bench came back that way. After a reinstall check
+`fw_printenv h713_gate` and set it to `1` if it is not.
 
 The secure storage region is never written, whatever you pass - the image itself has a gap there, so even
 a raw `dd` from someone bypassing this tool cannot reach it (see [`h713-mkimage`](h713-mkimage.md)).

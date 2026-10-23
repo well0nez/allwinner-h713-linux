@@ -31,12 +31,15 @@ short, on this device:
 - Wi-Fi as an access point and as a station against a real network, 12.09.
 - focus motor, internal camera, fan tacho with the stall poweroff actually triggered on the device,
   11./12.09.
-- FEL recovery and the installer including restore-to-stock, power key gate, standby at 4 W
-- Bluetooth with the stock remote, 03.10.2026 (`docs/subsystems/wifi.md`)
+- FEL recovery and the installer including restore-to-stock, the power key gate (2.9 W; the standby only in test images, 2.4 W)
+- Bluetooth with the stock remote, 03.10.2026 (`docs/subsystems/wifi.md`); its IR keys since 11.10.2026, under the vendor
+  ARISC firmware since 22.10.2026 (`doku/219`)
+- `v0.97-beta` installed 22./23.10.2026: the launcher, Kodi, the desktop, the browser, the settings page on the wall, the
+  remote starting the board from the gate (`doku/219`)
 
-Open on this board, and written down because they are *not* done: environment carry-over across a
-reinstall, a phone joining the access point. Missing entirely: AV1 decode, the IR receiver,
-any desktop.
+Open on this board, and written down because they are *not* done: `h713_gate` carried over as 0 by a reinstall
+(`TODO.md` 2.137), a phone joining the access point, the faint flicker of the picture under load (a hypothesis,
+`TODO.md` 2.99). Switched off on purpose: AV1 decode (kernel `0310`).
 
 **Historical:** images built before 2026-09-12 20:00 shipped a BL31 from 10.09. with assertions
 enabled (49 260 bytes). The release BL31 (45 164 bytes) has been on this board since 15.09.2026.

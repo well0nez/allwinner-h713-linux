@@ -22,15 +22,15 @@ It is built inside the container `h713-build` like everything else - nothing is 
 and `release/build-all.sh` calls it as step 7. Building it by hand is only useful for a bench root;
 for an image, take [BUILDING.md](../BUILDING.md).
 
-The result is about 242 MiB, journal in RAM by default, SSH key-only, and it carries no proprietary
-file at all: the display, ARISC and Wi-Fi firmware come off your own device while installing
+The base tree is about 242 MiB (the `media,desktop` tree of the release about 1.1 GiB, [BUILDING.md](../BUILDING.md)),
+journal in RAM by default, SSH key-only, and it carries no proprietary file at all: the display, ARISC and Wi-Fi firmware come off your own device while installing
 ([PROVENANCE.md](../PROVENANCE.md)).
 
 ## Licences in the image
 
 `/usr/local/share/doc/h713-linux/` says what the image is made of, under which licence, and how to get the source:
-`README` (from `overlay/`) lists the parts with their licences and says where their source is: next to the image as its
-source archives, and in the repository at the commit `SOURCES` names; `SOURCES` names the revisions this image was built from (the boot chain and the kernel from
+`README` (from `overlay/`) lists the parts with their licences and says where their source is: the repository with its
+submodules, archived next to the image on the release page at the tag, and at the commit `SOURCES` names; `SOURCES` names the revisions this image was built from (the boot chain and the kernel from
 `release/build-all.sh`, the Debian suites, Mesa and libva from `build-rootfs.sh`); `DEBIAN-SOURCES` lists every
 Debian source package with its version. Next to them, what `release/build-all.sh` hands over with `build-rootfs.sh --notice`: `tf-a/` and
 `crust/` (their licence and the copyright lines of every source file built into BL31 and `scp.bin`, which BSD wants

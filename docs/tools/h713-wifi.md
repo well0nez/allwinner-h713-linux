@@ -26,6 +26,10 @@ with the password `magcubic` until someone changes it - the same two values are 
 document. Anyone within radio range can reach the device's SSH server until `password` is changed in
 `/etc/h713/wifi.env`; do that before the device stands anywhere it isn't only you.
 
+The settings page on the wall shows the Wi-Fi area - mode, network, signal, address - and changes nothing there: a
+password needs an on-screen keyboard, which is open ([h713-settings](h713-settings.md)). Edit the file over SSH or the
+serial console.
+
 ## Subcommands
 
 | | |

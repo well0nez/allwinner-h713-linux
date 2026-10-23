@@ -1,7 +1,7 @@
 # Plan: HDMI-Audio - vom Zuspieler über den HDMI-Eingang zum Lautsprecher
 
 **Stand 08.09.2026, 12:25.** Nächster Schritt nach dem Bildpfad. Marco: Fable 5.1 plant, orchestriert und
-verifiziert; Opus-5-Agenten machen die RE- und Code-Arbeit. Board (192.168.8.141), Zuspieler (192.168.8.162)
+verifiziert; Opus-5-Agenten machen die RE- und Code-Arbeit. Board (*geschwärzt am 23.10.2026: Heimnetz-Adresse*), Zuspieler (*geschwärzt am 23.10.2026: Heimnetz-Adresse*)
 und `mainline/patches/` fasst nur die Hauptsitzung an. Protokoll: `nachtlog/S16-hdmi-audio.md`, Agentenberichte
 `S17`…`S20`. Rohdaten `re/captures/weltneuheit/s16-audio-20260908/`.
 

@@ -10,9 +10,9 @@ touched.
 
 | Processor | Runs | Owns |
 |---|---|---|
-| ARM Cortex-A53 ×4 | Linux; BL31 (EL3) on the same cores | AFBD scanout block (`0x05600000`), everything in `cpu_comm`'s shared memory it writes itself; BL31: PSCI, starts crust |
+| ARM Cortex-A53 ×4 | Linux; BL31 (EL3) on the same cores | AFBD scanout block (`0x05600000`), everything in `cpu_comm`'s shared memory it writes itself; BL31: PSCI, and in a `--standby` image the start of crust |
 | MIPS32 LE | `display.bin`, started by U-Boot; Linux can park and restart it (`sun50i-h713-mips`) | HDMI capture (INCAP), the window/scaler chain, the panel output block - the whole display pipeline behind the AFBD |
-| OR1K "ARISC" | crust, our own (HY310), or the vendor's `h713-arisc.bin` | the R_-peripherals: PMU sequencing, the HDMI hot-plug pin, EDID/DDC RAM. crust serves them as the HDMI front end in normal operation (`doku/163`) and also takes the standby |
+| OR1K "ARISC" | the vendor's `h713-arisc.bin` (every image since 22.10.2026), or crust, our own (`h713-arisc set crust`; `--standby` images) | the R_-peripherals: PMU sequencing, the HDMI hot-plug pin, EDID/DDC RAM. crust serves them as the HDMI front end the same way (`doku/163`) and also takes the standby and a 0.3 W power-off |
 
 Reading a MIPS or ARISC register from the ARM core is possible; writing one is not the same as changing
 what it controls. The MIPS firmware recomputes its own window geometry from a small descriptor Linux

@@ -238,25 +238,25 @@ Minute.
 # ---- 0. Vorbedingungen -------------------------------------------------------
 ss -ulnp | grep -w :69                       # TFTP muss lauschen; sonst STOPP
 echo "$(date +%F_%T) hauptsitzung B-waechter" > /tmp/claude-1000/h713-board.lock
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'   # Ausgangswert notieren
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'   # Ausgangswert notieren
 
 # ---- 1. Kaltstart ------------------------------------------------------------
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
 
 # ---- 2. Prep OHNE Schritt 1 und ohne das alte Modul, dann SetSource ----------
-ssh root@192.168.8.141 "echo 'module sun50i_h713_arisc +p' > /sys/kernel/debug/dynamic_debug/control"
-ssh root@192.168.8.141 "sed -e '/arisc_load.py/d' \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "echo 'module sun50i_h713_arisc +p' > /sys/kernel/debug/dynamic_debug/control"
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "sed -e '/arisc_load.py/d' \
     -e 's#; insmod /root/hy310-arisc-hdmi.ko 2>/dev/null##' \
     /root/prep_after_boot.sh > /root/prep_ohne_arisc.sh && sh /root/prep_ohne_arisc.sh"
-ssh root@192.168.8.141 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it \
      --only setsource --source 3 --portmap stock --gap 500 --pre-source-wait 1 --listen-after 3'
 ```
 
 ### Schritt 3 - der Ausgangszustand, der die alte Prüfung blind machte
 
 ```bash
-ssh root@192.168.8.141 'for a in 0x0011724a 0x0011724b 0x00117252 0x00117253 0x0011725a 0x0011725b; do
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'for a in 0x0011724a 0x0011724b 0x00117252 0x00117253 0x0011725a 0x0011725b; do
     printf "%s = " $a; busybox devmem $a b; done'
 ```
 
@@ -271,15 +271,15 @@ zurück zu Schritt 1.
 Hotplug-Zähler müssen 0 sein, sonst könnte die Hauptschleife den Pin-Treiber rufen.
 
 ```bash
-ssh root@192.168.8.141 'echo reset-edid > /sys/kernel/debug/h713-arisc/cmd; echo rc=$?'
-ssh root@192.168.8.141 'grep hpd_counter /sys/kernel/debug/h713-arisc/status'   # muss "0 0 0" sein
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'echo reset-edid > /sys/kernel/debug/h713-arisc/cmd; echo rc=$?'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep hpd_counter /sys/kernel/debug/h713-arisc/status'   # muss "0 0 0" sein
 
 # Satz 0 von Hand vorbelegen -- nur SRAM A2, kein 0x0709xxxx
-ssh root@192.168.8.141 'busybox devmem 0x0011724a b 0xff; busybox devmem 0x0011724b b 0xff'
-ssh root@192.168.8.141 'grep portmap /sys/kernel/debug/h713-arisc/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'busybox devmem 0x0011724a b 0xff; busybox devmem 0x0011724b b 0xff'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep portmap /sys/kernel/debug/h713-arisc/status'
 #   ERWARTET: portmap: 255,1,2     <- die Datei zeigt, was die Firmware haelt
 sleep 5
-ssh root@192.168.8.141 'grep portmap /sys/kernel/debug/h713-arisc/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep portmap /sys/kernel/debug/h713-arisc/status'
 #   ERWARTET: portmap: 255,1,2     <- unveraendert
 ```
 
@@ -296,9 +296,9 @@ Satz 0 trägt jetzt `0xff/0xff`. Der Treiber belegt beim nächsten `portmap` all
 neu vor und wartet auf `0,1,2`.
 
 ```bash
-ssh root@192.168.8.141 'echo "portmap 0 1 2" > /sys/kernel/debug/h713-arisc/cmd; echo rc=$?'
-ssh root@192.168.8.141 'grep portmap /sys/kernel/debug/h713-arisc/status'
-ssh root@192.168.8.141 'dmesg | grep -i h713-arisc | tail -10'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'echo "portmap 0 1 2" > /sys/kernel/debug/h713-arisc/cmd; echo rc=$?'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep portmap /sys/kernel/debug/h713-arisc/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -i h713-arisc | tail -10'
 ```
 
 `echo` liefert bei jedem Fehler `rc=1` und schreibt den `strerror`-Text der Shell dazu;
@@ -314,7 +314,7 @@ ssh root@192.168.8.141 'dmesg | grep -i h713-arisc | tail -10'
   vorher nicht geben konnte. Satz 0 steht danach wieder auf `255/255` (der Treiber setzt
   den vorgefundenen Stand zurück) - **von Hand aufräumen**:
   ```bash
-  ssh root@192.168.8.141 'busybox devmem 0x0011724a b 0x00; busybox devmem 0x0011724b b 0x01'
+  ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'busybox devmem 0x0011724a b 0x00; busybox devmem 0x0011724b b 0x01'
   ```
 * **`Connection timed out`** und `traegt Pin 2 (Bit 0x04) statt Pin 0` → der Handler lief,
   hat aber aus einem überschriebenen Puffer gelesen. Das ist das Rennen aus
@@ -329,11 +329,11 @@ setzt den *vorgefundenen* Stand zurück, und der war `0xff`). Vor Schritt 6 also
 ### Schritt 6 - die eigentliche Folge
 
 ```bash
-ssh root@192.168.8.141 'time sh -c "echo edid > /sys/kernel/debug/h713-arisc/cmd"; echo rc=$?'
-ssh root@192.168.8.141 'cat /sys/kernel/debug/h713-arisc/status'
-ssh root@192.168.8.141 'dmesg | grep -i "h713-arisc" | tail -40'
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'
-ssh user@192.168.8.162 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'time sh -c "echo edid > /sys/kernel/debug/h713-arisc/cmd"; echo rc=$?'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/h713-arisc/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -i "h713-arisc" | tail -40'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
 ```
 
 **Gutkriterien, alle drei nötig:**
@@ -350,7 +350,7 @@ Dann ist der nächste und einzige nötige Messschritt der Registerwert **mit** d
 nachgewiesenen Karte:
 
 ```bash
-ssh root@192.168.8.141 'busybox devmem 0x07091014; busybox devmem 0x07091b04'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'busybox devmem 0x07091014; busybox devmem 0x07091b04'
 #   ERWARTET dann 0x00000006 / 0x00000007  (= der Stock-Zustand)
 #   ACHTUNG: erst NACH ResetEDIDModule lesen -- vorher haengt der SoC (doku/82 §9).
 ```

@@ -2,9 +2,9 @@
 
 A small C library that draws the projector's overlays - volume, mute, focus, input - into an ARGB8888 buffer.
 It knows nothing about DRM, sockets or time: the caller says what to show, the library draws it, and returns the
-rectangle it touched. Planned users: the overlay daemon `h713-osd` (TODO 2.43-2.46, `doku/192`), later a desktop
-compositor (the rule of 2.45: drawing and the place it goes are separate). State: **draft for choosing the place**
-(P0b of `arbeit/einblendungen-20261011/PLAN.md`); nothing on a device yet.
+rectangle it touched. Its user is the overlay daemon [`h713-osd`](../h713-osd/README.md) (`doku/192`, `doku/193`), which draws them on
+the primary plane; drawing and the place it goes are separate on purpose (TODO 2.45), so a second program could
+draw the same pictures elsewhere. In the image since 11.10.2026.
 
 ```
 osd.h          the interface: osd_canvas, osd_style (place, look, scale), osd_item (kind, value, flags, alpha), and the text
@@ -91,10 +91,10 @@ canvas. `osd_draw` keeps one static work buffer: not reentrant.
 
 In the container `h713-build`: `make host` builds `osd-mockup`; `make mockup DIR=...` renders every case as PAM
 (60 pictures at 1080p). `make cross` builds `libh713osd.aarch64-linux-gnu.a` for the board, with clang
-against the board root, as `h713-warp` is built (not tried yet).
+against the board root, as `h713-warp` is built; `release/build-all.sh` cross-builds `h713-osd` with it for every image.
 
-## Not decided, not measured
+## Not measured
 
-Which place (the owner chooses on the mock-ups); whether the display's channel 2 wants premultiplied
-alpha (measured in 2.48 - the library writes straight alpha). The time to draw one item on the board is not
-measured; text: the cost of a label on the board is not measured either.
+The place was chosen on the mock-ups (the pill at the bottom, 11.10.2026); the display's RGB channel takes
+straight alpha as `h713-osd` writes it (kernel `0251`). The time to draw one item on the board is above; the cost
+of a text label on the board is not measured.

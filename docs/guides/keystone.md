@@ -5,7 +5,8 @@ by warping the picture before it is projected, and so does this: `h713-warp` ben
 quadrilateral on the Mali-G31, and `h713-keystone` can drive that quadrilateral from the projector's own
 tilt sensor. This page is the whole chain - the first half for whoever wants a rectangle on the wall, the
 second for whoever wants to know what it costs. The comfortable way to set it is the
-[settings page](settings-page.md); everything below is what the page sends.
+settings page on the wall, with the remote ([settings guide](settings.md), Keystone), or the web page
+([settings-page.md](settings-page.md)); everything below is what the pages send.
 
 ## The four corners
 
@@ -185,8 +186,9 @@ dequeues with their timestamps, the gaps between pumps and any slow phase.
 
 `h713-tv` refuses `warp claim` while there is no signal, and releases the warp when the signal goes: the
 ring would keep handing out its last frame and the warp would go on drawing it, so the wall would freeze.
-The console comes up instead, the daemon falls back to bypass and asks again once a second, and the picture
-is back under a second after the signal is.
+The page "No signal on HDMI" comes up instead (the console on an image without `h713-osd`), the daemon falls
+back to bypass and waits on the capture node's event, and the warped picture is back about 0.2 s after the signal
+is, with no straight picture in between (17.10.2026, [h713-warp](../tools/h713-warp.md)).
 
 ## Open points
 

@@ -223,40 +223,40 @@ das macht die Hauptsitzung, dieser Agent hat das Board nicht angefasst.
 # ---- 0. Vorbedingungen -------------------------------------------------------
 ss -ulnp | grep -w :69                       # TFTP muss lauschen; sonst STOPP
 echo "$(date +%F_%T) hauptsitzung B-fix-checkedid" > /tmp/claude-1000/h713-board.lock
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'   # ERWARTET: disconnected
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'   # ERWARTET: disconnected
 
 # ---- 1. Kaltstart ------------------------------------------------------------
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
 
 # ---- 2. Treiber da, Handshake gruen -----------------------------------------
-ssh root@192.168.8.141 'modprobe sun50i-h713-arisc 2>/dev/null; cat /sys/kernel/debug/h713-arisc/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'modprobe sun50i-h713-arisc 2>/dev/null; cat /sys/kernel/debug/h713-arisc/status'
 #   ERWARTET: startup_notify: acked / arisc: running / edid_firmware: hy310-edid.bin loaded
 #   NEU in dieser Datei: edid_ready: / edid_gate:  -- Werte VOR ResetEDIDModule sind nicht
 #   vorhergesagt (belegt ist nur, dass edid_ready auf frischem Boot schon 1 war, doku/82);
 #   sie sind hier Ausgangswert fuer den Vergleich nach Schritt 6, kein Kriterium.
 
 # ---- 3. dev_dbg scharfstellen (die neue Instrumentierung) -------------------
-ssh root@192.168.8.141 "echo 'module sun50i_h713_arisc +p' > /sys/kernel/debug/dynamic_debug/control"
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "echo 'module sun50i_h713_arisc +p' > /sys/kernel/debug/dynamic_debug/control"
 
 # ---- 4. Prep OHNE Schritt 1 und ohne das alte Modul -------------------------
-ssh root@192.168.8.141 "sed -e '/arisc_load.py/d' \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "sed -e '/arisc_load.py/d' \
     -e 's#; insmod /root/hy310-arisc-hdmi.ko 2>/dev/null##' \
     /root/prep_after_boot.sh > /root/prep_ohne_arisc.sh && sh /root/prep_ohne_arisc.sh"
 
 # ---- 5. SetSource wie im Nachtplan Abschnitt 1 ------------------------------
-ssh root@192.168.8.141 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it \
      --only setsource --source 3 --portmap stock --gap 500 --pre-source-wait 1 --listen-after 3'
 
 # ---- 6. Die EDID-/HPD-Folge AUS DEM KERNEL ----------------------------------
-ssh root@192.168.8.141 'time sh -c "echo edid > /sys/kernel/debug/h713-arisc/cmd"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'time sh -c "echo edid > /sys/kernel/debug/h713-arisc/cmd"'
 #   ~11-13 s (10 s davon der HPD-low-Teil). Rueckgabe 0 = alle Schritte quittiert.
 
 # ---- 7. Abnahme -------------------------------------------------------------
-ssh root@192.168.8.141 'dmesg | grep -i "h713-arisc" | tail -40'
-ssh root@192.168.8.141 'cat /sys/kernel/debug/h713-arisc/status'
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'
-ssh user@192.168.8.162 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -i "h713-arisc" | tail -40'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/h713-arisc/status'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
 ```
 
 **Erwartete `dmesg`-Zeilen (Schritt 7):**
@@ -301,7 +301,7 @@ A2 - auch vor `ResetEDIDModule` gefahrlos):
 
 ```bash
 # Beide Bytes zwischen den Fragmenten mitlesen: erst die Folge bis Fragment 6, dann 7.
-ssh root@192.168.8.141 'busybox devmem 0x0011723c'      # Wort = [1723c][1723d][1723e][1723f]
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'busybox devmem 0x0011723c'      # Wort = [1723c][1723d][1723e][1723f]
 # -> Byte 2 (Bits 23:16) = bEdidDataReady, Byte 3 (Bits 31:24) = Ausgabe-Gate
 
 # Erwartung laut Firmware (0x1256c / 0x12570 / 0x11e6c):

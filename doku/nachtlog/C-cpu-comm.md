@@ -1,7 +1,7 @@
 # Paket C - `cpu_comm` bekommt eine In-Kernel-API
 
-**Agent:** Unteragent C (offline). **Kein Board angefasst**: kein `ssh root@192.168.8.141`,
-kein `ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`,
+**Agent:** Unteragent C (offline). **Kein Board angefasst**: kein `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`,
+kein `ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`,
 nichts nach `tftp/`. Kein `sudo`, kein `git commit`/`push`, kein `apt` im Container.
 **`patches/kernel/series` nicht berührt**, `build/build.sh` nicht aufgerufen.
 Uhrzeiten vom Arbeitsrechner (`date '+%H:%M'`), 06./07.09.2026.
@@ -242,19 +242,19 @@ lädt bevorzugt `/root/hy310-cpu-comm-callwq-test.ko` (Z. 8). Das ist das
 **Diagnosemodul vom 06.09.** und enthält die neue API nicht. Also beiseitelegen:
 
 ```bash
-ssh root@192.168.8.141 'mv -f /root/hy310-cpu-comm-callwq-test.ko /root/hy310-cpu-comm-callwq-test.ko.aus 2>/dev/null; ls -l /root/hy310-cpu-comm*.ko*'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'mv -f /root/hy310-cpu-comm-callwq-test.ko /root/hy310-cpu-comm-callwq-test.ko.aus 2>/dev/null; ls -l /root/hy310-cpu-comm*.ko*'
 ```
 
 ### Ablauf
 
 ```bash
 # 0) Kaltstart und Standardsequenz bis einschließlich Phase 3 (ohne SetSource)
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
-ssh root@192.168.8.141 'bash /root/prep_after_boot.sh'
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'bash /root/prep_after_boot.sh'
 
 # 1) Kommt das Serienmodul mit der neuen API? (Beweis vor jeder Negativaussage)
-ssh root@192.168.8.141 'grep -m1 hy310_cpu_comm /proc/modules; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep -m1 hy310_cpu_comm /proc/modules; \
   grep -q debugfs /proc/mounts || mount -t debugfs none /sys/kernel/debug; \
   ls -l /sys/kernel/debug/cpu_comm/'
 #   erwartet: Verzeichnis mit den Dateien "call" und "watch"
@@ -263,20 +263,20 @@ ssh root@192.168.8.141 'grep -m1 hy310_cpu_comm /proc/modules; \
 #    hält /dev/cpu_comm offen und beweist zugleich, dass das Char-Device lebt.
 #    PID merken -- NICHT spaeter mit pkill -f suchen, das Muster traefe die
 #    eigene ssh-Shell (Memory pgrep-muster-trifft-eigene-shell).
-ssh root@192.168.8.141 'nohup taskset -c 1 python3 /root/hdmi_seq.py listen --hold \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'nohup taskset -c 1 python3 /root/hdmi_seq.py listen --hold \
   > /root/C-listen.log 2>&1 < /dev/null & echo $! > /root/C-listen.pid; cat /root/C-listen.pid'
 sleep 3
-ssh root@192.168.8.141 'head -5 /root/C-listen.log'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'head -5 /root/C-listen.log'
 #   erwartet: zwei Zeilen "Routine-Tabelle vorher/nachher: version=… count=…",
 #   count nach der Anmeldung groesser (die zehn MipsHalCallback_*)
 
 # 3) Kernel-Handler fuer SignalChange einhaengen
-ssh root@192.168.8.141 'echo MipsHalCallback_SignalChange@0 > /sys/kernel/debug/cpu_comm/watch; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'echo MipsHalCallback_SignalChange@0 > /sys/kernel/debug/cpu_comm/watch; \
   cat /sys/kernel/debug/cpu_comm/watch'
 #   erwartet genau eine Zeile: 0x3e7fbc46      0 MipsHalCallback_SignalChange
 
 # 4) DER PUNKT: SetSource(3) aus dem Kernel, ohne Userspace-Programm
-ssh root@192.168.8.141 'echo "THal_Vp_SetSource 3" > /sys/kernel/debug/cpu_comm/call; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'echo "THal_Vp_SetSource 3" > /sys/kernel/debug/cpu_comm/call; \
   cat /sys/kernel/debug/cpu_comm/call'
 #   erwartet: comp=0xeaf13de5 nargs=1 -> ok, N value(s) …
 #     (N ist das, was die Firmware zurueckgibt -- entscheidend ist "ok", nicht N)
@@ -285,30 +285,30 @@ ssh root@192.168.8.141 'echo "THal_Vp_SetSource 3" > /sys/kernel/debug/cpu_comm/
 sleep 5
 
 # 5) Belege einsammeln
-ssh root@192.168.8.141 'dmesg | grep -E "debugfs call|kernel callback|RX-CALL" | tail -20'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -E "debugfs call|kernel callback|RX-CALL" | tail -20'
 #   erwartet u. a.: cpu_comm: kernel callback comp=0x3e7fbc46 nargs=… args=[0x00000003 …]
 
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch'
 #   erwartet: Trefferzaehler in Spalte 2 > 0
 
-ssh root@192.168.8.141 'grep -ai "SetActivePort" /root/elog_tail.out | tail -5'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep -ai "SetActivePort" /root/elog_tail.out | tail -5'
 #   erwartet: mindestens eine Zeile (elog-Beleg, dass die Firmware den Port umgeschaltet hat)
 
-ssh root@192.168.8.141 'grep -c CALLBACK /root/C-listen.log'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'grep -c CALLBACK /root/C-listen.log'
 #   erwartet: >= 1  -> /dev/cpu_comm hat DASSELBE Ereignis bekommen
 
-ssh root@192.168.8.141 'uptime; grep -c "Ready: 1" /proc/cpu_comm/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'uptime; grep -c "Ready: 1" /proc/cpu_comm/status'
 #   erwartet: Board lebt, 4 Ready-Flags -> kein Absturz
 
 # 6) Gegenprobe fuer den Ergebnispfad: ein Aufruf, der einen Wert zurueckgibt
-ssh root@192.168.8.141 'echo THal_Vp_GetSource > /sys/kernel/debug/cpu_comm/call; cat /sys/kernel/debug/cpu_comm/call'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'echo THal_Vp_GetSource > /sys/kernel/debug/cpu_comm/call; cat /sys/kernel/debug/cpu_comm/call'
 #   erwartet: comp=0x24efc7c9 nargs=0 -> ok, 1 value(s) 0x…
 #     (der Wert dokumentiert die aktive Quelle; wichtig ist "1 value(s)", also
 #      dass der wortweise Ergebnis-Kopierer laeuft -- doku/67, 64-Bit-Falle)
 
 # 7) Aufraeumen
-ssh root@192.168.8.141 'echo -MipsHalCallback_SignalChange@0 > /sys/kernel/debug/cpu_comm/watch'
-ssh root@192.168.8.141 'kill "$(cat /root/C-listen.pid)" 2>/dev/null; sleep 1; tail -3 /root/C-listen.log'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'echo -MipsHalCallback_SignalChange@0 > /sys/kernel/debug/cpu_comm/watch'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'kill "$(cat /root/C-listen.pid)" 2>/dev/null; sleep 1; tail -3 /root/C-listen.log'
 ```
 
 ### Bestanden, wenn

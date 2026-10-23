@@ -62,4 +62,4 @@ kein Befund.
 (`mips.md` Panel-Zyklus, `arisc.md`, `standby.md`, `hdcp.md`, `known-issues.md`, Board-Seite) und TODO. Nichts gepusht;
 Push-Reihenfolge TODO 1.6 (crust-Fork jetzt mit Kopf `c5b536f`).
 
-Die Box läuft weiter `geucrust2` (WLAN `.245`, UART-ESP `192.168.8.105`, 2001 nur lesen); der Fire-TV-Stick steckt am Eingang.
+Die Box läuft weiter `geucrust2` (WLAN `.245`, UART-ESP `<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, 2001 nur lesen); der Fire-TV-Stick steckt am Eingang.

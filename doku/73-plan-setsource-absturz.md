@@ -12,11 +12,11 @@ prüfen, Listener auf dem Host prüfen (`pgrep -f udp_listen`).
 
 | Was | Wie |
 |---|---|
-| Board | HY310, `ssh root@192.168.8.141` (BatchMode, Key liegt vor). NFS-Root auf diesem Host (`/srv/h713-rootfs`, root-owned, **kein sudo** → Dateien per `scp` nach `/root/`). |
+| Board | HY310, `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>` (BatchMode, Key liegt vor). NFS-Root auf diesem Host (`/srv/h713-rootfs`, root-owned, **kein sudo** → Dateien per `scp` nach `/root/`). |
 | Strom | `sonoff_ctl status\|on\|off\|restart` (Steckdose; `restart` = aus, 5 s, ein). Board hat **keinen Watchdog**, kein Hänger erholt sich von selbst. Nach `restart` ~30-60 s bis ssh. |
 | Restore nach jedem Boot | `bash /root/prep_after_boot.sh > /root/prep.log` (ARISC laden, `cpu_comm`-Modul `/root/hy310-cpu-comm-callwq-test.ko` (aktuell = Modul mit Landezone + Deref-Prüfung, sha `9cb19fe3…`), Module, elog-Level 5, Tail, IRQ-Pinning, Phase 2+3). Dauer ~2 min. Endet mit „SetSource dann mit: …". |
 | UART | gehört dem Nutzer (tio). **Nie selbst öffnen.** Konsole zeigt Oops nur bei `printk ≥ 4 4 1 7`. |
-| MIPS-Log | `elog_tail.py` (Board, CPU 2) → UDP an Host `192.168.8.104:5555`; Kernel-kmsg → `kmsg_udp.py` (CPU 3) → Port 5556. Host-Listener: `python3 analyse/hdmi-seq/udp_listen.py 5555 <log>` (Scratchpad wird bei Compaction **geleert** → Mitschnitte sofort nach `analyse/hdmi-seq/elog-udp-runNN-*.txt`). |
+| MIPS-Log | `elog_tail.py` (Board, CPU 2) → UDP an Host `<geschwaerzt 23.10.2026: Heimnetz-Adresse>:5555`; Kernel-kmsg → `kmsg_udp.py` (CPU 3) → Port 5556. Host-Listener: `python3 analyse/hdmi-seq/udp_listen.py 5555 <log>` (Scratchpad wird bei Compaction **geleert** → Mitschnitte sofort nach `analyse/hdmi-seq/elog-udp-runNN-*.txt`). |
 | Tail-Optionen | `--udp H:P --hb ms --mmio a,b,… --mmio-ms 1 --mmio-force-ms 10 --canary START,LEN --canary-ms 10 --kmsg-exclude '.' --kmsg-level 6`. Änderungen gehen auch als `<4>` nach kmsg. Prozesse per Pidfile beenden; `pkill -f` nur mit `'^python3 /root/…'` (sonst killt es die eigene ssh-Sitzung). |
 | RPC | `python3 /root/rpc_test.py call 0xID` (harmlos: GetSource `0x24efc7c9`); Sequenz: `taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource --source N --portmap stock --gap 500 --pre-source-wait 1 --listen-after 5`. Quellen: 0 Dummy, 1 VideoDec, 2 Image, 3 HDMI_1, 4-6 HDMI_2-4, 7-9 CVBS, 10 ATV. |
 | Vorbereitungen vor einem HDMI-Lauf | `tvfe_enable.py --do` (TVFE-Takte + bus-demod), `elog_uncached_patch.py --do` (greift nur bei I-Cache-Refetch), `smm_init.py --do` (Heap), `landing_zone.py` (Kontrolle). |

@@ -2,7 +2,7 @@
 
 Fortsetzung des Plans aus [69-handoff-20260905.md](69-handoff-20260905.md), nach
 der Klärung der `tvtop`-Frage in [71-tvtop-noetig.md](71-tvtop-noetig.md).
-Alles am Board (`root@192.168.8.141`), Firmware-Belege aus dem
+Alles am Board (`root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`), Firmware-Belege aus dem
 Stock-`display.bin` (md5 `0d2191ca`).
 
 ## Ergebnis in drei Sätzen
@@ -539,7 +539,7 @@ Deshalb zwei Änderungen am Mitschreiber (`elog_tail.py`):
 ## Zwölfter Lauf (06.09.): MIPS-Log per UDP - der MIPS stirbt im Resync der Routine-Tabelle
 
 DRAM-Black-Box fiel aus (U-Boot nullt den ganzen Shmem, `h713_mips.c:3056`).
-Ersatz: `elog_tail.py --udp 192.168.8.104:5555` schickt jede Zeile ungefiltert
+Ersatz: `elog_tail.py --udp <geschwaerzt 23.10.2026: Heimnetz-Adresse>:5555` schickt jede Zeile ungefiltert
 als UDP-Datagramm (USB-Ethernet, 100 Mbit), `udp_listen.py` auf dem Host
 schreibt sie mit Zeitstempel. Damit liegt erstmals der letzte MIPS-Zustand vor
 dem Tod vollständig vor (`scratchpad/elog-udp.log`, Auszug in

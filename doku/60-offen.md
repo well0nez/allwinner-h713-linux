@@ -130,7 +130,7 @@ Herstellers lässt sie also genauso leer, die B-Slots füllt erst ein Android-Up
      den Füllschritt jetzt, wenn der Teil mit den Platzhaltern nicht geschrieben wird - vorher hätte es eine
      1,15-GB-Arbeitskopie gefüllt und weggeworfen.
    - **Ergebnis am Gerät:** `eth0` da, MIPS geladen (`h713-tv` findet card1, CRTC 36, Plane 38, Gamma, Preset),
-     Anzeigekette steht, wartet auf Signal. **Adresse jetzt 192.168.8.141** - vergibt der Router nach der MAC des
+     Anzeigekette steht, wartet auf Signal. **Adresse jetzt *geschwärzt am 23.10.2026: Heimnetz-Adresse*** - vergibt der Router nach der MAC des
      USB-Ethernet-Adapters (`<MAC, nicht abgedruckt>`, `r8152`); der Hostname `hy310` wird per DHCP korrekt mitgeschickt.
      Wer eine feste Adresse will, braucht eine Reservierung im Router auf diese MAC.
 2. **ERLEDIGT - serielle Konsole geht.** Am 11.09. über `tools/uart-capture.py`-Portöffnung mit eigenem Prompt
@@ -400,7 +400,7 @@ die sind board-spezifisch und dürfen bleiben. **Reihenfolge:** entscheiden, dan
 [`107`](107-plan-rootfs.md) Rootfs und [`109`](109-plan-layout-v3.md) Layout v3 sind **am Gerät**: sechs Partitionen,
 Boot-Kette in den ersten 8 MiB, Rootfs 228 MiB auf 7,15 GiB Platz, Bild und Ton laufen, 20 von 20 Kaltstarts sauber.
 zram läuft (461,8 MiB, Fragment `patches/kernel/board/zram.config`), Journal flüchtig, `net.ifnames=0` in der
-Vorgabe (`0025`). **Gerät jetzt 192.168.8.143**, Hostname `hy310`. Layout v2 aus [`108`](108-plan-vendordaten.md)
+Vorgabe (`0025`). **Gerät jetzt *geschwärzt am 23.10.2026: Heimnetz-Adresse***, Hostname `hy310`. Layout v2 aus [`108`](108-plan-vendordaten.md)
 ist damit Geschichte.
 
 **Die Netzwerk-Identität ist gesichert:** der Block in `hy310-keys` (LBA 12288…14335) ist der sunxi Secure Storage
@@ -963,7 +963,7 @@ zustand**, nicht darum, das Fenster zuzumauern.
 ## Infrastruktur
 
 - **Netzstart bleibt als Rückfall.** Das Gerät bootet seit dem 10.09. vollständig von der eMMC; TFTP und NFS auf
-  diesem Rechner (192.168.8.123, Wurzel `tftp/` bzw. `/srv/h713-rootfs`) laufen weiter, damit ein kaputtes Rootfs
+  diesem Rechner (*geschwärzt am 23.10.2026: Heimnetz-Adresse*, Wurzel `tftp/` bzw. `/srv/h713-rootfs`) laufen weiter, damit ein kaputtes Rootfs
   nicht das Ende ist. **Prüfungen ab jetzt vom eMMC**, nur das ist der Release-Zustand.
 - **Keine gepufferte Uhr** - RTC startet 1970, TLS scheitert bis `date -u -s …`.
 - **Kernelbäume:** `mainline/build/` hält nur die GUT-Bäume `a3097ce7`, `e2f6be7c`, `d5fd82a7`, `bad2f16b` (ausgedünnt 09.09., 12 GB);

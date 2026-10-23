@@ -1,5 +1,9 @@
 # WLAN AIC8800D80 — Einschaltleitung und das Stummbleiben am SDIO-Bus
 
+**Stand 23.10.2026:** 0001 ist Kernel-Patch `0155`, 0002 ist `aic8800-0007` der Treiberserie (seit dem 12.09.2026 im Abbild;
+der Weg über den Gerätebaum ist am Gerät nicht eigens gemessen, `docs/subsystems/wifi.md`); 0003 wurde nicht übernommen.
+Der Rest dieser Seite ist der Stand des Vorschlags.
+
 Stand: 12.09.2026. Vorschlag, **nichts davon ist am Geraet getestet**.
 Ausgangspunkt: `analyse/boot/wlan-aic8800-messung-20260912.txt`.
 

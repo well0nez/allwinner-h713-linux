@@ -275,18 +275,18 @@ Für jede Dauer aus `0.2 0.5 1 3 10` (in dieser Reihenfolge, von kurz nach lang)
 ```
 # 1. Pin runter, warten, Pin hoch - Dauer in der Variablen T
 T=0.2
-timeout 30 ssh root@192.168.8.141 "echo 'hpd 0 down' > /sys/kernel/debug/h713-arisc/cmd; \
+timeout 30 ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "echo 'hpd 0 down' > /sys/kernel/debug/h713-arisc/cmd; \
                                    sleep $T; \
                                    echo 'hpd 0 up'   > /sys/kernel/debug/h713-arisc/cmd; echo rc=\$?"
 
 # 2. Was sagt die Quelle? (der ThinkPad an HDMI-1)
-timeout 20 ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'
+timeout 20 ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'
 
 # 3. Kommt das Bild zurück?
 python3 analyse/hdmi-seq/wandcheck.py shot hpd-$T
 
 # 4. Was hat der Treiber gesehen?
-timeout 20 ssh root@192.168.8.141 'cat /sys/kernel/debug/h713-arisc/status; \
+timeout 20 ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/h713-arisc/status; \
                                    cat /sys/kernel/debug/sun50i-h713-hdmirx/status'
 ```
 

@@ -267,34 +267,34 @@ Voraussetzung: FIT mit dem neuen `0091` bauen (`build/build.sh`) und nach `tftp/
 # ---- 0. Vorbedingungen -------------------------------------------------------
 ss -ulnp | grep -w :69                       # TFTP muss lauschen; sonst STOPP
 echo "$(date +%F_%T) hauptsitzung B-hpd-luecke" > /tmp/claude-1000/h713-board.lock
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'   # Ausgangswert notieren
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'   # Ausgangswert notieren
 
 # ---- 1. Kaltstart ------------------------------------------------------------
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
 
 # ---- 2. Prep OHNE Schritt 1 und ohne das alte Modul, dann SetSource ----------
-ssh root@192.168.8.141 "echo 'module sun50i_h713_arisc +p' > /sys/kernel/debug/dynamic_debug/control"
-ssh root@192.168.8.141 "sed -e '/arisc_load.py/d' \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "echo 'module sun50i_h713_arisc +p' > /sys/kernel/debug/dynamic_debug/control"
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "sed -e '/arisc_load.py/d' \
     -e 's#; insmod /root/hy310-arisc-hdmi.ko 2>/dev/null##' \
     /root/prep_after_boot.sh > /root/prep_ohne_arisc.sh && sh /root/prep_ohne_arisc.sh"
-ssh root@192.168.8.141 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it \
      --only setsource --source 3 --portmap stock --gap 500 --pre-source-wait 1 --listen-after 3'
 
 # ---- 3. Karte VOR der Folge lesen (nur SRAM A2, gefahrlos) ------------------
-ssh root@192.168.8.141 'for a in 0x00117248 0x00117250 0x00117258; do busybox devmem $a; done'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'for a in 0x00117248 0x00117250 0x00117258; do busybox devmem $a; done'
 #   Wort = Byte[+0..+3] little-endian: Byte 2 = Pin, Byte 3 = 1<<Pin.
 #   ERWARTET nach Reset/ROM-Vorgabe: 0x01001001 / 0x02012002 / 0x04022004
 #   (Port0 Pin0, Port1 Pin1, Port2 Pin2)
 
 # ---- 4. Die EDID-/HPD-Folge aus dem Kernel ----------------------------------
-ssh root@192.168.8.141 'time sh -c "echo edid > /sys/kernel/debug/h713-arisc/cmd"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'time sh -c "echo edid > /sys/kernel/debug/h713-arisc/cmd"'
 
 # ---- 5. Abnahme -------------------------------------------------------------
-ssh root@192.168.8.141 'cat /sys/kernel/debug/h713-arisc/status'
-ssh root@192.168.8.141 'dmesg | grep -i "h713-arisc" | tail -40'
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'
-ssh user@192.168.8.162 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/h713-arisc/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -i "h713-arisc" | tail -40'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
 ```
 
 **Gutkriterien, alle drei nötig:**
@@ -309,7 +309,7 @@ ssh user@192.168.8.162 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
 ist der nächste und einzige nötige Messschritt der Registerwert **mit** der geprüften Karte:
 
 ```bash
-ssh root@192.168.8.141 'busybox devmem 0x07091014; busybox devmem 0x07091b04'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'busybox devmem 0x07091014; busybox devmem 0x07091b04'
 #   ERWARTET dann 0x00000006 / 0x00000007  (= der Stock-Zustand)
 #   ACHTUNG: erst NACH ResetEDIDModule lesen -- vorher haengt der SoC (doku/82 §9).
 ```

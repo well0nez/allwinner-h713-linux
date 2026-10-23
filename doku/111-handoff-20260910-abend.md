@@ -25,7 +25,7 @@ Anzeige-Artefakte von `hy310-boot` → `ext4load` der Kernel-FIT → `root=PARTL
 | 5 | `hy310-boot` | 16384 | 128 MiB | ext4: `mips/` (19 Artefakte) + `h713-kernel.fit` |
 | 6 | `hy310-rootfs` | 278528 | 7,15 GiB | ext4: Debian trixie, 237 MiB belegt |
 
-**Zugang:** `ssh root@192.168.8.143` - **die Adresse hat sich geändert**, weil der Hostname jetzt `hy310` heißt (vorher
+**Zugang:** `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>` - **die Adresse hat sich geändert**, weil der Hostname jetzt `hy310` heißt (vorher
 `.141`). Serielle Konsole mit Autologin. Der SSH-Schlüssel wurde von Hand eingetragen; das gebaute Rootfs bringt bewusst
 keinen mit.
 
@@ -124,7 +124,7 @@ Aus der Freigabe kommt man nur durch Stromabschalten heraus - das ist der natür
 
 - **Bauen nur im Container `h713-build`**, nie auf dem Host (`doku/50` Abschnitt Bauen). Ein frischer Container braucht
   den LLVM-20-Schritt, `python3-setuptools` und `mmdebstrap`.
-- **Dieser Rechner ist 192.168.8.123** (TFTP-Wurzel `tftp/`, NFS `/srv/h713-rootfs`). `.104` in älteren Notizen war der
+- **Dieser Rechner ist *geschwärzt am 23.10.2026: Heimnetz-Adresse*** (TFTP-Wurzel `tftp/`, NFS `/srv/h713-rootfs`). `.104` in älteren Notizen war der
   vorige Rechner.
 - **UART gehört Marco.** `sudo python3 tools/uart-*.py` funktioniert, aber ein laufendes `tio` muss geschlossen sein -
   zwei Leser teilen sich sonst die Antworten.

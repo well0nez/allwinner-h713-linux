@@ -1,8 +1,8 @@
 # h713-keys - the stock remote's keys
 
 `h713-keys` gives the stock remote's keys their meaning on our image: volume and mute through `h713-tv`, the
-focus through [h713-focus](h713-focus.md), and - once a key is chosen for it - one key that switches between the
-HDMI picture and the console. It reads the Bluetooth LE remote and the IR receiver alike; a dependency-free
+focus through [h713-focus](h713-focus.md), Home for the launcher (below), and - once a key is chosen for it - one key
+that switches between the HDMI picture and the console. It reads the Bluetooth LE remote and the IR receiver alike; a dependency-free
 Python 3 daemon, run by `h713-keys.service`. Source and the key table: `userspace/h713-keys/README.md`.
 
 ```
@@ -18,7 +18,7 @@ h713-keys run            # what the unit runs
 | `KEY_MUTE` | toggles `h713-tv ctl mute`; held down it does not repeat |
 | `KEY_F4` / `KEY_F5` (the BLE remote's focus keys, kernel 0169; IR 0x0251/0x0250, on the HY300's IR remote 0x0098/0x0093) | `h713-focus up/down` with `focus_steps`; one run at a time, presses during a run wait for the next (at most two presses' worth, so a held key keeps the motor going and it stops one run after the release), a press the other way replaces what was waiting. At the end of the travel (`h713-focus` exit 3) the overlay shows the end stop and nothing more is queued that way. The end stop picture is the other direction's: a run up ends with `focus down edge`, a run down with `focus up edge` (the owner's eye at the wall, 16.10.2026: the run he drove down to its stop showed the top edge picture; `doku/213` §6 - his instruction, not a root cause: why the direction is reported the wrong way round is open) |
 | `input_keys` (none by default) | `h713-tv ctl off` (console) when the picture is on automatic, `h713-tv ctl auto` otherwise. The remote has no record key; which key gets this is open |
-| `KEY_POWER` | left alone: logind powers off, or [h713-power](h713-power.md) decides on an image with standby |
+| `KEY_POWER` | left alone: [h713-power](h713-power.md) reads it from the same nodes - a short press shows the countdown, the release powers off into U-Boot's gate |
 | `KEY_HOMEPAGE` | opens the launcher (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
 | Menu, Back, arrows, OK | with the launcher closed: logged once as "recognised, no action yet" (they are Kodi's); OK arrives as `KEY_ENTER` and Menu as `KEY_COMPOSE` (the udev rule below) and is read as `KEY_OK` |
 | `BTN_LEFT` (OK in the remote's mouse mode, where `REL_X`/`REL_Y` move a pointer) | with the launcher open it is read as OK, and the settings page does the same (it reads the remote itself); with both closed it stays a click for Kodi, the desktop and the browser. Host tests only, not yet tried on a box |
@@ -37,6 +37,8 @@ controller. **Up/Down** move (no wrapping), **OK** does what the entry says and 
 mute and focus work as always. It closes by itself after 90 s without a key, and at once when h713-osd no longer shows it (a restart
 under an open launcher): a move, and OK before it starts a row, must be answered `ok` by h713-osd, else the launcher is closed and the
 grab let go, and nothing is started blind.
+
+![The launcher of an image built with --standby: the Standby entry set apart at the foot](../images/launcher/launcher-with-standby.png)
 
 **Nothing happens twice.** While the launcher is open h713-keys holds the remote's two devices with `EVIOCGRAB`, so Kodi (which
 reads them through cage and libinput) gets no key at all; closed, it lets go and everything is as it was. The press of Home
@@ -223,5 +225,6 @@ keys arrive, decode and act - volume, mute, focus, OK, Home, Menu, Back, the arr
 tried and is not needed: 5/5 with either. Host tests: `make test` in `userspace/h713-keys`.
 
 Not measured separately: the Bluetooth side with this daemon (the owner's presses on 11.10. came over IR, the
-remote reconnected over Bluetooth only at the end); which way `KEY_F4` turns the focus on the wall (both
-readings were seen, 02.10. and 03.10.), and which key should switch the input. In the image since 11.10.2026 (`rootfs/install-projekt.sh` 5i, enabled).
+remote reconnected over Bluetooth only at the end), and which key should switch the input; which way `KEY_F4` turns
+the focus was settled at the wall on 16.10.2026 (the table above). In the image since 11.10.2026
+(`rootfs/install-projekt.sh` 5i, enabled), on both boards with `v0.97-beta`.

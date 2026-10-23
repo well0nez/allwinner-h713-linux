@@ -66,7 +66,7 @@ ohne Kamera vollständig benutzbar ist.
 ## 2. Harte Regeln - Verstoß macht die Arbeit wertlos
 
 **Kein Zugriff auf die Hardware.** Du fasst das Board **nicht** an. Konkret verboten:
-`ssh root@192.168.8.141`, `ssh user@192.168.8.162`, `sonoff_ctl`, `tio`, `/dev/ttyACM0`, `scp` zum
+`ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, `ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, `sonoff_ctl`, `tio`, `/dev/ttyACM0`, `scp` zum
 Board, alles in `tftp/`. Der Grund ist nicht Bürokratie: an diesem Motor kann man mechanischen
 Schaden anrichten, und es läuft parallel eine andere Sitzung auf demselben Gerät. Deine Arbeit ist
 **Reverse Engineering und Code**. Der Hardwaretest passiert später und unter Aufsicht.

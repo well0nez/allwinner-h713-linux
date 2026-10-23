@@ -125,13 +125,13 @@ Vermutung aus K5), (d) ob die PQ-RPCs auf unserem Source-0-Bild überhaupt sicht
 ### Schritt 0 - Werkzeug aufs Board
 
 ```bash
-scp /opt/Projekte/h713/analyse/hdmi-seq/pq_probe.py root@192.168.8.141:/root/
+scp /opt/Projekte/h713/analyse/hdmi-seq/pq_probe.py root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/root/
 ```
 
 ### Schritt 1 - Grundzustand lesen (nur lesen)
 
 ```bash
-ssh root@192.168.8.141 'python3 /root/pq_probe.py show'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py show'
 ```
 
 **Erwartung / Abbruchkriterium:** Die erste Zeile nennt `0x0500121C`. Steht dort ein Wert, dessen
@@ -143,13 +143,13 @@ gültiges Ergebnis, bitte notieren.
 ### Schritt 2 - Kontrast: der belegte Fall zuerst
 
 ```bash
-ssh root@192.168.8.141 'python3 /root/pq_probe.py dump /root/pq-a.txt'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py dump /root/pq-a.txt'
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot pq_vorher
-ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetContrast 20'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py rpc SetContrast 20'
 sleep 1
-ssh root@192.168.8.141 'python3 /root/pq_probe.py dump /root/pq-b.txt'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py dump /root/pq-b.txt'
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot pq_contrast20
-ssh root@192.168.8.141 'python3 /root/pq_probe.py diff /root/pq-a.txt /root/pq-b.txt'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py diff /root/pq-a.txt /root/pq-b.txt'
 ```
 
 **Erwartung:** `diff` meldet eine Änderung an `0x05001234` in den **oberen 16 Bit**. Das bestätigt die
@@ -158,9 +158,9 @@ Tabelle. Wandbild bitte **ansehen** (Read), nicht nur die Kennzahl.
 ### Schritt 3 - Helligkeit: die offene Vermutung
 
 ```bash
-ssh root@192.168.8.141 'python3 /root/pq_probe.py probe SetBrightness 20'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py probe SetBrightness 20'
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot pq_bright20
-ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetBrightness 50'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py rpc SetBrightness 50'
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot pq_bright50
 ```
 
@@ -173,9 +173,9 @@ bitte die Adresse notieren, sie ist dann direkt die Antwort auf K5.
 ### Schritt 4 - Wirkung auf Source 0 (die eigentliche Frage für Paket I)
 
 ```bash
-ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetSaturation 0'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py rpc SetSaturation 0'
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot pq_sat0
-ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetSaturation 50'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py rpc SetSaturation 50'
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot pq_sat50
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py diff pq_sat0 pq_sat50
 ```
@@ -188,10 +188,10 @@ aus doku/85 A.7 bestätigt: zwei getrennte Regler.
 ### Schritt 5 - zurückstellen
 
 ```bash
-ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetContrast 50'
-ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetBrightness 50'
-ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetSaturation 50'
-ssh root@192.168.8.141 'python3 /root/pq_probe.py show'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py rpc SetContrast 50'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py rpc SetBrightness 50'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py rpc SetSaturation 50'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py show'
 ```
 
 ### Optional, wenn noch Zeit ist (K6, reines Lesen)
@@ -201,7 +201,7 @@ vielleicht direkt:
 
 ```bash
 mkdir -p /opt/Projekte/h713/re/captures/weltneuheit/ours-20260907-nacht
-ssh root@192.168.8.141 "python3 /root/pq_probe.py blocks \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "python3 /root/pq_probe.py blocks \
     0x05240000 0x200  0x0524C000 0x200 \
     0x05280000 0x200  0x05280080 0x200 \
     0x05288000 0x200  0x0529C000 0x200 \

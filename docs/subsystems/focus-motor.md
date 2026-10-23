@@ -4,7 +4,8 @@ A stepper motor drives the lens focus, controlled through the `hy310-focus-motor
 (`motor_ctrl`, four phase lines plus one sensor) and moved by hand with
 [`h713-focus`](../tools/h713-focus.md) or searched by
 [`h713-autofocus`](../tools/h713-autofocus.md). Since 12.09.2026 the driver loads and enables the
-node by default, but touches nothing until told to move.
+node by default; since 23.09.2026 (patch `0165`) it homes the mechanism at probe, as stock does, and
+otherwise touches nothing until told to move.
 
 ## PH14 is a range watcher, not an end switch
 
@@ -36,13 +37,14 @@ a zero and read it back:
 echo 0 > /sys/devices/platform/motor-ctr/motor_ctrl_no_limit   # 0 = watcher on, 1 = bypassed
 ```
 
-## Homing is off by default
+## Homing at probe
 
-Only the lower edge has ever been observed. Homing starts by driving up to 100 msteps **upward**
-first, straight at the mechanical stop; if that direction's watcher edge turns out not to exist or not
-to fire, the driver never reverses and the run ends by driving into the stop. Until the upper edge is
-measured, `homing=0` is the shipped default (patch `0156`) - the module still loads and exposes sysfs
-on every boot, it just never drives the mechanism on its own.
+Homing starts by driving up to 100 msteps **upward** first, straight at the mechanical stop, and relies on
+the watcher's upper edge to reverse. While only the lower edge had been observed, `homing=0` was the shipped
+default (patch `0156`, 12.09.2026): the module loaded and exposed sysfs, and never drove the mechanism on
+its own. On 23.09.2026 the upper edge was measured, with the pad's pull-up (`0164`, below), and `0165` turns
+homing at probe on again, as stock has it: a boot walks the mechanism back into range. The module parameter
+`homing=0` switches it off.
 
 ## `step` is a counter, not a position
 

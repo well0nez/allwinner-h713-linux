@@ -27,9 +27,9 @@ The numbers depend on probe order (`video0` Cedrus, `video1` HDMI-RX). The safe 
 | `camset.py DEV ID [VALUE]` | read or set one V4L2 control (IDs in `analyse/hdmi-seq/camctl.py`) |
 
 ```bash
-scp camgrab.py root@192.168.8.141:/tmp/
-ssh root@192.168.8.141 'python3 /tmp/camgrab.py /dev/video2 /tmp/foto.ppm 640x480 30'
-scp root@192.168.8.141:/tmp/foto.ppm . && python3 -c "from PIL import Image; Image.open('foto.ppm').save('foto.png')"
+scp camgrab.py root@hy310:/tmp/
+ssh root@hy310 'python3 /tmp/camgrab.py /dev/video2 /tmp/foto.ppm 640x480 30'
+scp root@hy310:/tmp/foto.ppm . && python3 -c "from PIL import Image; Image.open('foto.ppm').save('foto.png')"
 ```
 
 ## The quirk, measured 11.09.

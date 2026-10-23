@@ -1,7 +1,7 @@
 # Paket F - `hy310-tv` (offline: Entwurf + Gerüst)
 
-**Agent:** Unteragent F (offline). **Kein Board angefasst:** kein `ssh root@192.168.8.141`, kein
-`ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts nach
+**Agent:** Unteragent F (offline). **Kein Board angefasst:** kein `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein
+`ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts nach
 `tftp/`. Kein `sudo`, kein `git commit`/`push`. **`patches/kernel/series` nicht angefasst**,
 `build/build.sh` nicht aufgerufen, **kein Kernel-Patch** (F ist Userspace, nichts unter
 `mainline/patches/`). `/srv/h713-rootfs` nur **gelesen**. Uhrzeiten vom Arbeitsrechner
@@ -114,7 +114,7 @@ hinter den Treibern, und über V4L2 ist heute keiner davon auslösbar (0094 hat 
 Mein Auftrag sagte, `v4l2-ctl`, `modetest` „und vermutlich auch GStreamer" seien auf dem Board-Rootfs
 nicht installiert; `nachtlog/E-v4l2.md` §6 schreibt „auf dem Board sind beide Werkzeuge nicht
 installiert". Nachgesehen im exportierten NFS-Root (`/etc/exports`: `/srv/h713-rootfs
-192.168.8.0/24(rw,…)`, also **das** Board-Root, nur gelesen):
+*geschwärzt am 23.10.2026: Heimnetz-Adresse*(rw,…)`, also **das** Board-Root, nur gelesen):
 
 | Werkzeug | Stand | Beleg |
 |---|---|---|
@@ -235,42 +235,42 @@ install -D -m 0644 /opt/Projekte/h713/userspace/hy310-tv/99-hy310-tv.rules \
 
 # --- 1. Kaltstart ------------------------------------------------------------
 ss -ulnp | grep -w :69 || { echo "TFTP laeuft nicht -- STOPP, Nachtlog, nicht reparieren"; exit 1; }
-sonoff_ctl restart --host 192.168.8.179                      # ~40 s bis SSH
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
-ssh root@192.168.8.141 'cut -d" " -f1 /proc/uptime'          # < 60 = echter Kaltstart
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>                      # ~40 s bis SSH
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cut -d" " -f1 /proc/uptime'          # < 60 = echter Kaltstart
 
 # --- 2. Kam alles hoch? KEIN prep_after_boot.sh, KEIN hdmi_seq.py ------------
-ssh root@192.168.8.141 'dmesg | grep -E "h713-arisc|cpu_comm|hdmirx|afbd" | tail -30'
-ssh root@192.168.8.141 'ls -l /dev/video* /dev/dri/*'
-ssh root@192.168.8.141 'systemctl status hy310-tv --no-pager -l | head -20'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -E "h713-arisc|cpu_comm|hdmirx|afbd" | tail -30'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'ls -l /dev/video* /dev/dri/*'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'systemctl status hy310-tv --no-pager -l | head -20'
 # erwartet: active (running), gestartet von der udev-Regel, ohne Handgriff.
 
 # --- 3. Stecker rein: Bild ohne Handgriff ------------------------------------
 #  Ersatz fuer das Stecken (echtes Stecken kann nur Marco):
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --auto'
 sleep 8
-ssh root@192.168.8.141 'journalctl -u hy310-tv -n 15 --no-pager'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'journalctl -u hy310-tv -n 15 --no-pager'
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-bild
 #  Und weil Standbild nicht Stillstand ist -- LEBENDIGKEIT mit Reiz pruefen:
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:0.2:0.2'; sleep 3
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:0.2:0.2'; sleep 3
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-bild-reiz
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:1:1'; sleep 3
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:1:1'; sleep 3
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-bild-zurueck
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py diff F-bild F-bild-reiz
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py diff F-bild F-bild-zurueck
 
 # --- 4. Stecker raus: Konsole ------------------------------------------------
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --off'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --off'
 sleep 8
-ssh root@192.168.8.141 'journalctl -u hy310-tv -n 10 --no-pager'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'journalctl -u hy310-tv -n 10 --no-pager'
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-konsole
 
 # --- 5. Und wieder rein (Wiederholbarkeit) -----------------------------------
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 10
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 10
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-bild2
 
 # --- 6. Sauberes Beenden -----------------------------------------------------
-ssh root@192.168.8.141 'systemctl stop hy310-tv'; sleep 3
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'systemctl stop hy310-tv'; sleep 3
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot F-nach-stop
 ```
 
@@ -298,7 +298,7 @@ liegt der Fehler auf der Capture-Seite, nicht in Plane, Mux oder Panel. Ergebnis
 | Commit `EOPNOTSUPP` | `memory-region-names = "hdmi-ring", "viddec-info"` fehlt am Display-Knoten | DTB prüfen (D §3) |
 | Commit `EINVAL` | Geometrie ≠ Modus, Modifier, Zeilenabstände oder Breite | D §5 |
 | `SET_MASTER: … ein anderer Client haelt die Anzeige` | jemand anders ist DRM-Master (X, ein hängendes `hdmi_plane_test`) | den anderen Client beenden |
-| **`der Ring steht seit dem Einschalten der Plane still`** | **der erwartete Descriptor-Effekt** (A.5) - die Wand zeigt ein Standbild | einmal von Hand freigeben, dann Schritt 3 wiederholen: `ssh root@192.168.8.141 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; sleep 1; python3 arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'` (0,3 s reichen, M4). **Das ist ein Befund für D/E (§6 Punkt 1), kein Fehler von F** |
+| **`der Ring steht seit dem Einschalten der Plane still`** | **der erwartete Descriptor-Effekt** (A.5) - die Wand zeigt ein Standbild | einmal von Hand freigeben, dann Schritt 3 wiederholen: `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; sleep 1; python3 arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'` (0,3 s reichen, M4). **Das ist ein Befund für D/E (§6 Punkt 1), kein Fehler von F** |
 | `Quellgeometrie … passt nicht zum Panel-Modus …` | Quelle liefert nicht 1920×1080 | K3/A.6 Punkt 4; Zuspieler auf 1080p60 stellen |
 
 **Marcos Handgriff, wenn er da ist:** dasselbe wie Schritt 3-5, aber mit dem **echten** Kabel am Beamer

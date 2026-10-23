@@ -24,7 +24,7 @@ Die Kamera an Port 1 gehört zum Gerät, vermutlich für Autofokus und Keystone.
 
 ## Auf dem PC
 
-Adresse: **192.168.8.104** (per DHCP, `enp9s0`). Sie steht fest im
+Adresse: ***geschwärzt am 23.10.2026: Heimnetz-Adresse*** (per DHCP, `enp9s0`). Sie steht fest im
 Environment des Geräts - ändert sie sich, bootet nichts mehr. Eine feste
 Zuordnung im Router wäre die saubere Lösung.
 
@@ -51,7 +51,7 @@ h713-kernel-netboot.fit   der für Netboot (r8152 fest eingebaut)
 `nfs-kernel-server` ist installiert. Export in `/etc/exports`:
 
 ```
-/srv/h713-rootfs 192.168.8.0/24(rw,sync,no_subtree_check,no_root_squash,insecure)
+/srv/h713-rootfs <geschwaerzt 23.10.2026: Heimnetz-Adresse>(rw,sync,no_subtree_check,no_root_squash,insecure)
 ```
 
 `no_root_squash` ist zwingend, sonst darf root auf dem Gerät nichts schreiben.
@@ -68,14 +68,14 @@ setuid-Binaries.
 Alles mit `saveenv` auf der eMMC, überlebt Neustarts:
 
 ```
-serverip = 192.168.8.104
+serverip = <geschwaerzt 23.10.2026: Heimnetz-Adresse>
 bootfile = h713-kernel-netboot.fit
 autoload = no
 bootargs = console=ttyS0,115200 earlycon root=/dev/nfs rw
-           nfsroot=192.168.8.104:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait
+           nfsroot=<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait
            clk_ignore_unused pd_ignore_unused cma=128M
 bootcmd  = h713_disp auto 0x30 logo; dhcp;
-           tftpboot 0x60000000 192.168.8.104:${bootfile}; bootm 0x60000000
+           tftpboot 0x60000000 <geschwaerzt 23.10.2026: Heimnetz-Adresse>:${bootfile}; bootm 0x60000000
 ```
 
 Vier Dinge daran sind teuer gelernt:
@@ -85,7 +85,7 @@ scheitert.
 
 **Die Server-IP steht literal in `bootcmd`, nicht als `${serverip}`.** `dhcp`
 überschreibt `serverip` mit dem, was der DHCP-Server anbietet - hier der
-Router unter 192.168.8.1. Die Variable zeigt danach auf die falsche Adresse.
+Router unter *geschwärzt am 23.10.2026: Heimnetz-Adresse*. Die Variable zeigt danach auf die falsche Adresse.
 
 **`clk_ignore_unused pd_ignore_unused` sind nicht optional.** Ohne sie nimmt
 Linux beim `clk_disable_unused` PLL_VIDEO2, die Display-Modtakte und den

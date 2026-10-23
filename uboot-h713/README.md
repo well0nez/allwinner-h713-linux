@@ -3,9 +3,9 @@
 **The patch files here are generated, not maintained** (since 12.09.2026, P3):
 `git format-patch --no-signature 8fe568cdfc46..<head>` in the submodule checkout
 `mainline/external/u-boot` (branch `h713-hy310`, base is cstenger's `h713`),
-last regenerated on 10.10.2026 at the head `61ea018712c8` (101 patches). Verified the
-way a mirror should be: applying all 101 from the base produces a tree with the same
-hash as the head (`595b6941482e`; before: 100 patches, head `7b1ea388da0d`, tree `9ed108eda593`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31,
+last regenerated on 22.10.2026 at the head `daa35622b0bf` (102 patches). Verified the
+way a mirror should be: applying all 102 from the base produces a tree with the same
+hash as the head (`ca817b83e490`; before: 101 patches, head `61ea018712c8`, tree `595b6941482e`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31,
 `0097` names the gate word of a standby that did not finish (`doku/179`), `0098` - `0100` are the HDCP
 hardening (no `h713_hdcp14_wait`, the record staged where EL3 says and one write per boot, the guard
 through the watchdog driver; measured over FEL, `doku/180`). `0101` hands a cold start's wait to crust, when crust can power off (`doku/191`). `0102` lets the remote's power key (both stock remotes, NEC) start the board from the gate, where no crust runs (22.10.2026, tested over FEL on the HY300PRO-G-EU). `SERIES.txt` names base,
@@ -76,7 +76,7 @@ bus 1, eMMC at HS400 with all 26 partitions. The panic at the end is expected -
 
 ## Playing them back
 
-The series lies next to this file as 82 `git format-patch` files on `8fe568cdfc4`.
+The series lies next to this file as 102 `git format-patch` files on `8fe568cdfc4`.
 How many of them are upstream as PR #1, and what the rest is, is stated once in
 [`docs/uboot/README.md`](../docs/uboot/README.md).
 
@@ -85,7 +85,7 @@ cd mainline/external/u-boot
 git am ../../../uboot-h713/00*.patch
 ```
 
-The working tree is on branch `h713-hy310` (17.09.2026: head `da74b89`, 82 commits
+The working tree is on branch `h713-hy310` (22.10.2026: head `daa35622b0bf`, 102 commits
 on `8fe568c`); the patches are the mirror, not the source. A board still in test can
 have a branch of its own next to it (`hy300-pro-ab`), which this mirror does not carry.
 

@@ -23,8 +23,8 @@ Einstieg fuer die naechste Sitzung. Alles hier ist entweder gemessen (mit Fundst
 
 | Was | Wie |
 |---|---|
-| SSH | `ssh hy300pro` (root, `~/.ssh/id_ed25519`, WLAN STA im Heimnetz, DHCP **192.168.8.246**; Alias in `~/.ssh/config`) |
-| UART | `nc 192.168.8.180 2000` (ser2net am Orange Pi). **Der Adapter haengt jetzt am HY300 Pro, nicht mehr am HY310.** Nur ein Client gleichzeitig - wer mitschneidet, blockiert Marco. Mitschnitte: `umbau/work/_geu1-build/uart/` |
+| SSH | `ssh hy300pro` (root, `~/.ssh/id_ed25519`, WLAN STA im Heimnetz, DHCP ***geschwärzt am 23.10.2026: Heimnetz-Adresse***; Alias in `~/.ssh/config`) |
+| UART | `nc <geschwaerzt 23.10.2026: Heimnetz-Adresse> 2000` (ser2net am Orange Pi). **Der Adapter haengt jetzt am HY300 Pro, nicht mehr am HY310.** Nur ein Client gleichzeitig - wer mitschneidet, blockiert Marco. Mitschnitte: `umbau/work/_geu1-build/uart/` |
 | FEL | FEL-Taste halten, Strom an; A-auf-A-Kabel speist parallel (vor Stromzyklus ziehen). `sudo -n` ist auf dem Host passwortlos |
 | Desktop-Automount | Cinnamon haengt die eMMC sofort schreibbar ein (am 02.10. Journal-Recovery auf zwei Android-Partitionen). Gegenmittel ohne Einstellungsaenderung: `umbau/work/_geu1-build/ro-guard2.sh` (setzt Platte + Partitionen sofort ro, haengt aus) |
 | WLAN | Marco hat `/etc/h713/wifi.env` selbst auf STA gestellt (Passwort nie von Claude eingeben) |

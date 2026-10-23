@@ -3,11 +3,13 @@
 One command turns a clean clone into a flashable image:
 
 ```bash
-release/build-all.sh --version v0.96-beta --vendor <output of h713-extract>
+CRUST_SRC=<checkout of the head crust-h713/SERIES.txt names> \
+  release/build-all.sh --version v0.97-beta --board hy310 --profile media,desktop --vendor <output of h713-extract>
 ```
 
-Eleven steps: TF-A BL31; U-Boot (release, installer, probe, and `sunxi-fel`); kernel with the patch series;
-AIC8800 modules; a pinned Debian keyring; an arm64 sysroot with `h713-tv`, `h713-afmetric` and `h713-warp` cross-built against it; mesa for the GPU path (panfrost only);
+That is the release image since `v0.97-beta`: the base system plus the `media` and `desktop` profiles (Kodi, the desktop,
+the browser, the VA-API driver). Eleven steps: TF-A BL31; crust; U-Boot (release, installer, probe, and `sunxi-fel`); kernel with the patch series;
+AIC8800 modules; a pinned Debian keyring; an arm64 sysroot with `h713-tv`, `h713-afmetric`, `h713-warp`, `h713-osd` and `h713-settings` cross-built against it; mesa for the GPU path (panfrost only);
 the Debian 13 root filesystem; the ext4 inputs; the image; verification; a build stamp. With
 `--vendor` it ends in `ALL GREEN` - the self-test compared every extracted file against the image -
 or it stops. Without `--vendor` it ends after the structural check, which is a weaker statement.
@@ -28,10 +30,11 @@ built. Everything runs in a container; **nothing is built on your host**.
 empty target directories either way - but the self-test cannot copy a real file set in and read it back.
 With it, the self-test copies every extracted file through `h713.mountfs` and compares it byte for byte.
 
-The PC tools have a golden suite of their own: `bash installer/tests/run.sh` (372 tests; those that need the
-vendor fixtures and the three vendor images skip without `--local`, which adds them), and
-`python3 tools/check-py39.py` holds the installer against the Python 3.9 that FLASHING.md promises. Every push is preceded by
-`release/sperr-scan.py`, which fails if a vendor blob, a key, a dump or an image reached the tree.
+The PC tools have a golden suite of their own: `bash installer/tests/run.sh` (about 470 tests; those that need the
+vendor fixtures and the vendor images skip without `--local`, which adds them), and
+`python3 tools/check-py39.py` holds the installer against the Python 3.9 that FLASHING.md promises. Every commit is
+preceded by `release/tor.sh` (`--tests` adds the suites), and every push by `release/sperr-scan.py`, which fails if a
+vendor blob, a key, a dump, an image or a private identity reached the tree.
 
 ## Useful switches
 
@@ -69,11 +72,10 @@ no image for a board nobody has tested (doku/121 §5): boards/hy300-t08 is STATU
 
 A verified board that names no installer profile is refused as well, because `h713-install`
 identifies the device before it writes and would have nothing to identify it against. Today that
-leaves exactly one board: `hy310`. The other five are `profile-only` or `partial` - including the
-HY200 QZ713DF A1, cstenger's bench board, which he has booted in his own tree and whose HY300PRO-G-EU
-firmware variant has run test images of ours, without a green run reported yet. Four of the five now carry an installer profile read out of a stock image; that describes the
-board, it does not test it, and `--board` still refuses them. The table is in
-[STATUS.md](STATUS.md), *Boards*.
+leaves two: `hy310`, and the HY200 QZ713DF A1 with its firmware variant `projector05061226` (the HY300PRO-G-EU,
+verified 11.10.2026: `--board hy200-qz713df-a1 --variant projector05061226`). Its other variant and the other four boards are
+`profile-only` or `partial`; each carries an installer profile read out of a stock image or a probe run, which describes the
+board and does not test it, and `--board` still refuses them. The table is in [STATUS.md](STATUS.md), *Boards*.
 
 There is one named way past that refusal, and it does not weaken it: `--test-image`. A board that is
 `partial` or `profile-only` but has a `PROFILE`, a `KERNEL_DTB` and a U-Boot base can be built for on
@@ -92,19 +94,18 @@ the eMMC ([docs/tools/h713-probe.md](docs/tools/h713-probe.md)). It gets no FIT 
 leaves `KERNEL_DTB` empty for a board we have no device tree for, and `build.sh kernel` refuses
 rather than ship one written for a different board.
 
-## The media image
+## The profile image, which is the release
 
-```bash
-CRUST_SRC=<checkout of the head crust-h713/SERIES.txt names> \
-  release/build-all.sh --board hy310 --version vX.Y --profile media,desktop
-```
-
-Without `--standby`, as the release: the vendor ARISC firmware, no standby, crust as the experimental choice
-(TODO 2.42); with it, the image runs crust and offers the standby. crust is not a submodule, so `CRUST_SRC=` names its checkout (`crust-h713/README.md` says how to make one). A profile adds the VA-API driver, cross-built before the
-rootfs (`rootfs/libva/build-libva.sh`) and laid in with the package lists and overlays of the profiles; the image is named `<name>-<version>-media-desktop` and the stamp says
-`profile:` and `libva:`. The tree of `media,desktop` is about 1.1 GiB (1152 MiB with Firefox), so a profile image gets a **2 GiB** rootfs file system (the base image keeps 1 GiB; either
-grows to the partition at the first start). The build container is the one of
-[docs/build-container.md](docs/build-container.md) (its recipe has `libwayland-dev` and `libfreetype-dev`, which the profile needs). Measured 16.10.2026: 20 minutes with the downloads cached, 44 minutes cold (`doku/212` §7). A profile image is not a release image.
+`--profile media,desktop` is what a release is built with since `v0.97-beta` (the owner's decision of 23.10.2026, the
+merge of the `medien` branch). Without `--standby`, as the release: the vendor ARISC firmware, no standby, crust as the
+experimental choice (`TODO.md` 2.42); with `--standby` the image runs crust and offers the standby ([standby](docs/subsystems/standby.md)).
+crust is not a submodule yet, so `CRUST_SRC=` names its checkout (`crust-h713/README.md` says how to make one; the fork is published with the release).
+A profile adds the VA-API driver, cross-built before the rootfs (`rootfs/libva/build-libva.sh`), and lays in the package lists and overlays of the profiles; the image is named
+`<name>-<version>-media-desktop` and the stamp says `profile:` and `libva:`. The tree of `media,desktop` is about 1.1 GiB, so a profile image gets a **2 GiB** rootfs file system
+(the base image keeps 1 GiB; either grows to the partition at the first start). The build container is the one of
+[docs/build-container.md](docs/build-container.md) (its recipe has `libwayland-dev` and `libfreetype-dev`, which the profile needs). Measured: 35 minutes for each board's
+`v0.97-beta` from a fresh worktree with the downloads cached (22.10.2026, `doku/219` §5), 44 minutes cold (`doku/212` §7). The stamp's `profile:` line still
+calls such an image "not a release image" (the 500 MiB rule of the base image); that sentence is a left-over, `TODO.md` 1.8.
 
 ## What comes out
 
@@ -166,4 +167,5 @@ mean. `release/build-all.sh` always passes one.
 changing the series or the defconfig gives you a new tree instead of a confusing half-rebuild.
 How the series is organised, and how to add a patch: [docs/kernel-patches.md](docs/kernel-patches.md).
 
-Details: `doku/50-befehle.md` (the full command collection, German), `doku/116-plan-release-repo.md` §4a.
+Details: `doku/50-befehle.md` (the full command collection, German), `doku/116-plan-release-repo.md` §4a, `doku/212` §7 and
+`doku/219` §5 (the profile builds).

@@ -14,7 +14,7 @@ Nichts gepusht; `main` lokal 112 Commits vor GitHub.
   Geraetesicherung), Lieferung = Bericht + Patches + Kompilat, `release/tor.sh && git commit`, Identitaet
   nur noreply, kein Push ohne Marco, UART ein Client.
 - **Sitzungen gehoeren in `/opt/Projekte/h713`:** Auto-Memory (64 Eintraege) und MemPalace-Hooks haengen am
-  Startordner; aus `/home/user` gestartete Sitzungen (05.10. abends, 06.10. frueh) bekamen beides nicht.
+  Startordner; aus `<geschwaerzt 23.10.2026: lokaler Pfad>` gestartete Sitzungen (05.10. abends, 06.10. frueh) bekamen beides nicht.
   Memory zusammengefuehrt, zwei Transkripte von Hand eingelesen (131 808 Drawers).
 - **Forks:** Submodul-Remotes TF-A/sunxi-tools per `git submodule sync` wieder auf GitHub; Identitaets-Hooks
   gelten in den Forks; `pre-push` prueft nur noch, was ein Push hinzufuegt (Upstream-Baeume tragen fremde

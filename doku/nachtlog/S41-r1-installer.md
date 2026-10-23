@@ -226,7 +226,7 @@ Wenn der eMMC-Boot steht: die 20 Kaltstarts aus Paket R5.
 schreibt nichts; scharf: 12 Variablen am Release-Ort, `bootcmd` neu, `h713_gate=0`/`ethaddr` übernommen, Quelle unverändert; zweiter Lauf
 „bereits genau so - nichts geschrieben"; `scan` danach meldet beide Orte. `bash -n` und `--dry-run --steps env` sauber.
 
-**Am Gerät erledigt (10.09. 00:55):** v4 geflasht (`doku/20` Weg 4 über UART), `reset`, `h713_gate=0`, `serverip=192.168.8.123`, `saveenv`.
+**Am Gerät erledigt (10.09. 00:55):** v4 geflasht (`doku/20` Weg 4 über UART), `reset`, `h713_gate=0`, `serverip=<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, `saveenv`.
 Precheck aus dem Netboot-Linux (`--dry-run --steps precheck --uboot-bin /root/hy310/uboot-proper-gate-v4.bin --no-backup --yes`):
 „✓ U-Boot proper bei LBA 4828160 ist byteidentisch mit … (886137 Byte)", „✓ gültige Env am Release-Ort 0x93d80000 (75 Variablen:
 h713_boot=emmc h713_gate=0 bootcmd=ja)", „! gültige Env am 2-GiB-Zwilling 0x65d80000 (80 Variablen …)" - der Rest des alten U-Boot, erwartet.

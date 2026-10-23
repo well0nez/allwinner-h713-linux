@@ -13,9 +13,10 @@ build powers off through crust too, `doku/190`). Before: 87 patches, tree `34a48
 (10.10.; 0082-0087 the power off through crust, `doku/188`); 81 patches, tree `bba95d32ccea`, head `c5b536f`
 (10.10.); up to `ecf2ddc`, 80 patches, tree `2df473047ec5` on 09.10.
 
-**Not published yet.** The fork has no public repository so far, and there is no submodule
-`mainline/external/crust`; `release/build-all.sh` takes the checkout from `CRUST_SRC=<dir>` until there
-is one. A checkout made from this mirror:
+**Published with `v0.97-beta`** (the release pushes the forks first, `TODO.md` 1.6) as the repository `crust`
+under the same account as this one, branch `h713`, head `54e4a08ab9f3`. There is no submodule
+`mainline/external/crust` yet (`TODO.md` 5.15); `release/build-all.sh` takes the checkout from `CRUST_SRC=<dir>`:
+a clone of the fork, or a checkout made from this mirror:
 
 ```sh
 git clone https://github.com/crust-firmware/crust crust   # a full clone: the version text needs its tags
@@ -30,12 +31,14 @@ build container mounts. A worktree or a `git clone --shared` works too: build-al
 the git directory itself (`GIT_DIR`, `GIT_WORK_TREE`), so crust's version text names the commit and not
 `v0.6.10000` with an `unknown` hash.
 
-**Merged only as one piece.** `CRUST_DEFCONFIG` in `boards/hy310/board.env` goes into `main` only together
-with three other things: the crust source (this fork as a submodule, or the mirror as above), the HY310
-device tree that names `hy310-crust.bin` for the arisc node, and the U-Boot patch that stages `scp.bin` for
-BL31 (`SUNXI_SCP_BASE`). Without the source `build-all` stops before step 1; without the other two, step 10
-refuses the image. `release/tor.sh` and `boards/check.sh` do not see that order, so it is stated here,
-in `board.env` and in `TODO.md` 3.2.
+**What the image does with it.** `CRUST_DEFCONFIG` in `boards/<id>/board.env` names the variant that is built
+(the HY310 and the HY200 QZ713DF A1 have one). Since 22.10.2026 the release image runs the vendor's ARISC firmware
+by default and carries crust's `scp.bin` in the rootfs only, as the experiment that `h713-arisc set crust` switches
+on ([h713-arisc](../docs/tools/h713-arisc.md), `doku/218`, `doku/219`); `release/build-all.sh --standby` puts crust
+into the release FIT, builds BL31 with `SYSTEM_SUSPEND` and lets the rootfs suspend. Three things belong together
+for that: the crust source, the board's device tree naming `hy310-crust.bin` for the arisc node (kernel `0206`,
+`0246`) and the U-Boot patch that stages `scp.bin` for BL31 (`0096`, `SUNXI_SCP_BASE`). Without the source
+`build-all` stops before step 1; without the other two, step 10 refuses the image.
 
 ## What it is
 

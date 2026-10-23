@@ -15,8 +15,8 @@ for instance, lives under `hy200-qz713df-a1`.
 | Board id | Sold as | DRAM | Panel | State |
 |---|---|---|---|---|
 | [`hy310`](hy310/) | MagCubic HY310 | DDR3 792 MHz | 1920×1080 dual (0x30) | **verified** |
-| [`hy300-pro`](hy300-pro/) | MagCubic HY300 Pro (2024) | DDR3 636 MHz | 1280×720 (0x34) | in test |
-| [`hy200-qz713df-a1`](hy200-qz713df-a1/) | HY300PRO-G-EU · "HY300 Pro+" (2025) · cstenger's bench board | DDR3 792 / 624 MHz | 1280×720 (0x34) | in test |
+| [`hy300-pro`](hy300-pro/) | MagCubic HY300 Pro (2024) | DDR3 636 MHz | 1280×720 (0x34) | in test (`test11`, 22.10.2026; the owner's report outstanding) |
+| [`hy200-qz713df-a1`](hy200-qz713df-a1/) | HY300PRO-G-EU · "HY300 Pro+" (2025) · cstenger's bench board | DDR3 792 / 624 MHz | 1280×720 (0x34) | **verified** for the HY300PRO-G-EU's firmware `projector05061226` (11.10.2026; a release image since `v0.97-beta`); the 2025-09 firmware profile only |
 | [`hy200-qz713-v2`](hy200-qz713-v2/) | "HY300 Pro+" (2025, LPDDR3) | LPDDR3 720 MHz | 1280×720 (0x34) | profile only |
 | [`hy300-t08`](hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280×720 (0x34) | profile only |
 | [`hy350`](hy350/) | HY350 (2024) | DDR3 792 MHz | 1920×1080 (0x30) | profile only |

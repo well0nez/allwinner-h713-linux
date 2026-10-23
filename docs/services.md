@@ -18,8 +18,8 @@ cannot enumerate is a system you cannot trust.
 | `h713-warp` | the keystone warp on the GPU ([h713-warp](tools/h713-warp.md)); in bypass, with the GPU closed, until a corner or the zoom is set |
 | `h713-keystone-auto` | `h713-keystone watch`: the automatic keystone once after a move; does nothing while `after_move = off` in `/etc/h713/keystone.conf`, which is the shipped default. Skipped on a board without an accelerometer; started by udev (`99-h713-keystone.rules`) when one probes late. Exit 3 (the sensor does not answer) and 5 (`h713-warp` refused) are retried with a delay growing from 5 s to 60 s, never given up |
 | `h713-features` | once per boot: the camera, the accelerometer and the focus motor against `/etc/h713/features`, one journal line each and a warning for one the board should have and does not show ([h713-features](tools/h713-features.md)) |
-| `h713-panel` | the settings page on port 8080, one password (`h713-panel --show-password`; [guide](guides/settings-page.md)) |
-| `h713-power` | only on an image built with `release/build-all.sh --standby`: decides the power key under `systemd-inhibit` (a dead service gives the key back to logind). Short press: suspend to RAM through crust; held 3 s: power-off; `/etc/h713/power.conf`. After a wake it runs `h713-mips-restart` ([h713-power](tools/h713-power.md)) |
+| `h713-panel` | the settings as a web page on port 8080, for a phone or a PC browser, one password (`h713-panel --show-password`; [guide](guides/settings-page.md)); the page on the wall is `h713-settings` (below) |
+| `h713-power` | on every image: the power key under `systemd-inhibit` (a dead service gives the key back to logind). A short press shows the 15 s countdown drawn by `h713-osd` and ends in a power-off into U-Boot's gate - or in a standby where the image offers one (`--standby`); held 3 s: power-off at once; `/etc/h713/power.conf` ([h713-power](tools/h713-power.md)) |
 | `h713-keys` | the stock remote's keys: volume, mute, focus, the HDMI input; Home opens the launcher, and while it is open Kodi gets no key ([h713-keys](tools/h713-keys.md)) |
 | `h713-osd` | draws the overlays over the picture - volume, mute, focus, input - and the launcher and settings pages ([h713-osd](tools/h713-osd.md)) |
 | `h713-cpufreq` | the CPU clock under the warp's load: the schedutil rate limit and the policy of the GPU's interrupt threads |
@@ -90,7 +90,7 @@ key present is the one you passed to the installer.
 |---|---|
 | `/` | the root filesystem, ext4, grown to the partition on first boot |
 | `/data` | a directory in the same filesystem, for things you want out of the way - persistent logs land under `/data/log` |
-| `/etc/h713/` | our configuration: `wifi.env`, `tv.conf`, `warp.conf`, `keystone.conf`, `power.conf` (standby images), `keystone-ref`, `board`, `features`, and the `tvconfig` directory the picture tools use |
+| `/etc/h713/` | our configuration: `wifi.env`, `tv.conf`, `warp.conf`, `keystone.conf`, `power.conf`, `keys.conf`, `osd.conf`, `launcher.d/`, `keystone-ref`, `board`, `features`, and the `tvconfig` directory the picture tools use |
 | `/run/log/journal` | the journal, in RAM, unless you switched it |
 
 Details: `doku/107-plan-rootfs.md` (the whole rootfs recipe and the reasoning behind each of these).

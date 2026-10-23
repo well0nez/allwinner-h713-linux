@@ -11,7 +11,7 @@ HY300's IR remote, NEC address 0x00, each key on the code of the same key):
 | mute | toggles `h713-tv ctl mute on/off` |
 | focus up / down (`KEY_F4` / `KEY_F5`) | `h713-focus up/down N`, `focus_steps` per press (default 20, about 0.3 s of travel); one run at a time, presses during a run wait for the next (at most two), a held key keeps it going; at the end of the travel the overlay says so and nothing more is queued that way; the edge picture is the other direction's (a run up ends with `focus down edge`, a run down with `focus up edge`: Marco's eye at the wall, 16.10.2026) |
 | `input_keys` (none by default) | switches `h713-tv` between the HDMI picture (`auto`) and the console (`off`) - the way back after someone forced the console; which key does it is still open, the remote has no record key |
-| power | nothing here: logind, or `h713-power` on an image with standby, powers off |
+| power | nothing here: `h713-power` reads it from the same nodes - a short press shows the countdown, and the release powers off into U-Boot's gate ([h713-power](../../docs/tools/h713-power.md)) |
 | Home | opens the **launcher** (below); with it open Up, Down, OK, Back, Home and Power are the launcher's |
 | Menu, Back, arrows, OK | recognised and logged once with the launcher closed (they are Kodi's); OK arrives as `KEY_ENTER` and Menu as `KEY_COMPOSE`, see `70-h713-remote.rules` (below), and `KEY_ENTER` is read as `KEY_OK` |
 | mouse, microphone over IR (`KEY_F6`) | both send the same code `0x0266` - over IR they only ask for the Bluetooth pairing; logged once. Their own functions work over Bluetooth only. The HY300's IR remote: its mouse key `0x0082`, the same |
@@ -30,7 +30,8 @@ h713-keys run            # what the unit runs
 Home opens a page with a ground over the whole panel and the list on the left, drawn by `h713-osd` (its `launcher`
 command), Up and Down move, OK does what the entry says, Back and Home close, volume, mute and focus work as always. The entries are
 the files `/etc/h713/launcher.d/NN-name.conf` (`label`, `icon`, `unit` or `exec`, `show`, `active`, `now`, `group`, `fallback`;
-`rootfs/overlay-desktop/etc/h713/launcher.d/` has the three: HDMI input, Kodi, Standby; the format is in
+`rootfs/overlay-desktop/etc/h713/launcher.d/` has six: HDMI input, Kodi, Browser, Desktop, Settings and Standby - the
+last only where `h713-power can-standby` says so, which a release image does not; the format is in
 [docs/tools/h713-keys.md](../../docs/tools/h713-keys.md)). While it is open the remote's two devices are **grabbed**
 (`EVIOCGRAB`, taken at the release of Home: grabbed earlier, cage would hold Home down and Kodi repeat it), so Kodi, which reads them through cage, gets no key; it opens only where `h713-osd` can show it and closes by
 itself after 90 s. A Power press with it open closes it and goes on to `h713-power` (a datagram `down`: h713-power starts the press, so a 3 s hold still powers off).
@@ -79,7 +80,8 @@ Measured on the HY310 on 11.10.2026 over IR (kernel 0252-0254): all 14 keys arri
 focus, OK, Home, Menu, Back, the arrows; mouse and microphone both `0x0266`. On the HY300PRO-G-EU (11.10.,
 `doku/195`): 13/13 over IR, all keys over Bluetooth, where a held key repeated every ~40 ms - the daemon now sets the
 Bluetooth remote to the IR receiver's 500/125 ms (`EVIOCSREP`; host tests, not yet felt on the device). Not measured
-yet: which way `KEY_F4` turns the focus on the wall, and which key should switch the input.
+yet: which key should switch the input (`input_keys` is empty); which way `KEY_F4` turns the focus was settled
+at the wall on 16.10.2026 (the table above).
 
 Installation: `make install DESTDIR=<rootfs>` (script to `/usr/local/sbin`, unit, `keys.conf`, this README).
 More: [docs/tools/h713-keys.md](../../docs/tools/h713-keys.md).

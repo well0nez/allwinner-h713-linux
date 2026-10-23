@@ -211,7 +211,7 @@ Fall-7-Stufe der ARISC also **nicht**. Wo sie landen, ist offen.
 2. Mitschrift auf dem Board anlegen und **losgelöst** starten (nicht im selben Aufruf warten -
    Memory `pgrep-muster-trifft-eigene-shell`). Erst die Datei schreiben:
    ```
-   ssh root@192.168.8.141 'cat > /root/m1-watch.sh' <<'EOF'
+   ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat > /root/m1-watch.sh' <<'EOF'
    #!/bin/sh
    i=0
    while [ $i -lt 180 ]; do
@@ -222,13 +222,13 @@ Fall-7-Stufe der ARISC also **nicht**. Wo sie landen, ist offen.
    ```
    dann starten:
    ```
-   timeout 20 ssh root@192.168.8.141 'setsid sh /root/m1-watch.sh > /root/m1-reg.txt 2>&1 < /dev/null &'
+   timeout 20 ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'setsid sh /root/m1-watch.sh > /root/m1-reg.txt 2>&1 < /dev/null &'
    ```
    (Die `0x0709xxxx` sind hier **lesbar**, weil `arisc_edid_init.sh` `ResetEDIDModule` schon
    verarbeitet hat - doku/75, Nachtrag 13:35. **Vor** der EDID-Sequenz wären sie tabu: der
    uninitialisierte Block hängt den SoC, doku/75 „Warum heute vier Boards starben".)
 3. ARISC-Zähler vor dem Ereignis lesen, **nur lesend**:
-   `timeout 20 ssh root@192.168.8.141 'python3 /root/arisc_hdmi.py --no-probe status'`
+   `timeout 20 ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/arisc_hdmi.py --no-probe status'`
 - `--no-probe` ist Pflicht, sonst schreibt die Lebensprüfung selbst den Zähler und löst HPD aus.
 4. Marco bitten: **HDMI-Stecker am Beamer ziehen, 15 s warten, wieder stecken.** Uhrzeit von beidem
    notieren. (`xrandr --off/--auto` am Zuspieler ist als Ersatz **nicht** ausreichend - das lässt die
@@ -259,7 +259,7 @@ Strukturell erklärt: im Legacy-Aufbau lud `sunxi-mipsloader` den MIPS **aus Lin
 Nacht eine Zeile anhängen:
 
 ```
-timeout 30 ssh root@192.168.8.141 'printf "%s uptime=%s cpu_comm_ready=%s mips_run=%s\n" \
+timeout 30 ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'printf "%s uptime=%s cpu_comm_ready=%s mips_run=%s\n" \
     "$(date +%F_%T)" "$(cut -d. -f1 /proc/uptime)" \
     "$(grep -c "Ready: 1" /proc/cpu_comm/status)" "$(busybox devmem 0x0306101c)" \
     >> /root/m2-kaltstarts.txt'
@@ -279,9 +279,9 @@ Paket B will den Puls streichen - dafür braucht es die Messung.
 *Messvorschrift* (nach Prep und ARISC-Handshake, **vor** `arisc_edid_init.sh`, harmlos, weil
 `0x0215 CheckEDIDUpdateStatus` nur liest):
 
-1. `timeout 20 ssh root@192.168.8.141 'python3 /root/arisc_hdmi.py --no-probe status'` - Ausgangslage.
+1. `timeout 20 ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/arisc_hdmi.py --no-probe status'` - Ausgangslage.
 2. Drei Läufe **mit** Puls (heutiger Stand):
-   `for i in 1 2 3; do timeout 30 ssh root@192.168.8.141 'python3 /root/arisc_hdmi.py --no-probe raw --sub-cmd 0x0215 --arg1 0 --arg2 0 --settle 0.6'; done`
+   `for i in 1 2 3; do timeout 30 ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/arisc_hdmi.py --no-probe raw --sub-cmd 0x0215 --arg1 0 --arg2 0 --settle 0.6'; done`
 - je Lauf notieren: „classify/Handler gelaufen: ja/NEIN" und ob auf ARM-RX ch1 eine Antwort liegt
    (`bash /root/arisc_probe.sh` oder der `drain()`-Block aus `arisc_edid_init.sh`).
 3. Dieselben drei Läufe **ohne** Puls. Dafür in `/root/arisc_hdmi.py` in der Funktion `doorbell()`
@@ -300,10 +300,10 @@ Paket B will den Puls streichen - dafür braucht es die Messung.
 *Messvorschrift:* im laufenden, guten Zustand (Bild steht) nur den Schlussteil wiederholen:
 
 ```
-timeout 20 ssh root@192.168.8.141 'python3 /root/arisc_hdmi.py --no-probe hotplug --port 0 --value 2 --settle 1.0'
+timeout 20 ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/arisc_hdmi.py --no-probe hotplug --port 0 --value 2 --settle 1.0'
 sleep 0.3        # statt 10 s
-timeout 20 ssh root@192.168.8.141 'python3 /root/arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'
+timeout 20 ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'
 python3 analyse/hdmi-seq/wandcheck.py shot m4-300ms
 ```
 

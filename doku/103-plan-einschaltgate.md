@@ -28,7 +28,7 @@ Zwei Stufen, weil der Stock-Weg (Stufe 2) Unbekannte hat, die Stufe 1 nicht brau
 
 **Stufe 1 - Gate im U-Boot (dieser Plan).** Am Netz startet der SoC, aber U-Boot schaltet **nichts** ein (kein Lüfter, kein Backlight, kein
 USB-VBUS), setzt die rote LED und wartet auf die Taste. Erst danach `h713_poweron_lines()` und normaler Boot. „Ausschalten" aus Linux
-(`poweroff`, Taste kurz) = zurück ins Gate. Verbrauch im Gate = SoC im Leerlauf (zu messen; Ziel < 1,5 W, Steckdose 192.168.8.179 kann Leistung
+(`poweroff`, Taste kurz) = zurück ins Gate. Verbrauch im Gate = SoC im Leerlauf (zu messen; Ziel < 1,5 W, Steckdose *geschwärzt am 23.10.2026: Heimnetz-Adresse* kann Leistung
 zeigen, sonst Messgerät). Kein IR-/CEC-Wecken in dieser Stufe (Option 1b unten).
 
 **Stufe 2 - Stock-Standby über die ARISC (Folgeplan).** Linux bootet ins Standby (`box_start_os0`-Semantik), PSCI-Suspend in TF-A, ARISC
@@ -153,7 +153,7 @@ Regeln wie in Plan 101 §4: Agenten schreiben nur in ihre Kopien, fassen weder B
   `mainline/external/u-boot` eingespielt; neue Test-Defconfig `hy310_netboot_gate_defconfig` (Netboot + Gate). G2 in
   `mainline/external/arm-trusted-firmware` eingespielt (dort werden Änderungen als Commits geführt). G3 als Kernel-Patch `0139` + Defconfig
   `CONFIG_KEYBOARD_GPIO=y` (Serie 111, Snapshot `20260909-0100-serie111-powerkey`), Baum `4571c431`, installiert (FIT + Module).
-- **01:25 Flash 1:** U-Boot proper (`flash-netboot-gate/uboot-proper.bin`, sha256 `f890f4a1…`, 1731 Sektoren) per `tftpboot 192.168.8.104:…`
+- **01:25 Flash 1:** U-Boot proper (`flash-netboot-gate/uboot-proper.bin`, sha256 `f890f4a1…`, 1731 Sektoren) per `tftpboot <geschwaerzt 23.10.2026: Heimnetz-Adresse>:…`
   + `mmc write 0x49ac00 0x6c3` am Prompt, Rücklesen identisch; Sicherung des alten Stands `flash-netboot-gate/emmc-proper-vorher.bin`
   (= `smmheap/uboot-proper.bin`). Falle 1: `dhcp` setzt `serverip` auf den Router - Server immer explizit angeben. Erststart: neues U-Boot,
   `gate: off (h713_gate=0)`, Autoboot wie gehabt. **Falle 2:** die FIT enthielt noch das alte BL31 (Banner „Aug 31") - ein zweiter

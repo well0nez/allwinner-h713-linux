@@ -22,5 +22,5 @@ Without a record (a tree built without `--board`) the nodes alone decide and not
 
 What the rest of the system does with a missing feature: `h713-keystone-auto` is skipped (a condition on
 the node; `99-h713-keystone.rules` starts it when a late sensor appears); `h713-keystone`, `h713-autofocus`,
-`h713-focus` and `h713-cam` say "not present on this board" as their last line and exit `7`; the
-[settings page](h713-panel.md) hides the controls. `$H713_SYS` replaces `/sys` in all five tools (the tests).
+`h713-focus` and `h713-cam` say "not present on this board" as their last line and exit `7`; the settings page on
+the wall ([h713-settings](h713-settings.md)) and the web page ([h713-panel](h713-panel.md)) hide the controls. `$H713_SYS` replaces `/sys` in all five tools (the tests).

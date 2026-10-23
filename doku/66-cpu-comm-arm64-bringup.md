@@ -269,7 +269,7 @@ das Logo auf und lässt den Projektor-Task weiterlaufen; der elog endet bei
 `EnterIdle again`.
 
 ```
-setenv bootcmd 'h713_disp init 0x30; dhcp; tftpboot 0x60000000 192.168.8.104:${bootfile}; bootm 0x60000000'
+setenv bootcmd 'h713_disp init 0x30; dhcp; tftpboot 0x60000000 <geschwaerzt 23.10.2026: Heimnetz-Adresse>:${bootfile}; bootm 0x60000000'
 ```
 
 Fällt der FIFO-Zähler danach auf 0, liegt es am Startpfad und nicht am

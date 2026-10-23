@@ -10,6 +10,8 @@ ARISC firmware since 22.10.2026 ([h713-arisc](h713-arisc.md)), always. Without a
 nobody would see a countdown, and the default happens at once. The overlay is drawn by [h713-osd](h713-osd.md); each of
 its frames keeps it one second, so a dead h713-power leaves nothing on the wall.
 
+![The countdown over the launcher: the ring alone on the page's ground](../images/power/countdown-over-launcher.png)
+
 Where crust runs and can take the power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`, the HY310
 since `doku/190`; experimental, `h713-arisc set crust`) that is a real off at 0.3 W, and the key or the remote wakes into
 a fresh boot of about 30 s; elsewhere - under the vendor's ARISC firmware, what an image runs - it is the power-on gate,

@@ -1,5 +1,9 @@
 # Vorschlag: Fokusmotor + Endschalter
 
+**Stand 23.10.2026:** 0001-0004 sind seit September in der Serie (`docs/kernel-patches.md`, Abschnitte 5 und 11),
+der defconfig-Teil nicht - der Treiber wird seit `0157` als Modul geladen; was aus dem Endschalter wurde, steht in
+`docs/subsystems/focus-motor.md`. Der Rest dieser Seite ist der Stand vom 07.09.2026.
+
 Bearbeitet 07.09.2026 vom Agenten aus `doku/auftraege/AGENT-fokus-motor-homing.md`.
 Nichts davon ist in die Serie eingebaut — das entscheidet die Hauptsitzung.
 

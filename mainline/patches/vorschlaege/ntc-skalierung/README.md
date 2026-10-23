@@ -1,5 +1,9 @@
 # NTC-Skalierung: aus dem Rohwert eine Temperatur machen
 
+**Stand 23.10.2026:** überholt - dieses Gerät hat keinen NTC (`ntc_num = 0` in jedem Gerätebaum des Geräts), und seit
+Kernel-Patch `0152` legt der Treiber bei 0 kein `temp1_input` mehr an (`docs/subsystems/board-mgr.md`, "This device has
+no NTC"). Die Skalierung hier gilt für ein Board mit `ntc_num > 0`. Der Rest dieser Seite ist der Stand vom 11.09.2026.
+
 Stand 11.09.2026. Grundlage: Serie bis 0145, Baum
 `mainline/build/linux-6.18.38-996a79d2…` (Linux 6.18.38, arm64).
 Kein Zugriff auf das Geraet — alles hier ist aus dem Stock-`vmlinux` und aus

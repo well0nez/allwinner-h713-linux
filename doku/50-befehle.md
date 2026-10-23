@@ -9,10 +9,10 @@
 
 ```bash
 ss -ulnp | grep ':69 '                                   # TFTP da? sonst bleibt das Board in U-Boot (nur Marco kann es loesen)
-sonoff_ctl restart --host 192.168.8.179 --wait 5         # Kaltstart ueber die Steckdose; ssh nach 35-90 s
-ssh root@192.168.8.141 'h713-tv ctl status'             # Programm-, Kernel- und cpu_comm-Zeilen
-ssh root@192.168.8.141 "journalctl -u 'h713-tv@*' -f"   # Journal des Dienstes
-ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status; cat /sys/kernel/debug/cpu_comm/watch'
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse> --wait 5         # Kaltstart ueber die Steckdose; ssh nach 35-90 s
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'h713-tv ctl status'             # Programm-, Kernel- und cpu_comm-Zeilen
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "journalctl -u 'h713-tv@*' -f"   # Journal des Dienstes
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status; cat /sys/kernel/debug/cpu_comm/watch'
 python3 analyse/hdmi-seq/wandcheck.py shot NAME          # Foto der Wand -> re/captures/weltneuheit/wand-aktuell/NAME.jpg (ansehen!)
 ```
 
@@ -34,7 +34,7 @@ Startoptionen der Unit (`/etc/systemd/system/h713-tv@.service`): `-p PRESET` (Vo
 
 ```bash
 bash analyse/hdmi-seq/wechsel.sh 1280x1024 NAME 60.02    # eDP aus, HDMI-2 auf Modus, Register + Ring + Foto
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output eDP-1 --auto --output HDMI-2 --mode 1920x1080 --rate 60.00 --same-as eDP-1'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output eDP-1 --auto --output HDMI-2 --mode 1920x1080 --rate 60.00 --same-as eDP-1'
 ```
 
 **Kernel ändern, bauen, einspielen**
@@ -58,12 +58,12 @@ Nur die Module werden vom NFS-Root geladen; das Kernelabbild kommt per TFTP. Ein
 
 ```bash
 make -C userspace/h713-tv cross                                         # Host-Clang gegen /srv/h713-rootfs
-ssh root@192.168.8.141 'systemctl stop h713-tv@video1'                   # sonst "text busy"
-scp userspace/h713-tv/h713-tv.aarch64-linux-gnu root@192.168.8.141:/usr/local/sbin/h713-tv
-scp userspace/h713-tv/h713-tv@.service root@192.168.8.141:/etc/systemd/system/    # bei Unit-Aenderung, dann daemon-reload
-scp userspace/h713-tv/99-h713-tv.rules root@192.168.8.141:/etc/udev/rules.d/      # bei Regel-Aenderung, dann udevadm control --reload
-scp userspace/h713-tv/README.md root@192.168.8.141:/usr/local/share/doc/h713-tv/
-ssh root@192.168.8.141 'cp /usr/local/sbin/h713-tv /root/h713-tv; systemctl start h713-tv@video1'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'systemctl stop h713-tv@video1'                   # sonst "text busy"
+scp userspace/h713-tv/h713-tv.aarch64-linux-gnu root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/usr/local/sbin/h713-tv
+scp userspace/h713-tv/h713-tv@.service root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/etc/systemd/system/    # bei Unit-Aenderung, dann daemon-reload
+scp userspace/h713-tv/99-h713-tv.rules root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/etc/udev/rules.d/      # bei Regel-Aenderung, dann udevadm control --reload
+scp userspace/h713-tv/README.md root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/usr/local/share/doc/h713-tv/
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cp /usr/local/sbin/h713-tv /root/h713-tv; systemctl start h713-tv@video1'
 ```
 
 **Messen am Board** (Skripte liegen unter `/root/`, Quellen in `analyse/hdmi-seq/`)
@@ -296,7 +296,7 @@ benutzen** - darin steckt ein zweites `init`, und es gilt ein Start pro
 Stromzyklus. Stattdessen nur den Netboot-Teil:
 
 ```
-dhcp; tftpboot 0x60000000 192.168.8.104:${bootfile}; bootm 0x60000000
+dhcp; tftpboot 0x60000000 <geschwaerzt 23.10.2026: Heimnetz-Adresse>:${bootfile}; bootm 0x60000000
 ```
 
 ## Zwischen Stock und uns umschalten
@@ -325,7 +325,7 @@ LBA 256. Das BROM weicht auf die zweite Kopie aus.
 ## Gerät
 
 ```bash
-ssh root@192.168.8.142    root, id_ed25519
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>    root, id_ed25519
 uart                      UART über den ESP32-Proxy auf /dev/ttyACM0
 ```
 

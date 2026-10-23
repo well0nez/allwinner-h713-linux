@@ -158,7 +158,7 @@ ist sie als `0098` bereits aufgenommen). Momentaufnahme aller 73 Patchdateien:
    ignoriert der Treiber und sagt es laut). Ein frisch gebautes Rootfs kommt ohne beide hoch, und **kein
    Rezept legt sie an** - genau daran ist der erste Abnahmeversuch gescheitert
    ([60-offen.md](../60-offen.md), „Zwei Dateien liegen nur von Hand auf dem Board").
-1. Kaltstart (`sonoff_ctl restart --host 192.168.8.179`), Uptime prüfen.
+1. Kaltstart (`sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>`), Uptime prüfen.
 2. **`prep_clean.sh` statt `prep_after_boot.sh`.** Mit `0091` im Kernel lädt und quittiert der Treiber die
    ARISC selbst; das alte Rezept lädt den Blob ein zweites Mal und schickt eine zweite Quittung.
    `prep_clean.sh` **erkennt den Kerneltreiber** und lässt die Alt-Schritte dann weg (eine Fallunterscheidung

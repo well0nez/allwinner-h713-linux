@@ -46,7 +46,7 @@ Erprobt sind zwei lesende Routinen.
 `bootcmd` lautet ab Werk:
 
 ```
-bootcmd=h713_disp auto 0x30 logo; dhcp; tftpboot 0x60000000 192.168.8.104:${bootfile}; bootm 0x60000000
+bootcmd=h713_disp auto 0x30 logo; dhcp; tftpboot 0x60000000 <geschwaerzt 23.10.2026: Heimnetz-Adresse>:${bootfile}; bootm 0x60000000
 ```
 
 `h713_disp auto … logo` legt den Coprozessor als **letzte Handlung** still.
@@ -178,7 +178,7 @@ Firmware einen Callback auch *benutzen*, nicht nur registriert vorfinden.
 **Die `bootcmd` ist persistent.** `saveenv` ist geschrieben:
 
 ```
-bootcmd=h713_disp init 0x30; dhcp; tftpboot 0x60000000 192.168.8.104:${bootfile}; bootm 0x60000000
+bootcmd=h713_disp init 0x30; dhcp; tftpboot 0x60000000 <geschwaerzt 23.10.2026: Heimnetz-Adresse>:${bootfile}; bootm 0x60000000
 ```
 
 Ein Stromzyklus genügt; der MIPS kommt von selbst hoch. Zweimal verifiziert:
