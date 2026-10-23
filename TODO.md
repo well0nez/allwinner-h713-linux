@@ -637,7 +637,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.134 **HY300 (Pro) des Testers (Issue #1, sehr altes Modell): IR-Fernbedienung funktioniert noch nicht** (Marco 22.10.2026). Für die
       **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta); `boards/hy300-pro/README.md` nennt test11.
       Doku als bekannter Fehler; zur Klärung braucht es von ihm, was der IR-Empfänger bekommt (Skript aus der Gabelung vom 21.10.: Signal kommt
-      nicht / anderer Code / Regel greift nicht). **22.10.2026:** Nachrüstsatz test11 (`arbeit/medien/test11-ir-nachruest/`: PL9 nach dem ARISC-Start zurück, Tastentabelle der originalen HY300-Fernbedienung) gebaut, am G-EU geprüft und für den Tester hochgeladen; seine Rückmeldung steht aus.
+      nicht / anderer Code / Regel greift nicht). **22.10.2026:** Nachrüstsatz test11 (`arbeit/medien/test11-ir-nachruest/`: PL9 nach dem ARISC-Start zurück, Tastentabelle der originalen HY300-Fernbedienung) gebaut, am G-EU geprüft und für den Tester hochgeladen; seine Rückmeldung steht aus. **23.10.2026: Testabbild `hy300-pro-test12`** (Vorabversion auf GitHub, aus 679c72ae: 0328/0329 und U-Boot 0102 fest eingebaut, der Nachrüstsatz entfällt); Rückfragen an ihn in den Release-Notes (Tasten, Power aus dem Gate, drei Befehle).
 - [ ] 2.135 Klein (arisc-default, Mythos 22.10.2026): unter der Hersteller-ARISC meldet ein Dienst "status brief timed out" nach ~17 s -
       Ursache finden (Abfrage an die Firmware, die das Herstellerbild nicht beantwortet?); Belege `arbeit/medien/arisc-default/laeufe/`.
 - [ ] 2.136 Klein: **libva-Tar nicht reproduzierbar über verschiedene Baupfade** (Release-Bau 22.10.2026: gleicher Commit, Tar 7c0fdc55 in
