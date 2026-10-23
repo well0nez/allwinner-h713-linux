@@ -6,7 +6,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 1 Release — in dieser Reihenfolge
 
-- [ ] 1.0 **Stand 23.10.2026: (0) bis (4) erledigt, offen (5), (5b), (6).** **medien -> main: der Weg** (Plan der Aufsicht, Marco 21.10.2026: "find ich gut"; **nichts pushen, nicht zum jetzigen
+- [ ] 1.0 **Stand 23.10.2026 mittags: (0) bis (5) erledigt (Doku-Runde gemergt 40f960eb), offen 2.142 (Marco), (5b), (6).** **medien -> main: der Weg** (Plan der Aufsicht, Marco 21.10.2026: "find ich gut"; **nichts pushen, nicht zum jetzigen
       Zeitpunkt**): **(0) zuerst, am Abend des 21.10. mit Marco (tagsüber nichts autonom): Hörtest T5c (2.42,
       `standby-summen/TESTABLAUF-T5c.md`), danach entscheidet Marco, ob der Standby ausgeliefert wird** **- entschieden 21.10.2026 abends: so nicht releasen, erst crust mit Standby ohne Summen** (Mythos-Analyse
       `standby-summen/mythos-analyse/`, Messung mit einem Mikrofon am Netzteil; 2.42)
@@ -132,7 +132,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **10.10. mittags:** alter G-EU-Worktree gelöscht (vorher geprüft: Commit in `main`, Arbeitsbaum sauber, Submodul-Köpfe im
         Haupt-Klon, Kernelbaum nur um `0249` anders); die sechs lokalen Zweige `integration/r2-main`, `versuch/{crust-release,
         geu-crust,hdcp-haertung,r2-standby,standby-gate}` gelöscht. In `repo-neu` gibt es nur noch `main`
-- [x] 1.7a (erledigt 23.10.2026, Doku-Runde: Identitäts- und Leckprüfung über `main` seit `origin/main` (780 Commits: Autor, Committer, Trailer, Nachricht), jede Datei im Baum (`sperr-scan` Regel 8, Tor grün), die `From:`-Zeilen der Spiegel und die Fork-Köpfe (U-Boot `daa35622b0bf`, TF-A `287dca2fe892`, sunxi-tools `269dfa22`, crust `54e4a08ab9f3`); Ergebnis und Reste in `arbeit/medien/doku-runde/LECKS.md`. Offen bleibt nur die Wiederholung gegen den frischen Klon nach dem Push (1.6)) **Vor jedem Push: Identitäts- und Leck-Prüfung** (vor dem nächsten Release macht sie Mythos zusammen mit der Doku, 1.0 (5); Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
+- [ ] 1.7a (Prüfung vor dem Push erledigt 23.10.2026, Doku-Runde - **offen bleiben Marcos Entscheidungen 2.142 und der frische Klon nach dem Push**, darum nicht abgehakt (Aufsicht 23.10.): Identitäts- und Leckprüfung über `main` seit `origin/main` (780 Commits: Autor, Committer, Trailer, Nachricht), jede Datei im Baum (`sperr-scan` Regel 8, Tor grün), die `From:`-Zeilen der Spiegel und die Fork-Köpfe (U-Boot `daa35622b0bf`, TF-A `287dca2fe892`, sunxi-tools `269dfa22`, crust `54e4a08ab9f3`); Ergebnis und Reste in `arbeit/medien/doku-runde/LECKS.md`. Offen bleibt nur die Wiederholung gegen den frischen Klon nach dem Push (1.6)) **Vor jedem Push: Identitäts- und Leck-Prüfung** (vor dem nächsten Release macht sie Mythos zusammen mit der Doku, 1.0 (5); Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
       Spiegel-Patches trugen die private Adresse, ein Kernel-Patch einen Firmennamen, bemerkt kurz vor dem Push). Über **alles, was
       rausgeht**, nicht nur den neuen Teil: `main` und jeder Fork-Kopf (U-Boot, TF-A, crust) samt Submodul-Commits; je Commit Autor,
       Committer, `Co-Authored-By`/`Signed-off-by`, Nachricht; je Datei der Inhalt, auch `From:`-Zeilen der Spiegel-Patches
