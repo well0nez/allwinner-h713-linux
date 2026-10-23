@@ -6,7 +6,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 1 Release — in dieser Reihenfolge
 
-- [ ] 1.0 **Stand 23.10.2026 mittags: (0) bis (5) erledigt (Doku-Runde gemergt 40f960eb), offen 2.142 (Marco), (5b), (6).** **medien -> main: der Weg** (Plan der Aufsicht, Marco 21.10.2026: "find ich gut"; **nichts pushen, nicht zum jetzigen
+- [ ] 1.0 **Stand 23.10.2026 mittags: (0) bis (5) erledigt (Doku-Runde gemergt 40f960eb), 2.142 entschieden; offen (5b), (6).** **medien -> main: der Weg** (Plan der Aufsicht, Marco 21.10.2026: "find ich gut"; **nichts pushen, nicht zum jetzigen
       Zeitpunkt**): **(0) zuerst, am Abend des 21.10. mit Marco (tagsüber nichts autonom): Hörtest T5c (2.42,
       `standby-summen/TESTABLAUF-T5c.md`), danach entscheidet Marco, ob der Standby ausgeliefert wird** **- entschieden 21.10.2026 abends: so nicht releasen, erst crust mit Standby ohne Summen** (Mythos-Analyse
       `standby-summen/mythos-analyse/`, Messung mit einem Mikrofon am Netzteil; 2.42)
@@ -132,7 +132,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **10.10. mittags:** alter G-EU-Worktree gelöscht (vorher geprüft: Commit in `main`, Arbeitsbaum sauber, Submodul-Köpfe im
         Haupt-Klon, Kernelbaum nur um `0249` anders); die sechs lokalen Zweige `integration/r2-main`, `versuch/{crust-release,
         geu-crust,hdcp-haertung,r2-standby,standby-gate}` gelöscht. In `repo-neu` gibt es nur noch `main`
-- [ ] 1.7a (Prüfung vor dem Push erledigt 23.10.2026, Doku-Runde - **offen bleiben Marcos Entscheidungen 2.142 und der frische Klon nach dem Push**, darum nicht abgehakt (Aufsicht 23.10.): Identitäts- und Leckprüfung über `main` seit `origin/main` (780 Commits: Autor, Committer, Trailer, Nachricht), jede Datei im Baum (`sperr-scan` Regel 8, Tor grün), die `From:`-Zeilen der Spiegel und die Fork-Köpfe (U-Boot `daa35622b0bf`, TF-A `287dca2fe892`, sunxi-tools `269dfa22`, crust `54e4a08ab9f3`); Ergebnis und Reste in `arbeit/medien/doku-runde/LECKS.md`. Offen bleibt nur die Wiederholung gegen den frischen Klon nach dem Push (1.6)) **Vor jedem Push: Identitäts- und Leck-Prüfung** (vor dem nächsten Release macht sie Mythos zusammen mit der Doku, 1.0 (5); Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
+- [ ] 1.7a (Prüfung vor dem Push erledigt 23.10.2026, Doku-Runde - **2.142 entschieden 23.10.; offen bleibt der frische Klon nach dem Push**, darum nicht abgehakt (Aufsicht 23.10.): Identitäts- und Leckprüfung über `main` seit `origin/main` (780 Commits: Autor, Committer, Trailer, Nachricht), jede Datei im Baum (`sperr-scan` Regel 8, Tor grün), die `From:`-Zeilen der Spiegel und die Fork-Köpfe (U-Boot `daa35622b0bf`, TF-A `287dca2fe892`, sunxi-tools `269dfa22`, crust `54e4a08ab9f3`); Ergebnis und Reste in `arbeit/medien/doku-runde/LECKS.md`. Offen bleibt nur die Wiederholung gegen den frischen Klon nach dem Push (1.6)) **Vor jedem Push: Identitäts- und Leck-Prüfung** (vor dem nächsten Release macht sie Mythos zusammen mit der Doku, 1.0 (5); Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
       Spiegel-Patches trugen die private Adresse, ein Kernel-Patch einen Firmennamen, bemerkt kurz vor dem Push). Über **alles, was
       rausgeht**, nicht nur den neuen Teil: `main` und jeder Fork-Kopf (U-Boot, TF-A, crust) samt Submodul-Commits; je Commit Autor,
       Committer, `Co-Authored-By`/`Signed-off-by`, Nachricht; je Datei der Inhalt, auch `From:`-Zeilen der Spiegel-Patches
@@ -691,7 +691,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Neustart von h713-tv bei laufendem Kodi, (3) Kodi starten, während h713-tv steht, (4) VA und ALSA als Nutzer; 2.83 Speicher mit einem Video-Tab;
       2.86 Kaltstart ohne Signal, Firefox-Caches über ein neues Abbild, "On start" mit der echten Fernbedienung; 2.91 N-2 (Power 3 s bei offenem
       Launcher -> Aus, nur mit Marco); 2.94 einmal mit "On start: HDMI input" ansehen. Nicht vor dem Release nötig; je eine Zeile Ergebnis hierher.
-- [ ] 2.142 **Heimnetz-Adressen und ein privater Begriff außerhalb des Journals** (Doku-Runde 23.10.2026, `arbeit/medien/doku-runde/LECKS.md` §5;
+- [x] 2.142 (**entschieden 23.10.2026, Marco:** die 192.168.8.x-Adressen bleiben - sie zeigen auf ein privates Netz, nicht auf eine Person; das Quellarchiv heißt `allwinner-h713-linux-vX.Y-with-submodules.tar` wie vorgeschlagen; der Hook-Begriff war kein Leck) **Heimnetz-Adressen und ein privater Begriff außerhalb des Journals** (Doku-Runde 23.10.2026, `arbeit/medien/doku-runde/LECKS.md` §5;
       Marcos Entscheidung, Mythos hat Code nicht angefasst): ~~`.githooks/pre-push` Z. 9 (Mailserver-Begriff)~~ **kein Leck** (Korrektur Mythos/Aufsicht 23.10.2026: die Kennung ist der Hostname
       von cstengers Server aus seiner übernommenen Historie, 22 Commits schon öffentlich, `doku/152` - bleibt in der Erlaubt-Liste); offen nur: die U-Boot-Vorgaben
       `serverip`/`nfsroot` 192.168.8.123 und .104 im Fork (`board/sunxi/hy310.env`) und damit in den Spiegel-Patches 0021/0023/0024/0025/0030/0033/0093
