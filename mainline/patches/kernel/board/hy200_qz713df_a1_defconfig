@@ -1,3 +1,8 @@
+# The kernel configuration of the image, for every board (KERNEL_DEFCONFIG in mainline/config/versions.env).
+# build.sh copies it into arch/arm64/configs/ and runs make with it; the fragments next to it in this directory
+# are for developer kernels only (patches/kernel/README.md). Every line counts into the kernel tree's digest.
+
+# --- General, CPU frequency, modules
 CONFIG_NO_HZ_IDLE=y
 CONFIG_HIGH_RES_TIMERS=y
 CONFIG_CGROUPS=y
@@ -16,6 +21,8 @@ CONFIG_CPUFREQ_DT=y
 CONFIG_MODULES=y
 CONFIG_MODULE_UNLOAD=y
 CONFIG_CMA=y
+
+# --- Network and Bluetooth
 CONFIG_NET=y
 CONFIG_PACKET=y
 CONFIG_UNIX=y
@@ -28,35 +35,38 @@ CONFIG_CAN=y
 CONFIG_BT=y
 CONFIG_BT_HCIUART=m
 CONFIG_BT_HCIUART_H4=y
-# uhid: bluez's HID-over-GATT plugin feeds the stock BLE remote's reports in here (FB-REMOTE)
+
+# The stock BLE remote: bluez' HID over GATT hands its reports to the kernel through uhid.
 CONFIG_UHID=y
-# the stock BLE remote: descriptor fixup for its consumer report (kernel 0169)
+
+# The fix-up of that remote's consumer report descriptor (kernel 0169).
 CONFIG_HID_H713_REMOTE=y
 CONFIG_CFG80211=y
 CONFIG_MAC80211=y
 CONFIG_RFKILL=y
+
+# --- Drivers of the board and the SoC
 CONFIG_DEVTMPFS=y
 CONFIG_DEVTMPFS_MOUNT=y
-# Board manager: NTC temperature (via the LRADC IIO provider) and fan
-# tachometer on PH17, exported through hwmon. Module, not built-in, so it can
-# be unloaded if it misbehaves. The fan itself does not depend on it -- it
-# runs off the PB5 gpio-hog (patch 0030); this only makes the device's
-# temperature and fan speed visible at all. The thermal poweroff stays
-# disarmed (thermal_shutdown=0) until the NTC curve is verified; see 0141.
+
+# The board manager: the NTC temperature through the LRADC's IIO channel and the fan's tacho on PH17 through
+# hwmon. A module, so that it can be unloaded. The fan itself is switched by the PB5 line (0030), not by this
+# driver. Its thermal power-off stays off (thermal_shutdown=0) until the NTC curve is checked (0141).
 CONFIG_HY310_BOARD_MGR=m
 CONFIG_HWMON=y
-# The projector's focus stepper (motor_ctr). Module, not built-in: probe
-# arms a homing run that moves the mechanism, so it should be loaded
-# deliberately and can be unloaded again.
+
+# The focus stepper (motor_ctr) as a module: its probe can run a homing drive that moves the optics, so it is
+# loaded on purpose and not built in.
 CONFIG_HY310_FOCUS_MOTOR=m
 # CONFIG_SUNXI_NSI is not set
 # CONFIG_SUNXI_TVTOP is not set
-# DECD: the vendor AFBD frame-submission path. Built as a MODULE on purpose
-# so it can be loaded deliberately after U-Boot has established the display,
-# and unloaded if it disturbs it. Its probe touches no display hardware
-# (pm_runtime_enable with no get; dec_enable only runs on runtime resume).
+
+# DECD, the vendor's way of handing pictures to AFBD, as a module: it loads after U-Boot's picture and can be
+# unloaded; its probe does not touch the display hardware.
 CONFIG_SUNXI_DECD=m
 CONFIG_SUNXI_SCANOUT_DMABUF=m
+
+# --- Storage and wired network
 CONFIG_BLK_DEV_SD=y
 CONFIG_ATA=y
 CONFIG_AHCI_SUNXI=y
@@ -77,30 +87,25 @@ CONFIG_STMMAC_ETH=y
 # CONFIG_NET_VENDOR_WIZNET is not set
 CONFIG_MICREL_PHY=y
 CONFIG_REALTEK_PHY=y
-# zram als Swap (doku/107 §4.2). Gehoert in den Auslieferungskernel, nicht in
-# ein Fragment: das Release-Rootfs bringt die zram-Unit mit, und ohne diese
-# vier Optionen laeuft sie ins Leere. Am Geraet gemessen: 461,8 MiB Swap mit
-# zstd, swappiness=180, page-cluster=0. Stand bis 11.09. nur im Fragment
-# patches/kernel/board/zram.config -- dadurch fehlte zram in jedem Bau ohne
-# KERNEL_CONFIG, also gerade im Auslieferungskernel.
+
+# zram as swap belongs in the image kernel: the rootfs unit needs these four. Measured on the device: 461.8 MiB
+# of swap with zstd, swappiness 180, page-cluster 0 (doku/107 section 4.2). Until 11.09.2026 they were only in
+# a fragment and missing from the release.
 CONFIG_ZSMALLOC=y
 CONFIG_ZRAM=y
 CONFIG_ZRAM_BACKEND_ZSTD=y
 CONFIG_ZRAM_DEF_COMP_ZSTD=y
 
-# Der USB-Gigabit-Adapter des Geraets eingebaut, nicht als Modul: er ist die
-# einzige Netzanbindung, und ein Netztreiber, der erst aus dem Rootfs geladen
-# werden muss, ist ein Henne-Ei, das man sich sparen kann. usbnet selbst bleibt
-# Modul -- seine Untertreiber (Zaurus, NET1080, CDC-Subset ...) braucht hier
-# niemand eingebaut. (Eine frueher hier notierte getrandom-Begruendung war
-# falsch und ist am 11.09. widerlegt: der Boot-Hang kam von hy310-board-mgr,
-# siehe doku/60-offen.md.)
+# The USB gigabit adapter is the only wired network, so its driver is built in; usbnet stays a module. (A
+# reason given here once, getrandom, was wrong: the hang came from the board manager, doku/60.)
 CONFIG_USB_RTL8152=y
 CONFIG_USB_USBNET=m
 CONFIG_USB_NET_SMSC95XX=m
 CONFIG_USB_NET_RNDIS_HOST=m
 CONFIG_RTL8XXXU=m
 CONFIG_RTL8XXXU_UNTESTED=y
+
+# --- Input, serial, buses, power, thermal
 CONFIG_INPUT_EVDEV=y
 CONFIG_KEYBOARD_ADC=m
 CONFIG_KEYBOARD_GPIO=y
@@ -111,6 +116,7 @@ CONFIG_TOUCHSCREEN_SUN4I=y
 CONFIG_INPUT_MISC=y
 CONFIG_INPUT_AXP20X_PEK=y
 CONFIG_SERIO_SUN4I_PS2=y
+# CONFIG_LEGACY_PTYS is not set
 CONFIG_SERIAL_8250=y
 CONFIG_SERIAL_8250_CONSOLE=y
 CONFIG_SERIAL_8250_NR_UARTS=8
@@ -140,6 +146,8 @@ CONFIG_REGULATOR_FIXED_VOLTAGE=y
 CONFIG_REGULATOR_AXP20X=y
 CONFIG_REGULATOR_GPIO=y
 CONFIG_REGULATOR_PWM=y
+
+# --- Infrared, media, display
 CONFIG_RC_CORE=y
 CONFIG_LIRC=y
 CONFIG_RC_DECODERS=y
@@ -150,11 +158,9 @@ CONFIG_RC_DEVICES=y
 CONFIG_IR_SUNXI=y
 CONFIG_MEDIA_SUPPORT=y
 CONFIG_MEDIA_PLATFORM_SUPPORT=y
-# Die interne Kamera des Beamers (Realtek 0bda:5803 "Generic HD camera" am
-# USB-Port 1, Schnittstellenklasse 0x0e = UVC, zwei Schnittstellen). Sie wird
-# vom Bus erkannt, aber ohne diese drei Schalter bindet nichts daran: uvcvideo
-# wurde gar nicht gebaut. Stock benutzt genau diese Kamera fuer den Autofokus
-# (doku/94). Modul, damit sie nur laeuft wenn sie gebraucht wird.
+
+# The built-in camera (Realtek 0bda:5803, UVC on USB port 1, two interfaces) binds only with these three; stock
+# uses it for the autofocus (doku/94). The class driver is a module.
 CONFIG_MEDIA_CAMERA_SUPPORT=y
 CONFIG_MEDIA_USB_SUPPORT=y
 CONFIG_USB_VIDEO_CLASS=m
@@ -164,13 +170,18 @@ CONFIG_VIDEO_SUN4I_CSI=y
 CONFIG_VIDEO_SUN6I_CSI=y
 CONFIG_VIDEO_SUN8I_DEINTERLACE=y
 CONFIG_VIDEO_SUN8I_ROTATE=y
+
+# The AV1 decoder (hantro's H713 variant, 0303, at 0x01c0d000, IOMMU master 5, clocked from the video engine)
+# stays off for now (14.10.2026, 0310); its code, 0300-0307, stays in the series.
+# CONFIG_VIDEO_HANTRO is not set
 CONFIG_DRM=y
-# fbdev emulation gives the AFBD KMS driver a /dev/fb0 and a console on the
-# projector, which is the cheapest possible check that scanout is live.
+
+# fbdev emulation gives the AFBD KMS driver /dev/fb0 and a console on the projector: the cheapest proof that
+# the picture runs.
 CONFIG_DRM_FBDEV_EMULATION=y
-# KMS over the AFBD scanout engine (patches 0037/0038). A module: it adopts a
-# display U-Boot has already brought up, so nothing is lost by loading it late,
-# and a bad load can be undone without reflashing a kernel.
+
+# KMS on the AFBD scanout (0037/0038) as a module: it takes over the picture U-Boot set up, loading it late costs
+# nothing, and a bad version is undone without a new kernel.
 CONFIG_DRM_SUN50I_H713_AFBD=m
 CONFIG_DRM_SUN4I=y
 CONFIG_DRM_PANEL_LVDS=y
@@ -182,6 +193,8 @@ CONFIG_FB=y
 CONFIG_FB_VIRTUAL=y
 CONFIG_BACKLIGHT_CLASS_DEVICE=y
 CONFIG_BACKLIGHT_PWM=y
+
+# --- Sound, USB, MMC, LEDs
 CONFIG_SOUND=y
 CONFIG_SND=y
 CONFIG_SND_SOC=y
@@ -209,20 +222,21 @@ CONFIG_LEDS_GPIO=y
 CONFIG_LEDS_TRIGGERS=y
 CONFIG_LEDS_TRIGGER_HEARTBEAT=y
 CONFIG_LEDS_TRIGGER_DEFAULT_ON=y
+
+# --- RTC, DMA, the H713's own drivers
 CONFIG_RTC_CLASS=y
-# Expose the RTC over sysfs (/sys/class/rtc/rtc0/{time,date,since_epoch}) and
-# emulate the once-per-second update interrupt in software. sun6i-rtc provides
-# no hardware UIE, so without these `hwclock -r` select()-times-out and the
-# sysfs time files are absent; with them `hwclock`/`timedatectl` read the clock.
+
+# The RTC through sysfs, and the update interrupt emulated in software: sun6i-rtc has none in hardware, and
+# without it hwclock -r runs into a timeout and the time files in sysfs are missing.
 CONFIG_RTC_INTF_SYSFS=y
 CONFIG_RTC_INTF_DEV=y
 CONFIG_RTC_INTF_DEV_UIE_EMUL=y
 # CONFIG_RTC_INTF_PROC is not set
 CONFIG_RTC_NVMEM=y
 CONFIG_RTC_DRV_AC100=y
-# H713 RTC (H6-compatible block @ 0x07090000): real timekeeping, the canonical
-# osc32k/iosc clock provider (previously orphaned), and the general-purpose
-# registers as an nvmem device — GP7 backs the reboot-to-fastboot handoff.
+
+# The H713's RTC, an H6-like block at 0x07090000: time keeping, the osc32k/iosc clock, and the general
+# purpose registers as nvmem (GP7 carries the "reboot to fastboot" request).
 CONFIG_RTC_DRV_SUN6I=y
 CONFIG_DMADEVICES=y
 CONFIG_DMA_SUN6I=y
@@ -233,20 +247,32 @@ CONFIG_VIDEO_SUNXI_CEDRUS=m
 CONFIG_HWSPINLOCK=y
 CONFIG_HWSPINLOCK_SUN6I=y
 CONFIG_MAILBOX=y
+
+# The video decoders sit behind the IOMMU: the video engine is master 0 and 1 (0042); the display stays physical
+# (the H713 variant, 0041, passes every master nobody claimed).
+CONFIG_SUN50I_IOMMU=y
 CONFIG_HY310_CPU_COMM=m
-# Restarts the display MIPS from Linux, out of the standby park too; owns its clock and resets.
+
+# Restarts the display MIPS from Linux, also out of the standby's park position; owns its clock and resets.
 CONFIG_SUN50I_H713_MIPS=m
 CONFIG_SUN50I_H713_ARISC=m
 CONFIG_VIDEO_SUN50I_H713_HDMIRX=m
 CONFIG_SUN50I_H713_PPU=y
-# Holds the TVFE/TVCAP domains and the capture clocks from boot on. Built
-# in on purpose: the display firmware latches an HDMI signal only into a
-# powered, clocked receiver, and the display and receive drivers above are
-# modules that come too late for the first plug (patch 0096a, issue #1).
+
+# Keeps the TVFE/TVCAP power domains and capture clocks on from the start, so built in: the firmware locks an
+# HDMI signal only into a receiver that is powered and clocked, and the display and receiver drivers are
+# modules and would come too late for the first plug-in (0096a, issue #1).
 CONFIG_SUN50I_H713_TVCAP=y
 CONFIG_IIO=y
 CONFIG_IIO_ST_ACCEL_3AXIS=m
 CONFIG_IIO_ST_ACCEL_I2C_3AXIS=m
+
+# The keystone's accelerometer has no interrupt line: its buffer runs on an hrtimer trigger, which h713-keystone
+# creates through configfs. So the sensor stays on while it is read, instead of being switched on and off for
+# every value in sysfs (about 45 ms each time).
+CONFIG_IIO_BUFFER=y
+CONFIG_IIO_SW_TRIGGER=y
+CONFIG_IIO_HRTIMER_TRIGGER=y
 CONFIG_AXP20X_ADC=y
 CONFIG_SUN20I_GPADC=y
 CONFIG_SUN50I_H713_LRADC=y
@@ -255,6 +281,8 @@ CONFIG_PWM_SUN8I=y
 CONFIG_PHY_SUN4I_USB=y
 CONFIG_PHY_SUN9I_USB=y
 CONFIG_NVMEM_SUNXI_SID=y
+
+# --- File systems
 CONFIG_AUTOFS_FS=y
 CONFIG_EXT4_FS=y
 CONFIG_VFAT_FS=y
@@ -265,70 +293,44 @@ CONFIG_NFS_V4=y
 CONFIG_ROOT_NFS=y
 CONFIG_NLS_CODEPAGE_437=y
 CONFIG_NLS_ISO8859_1=y
-# Crypto Engine DISABLED — mainline sun8i-ce cannot drive the H713 CE (bench-
-# proven 2026-07-23). Enabling it registers every algorithm, then each fails its
-# known-answer self-test. Wiring the stock's 2nd interrupt (SPI 74) fixes task
-# completion, but the CE then rejects mainline's task descriptors: ciphers report
-# "address invalid", AES/SHA "algorithm not supported" — a different descriptor
-# FORMAT (the vendor two-register-bank block), not an IRQ/clock/addressing gap.
-# No CE TRNG either. Re-enabling needs descriptor-level RE of the vendor
-# allwinner,sunxi-ce driver (source unavailable); the A53 has ARMv8 AES/SHA
-# (software crypto ~2 GB/s, faster than this CE) so there is no benefit.
-# See docs/status.md and docs/roadmap.md.
-# Crypto Engine deliberately off, do not "complete" this. mainline sun8i-ce
-# cannot drive the H713 CE: it uses a different task-descriptor format (the
-# vendor two-bank block with 5-byte address fields), so every algorithm fails
-# its known-answer test, and there is no TRNG. The A53s have the ARMv8 crypto
-# extensions anyway, which are faster than this engine. The one thing the CE
-# can do that software cannot -- read the RSSK efuse key for HDCP 1.4 -- needs
-# a dedicated path, not this driver. See doku/114-plan-crypto-engine.md.
+
+# The Crypto Engine stays off on purpose - do not "complete" it. Mainline's sun8i-ce cannot drive the H713's CE
+# (another task descriptor format, the vendor's two-bank block with 5-byte address fields; every algorithm
+# fails its self test; no TRNG). The A53 cores have the ARMv8 crypto extensions and are faster. The one thing
+# only the CE can do, the RSSK eFuse key for HDCP 1.4, needs a way of its own (doku/114).
 # CONFIG_CRYPTO_DEV_SUN8I_CE is not set
+
+# --- Debugging, kept small
 CONFIG_DMA_CMA=y
 CONFIG_PRINTK_TIME=y
-# No debugfs in the release kernel (Marco, 12.09.2026: "kein Debug im Release").
-# What this closes: /sys/kernel/debug/cpu_comm/call, a prompt that sends any
-# RPC by name straight to the display firmware, the writable tx_delay_* knobs
-# next to it, and the write side of cpu_comm/watch, which claims callback
-# slots. All of it sits under #ifdef CONFIG_DEBUG_FS in cpu_comm_api.c with an
-# empty #else, so the driver is untouched -- the switch alone does it. The
-# read-only status files of hdmirx and cpu_comm go with it; h713-tv reports
-# the missing path in "status" instead of failing, and "ctl rpc" says why it
-# cannot. Nothing in the release rootfs reads debugfs. No enabled symbol
-# selects DEBUG_FS, so "is not set" holds through olddefconfig (checked
-# 12.09.2026 against lib/Kconfig.debug and friends). DYNAMIC_DEBUG only has a
-# control file through debugfs; without it the pr_debug sites are dead weight.
-# Development builds put both back with a fragment, not by editing this file.
+
+# No debugfs in the release (12.09.2026): it closes /sys/kernel/debug/cpu_comm/call (any RPC to the display
+# firmware), the writable tx_delay_* files and the write side of cpu_comm/watch, all of which sit under
+# CONFIG_DEBUG_FS in the driver; the read-only status files go with them. h713-tv reports the missing path and
+# "ctl rpc" says why; nothing in the rootfs reads debugfs. No enabled symbol selects DEBUG_FS, so "is not set"
+# survives olddefconfig (checked 12.09.2026); DYNAMIC_DEBUG has no control file without debugfs. Developer
+# kernels take board/debug.config.
 # CONFIG_DYNAMIC_DEBUG is not set
 # CONFIG_DEBUG_FS is not set
-# Reboot-to-fastboot handoff over the RTC GP7 nvmem cell (see the RTC section and
-# the reboot-mode node in sun50i-h713.dtsi). Replaces the earlier syscon window
-# that overlapped the RTC register region.
+
+# "Reboot to fastboot" through the nvmem cell RTC GP7 (the reboot-mode node of the dtsi). It replaces an older
+# syscon window that overlapped the RTC's registers.
 CONFIG_NVMEM_REBOOT_MODE=y
 
-# Messmodul fuer das Deskriptorformat der CE, ausdruecklich KEIN Ersatz fuer
-# sun8i-ce: es registriert nichts beim Krypto-Kern, setzt genau einen Task im
-# Vendorformat ab (AES-128, ECB oder CBC mit IV 0, Key-Select 0, Schluessel
-# aus dem Speicher, 16 Byte, Ziel DRAM) und vergleicht mit dem FIPS-197-
-# Vektor. Es fasst kein Geraeteschluesselmaterial und keine Schluesselsenke
-# an. Es laedt beim Start ueber den Geraetebaum-Knoten, laeuft aber erst,
-# wenn man es ueber /sys/kernel/debug/h713-ce-test/starten anstoesst. Nur als
-# Modul (m), damit ein Messlauf eine Entscheidung bleibt. Siehe
-# doku/114-plan-crypto-engine.md Paragraph 7 Schritt 3 und die README neben
-# diesem Patch. Fuer ein Release kann die Zeile wieder raus.
+# A measuring module for the CE's descriptor format, not a replacement for sun8i-ce: it registers nothing with
+# the crypto core and runs exactly one task in the vendor's format (AES-128, ECB or CBC with a zero IV, key
+# select 0, the key from memory, 16 bytes, to DRAM), compared with the FIPS-197 vector. It touches no key
+# material of the device, binds through the device tree and runs only when asked through debugfs (doku/114
+# section 7, step 3). A release may drop this line.
 CONFIG_H713_CE_TEST=m
 
-# Magic SysRq in the shipping kernel, not only in the debug fragments (doku/124,
-# after cstenger's 2026-08-22 finding). When the eMMC stops answering, reboot and
-# systemctl are binaries on the dead filesystem and cannot run, and opening
-# /dev/watchdog0 does nothing because systemd already holds and pets it.
-# `echo b > /proc/sysrq-trigger` needs no filesystem, and neither does a UART
-# BREAK (MAGIC_SYSRQ_SERIAL with the empty sequence arms it on BREAK alone).
-# A hard lockup with every CPU spinning interrupts-off is still out of reach;
-# this is for the softer wedge, the one that otherwise costs a trip to the plug.
+# Magic SysRq in the image kernel (doku/124): when the eMMC stops answering, reboot and systemctl hang and
+# systemd holds /dev/watchdog0, while echo b > /proc/sysrq-trigger and a break on the UART need no file
+# system. It does not help when every CPU hangs.
 CONFIG_MAGIC_SYSRQ=y
 CONFIG_MAGIC_SYSRQ_SERIAL=y
 CONFIG_MAGIC_SYSRQ_DEFAULT_ENABLE=0x1
-# /sys/power/pm_wakeup_irq (CONFIG_PM_SLEEP_DEBUG follows): h713-power reads which
-# interrupt aborted a standby - a press while the box goes to sleep is no refusal
-# (TODO 5.14 U2). pm_test comes with it, the way to abort a standby at a chosen phase.
+
+# /sys/power/pm_wakeup_irq (with PM_SLEEP_DEBUG): h713-power reads which interrupt broke off a standby
+# (TODO 5.14); pm_test comes with it.
 CONFIG_PM_DEBUG=y

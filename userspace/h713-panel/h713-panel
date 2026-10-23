@@ -31,9 +31,13 @@ import base64
 import hmac
 import http.server
 import json
+import math
 import os
 import re
+import importlib.machinery
+import importlib.util
 import secrets
+import shutil
 import subprocess
 import sys
 import threading
@@ -72,6 +76,7 @@ AFTER_MOVE = ("off", "keystone", "keystone+focus")
 # names it, and what each after-move choice needs of it.  The page hides the
 # controls of what is not present; nothing here guesses at a node itself.
 FEATURE_NAMES = ("camera", "accelerometer", "focus-motor")
+FIRMWARE_FEATURES = ("colour", "gamma", "colour-manager")   # what h713-tv says of itself (`ctl wb` of the display firmware, `ctl get gamma` of the board's curves; the colour manager: not offered, cm-diagnose 20.10.2026), not h713-features
 AFTER_MOVE_NEEDS = {"keystone": ("accelerometer",),
                     "keystone+focus": ("accelerometer", "camera", "focus-motor")}
 # h713-warp's projection modes: how the picture is mirrored for the mount.
@@ -80,9 +85,23 @@ MODES = ("front", "rear", "ceiling", "rear-ceiling")
 SPECIALS = ("status", "controls", "picture_set", "after_move", "screen_zoom",
             "settings", "report", "remote", "remote_repair", "conf_set",
             "wifi_set", "wifi_confirm", "hostname_set",
-            "panel_password")  # Panel.do_*
-READS = ("settings", "report", "remote")   # read only: no lock, they may take seconds
+            "panel_password", "wb_tune", "cm_set", "colour", "look")  # Panel.do_*
+READS = ("settings", "report", "remote", "colour", "look")   # read only: no lock, they may take seconds
 NUDGE_STEPS = (1, 10, 50)   # what one press of the pad may be worth
+
+# Colour (docs/tools/h713-tv.md, "White balance and colour management"), the way the settings page offers it
+# (h713-settings, rows.c): two sliders for the white balance that only ever LOWER a gain, and the hue and the
+# saturation of one of six primaries as a step on what the picture mode itself puts there.
+WB_STEP = 0.004                          # of a gain per slider step: 20 % off at the end of a slider
+WB_NEUTRAL = 512                         # the firmware's own scale: 512 is a gain of 1.0
+PRIMARIES = ("red", "yellow", "green", "cyan", "blue", "purple")
+CM_PARTS = ("hue", "sat")
+
+# Gamma and colour temperature (docs/tools/h713-tv.md, "Gamma and colour temperature"): h713-tv's own curves, the way the settings page
+# offers them (h713-settings, rows.c).  Gamma is a level 0..4 for 1.8 2.0 2.1 2.2 2.4 (the standard is 3); the colour temperature is
+# auto (the picture mode brings it: cinema and hdr warm, vivid cool, the others normal) or one of the maker's three measured curves.
+GAMMA_LEVELS = ("0", "1", "2", "3", "4")
+TEMPERATURES = ("auto", "warm", "normal", "cool")
 
 
 class Refused(Exception):
@@ -176,6 +195,8 @@ CORNER, AXIS, ON_OFF = _choice(*CORNERS), _choice(*AXES), _choice("on", "off")
 STEP = _choice(*[str(sign * n) for n in NUDGE_STEPS for sign in (1, -1)])
 PER_MILLE = _number(0, 1000)
 PERCENT = _number(50, 100, 5)           # the screen zoom
+WB_SLIDER = _number(-50, 50, 2)         # Warm - Cool, Green - Magenta
+CM_SLIDER = _number(-100, 100, 5)       # the hue and the saturation of a primary
 T, LONG = TIMEOUT_S, TIMEOUT_LONG_S
 
 # verb -> (tool, the fixed words, the checks for the browser's arguments,
@@ -199,8 +220,12 @@ COMMANDS = {
     "pattern": (WARP, ("ctl", "test"), (_choice("grid", "border"),), T),
     # Picture
     "preset": (TV, ("ctl", "preset"), (_choice(*PRESETS),), T),
+    "gamma": (TV, ("ctl", "set", "gamma"), (_choice(*GAMMA_LEVELS),), T),
+    "colour_temperature": (TV, ("ctl", "set", "colour_temperature"), (_choice(*TEMPERATURES),), T),
     "aspect": (TV, ("ctl", "aspect"), (_choice(*ASPECTS),), T),
     "save": (TV, ("ctl", "save"), (), T),
+    "wb_reset": (TV, ("ctl", "wb", "reset"), (), T),   # the six values back to 512
+    "cm_reset": (TV, ("ctl", "cm", "reset"), (), T),   # every colour back to the picture mode's own
     "save_off": (TV, ("ctl", "save", "off"), (), T),
     "resync": (TV, ("ctl", "resync"), (), T),
     "replug": (TV, ("ctl", "replug"), (), T),     # about a second of console
@@ -266,6 +291,16 @@ LIST_ROW = re.compile(r"^\s{2,}(\S+)\s+(-?\d+|\?)\s*(.*)$")
 RANGE = re.compile(r"\((-?\d+)\.\.(-?\d+)\)")
 MENU = re.compile(r"menu\s+0\.\.(\d+)")
 CONF_KEY = re.compile(r"^(\s*)([A-Za-z_][A-Za-z_0-9]*)\s*=(.*)$")
+# `h713-tv ctl wb`: "ok wb 512 512 512 512 512 512 -- R G B gain, ..." or "... [not available: WHY]";
+# `h713-tv ctl cm`: "ok cm" and one "  cm_yellow_hue = 10" per entry that is not 0
+WB_REPLY = re.compile(r"^ok wb (\d+) (\d+) (\d+) (\d+) (\d+) (\d+)(.*)$", re.M)
+WB_ABSENT = re.compile(r"\[not available: ([^\]]*)\]")
+CM_ENTRY = re.compile(r"^\s+cm_(\w+?)_(hue|sat|value) = (-?\d+)\s*$", re.M)
+# `h713-tv ctl get gamma`: "ok gamma = 3 (2.2)"; `ctl get colour_temperature`: "ok colour_temperature = auto (normal)" or, for a curve the
+# board does not have, "... = warm (normal: this board has no warm curve)"; without the curves "error gamma is not available: WHY"
+GAMMA_REPLY = re.compile(r"^ok gamma = (\d) \(([\d.]+)\)", re.M)
+TEMPERATURE_REPLY = re.compile(r"^ok colour_temperature = (auto|warm|normal|cool)(?: \((warm|normal|cool)[:)])?", re.M)
+LOOK_ABSENT = re.compile(r"^error \w+ is not available: (.*)$", re.M)
 
 
 def read_bytes(path):
@@ -426,6 +461,53 @@ def keystone_limits(values):
                 for c in CORNERS for a in AXES)
 
 
+def _lround(x):
+    """C's lround: halves away from zero."""
+    whole = math.floor(abs(x))
+    return int(math.copysign(whole + (abs(x) - whole >= 0.5), x))
+
+
+def wb_gains(cool, magenta):
+    """The red, green and blue gain the two white balance sliders make (positive: towards cool, towards magenta):
+    h713-settings (rows.c, wb_gains) written once more.  Cool lowers red, warm lowers blue, magenta lowers green,
+    green lowers red and blue; a gain is only ever lowered, so white never clips."""
+    toward_cool, toward_warm = max(cool, 0), max(-cool, 0)
+    toward_magenta, toward_green = max(magenta, 0), max(-magenta, 0)
+    return [_lround(WB_NEUTRAL * k) for k in (
+        (1 - WB_STEP * toward_cool) * (1 - WB_STEP * toward_green),
+        1 - WB_STEP * toward_magenta,
+        (1 - WB_STEP * toward_warm) * (1 - WB_STEP * toward_green))]
+
+
+def wb_positions(gains):
+    """The sliders (cool, magenta) a set of gains would have come from (rows.c, wb_positions); 0, 0 for gains the
+    sliders cannot make."""
+    if max(gains) > WB_NEUTRAL:
+        return 0, 0
+    red, green, blue = [g / float(WB_NEUTRAL) for g in gains]
+    if green < 1:             # magenta: green is lowered, red and blue only by the warm/cool slider
+        magenta = (1 - green) / WB_STEP
+        cool = (1 - red) / WB_STEP if red < 1 else -(1 - blue) / WB_STEP if blue < 1 else 0
+    else:                     # green or none: red and blue share the factor 1 - step * |slider|
+        top = red if red > blue else blue
+        magenta = -(1 - top) / WB_STEP
+        cool = 0 if top <= 0 else (1 - red / top) / WB_STEP if red < blue else \
+            -(1 - blue / top) / WB_STEP if blue < red else 0
+    return (max(-50, min(50, _lround(cool))), max(-50, min(50, _lround(magenta))))
+
+
+def wb_slider_positions(gains):
+    """wb_positions on the page's grid (steps of 2): two positions at the ends of the range make the same gains
+    (-8 and -9 of Warm - Cool at -50 of Green - Magenta), and the one that comes back may be the odd one."""
+    cool, magenta = wb_positions(gains)
+    if cool % 2 or magenta % 2:
+        for near_c in (cool, cool - 1, cool + 1):
+            for near_m in (magenta, magenta - 1, magenta + 1):
+                if near_c % 2 == 0 and near_m % 2 == 0 and wb_gains(near_c, near_m) == list(gains):
+                    return near_c, near_m
+    return cool, magenta
+
+
 class Panel(object):
     """The verbs, and the lock that keeps two browsers off one focus motor."""
 
@@ -439,6 +521,7 @@ class Panel(object):
         self.password_file = password_file or self.p("panel.env")
         self.selfpath = selfpath or os.path.realpath(__file__)   # the fall-back timer runs this file
         self.lock, self.ranges, self.server = threading.Lock(), {}, None
+        self._keystone = False                        # keystone_module(): not looked for yet
 
     def p(self, name):
         return os.path.join(self.etc, name)
@@ -498,6 +581,15 @@ class Panel(object):
         ranges = self.control_ranges(refresh=True)
         blank = {"min": 0, "max": 100}     # until ctl list has been read
         present = self.features()
+        state = self.wb_state()[0]
+        if state != "unknown":             # h713-tv did not answer: the tab stays, as with the hardware
+            present["colour"] = state == "ok"
+        state = self.look_state()[0]
+        if state != "unknown":
+            present["gamma"] = state == "ok"
+        # The colour manager (hue and saturation of the primaries) has no visible effect on the HY310 in any state, measured with
+        # the camera (cm-diagnose, 20.10.2026): its card is not offered. The verbs stay for the day it is shown to work.
+        present["colour-manager"] = False
         return {"ok": True, "line": "ok controls", "steps": NUDGE_STEPS,
                 "controls": [dict(blank, name=n, **ranges.get(n, {}))
                              for n in PICTURE_CONTROLS],
@@ -519,6 +611,89 @@ class Panel(object):
                         span.get("max", 3 if name in QUALITY_CONTROLS else 100))(args[1])
         ok, line, _ = self.run(TV, ("ctl", "set", name, value), T)
         return {"ok": ok, "line": line}
+
+    def wb_state(self):
+        """`h713-tv ctl wb` as ("ok", the six numbers), ("absent", why) where the display firmware is not the one
+        the registers were read from, or ("unknown", the tool's line) when h713-tv did not give them."""
+        ok, line, out = self.run(TV, ("ctl", "wb"), T)
+        found = WB_REPLY.search(out)
+        if not found:
+            return "unknown", line
+        absent = WB_ABSENT.search(found.group(7))
+        if absent:
+            return "absent", absent.group(1)
+        return "ok", [int(n) for n in found.groups()[:6]]
+
+    def no_colour(self, state, why):
+        return no("error the colour calibration is not available (%s)" % why if state == "absent"
+                  else "error h713-tv did not say what the white balance is (%s)" % why[:120])
+
+    def do_wb_tune(self, args):
+        """The two white balance sliders as the six numbers `h713-tv ctl wb` takes: the gains out of wb_gains, the
+        offsets as h713-tv holds them now (the sliders do not touch them)."""
+        if len(args) != 2:
+            raise Refused("error warm - cool and green - magenta were expected")
+        cool, magenta = [int(WB_SLIDER(a)) for a in args]
+        state, have = self.wb_state()
+        if state != "ok":
+            return self.no_colour(state, have)
+        words = [str(n) for n in wb_gains(cool, magenta) + have[3:]]
+        ok, line, _ = self.run(TV, ("ctl", "wb") + tuple(words), T)
+        return {"ok": ok, "line": line}
+
+    def do_cm_set(self, args):
+        """The hue or the saturation of one primary: `h713-tv ctl set cm_AXIS_PART N`, a step on the value the
+        picture mode itself puts there."""
+        if len(args) != 3:
+            raise Refused("error a colour, hue or sat, and a value were expected")
+        axis, part = _choice(*PRIMARIES)(args[0]), _choice(*CM_PARTS)(args[1])
+        ok, line, _ = self.run(TV, ("ctl", "set", "cm_%s_%s" % (axis, part), CM_SLIDER(args[2])), T)
+        return {"ok": ok, "line": line}
+
+    def do_colour(self, args):
+        """What the Colour tab shows: the two white balance sliders the gains come from (and whether the gains are
+        ones the sliders make at all), and the hue and saturation step of each primary."""
+        state, have = self.wb_state()
+        if state != "ok":
+            return self.no_colour(state, have)
+        ok, line, out = self.run(TV, ("ctl", "cm"), T)
+        if not ok:
+            return no(line)
+        steps = dict((axis, {"hue": 0, "sat": 0}) for axis in PRIMARIES)
+        for axis, part, value in CM_ENTRY.findall(out):
+            if axis in steps and part in CM_PARTS:
+                steps[axis][part] = int(value)
+        cool, magenta = wb_slider_positions(have[:3])
+        return {"ok": True, "line": "ok colour", "wb": {"cool": cool, "magenta": magenta},
+                "wb_other": wb_gains(cool, magenta) != have[:3], "cm": steps}
+
+    def look_state(self):
+        """`h713-tv ctl get gamma` and `ctl get colour_temperature` as ("ok", gamma level, its name, the temperature set, the one it comes to),
+        ("absent", why) for a board whose curves h713-tv could not read, or ("unknown", the tool's line) when h713-tv did not answer them."""
+        _, line, out = self.run(TV, ("ctl", "get", "gamma"), T)
+        absent, level = LOOK_ABSENT.search(out), GAMMA_REPLY.search(out)
+        if absent:
+            return "absent", absent.group(1)
+        if not level:
+            return "unknown", line
+        _, line, out = self.run(TV, ("ctl", "get", "colour_temperature"), T)
+        found = TEMPERATURE_REPLY.search(out)
+        if not found:
+            return "unknown", line
+        return "ok", int(level.group(1)), level.group(2), found.group(1), found.group(2) or found.group(1)
+
+    def do_look(self, args):
+        """What the Picture and Colour tabs show of gamma and colour temperature: the gamma level, the colour temperature (auto or one of
+        the three curves), the one it comes to now (auto follows the preset; a board without the curve uses the normal one), and the
+        picture mode that is on.  Reads only."""
+        state, *have = self.look_state()
+        if state != "ok":
+            return no("error gamma and colour temperature are not available (%s)" % have[0][:120] if state == "absent"
+                      else "error h713-tv did not say what the gamma is (%s)" % have[0][:120])
+        level, name, chosen, now = have
+        mode = (labelled(self.run(TV, ("ctl", "status", "brief"), T)[2]).get("preset") or "").split()
+        return {"ok": True, "line": "ok look", "gamma": level, "gamma_name": name, "ct": chosen, "ct_now": now,
+                "preset": mode[0] if mode and mode[0] in PRESETS else ""}
 
     def do_screen_zoom(self, args):
         """`h713-warp ctl zoom PERCENT`, and below 100 the warp on with it.
@@ -777,12 +952,66 @@ class Panel(object):
         self.server.password = new
         return {"ok": True, "line": "ok password changed - the browser asks for the new one"}
 
+    def keystone_module(self):
+        """h713-keystone as a module, loaded once from the tool directory: a
+        status every three seconds may not start a Python interpreter each
+        time.  None when it is not a Python file there (the tests' /bin/sh
+        fakes) or does not load; then the status runs it as a program."""
+        if self._keystone is not False:
+            return self._keystone
+        self._keystone = None
+        path = os.path.join(self.tools, "h713-keystone") if self.tools else shutil.which("h713-keystone")
+        try:
+            loader = importlib.machinery.SourceFileLoader("h713_keystone", path)
+            spec = importlib.util.spec_from_loader("h713_keystone", loader)
+            module = importlib.util.module_from_spec(spec)
+            loader.exec_module(module)
+            self._keystone = module
+        except Exception:                                 # not Python, not there, not importable
+            self._keystone = None
+        return self._keystone
+
+    def keystone_facts(self, warp_text):
+        """The three lines of `h713-keystone status` the page shows -- "after a
+        move", "reference", "keystone by" -- computed here, in this process,
+        out of keystone.conf, the reference file, the last automatic set and
+        the warp status already read.  Measured on the HY310 (16.10.2026): the
+        program start of h713-keystone costs 0.27 s of CPU every three seconds
+        while the page is open, and the projector's light follows the SoC's
+        current -- the page itself made the picture pulse every three seconds.
+        None when the module is not there: the caller runs the program."""
+        ks = self.keystone_module()
+        if ks is None:
+            return None
+        try:
+            conf = ks.load_conf(self.keystone_conf)
+        except Exception as exc:                          # ks.Error: a value the file cannot carry
+            return {"after a move": "-", "reference": "refused (%s)" % exc, "keystone by": "unknown"}
+        found = {}
+        for corner, x, y in ks.WARP_PAIR.findall(warp_text):
+            found[(corner, "x")], found[(corner, "y")] = int(x), int(y)
+        for corner, axis, value in ks.WARP_VALUE.findall(warp_text):
+            found.setdefault((corner, axis), int(value))
+        warp_set = (tuple(found[slot] for slot in ks.WARP_SLOTS)
+                    if len(found) >= len(ks.WARP_SLOTS) else None)
+        facts = {"after a move": str(conf["after_move"])}
+        for label, call in (("reference", lambda: ks._reference_text(ks.REF_PATH, conf)),
+                            ("keystone by", lambda: ks.keystone_by(
+                                warp_set, ks.read_last_auto(ks.LAST_AUTO_PATH)))):
+            try:
+                facts[label] = call()
+            except Exception as exc:
+                facts[label] = str(exc)
+        return facts
+
     def do_status(self, args):
-        """Three statuses and the thermal zones, every three seconds."""
-        warp, tv, keystone = [
-            labelled(self.run(tool, words, TIMEOUT_S)[2]) for tool, words in
-            (("h713-warp", ("ctl", "status")), ("h713-tv", ("ctl", "status", "brief")),
-             ("h713-keystone", ("status",)))]
+        """Two statuses, the keystone facts and the thermal zones, every three seconds."""
+        warp_text = self.run("h713-warp", ("ctl", "status"), TIMEOUT_S)[2]
+        warp = labelled(warp_text)
+        tv = labelled(self.run("h713-tv", ("ctl", "status", "brief"), TIMEOUT_S)[2])
+        keystone = self.keystone_facts(warp_text)
+        if keystone is None:
+            keystone = labelled(self.run("h713-keystone", ("status",), TIMEOUT_S)[2])
         values = dict((c + "_" + a, 0) for c in CORNERS for a in AXES)
         for corner, x, y in PAIR.findall(warp.get("keystone", "")):
             values[corner + "_x"], values[corner + "_y"] = int(x), int(y)

@@ -1,0 +1,82 @@
+# h713-desktop.service - labwc on the panel, with a terminal and a menu (profile desktop).
+#
+# Not wanted by anything, on purpose: the panel shows the HDMI input until somebody starts this unit (the launcher's "Desktop" entry,
+# /etc/h713/launcher.d/30-desktop.conf). The same road as h713-kodi.service (Kodi under cage, drawn by h713-warp): labwc is a wlroots compositor with the
+# Wayland backend like cage, so its one output window is the one fullscreen toplevel of h713-warp's server; h713-warp draws it through
+# the keystone onto the video plane while h713-tv stays the DRM master and the only one that commits. The keystone, the overlays
+# (h713-osd) and the volume keys (h713-keys) stay as they are with HDMI.
+# * The start sets h713-tv's source to `client` (`h713-kodi-switch source`): a program is the mode, never the ring as a filler; and
+#   however the unit ends (a stop, a crash, a SIGKILL of the group) h713-warp gives the panel to the ring two seconds after labwc is
+#   gone, when no other program says it starts (it puts the source back to `auto`). Nothing to undo for the source.
+# * One client at a time: the server keeps one fullscreen toplevel and asks a second one to close. Conflicts= stops Kodi and the
+#   browser when this unit starts; the After= lines make the start wait for their stop. A start of Kodi or the browser while this unit
+#   stands is not ordered the other way (no loop): the launcher stops the old mode first and starts the new one after.
+# * BindsTo=h713-warp.service: without the server labwc has nothing to draw on; a stop or restart of h713-warp ends the desktop.
+# * A standby: no Conflicts=sleep.target here, on purpose. The units h713-sleep-pre/-post (h713-mode) end every mode unit that a
+#   launcher.d entry names (`unit =`) and start it again after the wake; a unit that ended itself through the sleep target would
+#   be gone before h713-mode could remember that it had been running. Without h713-mode the desktop is not ended before a sleep.
+# * labwc reads the keys, the mouse and the remote's mouse mode through libinput and seatd, like cage does for Kodi; the warp's server
+#   has no wl_seat. WLR_NO_HARDWARE_CURSORS=1: a hardware cursor of the Wayland backend goes to the server, which draws none, so the
+#   pointer is composited into the picture by labwc itself (to be checked on the wall, report H2).
+# * The menu's "HDMI input" ends labwc itself (the Exit action): a program of the user cannot stop a unit, and it needs no more.
+# * The terminal is labwc's session client (-S foot, as Firefox is in h713-browser.service): when it is closed (`exit`, the window's close button) labwc ends, the unit
+#   ends, and h713-warp gives the HDMI ring back two seconds later. A bare labwc with a closed terminal would stand on an empty picture until the launcher
+#   switched modes. A second terminal from the menu or a key is not the session client; closing that one ends nothing.
+# * Not root (the userspace-fix's way for Kodi, h713-kodi.service): the system user h713-desktop (usr/lib/sysusers.d/h713-desktop.conf), shared
+#   by the desktop and the browser (one runs at a time; the desktop's Firefox window and the browser mode share one profile), with the
+#   groups the devices ask for: video (seatd's socket, h713-warp's Wayland socket, the decoders' /dev/video* and /dev/media*), render
+#   (renderD128), audio (ALSA, the DSP bridge). HOME is the StateDirectory /var/lib/h713-desktop, chowned to the user at the first start
+#   (the Firefox profile lives there); /tmp is private. The hardening is h713-warp.service's without MemoryDenyWriteExecute: Firefox
+#   compiles JavaScript. The source command is the one thing that needs root (h713-tv's socket is root's): "+" runs it outside the user
+#   and the sandbox; it does nothing without h713-tv's socket.
+# * The configuration is /etc/h713/labwc/ (rc.xml, menu.xml, autostart). Its keybinds replace labwc's defaults on purpose: labwc's
+#   own would run `amixer` on the volume keys, a second volume next to h713-keys.
+# * Firefox's decoder process keeps its sandbox here too (see h713-browser.service for the hardware-decoding switch and its price); mpv
+#   decodes on the video engine regardless (VA-API, measured: 60 fps, 3 dropped frames in 4 minutes).
+# * The VA-API wiring comes from the drop-in h713-desktop.service.d/10-h713-media-env.conf, a symlink to
+#   /usr/local/share/h713/systemd/h713-media-env.conf: mpv and Firefox started from the desktop inherit it.
+# * Sound: nothing here; the programs use ALSA `default`, which is the DSP bridge on this board (D, overlay/etc/asound.conf).
+[Unit]
+Description=labwc desktop on the panel (a Wayland client of h713-warp)
+Documentation=file:/usr/local/share/h713/systemd/h713-media-env.conf
+Requires=seatd.service
+After=seatd.service
+BindsTo=h713-warp.service
+After=h713-warp.service
+Conflicts=h713-kodi.service h713-browser.service
+After=h713-kodi.service h713-browser.service
+
+[Service]
+Type=simple
+RuntimeDirectory=h713-desktop
+RuntimeDirectoryMode=0700
+User=h713-desktop
+Group=h713-desktop
+SupplementaryGroups=video render audio
+StateDirectory=h713-desktop
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+Environment=XDG_RUNTIME_DIR=/run/h713-desktop
+Environment=HOME=/var/lib/h713-desktop
+Environment=LIBSEAT_BACKEND=seatd
+Environment=WAYLAND_DISPLAY=/run/h713-warp/wayland
+Environment=WLR_BACKENDS=wayland,libinput
+Environment=WLR_RENDER_DRM_DEVICE=/dev/dri/by-path/platform-1800000.gpu-render
+Environment=WLR_RENDERER=gles2
+Environment=WLR_NO_HARDWARE_CURSORS=1
+Environment=MOZ_ENABLE_WAYLAND=1
+Environment=MOZ_CRASHREPORTER_DISABLE=1
+#Environment=MOZ_DISABLE_RDD_SANDBOX=1
+ExecStartPre=+/usr/local/sbin/h713-kodi-switch source
+# the page scale follows the panel (1920 -> 2.0, 1280 -> 1.333), as the unit's user: the profile is its own
+ExecStartPre=/usr/local/sbin/h713-firefox-scale /var/lib/h713-desktop/firefox/user.js
+ExecStart=/usr/bin/labwc -C /etc/h713/labwc -S /usr/bin/foot
+KillSignal=SIGTERM
+TimeoutStopSec=20s
+# Firefox keeps ".startup-incomplete" in its profile until it has run for about 35 s, and the start after a stop that came sooner takes the
+# slow path (caches rebuilt, 8.3 s to the first window instead of 5.7 s, measured on the HY310). This unit is stopped on purpose (a mode switch, a
+# standby) with SIGTERM and Firefox ends cleanly, so the marker is not a crash: remove it.
+ExecStopPost=-/bin/rm -f /var/lib/h713-desktop/firefox/.startup-incomplete

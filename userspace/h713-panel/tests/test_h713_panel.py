@@ -28,6 +28,7 @@ import sys
 import tempfile
 import threading
 import unittest
+import unittest.mock
 import urllib.error
 import urllib.request
 
@@ -303,6 +304,38 @@ class VerbTest(unittest.TestCase):
                          [{"name": "cpu-thermal", "c": 54.3},
                           {"name": "gpu-thermal", "c": 58.0}])
 
+    def test_status_takes_the_keystone_facts_in_process(self):
+        """With h713-keystone a Python file beside the tools, the status
+        computes "after a move", "reference" and "keystone by" in this
+        process and does not start the program: on the HY310 that start cost
+        0.27 s of CPU every three seconds and made the light pulse."""
+        module = """
+import re
+WARP_SLOTS = (("tl", "x"), ("tl", "y"), ("tr", "x"), ("tr", "y"), ("bl", "x"), ("bl", "y"), ("br", "x"), ("br", "y"))
+WARP_VALUE = re.compile(r"\\b(tl|tr|bl|br)[ _-]?([xy])\\b\\s*[=:]?\\s*(-?\\d+)")
+WARP_PAIR = re.compile(r"\\b(tl|tr|bl|br)\\s+(-?\\d+),(-?\\d+)")
+REF_PATH, LAST_AUTO_PATH = "/nonexistent/ref", "/nonexistent/last-auto"
+def load_conf(path):
+    return {"after_move": "keystone+focus"}
+def _reference_text(path, conf):
+    return "file (2026-10-16): %s, counts 1 2 3" % path
+def read_last_auto(path):
+    return (0, 0, 0, 0, 0, 0, 0, 0)
+def keystone_by(warp_set, last_auto):
+    return "auto (the last automatic set, untouched since)" if warp_set == last_auto else "manual (changed, %r)" % (warp_set,)
+"""
+        with open(os.path.join(self.fake.dir, "h713-keystone"), "wb") as handle:
+            handle.write(module.encode("utf-8"))
+        fresh = panel.Panel(tools=self.fake.dir, keystone_conf=self.conf,
+                            thermal=os.path.join(self.fake.dir, "thermal"))
+        self.fake.forget()
+        state = fresh.call({"verb": "status"})
+        self.assertEqual(state["after_move"], "keystone+focus")
+        self.assertEqual(state["reference"], "set")
+        self.assertEqual(state["keystone_by"], "manual")      # the fake warp status carries non-zero corners
+        self.assertEqual([c for c in self.fake.calls() if c.startswith("h713-keystone")], [])
+        self.assertEqual(sorted(c.split()[0] for c in self.fake.calls()), ["h713-tv", "h713-warp"])
+
     def test_status_without_any_tool(self):
         empty = panel.Panel(tools=os.path.join(self.fake.dir, "nothing"),
                             thermal=os.path.join(self.fake.dir, "nothing"))
@@ -337,13 +370,13 @@ class VerbTest(unittest.TestCase):
         self.assertEqual(list(answer["steps"]), list(panel.NUDGE_STEPS))
 
     def test_controls_say_which_hardware_the_board_has(self):
-        answer = self.call("controls")         # no h713-features: everything stays
-        self.assertEqual(answer["features"], {})
+        answer = self.call("controls")         # no h713-features: everything stays (but the colour manager, cm-diagnose 20.10.2026)
+        self.assertEqual(answer["features"], {"colour-manager": False})
         self.assertEqual(list(answer["after_move"]), list(panel.AFTER_MOVE))
         self.fake.tool("h713-features", {"status": GEU_FEATURES})
         answer = self.call("controls")
         self.assertEqual(answer["features"], {"camera": False, "accelerometer": True,
-                                              "focus-motor": False})
+                                              "focus-motor": False, "colour-manager": False})
         self.assertEqual(list(answer["after_move"]), ["off", "keystone"])
 
     def test_after_move_refuses_hardware_the_board_does_not_have(self):
@@ -482,7 +515,7 @@ class PlainTest(unittest.TestCase):
             self.assertIsNotNone(tag, anchor)
             self.assertIn('data-needs="%s"' % needs, tag.group(0), anchor)
         for needs in re.findall(r'data-needs="([^"]*)"', page):
-            self.assertTrue(set(needs.split()) <= set(panel.FEATURE_NAMES), needs)
+            self.assertTrue(set(needs.split()) <= set(panel.FEATURE_NAMES) | set(panel.FIRMWARE_FEATURES), needs)
         for needed in ('id="absent"', "FEAT = c.features || {}; features();",
                        "[hidden] { display: none !important; }", 'has("accelerometer")'):
             self.assertIn(needed, page)
@@ -1099,13 +1132,331 @@ class PasswordTest(unittest.TestCase):
         self.assertFalse(panel.Panel(etc=self.tmp).call({"verb": "panel_password", "args": ["a", "b" * 9]})["ok"])
 
 
+ROWS_C = os.path.join(PACKAGE, "..", "h713-settings", "rows.c")
+CC = shutil.which("cc") or shutil.which("gcc") or shutil.which("clang")
+GAIN_GRID = (0, 1, 100, 255, 256, 400, 471, 480, 500, 511, 512, 513, 600, 1023)   # gains the sliders cannot make too
+
+# a stand-in h713-tv with a memory: `ctl wb` and `ctl cm` as color.c answers them (docs/tools/h713-tv.md)
+TV_COLOUR = r"""
+dir="DIR"
+case "$*" in
+  "ctl wb")
+    if [ -f "$dir/absent" ]; then echo "ok wb $(cat "$dir/wb") [not available: not the display firmware]"
+    else echo "ok wb $(cat "$dir/wb") -- R G B gain, R G B offset; 512 is neutral"; fi ;;
+  "ctl wb reset") echo "512 512 512 512 512 512" > "$dir/wb"; echo "ok wb 512 512 512 512 512 512 (registers read back, 0 ms)" ;;
+  "ctl wb "*) set -- $*; shift 2; echo "$*" > "$dir/wb"; echo "ok wb $* (registers read back, 0 ms)" ;;
+  "ctl cm") if [ -s "$dir/cm" ]; then echo "ok cm"; cat "$dir/cm"; else echo "ok cm all neutral (0 = as the picture mode has it)"; fi ;;
+  "ctl cm reset") : > "$dir/cm"; echo "ok cm all neutral (registers read back, 0 ms)" ;;
+  "ctl set cm_"*) set -- $*; grep -v "^  $3 = " "$dir/cm" > "$dir/cm.new"; [ "$4" = 0 ] || echo "  $3 = $4" >> "$dir/cm.new"
+    mv "$dir/cm.new" "$dir/cm"; echo "ok $3 = $4 (registers read back, 0 ms)" ;;
+  *) echo "ok h713-tv $*" ;;
+esac
+"""
+
+
+class ColourTest(Bench):
+    """The Colour tab: the white balance as two sliders and the hue and saturation of one primary.  h713-settings
+    (rows.c) does the same on the projector's own screen, and the numbers have to be the same."""
+
+    def setUp(self):
+        super().setUp()
+        self.fake.script("h713-tv", TV_COLOUR.replace("DIR", self.fake.dir))
+        self.state([512] * 6, "")
+
+    def state(self, wb, cm):
+        for name, text in (("wb", " ".join(str(n) for n in wb)), ("cm", cm)):
+            with open(os.path.join(self.fake.dir, name), "w") as handle:
+                handle.write(text + "\n" if text else "")
+
+    def held(self, name="wb"):
+        with open(os.path.join(self.fake.dir, name)) as handle:
+            return handle.read().strip() if name == "cm" else [int(n) for n in handle.read().split()]
+
+    def tv(self):
+        return [c for c in self.fake.calls() if c.startswith("h713-tv")]
+
+    def test_a_slider_sends_all_six_numbers_and_keeps_the_offsets(self):
+        # the numbers of rows.c (compiled below as well): 12 towards warm and 6 towards magenta lower blue and green
+        self.state([512, 512, 512, 530, 500, 490], "")
+        answer = self.call("wb_tune", [-12, 6])
+        self.assertTrue(answer["ok"], answer)
+        self.assertEqual(self.tv(), ["h713-tv ctl wb", "h713-tv ctl wb 512 500 487 530 500 490"])
+        self.assertEqual(self.held(), [512, 500, 487, 530, 500, 490])
+        for (cool, magenta), gains in {(12, -6): [476, 512, 500], (50, 50): [410, 410, 512], (-50, -50): [410, 512, 328],
+                                       (50, -50): [328, 512, 410], (-50, 50): [512, 410, 410], (2, 0): [508, 512, 512],
+                                       (0, -2): [508, 512, 508], (0, 0): [512, 512, 512]}.items():
+            self.assertEqual(self.call("wb_tune", [cool, magenta])["ok"], True)
+            self.assertEqual(self.held()[:3], gains, (cool, magenta))
+
+    @unittest.skipUnless(CC and os.path.exists(ROWS_C), "needs a C compiler and h713-settings/rows.c")
+    def test_the_mapping_is_the_one_of_the_c_code_over_the_whole_range(self):
+        # rows.c's own wb_gains and wb_positions, cut out of the file and compiled: all 101 x 101 positions, and the
+        # positions of a grid of gains, the ones the sliders cannot make included
+        with open(ROWS_C, encoding="utf-8") as handle:
+            source = handle.read()
+
+        def piece(start):
+            return source[source.index(start):source.index("\n}\n", source.index(start)) + 3]
+        program = "\n".join(["#include <math.h>", "#include <stdio.h>", re.search(r"#define WB_S .*", source).group(0),
+                             piece("static int clampi("), piece("static void wb_gains("), piece("static void wb_positions("),
+                             "int main(void) { int g[3], w, t, w2, t2, i, j, k, grid[] = {%s};" % ", ".join(map(str, GAIN_GRID)),
+                             "for (w = -50; w <= 50; w++) for (t = -50; t <= 50; t++) { wb_gains(w, t, g);",
+                             "  wb_positions(g, &w2, &t2); printf(\"S %d %d %d %d %d %d %d\\n\", w, t, g[0], g[1], g[2], w2, t2); }",
+                             "for (i = 0; i < %d; i++) for (j = 0; j < %d; j++) for (k = 0; k < %d; k++) {" % ((len(GAIN_GRID),) * 3),
+                             "  g[0] = grid[i]; g[1] = grid[j]; g[2] = grid[k]; wb_positions(g, &w2, &t2);",
+                             "  printf(\"G %d %d %d %d %d\\n\", g[0], g[1], g[2], w2, t2); } return 0; }"])
+        with tempfile.TemporaryDirectory() as tmp:
+            with open(os.path.join(tmp, "wb.c"), "w") as handle:
+                handle.write(program)
+            subprocess.run([CC, "-O2", "-o", os.path.join(tmp, "wb"), os.path.join(tmp, "wb.c"), "-lm"], check=True)
+            out = subprocess.run([os.path.join(tmp, "wb")], stdout=subprocess.PIPE, universal_newlines=True, check=True).stdout
+        sweep = [[int(n) for n in line.split()[1:]] for line in out.splitlines() if line.startswith("S ")]
+        grid = [[int(n) for n in line.split()[1:]] for line in out.splitlines() if line.startswith("G ")]
+        self.assertEqual((len(sweep), len(grid)), (101 * 101, len(GAIN_GRID) ** 3))
+        for w, t, *rest in sweep:
+            self.assertEqual((panel.wb_gains(w, t), list(panel.wb_positions(rest[:3]))), (rest[:3], rest[3:]), (w, t))
+        for *gains, w, t in grid:
+            self.assertEqual(list(panel.wb_positions(gains)), [w, t], gains)
+        self.assertEqual(min(min(g[2:5]) for g in sweep), 328)          # no gain is lowered by more than 36 %
+
+    def test_every_position_of_the_page_comes_back_from_its_gains(self):
+        for cool in range(-50, 51, 2):
+            for magenta in range(-50, 51, 2):
+                gains = panel.wb_gains(cool, magenta)
+                self.assertLessEqual(max(gains), 512)
+                self.assertEqual(panel.wb_slider_positions(gains), (cool, magenta), gains)
+
+    def test_a_value_outside_its_range_starts_nothing(self):
+        for verb, args in (("wb_tune", [52, 0]), ("wb_tune", [0, -52]), ("wb_tune", [1, 0]), ("wb_tune", [0, 3]),
+                           ("wb_tune", ["2; reboot", 0]), ("wb_tune", [True, 0]), ("wb_tune", [0]), ("wb_tune", [0, 0, 0]),
+                           ("cm_set", ["yellow", "hue", 101]), ("cm_set", ["yellow", "sat", -105]), ("cm_set", ["yellow", "hue", 7]),
+                           ("cm_set", ["yellow", "hue", "5; reboot"]), ("cm_set", ["yellow", "hue", True]),
+                           ("cm_set", ["skintone", "hue", 5]), ("cm_set", ["yellow_green", "hue", 5]), ("cm_set", ["lips", "sat", 5]),
+                           ("cm_set", ["yellow", "value", 5]), ("cm_set", ["yellow", "saturation", 5]),
+                           ("cm_set", ["yellow; reboot", "hue", 5]), ("cm_set", ["yellow", "hue"]),
+                           ("cm_set", ["yellow", "hue", 5, 5]), ("cm_set", [["yellow"], "hue", 5])):
+            answer = self.call(verb, args)
+            self.assertFalse(answer["ok"], (verb, args, answer))
+            self.assertTrue(answer["line"].startswith("error"), answer)
+        self.assertEqual(self.fake.calls(), [])
+        self.assertEqual((self.held(), self.held("cm")), ([512] * 6, ""))
+
+    def test_a_colour_step_is_one_ctl_set_of_a_fixed_word(self):
+        for axis in panel.PRIMARIES:
+            for part in panel.CM_PARTS:
+                self.fake.forget()
+                self.assertTrue(self.call("cm_set", [axis, part, -35])["ok"])
+                self.assertEqual(self.fake.calls(), ["h713-tv ctl set cm_%s_%s -35" % (axis, part)])
+        self.assertTrue(self.call("cm_set", ["red", "hue", 100])["ok"])
+        self.assertTrue(self.call("cm_set", ["red", "sat", -100])["ok"])
+        self.assertEqual(self.fake.calls()[-2:], ["h713-tv ctl set cm_red_hue 100", "h713-tv ctl set cm_red_sat -100"])
+
+    def test_the_resets_are_one_command_each(self):
+        self.state([480, 500, 512, 512, 512, 512], "  cm_red_hue = 5")
+        for verb, expected in (("wb_reset", "h713-tv ctl wb reset"), ("cm_reset", "h713-tv ctl cm reset")):
+            self.fake.forget()
+            self.assertTrue(self.call(verb)["ok"], verb)
+            self.assertEqual(self.fake.calls(), [expected])
+        self.assertEqual((self.held(), self.held("cm")), ([512] * 6, ""))
+
+    def test_without_the_calibration_nothing_is_set(self):
+        # another display firmware: h713-tv says so in its own words, and the tool sends nothing
+        open(os.path.join(self.fake.dir, "absent"), "w").close()
+        answer = self.call("wb_tune", [10, 0])
+        self.assertFalse(answer["ok"])
+        self.assertIn("not available (not the display firmware)", answer["line"])
+        self.assertEqual(self.tv(), ["h713-tv ctl wb"])
+        self.assertFalse(self.call("colour")["ok"])
+        self.fake.forget()
+        # h713-tv not there at all: it is named, and still nothing is sent
+        gone = panel.Panel(tools=os.path.join(self.fake.dir, "nothing"), etc=self.etc)
+        for request in ({"verb": "wb_tune", "args": [10, 0]}, {"verb": "colour"}):
+            answer = gone.call(request)
+            self.assertFalse(answer["ok"], answer)
+            self.assertIn("h713-tv did not say what the white balance is", answer["line"])
+        self.assertEqual(self.fake.calls(), [])
+
+    def test_colour_gives_the_sliders_and_the_steps_of_the_six_primaries(self):
+        self.state(panel.wb_gains(-12, 6) + [512] * 3, "  cm_yellow_hue = 10\n  cm_yellow_sat = -15\n  cm_red_sat = 5\n"
+                   "  cm_skintone_hue = 40\n  cm_blue_value = 3")        # a colour the page does not offer, a part it does not
+        answer = self.call("colour")
+        steps = dict((axis, {"hue": 0, "sat": 0}) for axis in panel.PRIMARIES)
+        steps["yellow"], steps["red"]["sat"] = {"hue": 10, "sat": -15}, 5
+        self.assertEqual(answer, {"ok": True, "line": "ok colour", "wb": {"cool": -12, "magenta": 6}, "wb_other": False, "cm": steps})
+        self.assertEqual(self.tv(), ["h713-tv ctl wb", "h713-tv ctl cm"])
+        self.state([512] * 6, "")
+        self.assertEqual(self.call("colour")["cm"], dict((axis, {"hue": 0, "sat": 0}) for axis in panel.PRIMARIES))
+
+    def test_gains_the_sliders_cannot_make_are_said_so(self):
+        for gains, shown, other in (([600, 512, 512], (0, 0), True), ([481, 492, 512], (15, 10), False),
+                                    ([410, 512, 396], (-8, -50), False), ([300, 300, 300], (50, 50), True)):
+            self.state(gains + [512] * 3, "")
+            answer = self.call("colour")
+            self.assertEqual((answer["wb"]["cool"], answer["wb"]["magenta"], answer["wb_other"]), shown + (other,), gains)
+
+    def test_what_a_slider_set_is_what_colour_reads(self):
+        for cool, magenta in ((-12, 6), (50, -50), (-50, 50), (0, 0), (8, -50)):
+            self.assertTrue(self.call("wb_tune", [cool, magenta])["ok"])
+            answer = self.call("colour")
+            self.assertEqual((answer["wb"]["cool"], answer["wb"]["magenta"], answer["wb_other"]), (cool, magenta, False))
+
+    def test_colour_only_reads_and_does_not_wait_for_the_lock(self):
+        self.assertTrue(self.panel.lock.acquire(False))        # a command is running
+        try:
+            self.assertTrue(self.call("colour")["ok"])
+            with unittest.mock.patch.object(panel, "LOCK_WAIT_S", 0.1):
+                self.assertTrue(self.call("wb_tune", [0, 0])["busy"])      # a command waits, and gives up
+            self.assertEqual(self.tv(), ["h713-tv ctl wb", "h713-tv ctl cm"])
+        finally:
+            self.panel.lock.release()
+
+    def test_controls_say_whether_the_firmware_has_the_calibration(self):
+        self.assertTrue(self.call("controls")["features"]["colour"])
+        # cm-diagnose 20.10.2026: the colour manager has no visible effect on the HY310 - the card of the primaries is not offered
+        self.assertIs(self.call("controls")["features"]["colour-manager"], False)
+        open(os.path.join(self.fake.dir, "absent"), "w").close()
+        self.assertFalse(self.call("controls")["features"]["colour"])
+        self.fake.tool("h713-tv")                                   # h713-tv answers, but not with a white balance: unknown
+        self.assertNotIn("colour", self.call("controls")["features"])
+
+
+# a stand-in h713-tv with a memory: `ctl get|set gamma` and `colour_temperature` as gamma.c answers them (docs/tools/h713-tv.md)
+TV_LOOK = r"""
+dir="DIR"
+absent() { [ -f "$dir/nocurves" ] && { echo "error $1 is not available: the board's curves were not read"; return 0; }; return 1; }
+gamma() { absent gamma && return; g=$(cat "$dir/gamma")
+  case "$g" in 0) n=1.8;; 1) n=2.0;; 2) n=2.1;; 3) n=2.2;; 4) n=2.4;; esac; echo "ok gamma = $g ($n)"; }
+temp() { absent colour_temperature && return; t=$(cat "$dir/ctemp")
+  case "$(cat "$dir/preset")" in cinema|hdr) a=warm;; vivid) a=cool;; *) a=normal;; esac
+  if [ "$t" = auto ]; then echo "ok colour_temperature = auto ($a)"
+  elif grep -qx "$t" "$dir/missing"; then echo "ok colour_temperature = $t (normal: this board has no $t curve)"
+  else echo "ok colour_temperature = $t"; fi; }
+case "$*" in
+  "ctl get gamma") gamma ;;
+  "ctl get colour_temperature") temp ;;
+  "ctl set gamma "*) set -- $*; echo "$4" > "$dir/gamma"; gamma ;;
+  "ctl set colour_temperature "*) set -- $*; echo "$4" > "$dir/ctemp"; temp ;;
+  "ctl preset "*) set -- $*; echo "$3" > "$dir/preset"; echo "ok preset $3 (the compiled-in table)" ;;
+  "ctl status brief") printf 'ok status\nmode            automatic\npreset          %s (from the device data)\n' "$(cat "$dir/preset")" ;;
+  *) echo "ok h713-tv $*" ;;
+esac
+"""
+
+
+class LookTest(Bench):
+    """Gamma and colour temperature: two verbs that are one `ctl set` each, and `look` that reads them.  h713-settings (rows.c) offers the
+    same two on the projector's own screen."""
+
+    def setUp(self):
+        super().setUp()
+        self.fake.script("h713-tv", TV_LOOK.replace("DIR", self.fake.dir))
+        self.state(3, "auto", "standard")
+
+    def state(self, gamma, ctemp, preset, missing=""):
+        for name, text in (("gamma", str(gamma)), ("ctemp", ctemp), ("preset", preset), ("missing", missing)):
+            with open(os.path.join(self.fake.dir, name), "w") as handle:
+                handle.write(text + "\n")
+
+    def tv(self):
+        return [c for c in self.fake.calls() if c.startswith("h713-tv")]
+
+    def test_every_level_and_every_temperature_is_one_ctl_set_of_a_fixed_word(self):
+        for level in panel.GAMMA_LEVELS:
+            self.fake.forget()
+            self.assertTrue(self.call("gamma", [int(level)])["ok"])        # the page sends a number, a text works too
+            self.assertTrue(self.call("gamma", [level])["ok"])
+            self.assertEqual(self.fake.calls(), ["h713-tv ctl set gamma " + level] * 2)
+        for name in panel.TEMPERATURES:
+            self.fake.forget()
+            self.assertTrue(self.call("colour_temperature", [name])["ok"])
+            self.assertEqual(self.fake.calls(), ["h713-tv ctl set colour_temperature " + name])
+        self.assertEqual(panel.GAMMA_LEVELS, ("0", "1", "2", "3", "4"))             # h713-tv's levels: 1.8 2.0 2.1 2.2 2.4
+        self.assertEqual(panel.TEMPERATURES, ("auto", "warm", "normal", "cool"))
+
+    def test_a_value_outside_its_list_starts_nothing(self):
+        for verb, args in (("gamma", [5]), ("gamma", [-1]), ("gamma", ["2.2"]), ("gamma", ["3; reboot"]), ("gamma", [True]),
+                           ("gamma", [""]), ("gamma", []), ("gamma", [3, 3]), ("gamma", [[3]]), ("gamma", [None]),
+                           ("colour_temperature", ["hot"]), ("colour_temperature", ["AUTO"]), ("colour_temperature", ["auto; reboot"]),
+                           ("colour_temperature", [True]), ("colour_temperature", [0]), ("colour_temperature", []),
+                           ("colour_temperature", ["warm", "cool"]), ("colour_temperature", [["warm"]]), ("look", [1, 2, 3, 4, 5])):
+            answer = self.call(verb, args)
+            self.assertFalse(answer["ok"], (verb, args, answer))
+            self.assertTrue(answer["line"].startswith("error"), answer)
+        self.assertEqual(self.fake.calls(), [])
+        with open(os.path.join(self.fake.dir, "gamma")) as handle:
+            self.assertEqual(handle.read().strip(), "3")
+
+    def test_look_says_what_is_set_and_what_auto_comes_to(self):
+        for gamma, name, ctemp, preset, now in ((3, "2.2", "auto", "standard", "normal"), (0, "1.8", "auto", "cinema", "warm"),
+                                               (4, "2.4", "auto", "vivid", "cool"), (2, "2.1", "cool", "cinema", "cool"),
+                                               (1, "2.0", "normal", "vivid", "normal"), (3, "2.2", "auto", "hdr", "warm")):
+            self.state(gamma, ctemp, preset)
+            self.assertEqual(self.call("look"), {"ok": True, "line": "ok look", "gamma": gamma, "gamma_name": name, "ct": ctemp,
+                                                 "ct_now": now, "preset": preset})
+
+    def test_what_a_tap_set_is_what_look_reads(self):
+        for level in (0, 4, 2, 3):
+            self.assertTrue(self.call("gamma", [level])["ok"])
+            self.assertEqual(self.call("look")["gamma"], level)
+        for name in ("warm", "cool", "normal", "auto"):
+            self.assertTrue(self.call("colour_temperature", [name])["ok"])
+            self.assertEqual(self.call("look")["ct"], name)
+
+    def test_the_preset_moves_auto_and_leaves_a_temperature_that_was_set(self):
+        self.assertTrue(self.call("preset", ["cinema"])["ok"])
+        self.assertEqual((self.call("look")["ct"], self.call("look")["ct_now"]), ("auto", "warm"))
+        self.assertTrue(self.call("colour_temperature", ["cool"])["ok"])
+        self.assertTrue(self.call("preset", ["standard"])["ok"])
+        self.assertEqual((self.call("look")["ct"], self.call("look")["ct_now"], self.call("look")["preset"]), ("cool", "cool", "standard"))
+
+    def test_a_board_without_the_curve_says_which_one_is_used(self):
+        self.state(3, "warm", "standard", missing="warm")
+        answer = self.call("look")
+        self.assertEqual((answer["ct"], answer["ct_now"]), ("warm", "normal"))
+
+    def test_look_only_reads_and_does_not_wait_for_the_lock(self):
+        self.assertTrue(self.panel.lock.acquire(False))        # a command is running
+        try:
+            self.assertTrue(self.call("look")["ok"])
+            with unittest.mock.patch.object(panel, "LOCK_WAIT_S", 0.1):
+                self.assertTrue(self.call("gamma", [1])["busy"])
+            self.assertTrue(all(" get " in c or c.endswith("status brief") for c in self.tv()), self.tv())
+        finally:
+            self.panel.lock.release()
+
+    def test_without_the_curves_look_is_refused_with_the_reason_and_the_tool_has_the_last_word(self):
+        open(os.path.join(self.fake.dir, "nocurves"), "w").close()
+        answer = self.call("look")
+        self.assertFalse(answer["ok"])
+        self.assertIn("not available (the board's curves were not read)", answer["line"])
+        self.assertFalse(self.call("gamma", [1])["ok"])                      # the tool refuses, its line is the answer
+        self.assertIn("is not available", self.call("colour_temperature", ["cool"])["line"])
+        # h713-tv not there at all: named, and nothing is sent
+        self.fake.forget()
+        gone = panel.Panel(tools=os.path.join(self.fake.dir, "nothing"), etc=self.etc)
+        answer = gone.call({"verb": "look"})
+        self.assertFalse(answer["ok"])
+        self.assertIn("h713-tv did not say what the gamma is", answer["line"])
+        self.assertEqual(self.fake.calls(), [])
+
+    def test_controls_say_whether_the_board_has_the_curves(self):
+        self.assertTrue(self.call("controls")["features"]["gamma"])
+        open(os.path.join(self.fake.dir, "nocurves"), "w").close()
+        self.assertFalse(self.call("controls")["features"]["gamma"])
+        self.fake.tool("h713-tv")                                   # h713-tv answers, but not with a gamma: unknown, the controls stay
+        self.assertNotIn("gamma", self.call("controls")["features"])
+
+    def test_look_names_a_preset_only_from_the_list(self):
+        self.state(3, "auto", "something-new")
+        self.assertEqual(self.call("look")["preset"], "")
+
 class PageTest(unittest.TestCase):
     def setUp(self):
         with open(PAGE, "rb") as handle:
             self.page = handle.read().decode("utf-8")
 
-    def test_six_tabs_and_their_sections(self):
-        for name in ("projection", "picture", "sound", "remote", "network", "system"):
+    def test_seven_tabs_and_their_sections(self):
+        for name in ("projection", "picture", "colour", "sound", "remote", "network", "system"):
             self.assertIn('id="tab-%s"' % name, self.page)
             self.assertIn('class="screen%s" id="%s"' % (" on" if name == "projection" else "", name), self.page)
             self.assertIn('"%s"' % name, self.page.split("function show(")[1].split("}")[0])
@@ -1124,6 +1475,64 @@ class PageTest(unittest.TestCase):
         for word in ("focus_command", "rpc", "block1", "authorized", "ssh-"):
             self.assertNotIn(word, self.page)
         self.assertIn('"X-Requested-With": "h713-panel"', self.page)
+
+    def test_the_colour_tab_asks_what_the_tool_checks(self):
+        def slider(name):
+            return re.search(r'id="%s" min="(-?\d+)" max="(-?\d+)" step="(\d+)"' % name, self.page).groups()
+        for name, check in (("wb-warm", panel.WB_SLIDER), ("wb-tint", panel.WB_SLIDER),
+                            ("cm-hue", panel.CM_SLIDER), ("cm-sat", panel.CM_SLIDER)):
+            self.assertEqual(tuple(int(n) for n in slider(name)), check.spec[1:], name)
+        self.assertEqual([p[0] for p in json.loads(re.search(r"var PRIMS = (\[\[.*?\]\]);", self.page, re.S).group(1))],
+                         list(panel.PRIMARIES))
+        self.assertEqual(re.findall(r"cmSend\('(\w+)'\)", self.page), list(panel.CM_PARTS))
+        # a slider sends when it is let go, not on every pixel of the drag
+        for name in ("wb-warm", "wb-tint", "cm-hue", "cm-sat"):
+            tag = re.search(r'<input[^>]*id="%s"[^>]*>' % name, self.page).group(0)
+            self.assertRegex(tag, r'onchange="(wb|cm)Send\(')
+            self.assertNotRegex(re.search(r'oninput="([^"]*)"', tag).group(1), r"Send\(|act\(|api\(")
+
+    def test_the_colour_tab_sends_its_arguments_in_the_order_the_tool_checks(self):
+        # the page is not run here, so the order is read from its source: wb_tune takes cool, magenta; cm_set colour, part, step
+        self.assertIn('act("wb_tune", [WB.cool, WB.magenta])', self.page)
+        self.assertIn('act("cm_set", [PRIM, comp, s[comp]])', self.page)
+        self.assertIn("s[comp] = +id(\"cm-\" + comp).value;", self.page)
+        self.assertEqual(len(re.findall(r"act\(['\"]cm_reset['\"]\)\.then\(loadColour\)", self.page)), 1)
+        self.assertIn('<button onclick="wbReset()">Reset white balance</button>', self.page)        # wb_reset, and the temperature to Auto
+        self.assertIn('act("wb_reset")', self.page)
+
+    def test_the_colour_tab_goes_with_the_calibration(self):
+        for anchor in ('id="tab-colour"', 'class="screen" id="colour"'):         # the tab is there with either: the calibration or the curves
+            self.assertIn('data-needs-any="colour gamma"', re.search(r"<[^<>]*" + anchor + r"[^<>]*>", self.page).group(0), anchor)
+        self.assertIn('<div class="card" data-needs="colour colour-manager">\n    <h2>Colour</h2>', self.page)   # the primaries: calibration and a colour manager that works
+        self.assertIn('if (name === "colour" && READY) { if (has("colour")) { loadColour(); } loadLook(); }', self.page)
+        self.assertIn('if (id("colour").hidden && id("colour").classList.contains("on")) { show("projection"); }', self.page)
+
+    def test_the_picture_and_colour_tabs_offer_what_the_tool_checks(self):
+        gamma = re.search(r'<div class="seg" id="gm".*?</div>', self.page, re.S).group(0)
+        self.assertEqual(re.findall(r'id="gm-(\d)" onclick="gammaSet\((\d)\)">([\d.]+)<', gamma),
+                         [(n, n, w) for n, w in zip(panel.GAMMA_LEVELS, ("1.8", "2.0", "2.1", "2.2", "2.4"))])
+        temperatures = re.search(r'<div class="seg" id="ct".*?</div>', self.page, re.S).group(0)
+        self.assertEqual(re.findall(r"id=\"ct-(\w+)\" onclick=\"ctSet\('(\w+)'\)\">", temperatures),
+                         [(n, n) for n in panel.TEMPERATURES])
+        self.assertIn('act("colour_temperature", [name]).then(loadLook)', self.page)
+        self.assertIn('act("gamma", [level]).then(loadLook)', self.page)
+        self.assertIn('api("look")', self.page)
+        self.assertEqual(re.findall(r'GAMMAS = (\[[^\]]*\])', self.page), [json.dumps(["1.8", "2.0", "2.1", "2.2", "2.4"])])
+
+    def test_the_gamma_and_temperature_blocks_go_with_the_curves_and_the_fine_tuning_with_the_calibration(self):
+        for anchor in ('<h3>Colour temperature</h3>', '<h3>Gamma</h3>'):
+            block = self.page[:self.page.index(anchor)].rsplit("<div", 1)[1]
+            self.assertTrue(block.startswith(' data-needs="gamma">'), anchor)
+        self.assertIn('<div data-needs="colour">\n    <h3 data-needs="gamma">Fine tuning</h3>', self.page)
+        self.assertIn('e.hidden = !e.getAttribute("data-needs-any").split(" ").some(has);', self.page)
+        self.assertIn("if (!has(\"gamma\")) { return Promise.resolve(); }", self.page)      # no curves: nothing is asked, no error line
+
+    def test_the_page_decides_nothing_about_the_temperature(self):
+        # what auto comes to and the picture mode are read from the tool: the page holds no table of them
+        self.assertNotIn("CT_OF", self.page)
+        self.assertIn("LOOK.ct_now", self.page)
+        self.assertEqual(re.findall(r'press\("pr-" \+ p', self.page), ['press("pr-" + p'])
+        self.assertIn('["presets", c.presets, "preset", "pr-"]', self.page)
 
     def test_no_dash_characters(self):
         for path in (PAGE, TOOL, os.path.join(HERE, "test_h713_panel.py")):

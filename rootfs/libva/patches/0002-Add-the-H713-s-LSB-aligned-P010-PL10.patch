@@ -1,0 +1,214 @@
+From 064e26445ea776205dade96d203024dc43d0b775 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Sat, 3 Oct 2026 00:24:16 -0700
+Subject: [PATCH 2/6] Add the H713's LSB-aligned P010 (PL10)
+
+The H713 AV1 core writes 10-bit frames in P010's layout with each sample in
+bits 9:0 of its 16-bit word; it cannot MSB-align them. The local kernel
+names that V4L2_PIX_FMT_P010_LSB ('PL10') on the capture queue and
+DRM_FORMAT_P010 + DRM_FORMAT_MOD_ALLWINNER_LSB10 for scanout, and it is the
+only 10-bit format the core offers, so without an entry 10-bit AV1 failed
+with "failed to select a CAPTURE format".
+
+The surfaces stay VA P010. Exports say P010 + LSB10, truthfully. A
+mapping would hand LSB samples out as P010, so DeriveImage refuses it and
+the copying paths shift into place (<<6 on GetImage, >>6 on PutImage).
+
+hbd720 10/10 and hbd720-long 300/300 frames bit-exact against libdav1d.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/libva-v4l2_request/0002-Add-the-H713-s-LSB-aligned-P010-PL10.patch (0002-Add-the-H713-s-LSB-aligned-P010-PL10.patch, commit ae94ce3)
+---
+ src/driver.c       | 26 +++++++++++++-----------
+ src/image.c        | 50 ++++++++++++++++++++++++++++++++++++----------
+ src/v4l2_request.h | 13 ++++++++++++
+ 3 files changed, 66 insertions(+), 23 deletions(-)
+
+diff --git a/src/driver.c b/src/driver.c
+index 1f93497..1615127 100644
+--- a/src/driver.c
++++ b/src/driver.c
+@@ -137,52 +137,54 @@ unsigned int v4l2r_profile_rt_format(VAProfile profile)
+ 
+ static const struct v4l2r_format_info format_infos[] = {
+ 	{ V4L2_PIX_FMT_NV12, DRM_FORMAT_NV12, DRM_FORMAT_MOD_LINEAR,
+-	  VA_FOURCC_NV12, VA_RT_FORMAT_YUV420, 8, true },
++	  VA_FOURCC_NV12, VA_RT_FORMAT_YUV420, 8, true, 0 },
+ #if defined(V4L2_PIX_FMT_NV12_32L32)
+ 	{ V4L2_PIX_FMT_NV12_32L32, DRM_FORMAT_NV12, DRM_FORMAT_MOD_ALLWINNER_TILED,
+-	  0, VA_RT_FORMAT_YUV420, 8, false },
++	  0, VA_RT_FORMAT_YUV420, 8, false, 0 },
+ #endif
+ #if defined(V4L2_PIX_FMT_NV15) && defined(DRM_FORMAT_NV15)
+ 	{ V4L2_PIX_FMT_NV15, DRM_FORMAT_NV15, DRM_FORMAT_MOD_LINEAR,
+-	  0, VA_RT_FORMAT_YUV420_10, 10, false },
++	  0, VA_RT_FORMAT_YUV420_10, 10, false, 0 },
+ #endif
+ 	{ V4L2_PIX_FMT_NV16, DRM_FORMAT_NV16, DRM_FORMAT_MOD_LINEAR,
+-	  0, VA_RT_FORMAT_YUV422, 8, true },
++	  0, VA_RT_FORMAT_YUV422, 8, true, 0 },
+ #if defined(V4L2_PIX_FMT_NV20) && defined(DRM_FORMAT_NV20)
+ 	{ V4L2_PIX_FMT_NV20, DRM_FORMAT_NV20, DRM_FORMAT_MOD_LINEAR,
+-	  0, VA_RT_FORMAT_YUV422_10, 10, false },
++	  0, VA_RT_FORMAT_YUV422_10, 10, false, 0 },
+ #endif
+ #if defined(V4L2_PIX_FMT_P010) && defined(DRM_FORMAT_P010)
+ 	{ V4L2_PIX_FMT_P010, DRM_FORMAT_P010, DRM_FORMAT_MOD_LINEAR,
+-	  VA_FOURCC_P010, VA_RT_FORMAT_YUV420_10, 10, true },
++	  VA_FOURCC_P010, VA_RT_FORMAT_YUV420_10, 10, true, 0 },
++	{ V4L2_PIX_FMT_P010_LSB, DRM_FORMAT_P010, DRM_FORMAT_MOD_ALLWINNER_LSB10,
++	  VA_FOURCC_P010, VA_RT_FORMAT_YUV420_10, 10, true, 6 },
+ #endif
+ #if defined(V4L2_PIX_FMT_NV12MT_COL128) && defined(V4L2_PIX_FMT_NV12MT_10_COL128)
+ 	{ V4L2_PIX_FMT_NV12MT_COL128, DRM_FORMAT_NV12, DRM_FORMAT_MOD_BROADCOM_SAND128,
+-	  0, VA_RT_FORMAT_YUV420, 8, false },
++	  0, VA_RT_FORMAT_YUV420, 8, false, 0 },
+ #if defined(DRM_FORMAT_P030)
+ 	{ V4L2_PIX_FMT_NV12MT_10_COL128, DRM_FORMAT_P030, DRM_FORMAT_MOD_BROADCOM_SAND128,
+-	  0, VA_RT_FORMAT_YUV420_10, 10, false },
++	  0, VA_RT_FORMAT_YUV420_10, 10, false, 0 },
+ #endif
+ #endif
+ #if defined(V4L2_PIX_FMT_NV12_COL128) && defined(V4L2_PIX_FMT_NV12_10_COL128)
+ 	{ V4L2_PIX_FMT_NV12_COL128, DRM_FORMAT_NV12, DRM_FORMAT_MOD_BROADCOM_SAND128,
+-	  0, VA_RT_FORMAT_YUV420, 8, false },
++	  0, VA_RT_FORMAT_YUV420, 8, false, 0 },
+ #if defined(DRM_FORMAT_P030)
+ 	{ V4L2_PIX_FMT_NV12_10_COL128, DRM_FORMAT_P030, DRM_FORMAT_MOD_BROADCOM_SAND128,
+-	  0, VA_RT_FORMAT_YUV420_10, 10, false },
++	  0, VA_RT_FORMAT_YUV420_10, 10, false, 0 },
+ #endif
+ #endif
+ #if defined(V4L2_PIX_FMT_YUV420_8_AFBC_16X16_SPLIT)
+ 	{ V4L2_PIX_FMT_YUV420_8_AFBC_16X16_SPLIT, DRM_FORMAT_YUV420_8BIT,
+ 	  DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
+ 				  AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_SPLIT),
+-	  0, VA_RT_FORMAT_YUV420, 8, false },
++	  0, VA_RT_FORMAT_YUV420, 8, false, 0 },
+ #endif
+ #if defined(V4L2_PIX_FMT_YUV420_10_AFBC_16X16_SPLIT)
+ 	{ V4L2_PIX_FMT_YUV420_10_AFBC_16X16_SPLIT, DRM_FORMAT_YUV420_10BIT,
+ 	  DRM_FORMAT_MOD_ARM_AFBC(AFBC_FORMAT_MOD_BLOCK_SIZE_16x16 |
+ 				  AFBC_FORMAT_MOD_SPARSE | AFBC_FORMAT_MOD_SPLIT),
+-	  0, VA_RT_FORMAT_YUV420_10, 10, false },
++	  0, VA_RT_FORMAT_YUV420_10, 10, false, 0 },
+ #endif
+ };
+ 
+diff --git a/src/image.c b/src/image.c
+index 6d5b0ef..923d923 100644
+--- a/src/image.c
++++ b/src/image.c
+@@ -118,6 +118,19 @@ fail:
+ 	return status;
+ }
+ 
++/* Move 16-bit samples between their memory and VA positions: left for a
++ * positive shift (readback), right for a negative one (upload). */
++static void shift_samples(uint8_t *base, unsigned int pitch,
++			  unsigned int row_bytes, unsigned int rows, int shift)
++{
++	for (unsigned int y = 0; y < rows; y++) {
++		uint16_t *p = (uint16_t *)(base + (size_t)y * pitch);
++
++		for (unsigned int x = 0; x < row_bytes / 2; x++)
++			p[x] = shift > 0 ? p[x] << shift : p[x] >> -shift;
++	}
++}
++
+ VAStatus v4l2r_DeriveImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+ 			   VAImage *image)
+ {
+@@ -146,8 +159,9 @@ VAStatus v4l2r_DeriveImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+ 	if (!view.info->linear || !view.info->va_fourcc)
+ 		return VA_STATUS_ERROR_OPERATION_FAILED;
+ 
+-	/* Zero-copy is only possible when luma and chroma share one plane. */
+-	if (view.nb_planes != 1)
++	/* Zero-copy is only possible when luma and chroma share one plane,
++	 * and the samples are where VA expects them. */
++	if (view.nb_planes != 1 || view.info->lsb_shift)
+ 		return VA_STATUS_ERROR_OPERATION_FAILED;
+ 
+ 	pthread_mutex_lock(&drv->mutex);
+@@ -312,16 +326,22 @@ VAStatus v4l2r_GetImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+ 		       (size_t)view.pitch * height);
+ 		memcpy(dst + image->offsets[1], src_chroma,
+ 		       (size_t)view.pitch * ((height + 1) / 2));
+-		return VA_STATUS_SUCCESS;
++	} else {
++		for (unsigned int i = 0; i < height; i++)
++			memcpy(dst + image->offsets[0] + i * image->pitches[0],
++			       src_luma + i * view.pitch, row_size);
++
++		for (unsigned int i = 0; i < (height + 1) / 2; i++)
++			memcpy(dst + image->offsets[1] + i * image->pitches[1],
++			       src_chroma + i * view.pitch, row_size);
+ 	}
+ 
+-	for (unsigned int i = 0; i < height; i++)
+-		memcpy(dst + image->offsets[0] + i * image->pitches[0],
+-		       src_luma + i * view.pitch, row_size);
+-
+-	for (unsigned int i = 0; i < (height + 1) / 2; i++)
+-		memcpy(dst + image->offsets[1] + i * image->pitches[1],
+-		       src_chroma + i * view.pitch, row_size);
++	if (view.info->lsb_shift) {
++		shift_samples(dst + image->offsets[0], image->pitches[0],
++			      row_size, height, view.info->lsb_shift);
++		shift_samples(dst + image->offsets[1], image->pitches[1],
++			      row_size, (height + 1) / 2, view.info->lsb_shift);
++	}
+ 
+ 	return VA_STATUS_SUCCESS;
+ }
+@@ -408,7 +428,7 @@ VAStatus v4l2r_PutImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+ 		       (size_t)view.pitch * height);
+ 		memcpy(dst_chroma, src + image->offsets[1],
+ 		       (size_t)view.pitch * ((height + 1) / 2));
+-		return VA_STATUS_SUCCESS;
++		goto shift;
+ 	}
+ 
+ 	for (unsigned int i = 0; i < height; i++)
+@@ -421,6 +441,14 @@ VAStatus v4l2r_PutImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+ 		       src + image->offsets[1] + i * image->pitches[1],
+ 		       row_size);
+ 
++shift:
++	if (view.info->lsb_shift) {
++		shift_samples(dst_luma, view.pitch, row_size, height,
++			      -(int)view.info->lsb_shift);
++		shift_samples(dst_chroma, view.pitch, row_size,
++			      (height + 1) / 2, -(int)view.info->lsb_shift);
++	}
++
+ 	return VA_STATUS_SUCCESS;
+ }
+ 
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index 35a1877..71843fb 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -478,8 +478,21 @@ struct v4l2r_format_info {
+ 	unsigned int rt_format;
+ 	unsigned int bit_depth;
+ 	bool linear;			/* mappable for DeriveImage/GetImage */
++	/* Samples sit this many bits below their VA position (P010 with the
++	 * value in bits 9:0): no zero-copy DeriveImage, and the copying
++	 * paths shift them into place. */
++	unsigned int lsb_shift;
+ };
+ 
++/* H713 (local kernel patch): P010's layout with each sample LSB-aligned,
++ * as the AV1 core writes it; scanned out as P010 + the LSB10 modifier. */
++#ifndef V4L2_PIX_FMT_P010_LSB
++#define V4L2_PIX_FMT_P010_LSB		v4l2_fourcc('P', 'L', '1', '0')
++#endif
++#ifndef DRM_FORMAT_MOD_ALLWINNER_LSB10
++#define DRM_FORMAT_MOD_ALLWINNER_LSB10	fourcc_mod_code(ALLWINNER, 2)
++#endif
++
+ const struct v4l2r_format_info *v4l2r_format_by_pixelformat(uint32_t pixelformat);
+ const struct v4l2r_format_info *v4l2r_capture_format_info(struct v4l2r_context *ctx);
+ 

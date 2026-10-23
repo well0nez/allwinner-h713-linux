@@ -1,0 +1,33 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: [PATCH] hid: h713-remote: the BLE remote's focus keys are the other way round
+
+0169 mapped the consumer usages 0x0de and 0x0df of the stock BLE remote to
+KEY_F4 (focus up) and KEY_F5 (focus down). Over infrared the same two keys
+arrive through the rc keymap of 0254 (0x0251 -> KEY_F4, 0x0250 -> KEY_F5),
+and that direction is right: measured on the HY310 with the owner at the
+wall (16.10.2026, the focus moves the way the key says). Over Bluetooth the
+keys did the opposite: with a fresh bond on 18.10.2026 the owner pressed
+"focus up" and the motor ran down, and "focus down" ran it up; the overlay
+showed the direction the motor actually ran. So 0x0de is the down key and
+0x0df the up key. The remote's key names were never read from a document;
+the infrared table is the one confirmed at the wall.
+
+Signed-off-by: well0nez <8986239+well0nez@users.noreply.github.com>
+---
+ drivers/hid/hid-h713-remote.c | 4 ++--
+ 1 file changed, 2 insertions(+), 2 deletions(-)
+
+diff --git a/drivers/hid/hid-h713-remote.c b/drivers/hid/hid-h713-remote.c
+--- a/drivers/hid/hid-h713-remote.c
++++ b/drivers/hid/hid-h713-remote.c
+@@ -59,8 +59,8 @@ static int h713_remote_input_mapping(struct hid_device *hdev, struct hid_input *hi,
+ 		return 1;
+ 	case 0x0de:
+-		hid_map_usage_clear(hi, usage, bit, max, EV_KEY, KEY_F4);
++		hid_map_usage_clear(hi, usage, bit, max, EV_KEY, KEY_F5);
+ 		return 1;
+ 	case 0x0df:
+-		hid_map_usage_clear(hi, usage, bit, max, EV_KEY, KEY_F5);
++		hid_map_usage_clear(hi, usage, bit, max, EV_KEY, KEY_F4);
+ 		return 1;
+ 	}

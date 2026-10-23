@@ -1,0 +1,47 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: honor a larger linear capture pitch
+
+The H713 secondary output has a programmable stride, but Cedrus discarded a
+larger bytesperline requested by userspace.  Preserve an aligned request so a
+scaled 960-pixel picture can be written into the 1280-pixel pitch required by
+the display source path.  Keep private full-size reconstruction frames on
+their natural stride and reset stale layout values when compose changes size.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0104-media-cedrus-honor-linear-output-pitch.patch (0104-media-cedrus-honor-linear-output-pitch.patch, commit 2952b81)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -181,8 +181,13 @@
+ 	case V4L2_PIX_FMT_NV21:
+ 	case V4L2_PIX_FMT_YUV420:
+ 	case V4L2_PIX_FMT_YVU420:
+-		/* 16-aligned stride. */
+-		bytesperline = ALIGN(width, 16);
++		/*
++		 * The secondary output has a programmable line stride. Honour a
++		 * larger userspace request so a decoder buffer can feed hardware
++		 * whose fetch pitch is wider than the visible compose rectangle.
++		 */
++		bytesperline = clamp(ALIGN(bytesperline, 16),
++				     ALIGN(width, 16), CEDRUS_MAX_WIDTH);
+ 
+ 		/* 16-aligned height. */
+ 		height = ALIGN(height, 16);
+@@ -345,6 +350,8 @@
+ 	ctx->recon_fmt.width = ctx->src_fmt.width;
+ 	ctx->recon_fmt.height = ctx->src_fmt.height;
+ 	ctx->recon_fmt.pixelformat = V4L2_PIX_FMT_NV12;
++	ctx->recon_fmt.bytesperline = 0;
++	ctx->recon_fmt.sizeimage = 0;
+ 	cedrus_prepare_format(&ctx->recon_fmt);
+ }
+ 
+@@ -484,6 +491,8 @@
+ void cedrus_reset_cap_format(struct cedrus_ctx *ctx)
+ {
+ 	ctx->dst_fmt.pixelformat = 0;
++	ctx->dst_fmt.bytesperline = 0;
++	ctx->dst_fmt.sizeimage = 0;
+ 	cedrus_try_fmt_vid_cap_p(ctx, &ctx->dst_fmt);
+ }
+ 

@@ -1,0 +1,161 @@
+From 0000000000000000000000000000000000000000 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Wed, 14 Oct 2026 11:55:55 +0200
+Subject: [PATCH 11/11] Offer NV12 only for HEVC Main10 when the decoder writes
+ 8-bit samples
+
+vaQuerySurfaceAttributes() offered P010 for every 10-bit config whenever
+no format converter is present. On cedrus that is not what the surfaces
+hold: the VE accepts a 10-bit HEVC SPS (so Main10 is rightly advertised)
+but its CAPTURE queue offers no 10-bit format at all. It decodes Main10
+into NV12 - the upper 8 bits of each sample - and keeps the two low bits
+in a private plane it appends to the buffer (cedrus_h265_extra_cap_size).
+
+FFmpeg takes the offered P010 as the exact match for yuv420p10 and makes
+it the frames' software format. Every download then asked vaGetImage for
+a P010 image of an NV12 surface, which get_image() refuses ("Failed to
+read image from surface ... operation failed", ffmpeg exits 251); only an
+explicit "-hwaccel_output_format vaapi -vf hwdownload,format=nv12" got the
+frames, and those were bit-exact to the upper 8 bits of the reference.
+
+Probe it with the 10-bit SPS the decoder probe already sets: afterwards,
+does the CAPTURE queue offer any known 10-bit format (P010, PL10, NV15,
+...)? If no decoder that takes 10-bit HEVC does, HEVC Main10 configs offer
+NV12 only, and FFmpeg, GStreamer va and mpv pick NV12 by themselves.
+Decoders that write P010 or NV15 for Main10, and the AV1 profile (whose
+core writes PL10 and is read back as P010), are unchanged. The surfaces
+stay 8-bit: rebuilding P010 from the private 2-bit plane is not done.
+
+License: GPL-3.0-or-later, like the code it changes (libva-v4l2_request).
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ src/driver.c       | 46 ++++++++++++++++++++++++++++++++++++++++++++++
+ src/surface.c      |  9 +++++++++
+ src/v4l2_request.h |  8 ++++++++
+ 3 files changed, 63 insertions(+)
+
+diff --git a/src/driver.c b/src/driver.c
+index 88515e2..d094bba 100644
+--- a/src/driver.c
++++ b/src/driver.c
+@@ -370,6 +370,33 @@ static bool video_device_probe_vp9_10bit(int fd, uint32_t output_type)
+ #endif
+ }
+ 
++/*
++ * After the 10-bit SPS of the probe above: does the CAPTURE queue now offer
++ * a 10-bit format we know (P010, PL10, NV15, ...)? Accepting a 10-bit SPS
++ * says the decoder can decode the stream, not that it writes 10-bit samples:
++ * cedrus decodes Main10 into NV12 (the upper 8 bits) and keeps the two low
++ * bits in a private plane behind it.
++ */
++static bool video_device_offers_10bit_capture(int fd, uint32_t output_type)
++{
++	struct v4l2_fmtdesc fmtdesc = {
++		.type = V4L2_TYPE_IS_MULTIPLANAR(output_type) ?
++			V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE :
++			V4L2_BUF_TYPE_VIDEO_CAPTURE,
++	};
++
++	while (ioctl(fd, VIDIOC_ENUM_FMT, &fmtdesc) >= 0) {
++		const struct v4l2r_format_info *info =
++			v4l2r_format_by_pixelformat(fmtdesc.pixelformat);
++
++		if (info && info->bit_depth == 10)
++			return true;
++		fmtdesc.index++;
++	}
++
++	return false;
++}
++
+ static bool video_device_is_request_decoder(const char *path,
+ 					    struct v4l2r_decoder *decoder)
+ {
+@@ -421,10 +448,15 @@ static bool video_device_is_request_decoder(const char *path,
+ 	}
+ 
+ 	decoder->hevc_10bit = false;
++	decoder->hevc_10bit_output = false;
+ 	for (unsigned int i = 0; i < decoder->nb_pixelformats; i++) {
+ 		if (decoder->pixelformats[i] == V4L2_PIX_FMT_HEVC_SLICE) {
+ 			decoder->hevc_10bit =
+ 				video_device_probe_hevc_10bit(fd, output_type);
++			if (decoder->hevc_10bit)
++				decoder->hevc_10bit_output =
++					video_device_offers_10bit_capture(fd,
++						output_type);
+ 			break;
+ 		}
+ 	}
+@@ -680,6 +712,20 @@ static bool driver_supports_hevc_10bit(struct v4l2r_driver *drv)
+ 	return false;
+ }
+ 
++bool v4l2r_profile_outputs_10bit(struct v4l2r_driver *drv, VAProfile profile)
++{
++	if (profile != VAProfileHEVCMain10)
++		return true;
++
++	for (unsigned int i = 0; i < drv->nb_decoders; i++) {
++		if (drv->decoders[i].hevc_10bit &&
++		    drv->decoders[i].hevc_10bit_output)
++			return true;
++	}
++
++	return false;
++}
++
+ /* Whether some decoder can decode VP9 Profile 2. */
+ static bool driver_supports_vp9_10bit(struct v4l2r_driver *drv)
+ {
+diff --git a/src/surface.c b/src/surface.c
+index 88c2a00..2da8721 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -190,7 +190,16 @@ VAStatus v4l2r_QuerySurfaceAttributes(VADriverContextP va_ctx, VAConfigID config
+ 	 * match and bypass the converter, landing on the slow CPU readback
+ 	 * path, so it is only offered when no converter exists.
+ 	 */
++	/*
++	 * Nor when the decoder writes 8-bit samples for this profile: cedrus
++	 * decodes HEVC Main10 into NV12 (the upper 8 bits). Offered P010,
++	 * FFmpeg picked it for its frames (the exact match for yuv420p10)
++	 * and then failed every download, because vaGetImage cannot make a
++	 * P010 image out of an NV12 surface; only an explicit NV12 download
++	 * worked. Offer what the surfaces hold.
++	 */
+ 	if ((cfg->rt_format & VA_RT_FORMAT_YUV420_10) &&
++	    v4l2r_profile_outputs_10bit(drv, cfg->profile) &&
+ 	    !v4l2r_converter_available(drv)) {
+ 		attrib_list[i].type = VASurfaceAttribPixelFormat;
+ 		attrib_list[i].flags = VA_SURFACE_ATTRIB_GETTABLE | VA_SURFACE_ATTRIB_SETTABLE;
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index a34218f..adbba4e 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -98,6 +98,11 @@ struct v4l2r_decoder {
+ 	 * device can do 10-bit (e.g. Allwinner A64 lacks it), and the kernel only
+ 	 * rejects it at decode time, so probe it up front and gate Main10. */
+ 	bool hevc_10bit;
++	/* Whether it then writes a 10-bit picture. cedrus does not: for a
++	 * 10-bit SPS it still offers NV12 only, the upper 8 bits of each
++	 * sample, with the two low bits in a private plane appended to the
++	 * buffer. Such a decoder's Main10 surfaces are NV12. */
++	bool hevc_10bit_output;
+ 	bool vp9_10bit;
+ };
+ 
+@@ -715,6 +720,9 @@ extern const struct v4l2r_codec v4l2r_codec_av1;
+ const struct v4l2r_codec *v4l2r_codec_for_profile(VAProfile profile);
+ const struct v4l2r_codec **v4l2r_codec_list(unsigned int *count);
+ unsigned int v4l2r_profile_bit_depth(VAProfile profile);
++/* Whether decoding @profile yields 10-bit samples a client can read: false
++ * for HEVC Main10 when no capable decoder writes a 10-bit format. */
++bool v4l2r_profile_outputs_10bit(struct v4l2r_driver *drv, VAProfile profile);
+ unsigned int v4l2r_profile_rt_format(VAProfile profile);
+ 
+ /* --- VA entrypoints --- */
+-- 
+2.43.0
+

@@ -17,6 +17,7 @@
 
 #include <stdarg.h>
 #include <stdbool.h>
+#include <stdint.h>
 #include <time.h>
 #include <stddef.h>
 
@@ -26,11 +27,13 @@
 #define TV_SOCKET	"/run/h713-tv/ctl"
 #define RENDER_NODE	"/dev/dri/renderD128"
 #define V4L2_NAME	"sun50i-h713-hdmirx"
+#define WAYLAND_SOCKET	"/run/h713-warp/wayland"	/* the Wayland server: WAYLAND_DISPLAY */
 
 #define WARP_TARGETS	3	/* triple buffering on the panel side (M9) */
 #define WARP_SLOTS	3	/* capture ring slots (M5) */
 #define WARP_LINE	512	/* one control line, as h713-tv's CTL_MAXLINE */
 #define WARP_WHY	256	/* why something is off -- journal and status */
+#define PROGRAM_S	30.0	/* a program that said it starts and has not connected by then is not coming (P2b) */
 
 /* ---------------- the journal, h713-tv's house style (main.c) ---------- */
 __attribute__((format(printf, 1, 2))) void info(const char *fmt, ...);
@@ -46,19 +49,48 @@ struct textbuf {
 __attribute__((format(printf, 2, 3)))
 void text_add(struct textbuf *t, const char *fmt, ...);
 
+/* what a claim is for: the capture ring, or a Wayland client of wayland.c */
+enum warp_source { SRC_RING, SRC_CLIENT };
+/* h713-tv's "source" as its last answer named it: to a claim, to a frame after a change, to "source" */
+enum tv_source { TV_UNKNOWN, TV_HDMI, TV_CLIENT, TV_AUTO };
+
 struct peer {
 	const char *path;
 	int fd;				/* -1: no connection */
+	int tv_source;			/* enum tv_source */
+	bool noted;			/* h713-tv said "note source X" since the main loop last looked */
+	bool cover;			/* h713-tv said "note cover on": an opaque page hides the panel, the warp pauses */
+	double client_said;		/* when h713-tv last said "note source client": a program starts (0: never) */
 	int target[WARP_TARGETS];	/* dma-buf fds of the panel buffers */
+	/* the want link (P3): a connection of its own, "warp want ring|none" out, "note claim" back */
+	int want_fd;			/* -1: none */
+	int want_said;			/* what h713-tv last heard on it: 1 ring, 0 none, -1 nothing yet */
+	double want_tried;		/* the last attempt to connect it */
+	bool want_refused;		/* h713-tv does not know "warp want" (before 17.10.2026): not asked again */
+	bool claim_noted;		/* h713-tv said "note claim": a claim of the ring is taken now */
 	unsigned int width, height, pitch;
 	unsigned int coff;		/* NV12: the chroma plane's offset in each buffer */
 	unsigned long commits, busy, errors;
 };
 
 void peer_init(struct peer *p, const char *path);
-bool peer_claim(struct peer *p, char *why, size_t n);
-int peer_frame(struct peer *p, int index, int fence, char *why, size_t n);
+bool peer_claim(struct peer *p, int src, char *why, size_t n);
+/* flip: the commit's flip fence when h713-tv sends one (a client claim), else -1; ours to close */
+int peer_frame(struct peer *p, int index, int fence, int *flip, char *why, size_t n);
 void peer_release(struct peer *p);
+/* h713-tv's "source" alone, on a short connection of its own; false when h713-tv did not answer */
+bool peer_source(struct peer *p);
+/* the standing claim becomes the other source's on the same buffers; false: refused or the link broke */
+bool peer_switch(struct peer *p, int src, char *why, size_t n);
+/* notes h713-tv said unasked, read when the connection is readable between exchanges; false: it is gone */
+bool peer_notes(struct peer *p);
+/* "source X" to h713-tv on a short connection of its own: the program has ended, the mode is HDMI again; false: refused */
+bool peer_set_source(struct peer *p, const char *src);
+/* the want link (P3): "warp want ring|none" when the word changes or the link is new; without a link, connect = try to
+ * make it (at most once a second) */
+void peer_want(struct peer *p, bool ring, bool connect);
+/* what h713-tv said on the want link ("note claim"); false: the link is gone (closed here, made again by peer_want) */
+bool peer_want_notes(struct peer *p);
 
 struct source {
 	const char *want;		/* -v PATH, or NULL: search by name */
@@ -101,6 +133,25 @@ void gl_source_drop(void);
 bool gl_draw(int target, int slot, const float m[16], int pattern, int mark_corner,
 	     const char *const labels[5], const float lm[16], char *why, size_t n);
 int gl_fence(void);			/* an out-fence fd, or -1 */
+bool gl_is_open(void);
+void gl_targets_drop(void);		/* the three panel buffers' images, before their claim is given back */
+
+/* the Wayland client's pictures: RGB in, BT.709 limited range out, in the two passes */
+struct gl_format {
+	uint32_t fourcc;
+	uint64_t modifier;
+};
+struct gl_image;			/* one imported client buffer, or the wl_shm upload texture */
+int gl_formats(struct gl_format *out, int max, char *why, size_t n);	/* the RGB formats EGL imports */
+struct gl_image *gl_image_dmabuf(int fd, uint32_t fourcc, uint64_t modifier, int w, int h,
+				 uint32_t offset, uint32_t pitch, char *why, size_t n);
+struct gl_image *gl_image_shm(void);
+bool gl_image_upload(struct gl_image *im, const void *px, int w, int h, int stride, char *why, size_t n);
+int gl_image_width(const struct gl_image *im);
+int gl_image_height(const struct gl_image *im);
+bool gl_image_stale(const struct gl_image *im);	/* made before the last gl_close(): gone with it */
+void gl_image_free(struct gl_image *im);
+bool gl_draw_client(int target, const struct gl_image *im, const float m[16], char *why, size_t n);
 /*
  * What a frame costs, for "ctl trace": CPU microseconds of this thread in the
  * two passes (clock CLOCK_THREAD_CPUTIME_ID, so the clock governor does not
@@ -130,6 +181,8 @@ extern const char *const gl_chroma_shader;	/* CbCr in, CbCr out */
 extern const char *const gl_edge_shader;	/* the soft border's ring, blended */
 void gl_edge_ring(const int e[2], float v[40]);	/* its ten vertices (x, y, u, v) */
 extern const char *const gl_pattern_shader;
+extern const char *const gl_rgb_luma_shader;	/* RGB in, Y out (the colour maths inside the keystone passes) */
+extern const char *const gl_rgb_chroma_shader;	/* RGB in, CbCr out */
 
 /* ---------------- what the daemon is doing (loop.c) -------------------- */
 enum warp_state {
@@ -138,12 +191,22 @@ enum warp_state {
 	WARP_ON		/* the GPU path stands */
 };
 
+struct server;
+
 struct runtime {
 	struct warp_conf conf;
 	struct peer peer;
 	struct source source;
+	struct server *srv;		/* the Wayland server, NULL when it could not start */
 	enum warp_state state;
+	int src;			/* enum warp_source: what the claim is for while WARP_ON */
+	int client_rate;		/* 1: a client frame every vsync, 2: every second (--client-rate half) */
 	bool on;			/* "ctl on"/"ctl off": run time only */
+	bool gpu_failed;		/* the GPU failed the last claim (its buffers, five renders): no ring claim to promise
+					 * h713-tv until a frame is drawn again (P3, warp_want_ring()) */
+	bool cover;			/* the pause as last acted on (peer.cover is h713-tv's word) */
+	bool resume;			/* the ring after a pause: the slots that stood are given back, a fresh one is drawn */
+	double paused_at;		/* when the pause began, for the journal */
 	int pattern;			/* enum warp_pattern */
 	int mark_corner;		/* the mask's marked corner, 0..3 tl tr bl br, -1 none */
 	int target;			/* the next panel buffer to draw, advanced on an accepted commit */
@@ -163,6 +226,7 @@ struct runtime {
 	} check;
 	char why[WARP_WHY];		/* why it is not WARP_ON */
 	const char *render_node;
+	const char *wl_group;		/* -g: the Wayland socket's group, so that a client that is not root can connect */
 	double m[16];			/* the matrix in use, column major */
 	float mf[16];			/* ... as the uniform wants it */
 	float lf[16];			/* the mode's flip alone: what the mask's labels go through */
@@ -185,6 +249,45 @@ int warp_edge_for(struct runtime *r);	/* the soft edge, 0 at the identity */
 bool warp_pump(struct runtime *r);	/* one capture frame; false: fell back */
 void warp_check_tick(struct runtime *r);	/* the self-check's second draw, from the main loop */
 void warp_status(struct runtime *r, char *buf, size_t n);
+/* the word for h713-tv (P3): the ring will be claimed when h713-tv lets it */
+bool warp_want_ring(const struct runtime *r);
+void warp_want_tell(struct runtime *r);		/* ... said on the want link when it changed */
+
+/* for the Wayland side (loop.c): the client is on the panel; one client frame -- 0 committed, 1 h713-tv was busy
+ * (the target is drawn and kept), 2 not drawn, -1 the warp fell back; the same target again after a busy */
+bool warp_client_live(const struct runtime *r);
+int warp_client_frame(struct runtime *r, const struct gl_image *im, int *render, int *flip);
+int warp_client_resend(struct runtime *r, int render, int *flip);
+void warp_client_shown(struct runtime *r);	/* a toplevel has its first picture: claim the panel for it */
+void warp_client_gone(struct runtime *r);	/* ... it is gone for good: give the panel back */
+void warp_gl_idle(struct runtime *r);		/* close the render node if nothing needs it */
+/* an opaque page hides the panel: nothing is drawn (wayland.c holds the client's newest picture, main.c leaves the capture
+ * alone; h713-tv has the video plane off) */
+bool warp_paused(const struct runtime *r);
+void warp_cover(struct runtime *r);		/* h713-tv's "note cover on|off" came: pause, or draw again */
+/* the buffer on the panel committed once more, nothing drawn: the end of a page rides on it; as warp_client_frame */
+int warp_client_repeat(struct runtime *r, int *flip);
+
+/* ---------------- the Wayland server (wayland.c) ------------ */
+struct server *server_start(const char *path, struct runtime *r);
+void server_stop(struct server *s);
+int server_fd(const struct server *s);		/* the event loop's fd for poll(), -1 none */
+void server_dispatch(struct server *s);
+void server_flush(struct server *s);
+bool server_shown(const struct server *s);	/* a toplevel with a picture: something to claim for */
+bool server_busy(const struct server *s);	/* imports alive: the render node stays open */
+void server_engaged(struct server *s, bool on);	/* the warp shows the client now / not any more */
+void server_panel(struct server *s, unsigned int w, unsigned int h);
+void server_redraw(struct server *s);		/* the keystone moved or a pattern went: draw again */
+void server_status(const struct server *s, struct textbuf *t);
+/* the end of a pause: the newest picture held under the page is drawn, or (again: the panel has one) the panel's
+ * buffer is committed once more, so that the end of the page rides on a frame */
+void server_resume(struct server *s, bool again);
+/* the pictures of the toplevel on the panel since it was mapped (held under a page or drawn); -1: none on the panel */
+long server_pictures(const struct server *s);
+/* a program runs (a client is connected) or has said that it starts and not connected since (P2b) */
+bool server_program(const struct server *s, double said);
+void server_recheck(struct server *s, double at);	/* warp_client_gone() at that time, if no picture is shown by then */
 
 /* ---------------- the control socket and the client (ctl.c) ------------ */
 struct control {

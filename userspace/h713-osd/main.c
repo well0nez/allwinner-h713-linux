@@ -14,6 +14,7 @@
 #include <errno.h>
 #include <math.h>
 #include <poll.h>
+#include <pthread.h>
 #include <signal.h>
 #include <stdarg.h>
 #include <stdbool.h>
@@ -36,10 +37,12 @@
 #include "geom.h"
 #include "osd.h"
 
-#define LINE	256
+#define LINE	768	/* a launcher line carries the rows too */
 
 /* the paths, each with an environment override for the host tests */
-static const char *osd_socket, *tv_socket, *warp_conf, *osd_conf;
+static const char *osd_socket, *tv_socket, *warp_conf, *osd_conf, *fake_clock;
+static bool trace;			/* H713_OSD_TRACE=1: one journal line per refresh with wall-clock times */
+static double t_cmd;			/* CLOCK_REALTIME when the last command reached the socket */
 
 static const char *env(const char *name, const char *def)
 {
@@ -84,6 +87,14 @@ static double now_s(void)
 	return t.tv_sec + t.tv_nsec / 1e9;
 }
 
+static double real_s(void)
+{
+	struct timespec t;
+
+	clock_gettime(CLOCK_REALTIME, &t);
+	return t.tv_sec + t.tv_nsec / 1e9;
+}
+
 /* --- what is to be seen ------------------------------------------------------------------------------ */
 
 static struct {
@@ -91,6 +102,138 @@ static struct {
 	double until;			/* when it goes; 0: none */
 	bool muted;			/* the badge stays while this is true */
 } want = { .popup = { .alpha = 1.0f } };
+
+/*
+ * The launcher: an OPAQUE page over the whole panel - a ground, the list on the left, the rest calm
+ * (Marco, 15.10.2026: "it must have a ground, it is not an overlay over the picture") - that stays until it is closed. It is cut into
+ * tiles (libh713osd: the bands of the page - the header, one per row, the foot, the gap - each in a left part, the column, and a right
+ * part, the ground alone). A tile is repainted in the canvas when it changes and put into a buffer when that buffer does not hold its
+ * current picture - a move of the selection costs two tiles of the column, not the page (the pre-distortion walks every pixel of what it
+ * puts). gen[] is what each tile should show, cgen[] what the canvas was painted with, ver[] the canvas' version of it (a volume strip
+ * drawn over it is a new version), held[][] the version each of the two buffers holds. The volume, mute and the power countdown are
+ * drawn into the page's canvas too and ride in the tiles they touch. The buffer that is not shown is filled in the idle time after a
+ * refresh (prefill_at), so that the next key finds it ready.
+ *
+ * The page without a signal (P5 of the media side project) is a second page in the same machinery: while h713-tv says "note signal none"
+ * and neither the launcher nor a page of the page channel is open, `lau` stands open with `nosig` set and three tiles of its own
+ * (libh713osd osd_nosignal_*) - the volume strip and the power countdown ride in them like in the launcher's, a closed launcher gives the
+ * wall back to it, the launcher and the settings take its place. Everything that asks "is the launcher open" asks lau.open && !lau.nosig.
+ * While a power countdown stands (power_stands) its middle band is painted quiet - no symbol, no words (lau.quiet) - so that the ring is alone
+ * on the ground like over the launcher; compose() paints that band again when the countdown starts and when it ends.
+ */
+#define BANDS (OSD_LAUNCHER_ROWS + 3)
+#define TILES (2 * BANDS)
+#define PREFILL_S 0.12
+static struct {
+	bool open;
+	bool nosig;			/* ... and what stands open is the page without a signal, not the launcher (nosig_sync) */
+	bool quiet;			/* ... and its middle band is drawn without the symbol and the words: a power entry stands (power_stands) */
+	struct osd_launcher l;
+	char now[48], head[80], label[OSD_LAUNCHER_ROWS][48];
+	unsigned counter, gen[TILES], cgen[TILES], ver[TILES], held[2][TILES];
+	bool live[2], skew[2], wipe[2];	/* the buffer holds launcher pixels / they went through the matrix / clear them first */
+	double prefill_at;		/* when the buffer that is not shown is filled; 0: nothing due */
+} lau;
+
+/*
+ * The page channel (h713-settings): a program draws a whole page into a canvas the
+ * size of the panel - a memfd that "page open" hands over - and says which rows are new ("page show X Y W H"). This daemon
+ * copies those rows, the panel's full width, into its canvas, puts them into the buffer h713-tv shows - straight, or through
+ * the matrix in bands like the launcher's, so that there is no seam - and shows it, then answers "ok" (or "ok waiting": no
+ * picture at the moment, the page is kept for its return). It stays the one holder of the overlay channel; the page's
+ * connection is the page's life. Popups and the mute badge are not drawn while a page is open: the page covers the panel.
+ * Rows are kept as up to PAGE_RANGES ranges [y0, y1) (y0 >= y1: none): a row and the note at the foot are two small ranges,
+ * not the one big rectangle around both - what is put through a keystone is paid for by the pixel. A range also keeps the columns
+ * [x0, x1) its "page show"s named (the union): a pill in the middle of the panel is not put from edge to edge.
+ * Whether the page hides what lies under it is read off its pixels, row by row as the rows come in: a page without a transparent
+ * pixel is opaque, and h713-tv pauses the mode under it ("osd show N cover"); the settings' slider pill over the picture is a
+ * page with a clear canvas around it, so the picture under it runs on, and its sound - the program says nothing about it.
+ */
+#define PAGE_RANGES 4
+static struct {
+	int fd;				/* the page's connection, -1: none */
+	uint32_t *px;			/* the page's canvas, shared with the client */
+	size_t len;
+	bool open;
+	int owe;			/* answers owed: one per "page show", given after the refresh */
+	int cnew[PAGE_RANGES][4];	/* the rows (y0, y1) and columns (x0, x1) not yet copied into the canvas */
+	int dirty[2][PAGE_RANGES][4];	/* per buffer: the same for what is not yet put there */
+	bool live[2], skew[2];		/* the buffer holds page pixels / they went through the matrix */
+	bool handover;			/* "page handover": when the connection ends the page stays until its successor is shown */
+	unsigned char *hole;		/* per row of the canvas: a pixel in it is not opaque (or the row never came) */
+	int holes;			/* rows with a hole: 0 = an opaque page */
+	char buf[160];
+	size_t blen;
+} page = { .fd = -1 };
+
+/* every pixel of the row opaque (alpha 255): the row hides what lies under it */
+static bool row_opaque(const uint32_t *px, int w)
+{
+	uint32_t a = 0xff000000u;
+
+	for (int x = 0; x < w; x++)
+		a &= px[x];
+	return (a & 0xff000000u) == 0xff000000u;
+}
+
+/* rows y0..y1 of the canvas came anew from the page: are they opaque? */
+static void page_holes(int y0, int y1, const uint32_t *px, int w, int stride)
+{
+	for (int y = y0 < 0 ? 0 : y0; page.hole && y < y1; y++) {
+		unsigned char h = !row_opaque(px + (size_t)y * stride, w);
+
+		page.holes += (int)h - (int)page.hole[y];
+		page.hole[y] = h;
+	}
+}
+
+static bool osd_waiting;		/* the last refresh was not seen: no picture, or no channel */
+
+/*
+ * The hand-over between two opaque pages (P2c of the media side project): the page that goes says so ("page handover" before its
+ * connection ends - h713-settings on Back, which brings the launcher back; "launcher close keep" - h713-keys on OK on an entry
+ * whose program is a page) and stays on the wall until its successor is drawn into the other buffer and shown in its place, at
+ * most HANDOVER_S. Before, the first page was taken away ("osd hide") and the second drawn afterwards: for the 0.19 s that the
+ * launcher's whole page took through the keystone the HDMI picture stood on the wall between the two (HY310, 17.10.2026).
+ */
+#define HANDOVER_S 1.0
+static double handover_until;		/* the page that went stays on the wall until then; 0: none */
+static bool handover_lau;		/* ... and it is the launcher (else a page of the page channel) */
+
+/* y0..y1 x x0..x1 into the ranges: merged with one it touches or lies within 24 rows of (the columns united), else a free place, else
+ * into the last one */
+static void rows_add(int r[PAGE_RANGES][4], int y0, int y1, int x0, int x1)
+{
+	int free_at = -1;
+
+	for (int i = 0; i < PAGE_RANGES; i++) {
+		if (r[i][0] >= r[i][1]) {
+			free_at = free_at < 0 ? i : free_at;
+		} else if (y0 <= r[i][1] + 24 && y1 >= r[i][0] - 24) {
+			r[i][0] = y0 < r[i][0] ? y0 : r[i][0];
+			r[i][1] = y1 > r[i][1] ? y1 : r[i][1];
+			r[i][2] = x0 < r[i][2] ? x0 : r[i][2];
+			r[i][3] = x1 > r[i][3] ? x1 : r[i][3];
+			return;
+		}
+	}
+	if (free_at >= 0) {
+		r[free_at][0] = y0, r[free_at][1] = y1, r[free_at][2] = x0, r[free_at][3] = x1;
+	} else {
+		int *l = r[PAGE_RANGES - 1];
+
+		l[0] = y0 < l[0] ? y0 : l[0];
+		l[1] = y1 > l[1] ? y1 : l[1];
+		l[2] = x0 < l[2] ? x0 : l[2];
+		l[3] = x1 > l[3] ? x1 : l[3];
+	}
+}
+
+static void rows_set(int r[PAGE_RANGES][4], int y0, int y1)	/* exactly this: none or the whole page */
+{
+	memset(r, 0, sizeof(int) * PAGE_RANGES * 4);
+	r[0][0] = y0, r[0][1] = y1, r[0][2] = 0, r[0][3] = 1 << 30;	/* the columns: the whole width, cut to the canvas where used */
+}
 
 /* --- osd.conf: place, look, scale, seconds - read again when it changes ------------------------------ */
 
@@ -141,6 +284,7 @@ static void conf_load(void)
 static struct warp_conf geom = { 0 };
 static double m[16], hinv[9];
 static bool m_valid, m_identity = true;
+static bool moved[2];			/* per buffer: a new matrix since it was last put - what it holds stands where the old one put it */
 
 static void geom_load(void)
 {
@@ -160,7 +304,73 @@ static void geom_load(void)
 	if (warp_inverse(k, hinv)) {
 		memcpy(m, k, sizeof(m));
 		m_valid = true;
+		moved[0] = moved[1] = true;	/* the footprint of the launcher, of a page, on the panel moved */
 	}
+}
+
+/*
+ * How an overlay is drawn for what lies under it ("osd picture"): pre-distorted over the warped picture, straight
+ * over the ring. An opaque page (the launcher, a settings page) needs no picture under it: without one h713-tv shows
+ * it over black ("osd show N cover"), and it is drawn for the wall as the warped picture would stand there - with
+ * the keystone of warp.conf when that says "warp = on" - over the straight ring too, which it hides. 16.10.2026:
+ * without an HDMI signal the launcher did not open at all.
+ */
+static bool covering(void)
+{
+	return lau.open || (page.open && !page.holes);
+}
+
+/*
+ * "cover" with the show: an opaque page - h713-tv pauses the mode under it; or a page over no picture at all, shown over
+ * black as it always was (the settings' pill without a signal). A page with transparent pixels over a picture is an
+ * overlay: the picture under it runs on (the pill of a slider that is judged on the picture).
+ */
+static bool cover_for(const char *picture)
+{
+	return covering() || (page.open && !strcmp(picture, "ok none"));
+}
+
+static bool skew_for(const char *picture)
+{
+	/* An opaque page hides what lies under it, so it is drawn for the wall whether the ring is there or not:
+	 * a straight ring under it is the second between the signal and the warp's claim (at every start - the
+	 * launcher was drawn warped, straight and warped again within two seconds, HY310 17.10.2026). A page with
+	 * transparent pixels is drawn for the picture it lets through - straight over the straight ring - and over
+	 * no picture for the wall, as the warped picture will stand there. */
+	bool warped = !strcmp(picture, "ok warped") ||
+		      ((lau.open || page.open) && geom.start_on && !strcmp(picture, "ok none")) ||
+		      (covering() && geom.start_on && !strcmp(picture, "ok ring"));
+
+	return warped && m_valid && !m_identity;
+}
+
+/* --- h713-tv's word on the signal ---------------------------------------------------------------------- */
+
+/*
+ * h713-tv says on the overlay connection, unasked, whether there is a picture to show in the mode HDMI: "note signal none" - no
+ * signal, or one the display cannot take - and "note signal TEXT" for anything else (the signal's name, "off" when the console is
+ * forced or a program is the mode). It is also asked once after every claim ("osd signal" -> "ok signal none|TEXT"), so that a
+ * restart of either daemon, a standby, finds the page where it belongs. `none` is the page without a signal; nosig_sync() opens and
+ * closes it. A note that arrives while a refresh talks to h713-tv sets `redo`: the loop draws once more.
+ */
+static struct {
+	bool none;
+	char text[64];
+} sig = { .text = "-" };
+static bool redo;
+
+/* h713-tv's word, and nothing of ours open: the page without a signal is to stand. The launcher and a page of the page channel are the
+ * user's own and take its place. */
+static bool nosig_due(void);
+
+/* a note; true when it changes what stands on the wall (a word "signal" under the launcher changes nothing yet) */
+static bool tv_note(const char *line)
+{
+	if (strncmp(line, "note signal ", 12))
+		return false;			/* a note of a newer h713-tv: not ours to judge */
+	sig.none = !strcmp(line + 12, "none");
+	snprintf(sig.text, sizeof(sig.text), "%.63s", line + 12);
+	return nosig_due() != lau.nosig;
 }
 
 /* --- h713-tv: the two buffers ------------------------------------------------------------------------ */
@@ -174,6 +384,9 @@ static struct {
 	int box[2][2][4];		/* what each buffer holds, in panel pixels: the overlay, the badge */
 	bool shown;
 	double retry;			/* not before then: the last claim failed */
+	char in[512];			/* what h713-tv sent that no line has taken yet: its notes come unasked, between the answers */
+	size_t inlen;
+	bool refused;			/* h713-tv answered the last claim with no: asked again only when something is to be shown */
 } tv = { .fd = -1, .dmabuf = { -1, -1 } };
 
 static struct osd_canvas canvas;	/* the overlays straight, in the source's (= panel's) pixels */
@@ -182,7 +395,7 @@ static struct osd_canvas canvas;	/* the overlays straight, in the source's (= pa
 static struct {
 	double draw, ask, clear, put, show;
 	int pixels;
-	bool skew;
+	bool skew, cover;		/* ... pre-distorted; shown with "cover" */
 } last;
 static int cbox[2][4];			/* what the canvas holds: the overlay, the badge */
 
@@ -196,29 +409,97 @@ static void tv_drop(void)
 			close(tv.dmabuf[i]);
 		tv.dmabuf[i] = -1;
 		memset(tv.box[i], 0, sizeof(tv.box[i]));
+		memset(lau.held[i], 0, sizeof(lau.held[i]));
+		lau.live[i] = lau.wipe[i] = moved[i] = false;
+		page.live[i] = false;
+		rows_set(page.dirty[i], 0, page.open ? canvas.h : 0);	/* the next claim puts the whole page */
 	}
 	if (tv.fd >= 0)
 		close(tv.fd);
 	tv.fd = -1;
 	tv.shown = false;
+	tv.inlen = 0;
 }
 
-/* one line to h713-tv, its answer; false when the connection broke (then it is dropped) or the answer is no "ok" */
+/* the first complete line out of what h713-tv has sent, taken off tv.in; false when there is none yet */
+static bool tv_take(char *line, size_t n)
+{
+	char *nl = memchr(tv.in, '\n', tv.inlen);
+	size_t len;
+
+	if (!nl)
+		return false;
+	len = (size_t)(nl - tv.in);
+	snprintf(line, n, "%.*s", (int)(len < n - 1 ? len : n - 1), tv.in);
+	memmove(tv.in, nl + 1, tv.inlen - len - 1);
+	tv.inlen -= len + 1;
+	return true;
+}
+
+/* the notes that came behind an answer in the same read: taken now - poll() does not fire again for bytes that are already out of the
+ * socket, and a "note signal TEXT" left lying here would keep the page up over a signal until the next key */
+static void tv_notes_left(void)
+{
+	char line[96];
+
+	while (memchr(tv.in, '\n', tv.inlen) && !strncmp(tv.in, "note ", 5) && tv_take(line, sizeof(line)))
+		if (tv_note(line))
+			redo = true;
+}
+
+/* one line to h713-tv, its answer; false when the connection broke (then it is dropped) or the answer is no "ok".
+ * h713-tv's notes ("note signal ...") may come between the question and its answer, or right behind it: they are taken. */
 static bool tv_say(const char *line, char *answer, size_t n)
 {
-	ssize_t got;
-
 	if (tv.fd < 0)
 		return false;
-	if (send(tv.fd, line, strlen(line), MSG_NOSIGNAL) < 0 || (got = recv(tv.fd, answer, n - 1, 0)) <= 0) {
-		warn("h713-tv: \"%.*s\" got no answer (%s) -- the overlay channel is gone, claimed again at the next event",
-		     (int)strcspn(line, "\n"), line, strerror(errno));
-		tv_drop();
-		return false;
+	if (send(tv.fd, line, strlen(line), MSG_NOSIGNAL) < 0)
+		goto gone;
+	for (;;) {
+		ssize_t got;
+
+		while (tv_take(answer, n)) {
+			if (strncmp(answer, "note ", 5)) {
+				bool ok = !strncmp(answer, "ok", 2);
+
+				tv_notes_left();
+				return ok;
+			}
+			if (tv_note(answer))
+				redo = true;
+		}
+		if (tv.inlen >= sizeof(tv.in) - 1)
+			tv.inlen = 0;		/* a line that does not end: dropped */
+		got = recv(tv.fd, tv.in + tv.inlen, sizeof(tv.in) - 1 - tv.inlen, 0);
+		if (got <= 0)
+			goto gone;
+		tv.inlen += (size_t)got;
 	}
-	answer[got] = '\0';
-	answer[strcspn(answer, "\n")] = '\0';
-	return !strncmp(answer, "ok", 2);
+gone:
+	warn("h713-tv: \"%.*s\" got no answer (%s) -- the overlay channel is gone, claimed again at the next event",
+	     (int)strcspn(line, "\n"), line, strerror(errno));
+	tv_drop();
+	return false;
+}
+
+/* the connection has something for us, between the questions: its notes. 1: the page without a signal comes or goes; 0: nothing to do;
+ * -1: h713-tv hung up */
+static int tv_pump(void)
+{
+	char line[96];
+	ssize_t got;
+	int changed = 0;
+
+	if (tv.inlen >= sizeof(tv.in) - 1)
+		tv.inlen = 0;
+	got = recv(tv.fd, tv.in + tv.inlen, sizeof(tv.in) - 1 - tv.inlen, MSG_DONTWAIT);
+	if (got == 0 || (got < 0 && errno != EAGAIN && errno != EINTR))
+		return -1;
+	if (got > 0)
+		tv.inlen += (size_t)got;
+	while (tv_take(line, sizeof(line)))
+		changed |= tv_note(line);		/* a stray answer is not a note: dropped */
+	return changed;
 }
 
 /* h713-tv's own word on the mute: 1 on, 0 off, -1 unknown. Asked at the start and before every claim, on a
@@ -242,6 +523,22 @@ static int tv_mute(void)
 	}
 	close(fd);
 	return r;
+}
+
+/* what h713-tv says of the signal now: asked after every claim (a restart of either daemon, a standby), the notes tell the changes */
+static void tv_signal(void)
+{
+	char answer[96];
+	bool was = sig.none;
+
+	sig.none = false;
+	snprintf(sig.text, sizeof(sig.text), "-");
+	if (tv_say("osd signal\n", answer, sizeof(answer)) && !strncmp(answer, "ok signal ", 10)) {
+		sig.none = !strcmp(answer + 10, "none");
+		snprintf(sig.text, sizeof(sig.text), "%.63s", answer + 10);
+	}
+	if (sig.none != was)
+		info("h713-tv: no signal is %s", sig.none ? "the word" : "not the word any more");
 }
 
 static bool tv_claim(void)
@@ -287,9 +584,11 @@ static bool tv_claim(void)
 	    pitch < w * 4) {
 		warn("h713-tv: \"osd claim\" answered \"%s\" -- no overlay (kernel 0251? another h713-osd?)", line);
 		tv_drop();
+		tv.refused = true;
 		return false;
 	}
 	tv.w = w, tv.h = h, tv.pitch = pitch, tv.next = 0;
+	tv.refused = false;
 	for (int i = 0; i < 2; i++) {
 		tv.map[i] = mmap(NULL, (size_t)pitch * h, PROT_READ | PROT_WRITE, MAP_SHARED, tv.dmabuf[i], 0);
 		if (tv.map[i] == MAP_FAILED) {
@@ -310,10 +609,94 @@ static bool tv_claim(void)
 		memset(cbox, 0, sizeof(cbox));
 	}
 	info("h713-tv: overlay claimed, two %ux%u ARGB8888 buffers", w, h);
-	return true;
+	tv.inlen = 0;
+	tv_signal();
+	return tv.fd >= 0;
 }
 
 /* --- composing: the overlays into the canvas ------------------------------------------------------------ */
+
+/* the tiles of what stands open: the launcher's, or the page without a signal's */
+static int lau_bands(int box[][4])
+{
+	return lau.nosig ? osd_nosignal_bands(&canvas, box) : osd_launcher_bands(&canvas, &lau.l, box);
+}
+
+static void lau_draw(int tile)
+{
+	if (lau.nosig)
+		osd_nosignal_draw(&canvas, tile, lau.quiet);
+	else
+		osd_launcher_draw(&canvas, &lau.l, tile);
+}
+
+static void lau_dirty(int tile)
+{
+	lau.gen[tile] = ++lau.counter;
+}
+
+/* the tiles that a rectangle of the canvas touches: wanted again (repaint, to take a volume strip off) or in a new version (put again) */
+static void lau_rect(const int rc[4], bool repaint)
+{
+	int box[TILES][4], n;
+
+	if (!lau.open || !rc[2] || !rc[3])
+		return;
+	n = lau_bands(box);
+	for (int k = 0; k < n; k++)
+		if (box[k][3] && rc[0] < box[k][0] + box[k][2] && rc[0] + rc[2] > box[k][0] && rc[1] < box[k][1] + box[k][3] &&
+		    rc[1] + rc[3] > box[k][1]) {
+			if (repaint)
+				lau_dirty(k);
+			else
+				lau.ver[k] = ++lau.counter;
+		}
+}
+
+/* the header is "HH:MM \xc2\xb7 NOW" - NOW is the caller's (HDMI 1080p60, Kodi); a new minute is a new header */
+static void lau_clock(void)
+{
+	time_t t = time(NULL);
+	struct tm tm;
+	char head[sizeof(lau.head)];
+
+	localtime_r(&t, &tm);
+	snprintf(head, sizeof(head), "%02d:%02d \xc2\xb7 %s", tm.tm_hour, tm.tm_min, lau.now);
+	if (*fake_clock)	/* the tests: a fixed time, so that two draws are the same picture */
+		snprintf(head, sizeof(head), "%.5s \xc2\xb7 %s", fake_clock, lau.now);
+	if (strcmp(head, lau.head)) {
+		memcpy(lau.head, head, sizeof(head));
+		lau_dirty(0);
+	}
+}
+
+static bool lau_clock_changed(void)
+{
+	unsigned before = lau.gen[0];
+
+	lau_clock();
+	return lau.gen[0] != before;
+}
+
+/* the tiles the canvas does not show in their current state, drawn again */
+static void lau_paint(void)
+{
+	int box[TILES][4], n = lau_bands(box);
+
+	for (int k = 0; k < n; k++)
+		if (lau.cgen[k] != lau.gen[k]) {
+			lau_draw(k);
+			lau.cgen[k] = lau.gen[k];
+			lau.ver[k] = ++lau.counter;
+		}
+}
+
+/* the power countdown's entry is the overlay of the moment (each line of h713-power keeps it a second; after the last one, or after
+ * "hide", this is false again) */
+static bool power_stands(void)
+{
+	return want.until > now_s() && want.popup.kind == OSD_POWER;
+}
 
 /* what is to be seen, drawn: region 0 the overlay, region 1 the mute badge, each with its own rectangle - kept
  * apart, because together they span most of the panel and the pre-distortion would walk all of it (227 ms).
@@ -323,15 +706,42 @@ static bool compose(int box[2][4])
 {
 	struct osd_item badge = { OSD_MUTE_BADGE, 0, 0, 1.0f };
 
-	osd_clear_box(&canvas, cbox[0]);
-	osd_clear_box(&canvas, cbox[1]);
 	memset(box, 0, 2 * 4 * sizeof(int));
-	if (want.until > now_s())
-		osd_draw(&canvas, &style, &want.popup, box[0]);
-	if (want.muted)
-		osd_draw(&canvas, &style, &badge, box[1]);	/* over the overlay, where they meet */
+	if (lau.open) {		/* the strips of the last time come off by repainting the tiles under them: the page is not transparent */
+		lau_rect(cbox[0], true);
+		lau_rect(cbox[1], true);
+		if (!lau.nosig)
+			lau_clock();
+		else if (lau.quiet != power_stands()) {	/* the page without a signal gives its symbol and words back to the ring, and takes them again */
+			lau.quiet = !lau.quiet;
+			lau_dirty(OSD_NOSIGNAL_MIDDLE);
+		}
+		lau_paint();
+	} else {
+		osd_clear_box(&canvas, cbox[0]);
+		osd_clear_box(&canvas, cbox[1]);
+	}
+	if (page.open) {	/* after the clearing above: a popup's last place is the page's again */
+		for (int i = 0; i < PAGE_RANGES; i++)
+			for (int y = page.cnew[i][0]; y < page.cnew[i][1]; y++) {
+				int cx0 = page.cnew[i][2], cx1 = page.cnew[i][3] < canvas.w ? page.cnew[i][3] : canvas.w;
+
+				if (cx1 > cx0)
+					memcpy(canvas.px + (size_t)y * canvas.stride + cx0, page.px + (size_t)y * canvas.stride + cx0, (size_t)(cx1 - cx0) * 4);
+			}
+		for (int i = 0; i < PAGE_RANGES; i++)	/* the whole of each row that came: an opaque page or not */
+			page_holes(page.cnew[i][0], page.cnew[i][1], canvas.px, canvas.w, canvas.stride);
+		rows_set(page.cnew, 0, 0);
+	} else {
+		if (want.until > now_s())
+			osd_draw(&canvas, &style, &want.popup, box[0]);
+		if (want.muted)
+			osd_draw(&canvas, &style, &badge, box[1]);	/* over the overlay, where they meet */
+		lau_rect(box[0], false);	/* over the page they are part of the tiles they touch */
+		lau_rect(box[1], false);
+	}
 	memcpy(cbox, box, sizeof(cbox));
-	return (box[0][2] && box[0][3]) || (box[1][2] && box[1][3]);
+	return (box[0][2] && box[0][3]) || (box[1][2] && box[1][3]) || lau.open || page.open;
 }
 
 /* --- into a buffer: straight, or through the warp's matrix ------------------------------------------------ */
@@ -354,6 +764,19 @@ static int pm_box[4];
 static size_t pm_cap;
 static uint32_t recip[256];		/* (255 << 16) / a: a premultiplied channel back to straight */
 
+/*
+ * The flat map of the premultiplied region: per block of FB x FB texels the colour if every texel of it has that colour. A page is
+ * mostly its ground: a run of panel pixels whose source texels (with the bilinear neighbours) all lie in flat blocks of one colour
+ * has that colour, and is written without a division per pixel (the ground of the settings page, 16.10.2026).
+ */
+#define FB 8
+#define FLAT_RUN 16			/* panel pixels per test: two homography divisions instead of sixteen */
+static uint32_t *fcol;
+static uint8_t *fflat;
+static int fbw, fbh;
+static size_t fcap;
+static bool flat_ok;			/* the map belongs to the region of the last premultiply */
+
 static inline uint32_t mul255(uint32_t c, uint32_t a)	/* c * a / 255, rounded */
 {
 	uint32_t t = c * a + 128;
@@ -361,9 +784,118 @@ static inline uint32_t mul255(uint32_t c, uint32_t a)	/* c * a / 255, rounded */
 	return (t + (t >> 8)) >> 8;
 }
 
+/* fn over the units [lo, hi), cut into pieces of whole `align` units for up to four threads when the work (pixels) is large enough:
+ * the pre-distortion of a page is a few million pixels, and the board has four cores (16.10.2026). The calling thread does the last piece. */
+#define MAX_THREADS 4
+struct part {
+	void (*fn)(void *, int, int);
+	void *arg;
+	int lo, hi;
+};
+
+static void *part_main(void *p)
+{
+	struct part *q = p;
+
+	q->fn(q->arg, q->lo, q->hi);
+	return NULL;
+}
+
+static void parallel(void (*fn)(void *, int, int), void *arg, int lo, int hi, int align, size_t work)
+{
+	static int ncpu;
+	pthread_t tid[MAX_THREADS];
+	struct part part[MAX_THREADS];
+	bool started[MAX_THREADS] = { false };
+	const char *e = getenv("H713_OSD_THREADS");	/* the benches and the tests: 1 = none */
+	int n, per, nlast;
+
+	if (!ncpu) {
+		long c = sysconf(_SC_NPROCESSORS_ONLN);
+
+		ncpu = c < 1 ? 1 : c > MAX_THREADS ? MAX_THREADS : (int)c;
+	}
+	n = e ? atoi(e) : ncpu;
+	n = n > MAX_THREADS ? MAX_THREADS : n;
+	if (work < 60000 || hi - lo < 4 * align)
+		n = 1;
+	if (n < 2) {
+		fn(arg, lo, hi);
+		return;
+	}
+	per = ((hi - lo + n - 1) / n + align - 1) / align * align;
+	for (nlast = 0; nlast < n - 1 && lo + (nlast + 1) * per < hi; nlast++)
+		;
+	for (int i = 0; i < nlast; i++) {
+		part[i] = (struct part){ fn, arg, lo + i * per, lo + (i + 1) * per };
+		started[i] = pthread_create(&tid[i], NULL, part_main, &part[i]) == 0;
+		if (!started[i])
+			fn(arg, part[i].lo, part[i].hi);
+	}
+	fn(arg, lo + nlast * per, hi);
+	for (int i = 0; i < nlast; i++)
+		if (started[i])
+			pthread_join(tid[i], NULL);
+}
+
+static inline uint32_t premul1(uint32_t v)
+{
+	uint32_t a = v >> 24;
+
+	return a == 255 ? v : a ? a << 24 | mul255(v >> 16 & 255, a) << 16 | mul255(v >> 8 & 255, a) << 8 | mul255(v & 255, a) : 0;
+}
+
+struct pmjob {
+	int box[4];
+	bool map;
+};
+
+/* the rows lo..hi-1 of the region, premultiplied, and their blocks' flat map (lo is a multiple of FB: a block row is one thread's) */
+static void pm_rows(void *arg, int lo, int hi)
+{
+	const struct pmjob *j = arg;
+	const int *box = j->box;
+	bool map = j->map;
+
+	for (int y = lo; y < hi; y++) {
+		const uint32_t *src = canvas.px + (size_t)(box[1] + y) * canvas.stride + box[0];
+		uint32_t *dst = pm + (size_t)y * box[2];
+
+		if (!map) {
+			for (int x = 0; x < box[2]; x++)
+				dst[x] = premul1(src[x]);
+			continue;
+		}
+		/* the flat map in the same pass: per block of FB texels the colour of its first texel, and whether every texel of the block has it */
+		uint32_t *cc = fcol + (size_t)(y / FB) * fbw;
+		uint8_t *ff = fflat + (size_t)(y / FB) * fbw;
+
+		for (int bx = 0, xs = 0; bx < fbw; bx++, xs += FB) {
+			int xe = xs + FB < box[2] ? xs + FB : box[2];
+			uint32_t diff = 0, c0;
+
+			for (int x = xs; x < xe; x++)
+				dst[x] = premul1(src[x]);
+			if (y % FB == 0)
+				cc[bx] = dst[xs], ff[bx] = 1;
+			c0 = cc[bx];
+			for (int x = xs; x < xe; x++)
+				diff |= dst[x] ^ c0;
+			if (diff)
+				ff[bx] = 0;
+		}
+	}
+}
+
 static bool premultiply(const int box[4])
 {
 	size_t n = (size_t)box[2] * box[3];
+	static int noflat = -1;
+	bool map;
+
+	if (noflat < 0)
+		noflat = getenv("H713_OSD_NOFLAT") != NULL;	/* the tests: every pixel through the inverse, as before the flat runs */
+	map = !noflat && box[2] >= 4 * FB && box[3] >= 4 * FB && n >= 16384;
 
 	if (n > pm_cap) {
 		uint32_t *q = realloc(pm, n * sizeof(*pm));
@@ -375,17 +907,31 @@ static bool premultiply(const int box[4])
 	if (!recip[1])
 		for (uint32_t a = 1; a < 256; a++)
 			recip[a] = ((255u << 16) + a / 2) / a;
-	for (int y = 0; y < box[3]; y++) {
-		const uint32_t *src = canvas.px + (size_t)(box[1] + y) * canvas.stride + box[0];
-		uint32_t *dst = pm + (size_t)y * box[2];
+	flat_ok = false;
+	if (map) {
+		size_t nb = (size_t)((box[2] + FB - 1) / FB) * ((box[3] + FB - 1) / FB);
 
-		for (int x = 0; x < box[2]; x++) {
-			uint32_t v = src[x], a = v >> 24;
+		fbw = (box[2] + FB - 1) / FB, fbh = (box[3] + FB - 1) / FB;
+		if (nb > fcap) {
+			uint32_t *c = realloc(fcol, nb * sizeof(*fcol));
+			uint8_t *f;
 
-			dst[x] = a ? a << 24 | mul255(v >> 16 & 255, a) << 16 | mul255(v >> 8 & 255, a) << 8 | mul255(v & 255, a) : 0;
+			if (c)
+				fcol = c;
+			f = c ? realloc(fflat, nb) : NULL;
+			if (f)
+				fflat = f, fcap = nb;
+			else
+				map = false;
 		}
 	}
+	{
+		struct pmjob job = { { box[0], box[1], box[2], box[3] }, map };
+
+		parallel(pm_rows, &job, 0, box[3], FB, n);
+	}
 	memcpy(pm_box, box, sizeof(pm_box));
+	flat_ok = map;
 	return true;
 }
 
@@ -410,7 +956,7 @@ static inline uint32_t straight(uint32_t v)
  * neighbours: then the texel is the answer, and the last one's conversion is kept */
 static inline uint32_t sample(double sx, double sy)
 {
-	static uint32_t last_in, last_out;
+	static __thread uint32_t last_in, last_out;	/* per thread: the pre-distortion runs on several */
 	int x = (int)(sx + 1) - 1, y = (int)(sy + 1) - 1;	/* floor for sx, sy > -1, which the caller ensures */
 	int lx = x - pm_box[0], ly = y - pm_box[1];
 	uint32_t fx = (uint32_t)((sx - x) * 256), fy = (uint32_t)((sy - y) * 256);
@@ -442,6 +988,29 @@ static inline uint32_t sample(double sx, double sy)
 	return c[0] << 24 | c[1] << 16 | c[2] << 8 | c[3];
 }
 
+/* do FLAT_RUN panel pixels from the accumulators (nu, nv, nw at the first) take one flat colour? Along a row the source point is a
+ * projective function of the pixel, monotonic where w > 0: the texels it touches (with the bilinear neighbours) lie between those of
+ * the two ends. All in flat blocks of one colour: that colour, back to straight alpha, is what sample() would return for each. */
+static bool flat_run(double nu, double nv, double nw, double du, double dv, double dw, double W, double H, uint32_t *out)
+{
+	double ax = (nu / nw + 1) * 0.5 * W - 0.5, ay = (nv / nw + 1) * 0.5 * H - 0.5;
+	double e = FLAT_RUN - 1, bw = nw + dw * e;
+	double bx = ((nu + du * e) / bw + 1) * 0.5 * W - 0.5, by = ((nv + dv * e) / bw + 1) * 0.5 * H - 0.5;
+	int tx0 = (int)floor(fmin(ax, bx)) - pm_box[0], tx1 = (int)floor(fmax(ax, bx)) + 1 - pm_box[0];
+	int ty0 = (int)floor(fmin(ay, by)) - pm_box[1], ty1 = (int)floor(fmax(ay, by)) + 1 - pm_box[1];
+	uint32_t c;
+
+	if (tx0 < 0 || ty0 < 0 || tx1 >= pm_box[2] || ty1 >= pm_box[3])
+		return false;
+	c = fcol[(size_t)(ty0 / FB) * fbw + tx0 / FB];
+	for (int y = ty0 / FB; y <= ty1 / FB; y++)
+		for (int x = tx0 / FB; x <= tx1 / FB; x++)
+			if (!fflat[(size_t)y * fbw + x] || fcol[(size_t)y * fbw + x] != c)
+				return false;
+	*out = straight(c);
+	return true;
+}
+
 /* a + b k > 0 narrows [kmin, kmax] */
 static void above(double a, double b, double *kmin, double *kmax)
 {
@@ -461,13 +1030,82 @@ static void above(double a, double b, double *kmin, double *kmax)
  * coordinates between the box's edges), so the rest of the rectangle costs nothing. NDC as in the warp: x = -1
  * the left column, y = -1 the top row (matrix.c, gl.c's quad).
  */
-static void put_warped(uint32_t *dst, const int box[4], int out[4])
+/* what a row of the pre-distortion needs, once for the whole put */
+struct wjob {
+	uint32_t *dst;
+	int x0, x1;
+	double W, H, step, bx0, sxlo, sxhi, sylo, syhi, ulo, uhi, vlo, vhi;
+};
+
+static void warp_rows(void *arg, int ya, int yb)
+{
+	const struct wjob *j = arg;
+	const double W = j->W, H = j->H, step = j->step, bx0 = j->bx0, sxlo = j->sxlo, sxhi = j->sxhi, sylo = j->sylo, syhi = j->syhi;
+	const int x0 = j->x0, x1 = j->x1;
+	/* a row is made in cached memory and copied once: single stores into the write-combined scanout buffer
+	 * cost more than the sampling */
+	uint32_t rowbuf[8192];
+
+	for (int y = ya; y < yb; y++) {
+		uint32_t *row = rowbuf - x0;
+		double ny = (y + 0.5) / H * 2 - 1;
+		double nu = hinv[0] * bx0 + hinv[1] * ny + hinv[2], du = hinv[0] * step;
+		double nv = hinv[3] * bx0 + hinv[4] * ny + hinv[5], dv = hinv[3] * step;
+		double nw = hinv[6] * bx0 + hinv[7] * ny + hinv[8], dw = hinv[6] * step;
+		double kmin = 0, kmax = x1 - x0 - 1;
+		int ks, ke;
+
+		above(nw, dw, &kmin, &kmax);				/* in front of the horizon */
+		above(nu - j->ulo * nw, du - j->ulo * dw, &kmin, &kmax);	/* right of the box's left edge */
+		above(j->uhi * nw - nu, j->uhi * dw - du, &kmin, &kmax);	/* left of its right edge */
+		above(nv - j->vlo * nw, dv - j->vlo * dw, &kmin, &kmax);
+		above(j->vhi * nw - nv, j->vhi * dw - dv, &kmin, &kmax);
+		if (kmin > kmax)
+			continue;
+		ks = (int)ceil(kmin) - 1, ke = (int)floor(kmax) + 1;	/* a pixel of margin: the test below decides */
+		ks = ks < 0 ? 0 : ks, ke = ke > x1 - x0 - 1 ? x1 - x0 - 1 : ke;
+		if (ke < ks || ke - ks >= (int)(sizeof(rowbuf) / sizeof(rowbuf[0])))
+			continue;
+		nu += du * ks, nv += dv * ks, nw += dw * ks;
+		int first = -1, lastx = -2;	/* the run of pixels that count: only those are written */
+		/* pixels a whole pixel inside the analytic run certainly pass the test below: those may be written in runs of FLAT_RUN */
+		int in0 = flat_ok ? (int)ceil(kmin) + 1 : ke + 1, in1 = (int)floor(kmax) - 1;
+
+		for (int x = x0 + ks; x <= x0 + ke; x++, nu += du, nv += dv, nw += dw) {
+			double iw, sx, sy;
+			uint32_t flat;
+
+			if (x - x0 >= in0 && x - x0 + FLAT_RUN - 1 <= in1 && flat_run(nu, nv, nw, du, dv, dw, W, H, &flat)) {
+				for (int i = 0; i < FLAT_RUN; i++)
+					row[x + i] = flat;
+				first = first < 0 ? x - x0 : first;
+				lastx = x - x0 + FLAT_RUN - 1;
+				nu += du * (FLAT_RUN - 1), nv += dv * (FLAT_RUN - 1), nw += dw * (FLAT_RUN - 1);
+				x += FLAT_RUN - 1;
+				continue;
+			}
+			iw = 1.0 / nw, sx = (nu * iw + 1) * 0.5 * W - 0.5, sy = (nv * iw + 1) * 0.5 * H - 0.5;
+			/* false for NaN too; sxlo >= -1 keeps the floor in sample() right */
+			if (sx > sxlo && sx < sxhi && sy > sylo && sy < syhi) {
+				row[x] = sample(sx, sy);
+				first = first < 0 ? x - x0 : first;
+				lastx = x - x0;
+			}
+		}
+		/* not the margin pixels of the run, which the test above turned down: they belong to a neighbouring tile (the page's tiles
+		 * meet along slanted lines through the matrix), and a zero written there is a hole in the page */
+		if (first >= 0)
+			memcpy((char *)j->dst + (size_t)y * tv.pitch + (size_t)(x0 + first) * 4, rowbuf + first, (size_t)(lastx - first + 1) * 4);
+	}
+}
+
+static void put_warped(uint32_t *dst, const int box[4], const double *xr, const double *yr, int out[4])
 {
 	double W = canvas.w, H = canvas.h, lo[2] = { 1e9, 1e9 }, hi[2] = { -1e9, -1e9 };
-	double step = 2.0 / W, bx0;
-	double sxlo = box[0] - 1, sxhi = box[0] + box[2], sylo = box[1] - 1, syhi = box[1] + box[3];
-	double ulo = (sxlo + 0.5) / W * 2 - 1, uhi = (sxhi + 0.5) / W * 2 - 1;	/* the same edges in NDC */
-	double vlo = (sylo + 0.5) / H * 2 - 1, vhi = (syhi + 0.5) / H * 2 - 1;
+	/* the source columns and rows that count: xr, yr = { low, high } (exclusive), or the box's own with half a pixel of fade */
+	double sxlo = xr ? xr[0] : box[0] - 1, sxhi = xr ? xr[1] : box[0] + box[2];
+	double sylo = yr ? yr[0] : box[1] - 1, syhi = yr ? yr[1] : box[1] + box[3];
+	struct wjob job;
 	int x0, y0, x1, y1;
 
 	memset(out, 0, 4 * sizeof(int));
@@ -486,41 +1124,139 @@ static void put_warped(uint32_t *dst, const int box[4], int out[4])
 	x1 = x1 > canvas.w ? canvas.w : x1, y1 = y1 > canvas.h ? canvas.h : y1;
 	if (x1 <= x0 || y1 <= y0)
 		return;
-	bx0 = (x0 + 0.5) * step - 1;
-	/* a row is made in cached memory and copied once: single stores into the write-combined scanout buffer
-	 * cost more than the sampling */
-	static uint32_t rowbuf[8192];
-
-	for (int y = y0; y < y1; y++) {
-		uint32_t *row = rowbuf - x0;
-		double ny = (y + 0.5) / H * 2 - 1;
-		double nu = hinv[0] * bx0 + hinv[1] * ny + hinv[2], du = hinv[0] * step;
-		double nv = hinv[3] * bx0 + hinv[4] * ny + hinv[5], dv = hinv[3] * step;
-		double nw = hinv[6] * bx0 + hinv[7] * ny + hinv[8], dw = hinv[6] * step;
-		double kmin = 0, kmax = x1 - x0 - 1;
-		int ks, ke;
-
-		above(nw, dw, &kmin, &kmax);				/* in front of the horizon */
-		above(nu - ulo * nw, du - ulo * dw, &kmin, &kmax);	/* right of the box's left edge */
-		above(uhi * nw - nu, uhi * dw - du, &kmin, &kmax);	/* left of its right edge */
-		above(nv - vlo * nw, dv - vlo * dw, &kmin, &kmax);
-		above(vhi * nw - nv, vhi * dw - dv, &kmin, &kmax);
-		if (kmin > kmax)
-			continue;
-		ks = (int)ceil(kmin) - 1, ke = (int)floor(kmax) + 1;	/* a pixel of margin: the test below decides */
-		ks = ks < 0 ? 0 : ks, ke = ke > x1 - x0 - 1 ? x1 - x0 - 1 : ke;
-		if (ke < ks || ke - ks >= (int)(sizeof(rowbuf) / sizeof(rowbuf[0])))
-			continue;
-		nu += du * ks, nv += dv * ks, nw += dw * ks;
-		for (int x = x0 + ks; x <= x0 + ke; x++, nu += du, nv += dv, nw += dw) {
-			double iw = 1.0 / nw, sx = (nu * iw + 1) * 0.5 * W - 0.5, sy = (nv * iw + 1) * 0.5 * H - 0.5;
-
-			/* false for NaN too; sxlo >= -1 keeps the floor in sample() right */
-			row[x] = sx > sxlo && sx < sxhi && sy > sylo && sy < syhi ? sample(sx, sy) : 0;
-		}
-		memcpy((char *)dst + (size_t)y * tv.pitch + (size_t)(x0 + ks) * 4, rowbuf + ks, (size_t)(ke - ks + 1) * 4);
-	}
+	job = (struct wjob){ dst, x0, x1, W, H, 2.0 / W, (x0 + 0.5) * (2.0 / W) - 1, sxlo, sxhi, sylo, syhi,
+			     (sxlo + 0.5) / W * 2 - 1, (sxhi + 0.5) / W * 2 - 1,	/* the same edges in NDC */
+			     (sylo + 0.5) / H * 2 - 1, (syhi + 0.5) / H * 2 - 1 };
+	parallel(warp_rows, &job, y0, y1, 1, (size_t)(x1 - x0) * (size_t)(y1 - y0));
 	out[0] = x0, out[1] = y0, out[2] = x1 - x0, out[3] = y1 - y0;
+}
+
+/* the launcher's tiles into buffer b - those it does not hold in their current version - straight or through the matrix.
+ * Each tile is put from a source with LAU_MARGIN rows and columns of its neighbours' pixels around it, but only the panel pixels
+ * whose source lies in the tile itself are written: the tiles' footprints tile the page, and the bilinear sample at a tile's
+ * edge sees the neighbour's pixels instead of the transparent nothing outside a region (a seam at every boundary
+ * otherwise: alpha down to 60 % on a line, 11 rows of 1 pixel on the panel). Returns the pixels put. */
+#define LAU_MARGIN 2
+
+static int lau_put(int b, bool skew)
+{
+	int box[TILES][4], n = lau_bands(box), area = 0;
+
+	for (int k = 0; k < n; k++) {
+		int x0 = box[k][0] > LAU_MARGIN ? box[k][0] - LAU_MARGIN : 0, y0 = box[k][1] > LAU_MARGIN ? box[k][1] - LAU_MARGIN : 0, out[4];
+		int x1 = box[k][0] + box[k][2] + LAU_MARGIN < canvas.w ? box[k][0] + box[k][2] + LAU_MARGIN : canvas.w;
+		int y1 = box[k][1] + box[k][3] + LAU_MARGIN < canvas.h ? box[k][1] + box[k][3] + LAU_MARGIN : canvas.h;
+		int r[4] = { x0, y0, x1 - x0, y1 - y0 };
+
+		if (!box[k][2] || !box[k][3] || lau.held[b][k] == lau.ver[k])
+			continue;
+		if (skew) {	/* source column/row i is the pixel between i - 0.5 and i + 0.5; the canvas' edges keep their fade */
+			double xr[2] = { box[k][0] ? box[k][0] - 0.5 : -1, box[k][0] + box[k][2] < canvas.w ? box[k][0] + box[k][2] - 0.5 : canvas.w };
+			double yr[2] = { box[k][1] ? box[k][1] - 0.5 : -1, box[k][1] + box[k][3] < canvas.h ? box[k][1] + box[k][3] - 0.5 : canvas.h };
+
+			put_warped(tv.map[b], r, xr, yr, out);
+		} else {
+			put_straight(tv.map[b], r, out);
+		}
+		area += out[2] * out[3];
+		lau.held[b][k] = lau.ver[k];
+	}
+	lau.live[b] = true;
+	lau.skew[b] = skew;
+	lau.wipe[b] = false;	/* a buffer that held nothing needed no wipe: the flag must not make the next refresh wipe it */
+	return area;
+}
+
+/*
+ * Buffer b cleared, and with it every record of what it holds: the launcher's tiles, the page's rows (all of them to be put again
+ * while it is open), the popups' rectangles. One wipe for all of them: the launcher and the page share the two buffers, and a wipe
+ * that forgets one record leaves it claiming pixels that are gone - the next put then puts only what changed into an empty buffer
+ * (19.10.2026: the page's wipe left the launcher's tiles recorded, and a move after the settings page put two tiles of the launcher
+ * on the wall, the rest of it transparent).
+ */
+static void buf_wipe(int b)
+{
+	memset(tv.map[b], 0, (size_t)tv.pitch * tv.h);
+	memset(tv.box[b], 0, sizeof(tv.box[b]));
+	memset(lau.held[b], 0, sizeof(lau.held[b]));
+	lau.live[b] = lau.wipe[b] = false;
+	page.live[b] = false;
+	rows_set(page.dirty[b], 0, page.open ? canvas.h : 0);
+}
+
+/* why buffer b is to be cleared before a put (NULL: it need not be): it holds pixels that nothing puts again - the launcher's or the
+ * page's, closed, drawn through another matrix, or for a picture that turned warped or straight. Asked by every put, the refresh's and
+ * the idle time's alike. */
+static const char *buf_stale(int b, bool skew)
+{
+	if (!lau.live[b] && !page.live[b])
+		return NULL;
+	if (moved[b])
+		return "a new geometry";
+	if (lau.live[b] && (lau.wipe[b] || !lau.open))
+		return lau.open ? "another launcher" : "the launcher closed";
+	if (page.live[b] && !page.open)
+		return "the page closed";
+	if ((lau.live[b] && lau.skew[b] != skew) || (page.live[b] && page.skew[b] != skew))
+		return "the picture under it turned warped or straight";
+	return NULL;
+}
+
+/* does buffer b lack a tile in its current version? */
+static bool lau_stale(int b)
+{
+	int box[TILES][4], n = lau_bands(box);
+
+	for (int k = 0; k < n; k++)
+		if (box[k][2] && box[k][3] && lau.held[b][k] != lau.ver[k])
+			return true;
+	return false;
+}
+
+/* the page's new rows into buffer b, as a band: LAU_MARGIN rows of the neighbours around it for the sampling, only the panel
+ * pixels whose source row lies in the band written (the same reasoning as the launcher's bands, lau_put) */
+static int page_put(int b, bool skew)
+{
+	int area = 0;
+
+	for (int i = 0; i < PAGE_RANGES; i++) {
+		int y0 = page.dirty[b][i][0], y1 = page.dirty[b][i][1], r[4], out[4];
+		int x0 = page.dirty[b][i][2] > 0 ? page.dirty[b][i][2] : 0, x1 = page.dirty[b][i][3] < canvas.w ? page.dirty[b][i][3] : canvas.w;
+
+		if (y0 >= y1 || x0 >= x1)
+			continue;
+		r[0] = x0 > LAU_MARGIN ? x0 - LAU_MARGIN : 0;
+		r[1] = y0 > LAU_MARGIN ? y0 - LAU_MARGIN : 0;
+		r[2] = (x1 + LAU_MARGIN < canvas.w ? x1 + LAU_MARGIN : canvas.w) - r[0];
+		r[3] = (y1 + LAU_MARGIN < canvas.h ? y1 + LAU_MARGIN : canvas.h) - r[1];
+		if (skew) {
+			/* A panel pixel whose source row is s reads rows floor(s) and floor(s) + 1, so the rows y0..y1-1 reach the pixels
+			 * with s in (y0 - 1, y1): those are written, a half row more on each side than the band tiles (y0 - 0.5, y1 - 0.5).
+			 * The neighbours' pixels they read are the page's own, so what is written is what a whole put writes. */
+			double xr[2] = { x0 ? x0 - 1 : -1, x1 < canvas.w ? x1 : canvas.w };	/* the columns the same way; the canvas' own edges keep their fade */
+			double yr[2] = { y0 ? y0 - 1 : -1, y1 < canvas.h ? y1 : canvas.h };
+
+			put_warped(tv.map[b], r, xr, yr, out);
+		} else {
+			put_straight(tv.map[b], r, out);
+		}
+		area += out[2] * out[3];
+	}
+	rows_set(page.dirty[b], 0, 0);
+	page.live[b] = true;
+	page.skew[b] = skew;
+	return area;
+}
+
+/* more than a third of the panel's rows still to be put into the buffer the next refresh draws into: after a whole page was
+ * shown (the buffer on the panel got it), the other one owes it too - and would take it at the next key, a key's worth late */
+static bool page_owes_much(void)
+{
+	int rows = 0;
+
+	for (int i = 0; i < PAGE_RANGES; i++)
+		rows += page.dirty[tv.next][i][1] > page.dirty[tv.next][i][0] ? page.dirty[tv.next][i][1] - page.dirty[tv.next][i][0] : 0;
+	return page.open && rows * 3 > canvas.h;
 }
 
 static void buf_sync(int fd, unsigned long long flags)
@@ -530,17 +1266,86 @@ static void buf_sync(int fd, unsigned long long flags)
 	ioctl(fd, DMA_BUF_IOCTL_SYNC, &s);	/* a memfd in the host tests says ENOTTY: nothing to sync there */
 }
 
+/* the buffer that is not shown, brought up to date in the idle time after a refresh: the next key then finds the page in it and
+ * puts the two tiles it changes, instead of the page (an opaque page over a keystone is two million pixels through the matrix). */
+static void lau_prefill(void)
+{
+	int b = tv.next;
+	bool skew = last.skew;
+	double t0 = now_s();
+	int px;
+
+	if (!lau.open || lau.nosig || tv.fd < 0 || !tv.shown || (!lau_stale(b) && !buf_stale(b, skew)))
+		return;		/* (the page without a signal does not change: nothing to get ready) */
+	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE);
+	if (buf_stale(b, skew))
+		buf_wipe(b);	/* the closed page's pixels too: the next key must not find them (and wipe the launcher with them) */
+	moved[b] = false;
+	px = lau_put(b, skew);
+	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE);
+	if (trace)
+		info("trace: prefill of buffer %d took %.1f ms (%d pixels, %s)", b, (now_s() - t0) * 1e3, px, skew ? "pre-distorted" : "copied");
+}
+
 /* --- one refresh: compose, put, show ------------------------------------------------------------------------ */
+
+/*
+ * The page without a signal stands while h713-tv says "none" and neither the launcher nor a page of the page channel is open: those
+ * two are the user's own and take its place, and it comes back when they go and there still is no signal. Called at the start of every
+ * refresh, so whatever closed the launcher or the page (a refresh follows) brings it back, and the word "signal" takes it away (a
+ * refresh follows that too). A hand-over in progress (the launcher closed "keep", the settings not drawn yet) is not touched here:
+ * no refresh runs between its two halves.
+ */
+static bool nosig_due(void)
+{
+	return sig.none && !page.open && !(lau.open && !lau.nosig);
+}
+
+static void nosig_sync(void)
+{
+	bool shown = nosig_due();
+
+	if (shown && !lau.open) {
+		if (osd_font_open(env("H713_OSD_FONT", OSD_FONT)))
+			warn("no font (%s) -- the page without a signal shows its symbol and no words", env("H713_OSD_FONT", OSD_FONT));
+		memset(&lau.l, 0, sizeof(lau.l));
+		lau.open = lau.nosig = true;
+		lau.prefill_at = 0;
+		for (int ti = 0; ti < TILES; ti++)
+			lau_dirty(ti);
+		lau.wipe[0] = lau.wipe[1] = true;	/* whatever the buffers held of the launcher is not this page */
+		info("no signal: the page \"No signal on HDMI\" opens");
+	} else if (!shown && lau.open && lau.nosig) {
+		lau.open = lau.nosig = false;
+		lau.prefill_at = 0;
+		osd_clear(&canvas);		/* the page was drawn all over it, as the launcher's was */
+		memset(cbox, 0, sizeof(cbox));
+		info("signal: the page without a signal goes");
+	}
+}
 
 static void refresh(void)
 {
 	char answer[128];
 	int box[2][4], out[2][4] = { { 0 } }, b, area = 0;
-	bool warped, skew;
+	bool skew;
 	double t0;
 
+	/*
+	 * A page that was handed over stands on the wall until its successor is drawn (HANDOVER_S at most). Only a refresh that draws
+	 * the successor - the launcher or a page of the page channel is open - or the end of that second decides what is on the wall.
+	 * Any other cause (a volume strip, the mute badge, the power countdown, a note on the signal, a new keystone) draws into the
+	 * buffer that is not shown and shows it: the page would go and the picture under it stand on the wall for the 0.2 s the
+	 * successor needs (found reading the hand-over, 17.10.2026; a rare window, not seen on the wall). What they want stays in
+	 * `want` and is drawn with the successor, or when the second is over.
+	 */
+	if (handover_until > now_s() && !page.open && !(lau.open && !lau.nosig))
+		return;
+	osd_waiting = true;
+	handover_until = 0;		/* whatever was handed over: this refresh decides what is on the wall */
 	if (!tv_claim())
 		return;
+	nosig_sync();
 	t0 = now_s();
 	if (!compose(box)) {
 		if (tv.shown && tv_say("osd hide\n", answer, sizeof(answer)))
@@ -549,14 +1354,24 @@ static void refresh(void)
 	}
 	last.draw = (now_s() - t0) * 1e3;
 	t0 = now_s();
-	warped = tv_say("osd picture\n", answer, sizeof(answer)) && !strcmp(answer, "ok warped");
+	if (!tv_say("osd picture\n", answer, sizeof(answer)))
+		answer[0] = '\0';
 	if (tv.fd < 0)
 		return;
-	skew = warped && m_valid && !m_identity;
+	skew = skew_for(answer);
+	last.cover = cover_for(answer);
 	b = tv.next;
 	last.ask = (now_s() - t0) * 1e3;	/* the question to h713-tv: its loop may be in a warp frame */
 	t0 = now_s();
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_START | DMA_BUF_SYNC_WRITE);
+	const char *why = buf_stale(b, skew);
+
+	if (trace)		/* what this refresh does to which buffer: a wipe of the buffer on the wall would show what lies under it */
+		info("trace: refresh into buffer %d (the other is on the wall: %s), picture \"%s\", %s, %s%s%s", b, tv.shown ? "yes" : "no",
+		     answer, skew ? "pre-distorted" : "straight", last.cover ? "cover" : "no cover", why ? ", wiped: " : "", why ? why : "");
+	if (why)
+		buf_wipe(b);
+	moved[b] = false;	/* what is put now goes through the matrix of now */
 	for (int r = 0; r < 2; r++)	/* what this buffer showed before */
 		for (int y = tv.box[b][r][1]; y < tv.box[b][r][1] + tv.box[b][r][3]; y++)
 			memset((char *)tv.map[b] + (size_t)y * tv.pitch + (size_t)tv.box[b][r][0] * 4, 0,
@@ -564,28 +1379,39 @@ static void refresh(void)
 	last.clear = (now_s() - t0) * 1e3;
 	t0 = now_s();
 	for (int r = 0; r < 2; r++) {
-		if (!box[r][2] || !box[r][3])
+		if (!box[r][2] || !box[r][3] || lau.open)	/* over the page they ride in its tiles */
 			continue;
 		if (skew)
-			put_warped(tv.map[b], box[r], out[r]);
+			put_warped(tv.map[b], box[r], NULL, NULL, out[r]);
 		else
 			put_straight(tv.map[b], box[r], out[r]);
 		area += out[r][2] * out[r][3];
 	}
+	if (lau.open)
+		area += lau_put(b, skew);
+	if (page.open)
+		area += page_put(b, skew);
 	buf_sync(tv.dmabuf[b], DMA_BUF_SYNC_END | DMA_BUF_SYNC_WRITE);
 	last.put = (now_s() - t0) * 1e3;
 	last.pixels = area;
 	last.skew = skew;
 	t0 = now_s();
 	memcpy(tv.box[b], out, sizeof(out));
-	snprintf(answer, sizeof(answer), "osd show %d\n", b);
+	snprintf(answer, sizeof(answer), last.cover ? "osd show %d cover\n" : "osd show %d\n", b);
 	if (tv_say(answer, answer, sizeof(answer))) {
 		tv.shown = true;
 		tv.next ^= 1;
+		osd_waiting = strstr(answer, "waiting") != NULL;
+		if (trace)
+			info("trace: command %.4f, show answered %.4f (%.1f ms; draw %.1f, put %.1f, show %.1f), buffer %d: \"%.*s\"", t_cmd,
+			     real_s(), (real_s() - t_cmd) * 1e3, last.draw, last.put, (now_s() - t0) * 1e3, b,
+			     (int)strcspn(answer, "\n"), answer);
 	} else if (tv.fd >= 0) {
 		warn("h713-tv refused the overlay: %s", answer);
 	}
 	last.show = (now_s() - t0) * 1e3;
+	if (lau.open && !lau.nosig)
+		lau.prefill_at = now_s() + PREFILL_S;
 	if (last.draw + last.ask + last.clear + last.put + last.show > 50)
 		info("refresh took %.0f ms: draw %.1f, ask %.1f, clear %.1f, %s %.1f (%d pixels), show %.1f",
 		     last.draw + last.ask + last.clear + last.put + last.show, last.draw, last.ask, last.clear,
@@ -594,9 +1420,116 @@ static void refresh(void)
 
 /* --- the control socket ------------------------------------------------------------------------------------- */
 
+/*
+ * "launcher SEL;NOW;[>]icon:label;..." opens the launcher (or defines it anew): SEL the chosen row, NOW the header's
+ * second half ("HDMI 1080p60"), then the rows - a ">" in front puts a row in the group at the foot, which comes last.
+ * "launcher SEL" moves the selection, "launcher close" closes it. "ok unseen" when nothing can be seen (no h713-tv):
+ * then it is not open and the caller does not take the keys from anybody. Without a signal the page is shown over
+ * black (covering()).
+ * H713_OSD_FONT is the font file (libh713osd's default is the image's Quicksand).
+ */
+static bool launcher_cmd(const char *args, char *reply, size_t n)
+{
+	char buf[LINE], *f[BANDS + 1], *p = buf, *t;
+	int k = 0, sel, rows = 0;
+	bool end = false;
+
+	snprintf(buf, sizeof(buf), "%s", args + strspn(args, " "));
+	if (!strcmp(buf, "close") || !strcmp(buf, "close keep")) {
+		bool keep = buf[5] && lau.open && !lau.nosig && tv.shown;
+
+		if (lau.nosig) {		/* it is not the launcher that stands open: nothing to close */
+			snprintf(reply, n, "ok\n");
+			return false;
+		}
+		lau.open = false;
+		lau.prefill_at = 0;
+		osd_clear(&canvas);		/* the page was drawn all over it: a volume strip next must not find the ground under it */
+		memset(cbox, 0, sizeof(cbox));
+		snprintf(reply, n, "ok\n");
+		if (keep) {			/* a page follows: the launcher stays on the wall until it is drawn (P2c) */
+			handover_until = now_s() + HANDOVER_S;
+			handover_lau = true;
+			info("launcher closed, handed over: it stays on the wall until the next page is drawn (%.1f s at most)", HANDOVER_S);
+			return false;
+		}
+		return true;
+	}
+	if (page.open) {
+		snprintf(reply, n, "error the page is open\n");
+		return false;
+	}
+	while (k < BANDS + 1 && (t = strsep(&p, ";")))
+		f[k++] = t;
+	if (!k || sscanf(f[0], "%d", &sel) != 1) {
+		snprintf(reply, n, "error usage: launcher SEL;NOW;[>]icon:label;... | launcher SEL | launcher close\n");
+		return false;
+	}
+	if (k == 1) {		/* a move: two bands change */
+		if (!lau.open || lau.nosig) {
+			snprintf(reply, n, "error the launcher is not open\n");
+			return false;
+		}
+		sel = sel < 0 ? 0 : sel >= lau.l.n ? lau.l.n - 1 : sel;
+		if (sel != lau.l.sel) {
+			lau_dirty(1 + lau.l.sel);
+			lau_dirty(1 + sel);
+			lau.l.sel = sel;
+		}
+		snprintf(reply, n, "ok\n");
+		return true;
+	}
+	if (osd_font_open(env("H713_OSD_FONT", OSD_FONT))) {
+		snprintf(reply, n, "error no font (%s)\n", env("H713_OSD_FONT", OSD_FONT));
+		return false;
+	}
+	memset(&lau.l, 0, sizeof(lau.l));
+	for (int i = 2; i < k; i++, rows++) {
+		char *colon;
+
+		if (rows == OSD_LAUNCHER_ROWS) {
+			snprintf(reply, n, "error at most %d rows\n", OSD_LAUNCHER_ROWS);
+			return false;
+		}
+		lau.l.row[rows].end = *f[i] == '>';
+		t = f[i] + lau.l.row[rows].end;
+		if (!(colon = strchr(t, ':')) || (*colon = '\0', (lau.l.row[rows].icon = osd_icon_by_name(t)) < 0) ||
+		    (end && !lau.l.row[rows].end)) {
+			snprintf(reply, n, "error row %d: icon:label with a known icon, rows at the foot (>) last\n", rows);
+			return false;
+		}
+		end = lau.l.row[rows].end;
+		snprintf(lau.label[rows], sizeof(lau.label[rows]), "%s", colon + 1);
+		lau.l.row[rows].label = lau.label[rows];
+	}
+	if (!rows) {
+		snprintf(reply, n, "error no rows\n");
+		return false;
+	}
+	lau.l.n = rows;
+	lau.l.sel = sel < 0 ? 0 : sel >= rows ? rows - 1 : sel;
+	lau.l.head = lau.head;
+	snprintf(lau.now, sizeof(lau.now), "%s", f[1]);
+	lau.head[0] = '\0';
+	if (!tv_claim()) {
+		lau.open = lau.nosig = false;
+		snprintf(reply, n, "ok unseen\n");
+		return false;
+	}
+	lau.open = true;
+	lau.nosig = false;		/* the launcher takes the place of the page without a signal, if that stood */
+	for (int ti = 0; ti < TILES; ti++)
+		lau_dirty(ti);
+	lau.wipe[0] = lau.wipe[1] = true;	/* whatever the buffers held of an earlier launcher is not this one */
+	snprintf(reply, n, "ok\n");
+	return true;
+}
+
 /* one command; the answer into reply; true when the picture has to be drawn again */
 static bool handle(const char *line, char *reply, size_t n)
 {
+	if (!strncmp(line, "launcher", 8) && (line[8] == ' ' || !line[8]))
+		return launcher_cmd(line + 8, reply, n);
 	char a[16] = "", b[16] = "", c[16] = "", d[16] = "", e[16] = "", answer[32];
 	int v = 0, k = sscanf(line, "%15s %15s %15s %15s %15s", a, b, c, d, e);
 	struct osd_item it = { OSD_VOLUME, 0, 0, 1.0f };
@@ -621,8 +1554,15 @@ static bool handle(const char *line, char *reply, size_t n)
 		/*
 		 * The power key's countdown (TODO 2.38), sent by h713-power about ten times a second: "power TENTHS
 		 * standby|off [only] [ALPHA%]". Each line keeps it a second, so a dead h713-power leaves nothing
-		 * behind. "ok unseen" when nothing can be seen (no signal: the console; no h713-tv): then h713-power
-		 * does not wait for a choice nobody sees.
+		 * behind. "ok unseen" when nothing can be seen (the console; no h713-tv): then h713-power does not
+		 * wait for a choice nobody sees. Anything of ours that stands on the wall and is seen can carry it, though
+		 * no picture lies under it ("osd picture" says "none": without a signal the warp gives its claim back
+		 * under the page without a signal, the launcher, the settings page and its pill; none of them has one):
+		 * "none" is unseen only when nothing of ours is seen. Seen means h713-tv took the overlay and did not
+		 * answer "ok waiting" (a strip with no picture to lie over is accepted and not on the wall), or the page
+		 * without a signal is due and the refresh that follows this line puts it up (Marco 18.10.2026: "Power
+		 * key as always, yes"). Over an open page of the page channel nothing is drawn (compose), with a signal
+		 * as without; h713-settings ends on the Power key before h713-power asks.
 		 */
 		const char *opt[2] = { d, e };
 
@@ -638,7 +1578,8 @@ static bool handle(const char *line, char *reply, size_t n)
 				it.alpha = pct < 0 ? 0 : pct > 100 ? 1 : pct / 100.0f;
 		}
 		stay = 1.0;
-		if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none")) {
+		if (!tv_claim() || !tv_say("osd picture\n", answer, sizeof(answer)) ||
+		    (!strcmp(answer, "ok none") && !nosig_due() && !(tv.shown && !osd_waiting))) {
 			want.until = 0;
 			snprintf(reply, n, "ok unseen\n");
 			return true;
@@ -651,17 +1592,21 @@ static bool handle(const char *line, char *reply, size_t n)
 		snprintf(reply, n, "ok hidden%s\n", want.muted ? " (the mute badge stays)" : "");
 		return true;
 	} else if (k == 1 && !strcmp(a, "status")) {
-		snprintf(reply, n, "ok status\noverlay         %s\nmuted           %s\nchannel         %s\nmatrix          %s\nstyle           place %s, look %s, scale %.2f, %.1f s\nlast refresh    draw %.1f ms, ask %.1f ms, clear %.1f ms, %s %.1f ms (%d pixels), show %.1f ms\n",
+		snprintf(reply, n, "ok status\noverlay         %s\nmuted           %s\nchannel         %s\nmatrix          %s\nstyle           place %s, look %s, scale %.2f, %.1f s\nlauncher        %s\npage            %s\nno-signal page  %s\nlast refresh    draw %.1f ms, ask %.1f ms, clear %.1f ms, %s %.1f ms (%d pixels), show %.1f ms\n",
 			 want.until > now_s() ? "shown" : "none", want.muted ? "yes (badge)" : "no",
 			 tv.fd >= 0 ? (tv.shown ? "claimed, shown" : "claimed") : "not claimed (h713-tv not running, or no event yet)",
 			 m_identity ? "identity (straight)" :
 			 m_valid ? "from warp.conf (pre-distorted while the picture under it is warped)" : "refused",
 			 style.place == OSD_BOTTOM ? "bottom" : style.place == OSD_TOP_RIGHT ? "top-right" : "center",
 			 style.look == OSD_PILL ? "pill" : "bare", style.scale, seconds,
+			 lau.open && !lau.nosig ? "open" : handover_until > 0 && handover_lau ? "closed (handed over: on the wall until the next page is drawn)" : "closed",
+			 !page.open ? (handover_until > 0 && !handover_lau ? "closed (handed over: on the wall until the launcher is drawn)" : "closed") : page.holes ? "open (transparent pixels: the picture under it runs on)" :
+			 "open (opaque: the mode under it pauses)",
+			 lau.nosig ? "shown (h713-tv: no signal)" : sig.none ? "wanted, not shown (the launcher or a page is open)" : "none",
 			 last.draw, last.ask, last.clear, last.skew ? "pre-distort" : "copy", last.put, last.pixels, last.show);
 		return false;
 	} else {
-		snprintf(reply, n, "error unknown: volume N | mute on|off N | focus up|down [edge] | input console|hdmi | power TENTHS standby|off [only] [ALPHA%%] | pair | hide | status\n");
+		snprintf(reply, n, "error unknown: volume N | mute on|off N | focus up|down [edge] | input console|hdmi | power TENTHS standby|off [only] [ALPHA%%] | pair | launcher ... | hide | status\n");
 		return false;
 	}
 	want.popup = it;
@@ -685,10 +1630,161 @@ static int listen_on(const char *path)
 	return fd;
 }
 
+/* the page's way in: "page open" keeps its connection (the page's life) and answers with the size and one memfd */
+static bool page_open_cmd(int fd)
+{
+	char cbuf[CMSG_SPACE(sizeof(int))] = { 0 }, line[96];
+	struct iovec io = { line, 0 };
+	struct msghdr msg = { .msg_iov = &io, .msg_iovlen = 1, .msg_control = cbuf, .msg_controllen = sizeof(cbuf) };
+	const char *err = NULL;
+	struct cmsghdr *cm;
+	void *map = MAP_FAILED;
+	size_t len;
+	int mem = -1;
+
+	if (page.open || (lau.open && !lau.nosig))
+		err = page.open ? "error the page is open\n" : "error the launcher is open\n";
+	else if (!tv_claim())
+		err = "ok unseen\n";	/* nothing can be seen (no h713-tv): no page, and the caller takes the keys from nobody */
+	if (!err) {
+		len = (size_t)canvas.stride * canvas.h * 4;
+		mem = memfd_create("h713-page", MFD_CLOEXEC);
+		if (mem < 0 || ftruncate(mem, (off_t)len) ||
+		    (map = mmap(NULL, len, PROT_READ | PROT_WRITE, MAP_SHARED, mem, 0)) == MAP_FAILED)
+			err = "error no memory for the page\n";
+	}
+	if (!err) {
+		io.iov_len = (size_t)snprintf(line, sizeof(line), "ok %d %d %d argb8888\n", canvas.w, canvas.h, canvas.stride * 4);
+		cm = CMSG_FIRSTHDR(&msg);
+		cm->cmsg_level = SOL_SOCKET;
+		cm->cmsg_type = SCM_RIGHTS;
+		cm->cmsg_len = CMSG_LEN(sizeof(int));
+		memcpy(CMSG_DATA(cm), &mem, sizeof(int));
+		if (sendmsg(fd, &msg, MSG_NOSIGNAL) < 0)
+			err = "";
+	}
+	if (mem >= 0)
+		close(mem);
+	if (err) {
+		if (*err)
+			send(fd, err, strlen(err), MSG_NOSIGNAL);
+		if (map != MAP_FAILED)
+			munmap(map, len);
+		close(fd);
+		return false;
+	}
+	free(page.hole);
+	page.hole = malloc((size_t)canvas.h);
+	if (page.hole)
+		memset(page.hole, 1, (size_t)canvas.h);
+	page.holes = canvas.h;		/* no row came yet: not opaque until the page has said all of them */
+	page.fd = fd;
+	page.px = map;
+	page.len = len;
+	page.open = true;
+	page.blen = 0;
+	page.owe = 0;
+	rows_set(page.cnew, 0, 0);
+	for (int b = 0; b < 2; b++)
+		rows_set(page.dirty[b], 0, canvas.h);
+	nosig_sync();			/* a page of the page channel takes the place of the page without a signal */
+	info("page opened: %dx%d", canvas.w, canvas.h);
+	return false;
+}
+
+static void page_close(void)
+{
+	if (page.fd >= 0)
+		close(page.fd);
+	if (page.px)
+		munmap(page.px, page.len);
+	page.fd = -1;
+	page.px = NULL;
+	page.open = false;
+	page.handover = false;
+	free(page.hole);
+	page.hole = NULL;
+	page.holes = 0;
+	page.blen = 0;
+	page.owe = 0;
+	info("page closed");
+}
+
+/* the page's lines: "page show X Y W H" - those rows are new (the answer comes after the refresh), "page hide"; true when
+ * the picture is to be drawn again */
+static bool page_read(void)
+{
+	ssize_t got = recv(page.fd, page.buf + page.blen, sizeof(page.buf) - page.blen - 1, MSG_DONTWAIT);
+	bool again = false;
+	char *nl;
+
+	if (got == 0 || (got < 0 && errno != EAGAIN && errno != EINTR)) {
+		bool keep = page.handover && tv.shown;
+
+		page_close();	/* the page's program ended: it is gone from the wall - or, handed over, when its successor is there */
+		if (keep) {
+			handover_until = now_s() + HANDOVER_S;
+			handover_lau = false;
+			info("page handed over: it stays on the wall until the launcher is drawn (%.1f s at most)", HANDOVER_S);
+			return false;
+		}
+		return true;
+	}
+	if (got > 0)
+		page.blen += (size_t)got;
+	page.buf[page.blen] = '\0';
+	while ((nl = strchr(page.buf, '\n'))) {
+		int x, y, w, h;
+		size_t used = (size_t)(nl - page.buf) + 1;
+
+		*nl = '\0';
+		t_cmd = real_s();
+		if (sscanf(page.buf, "page show %d %d %d %d", &x, &y, &w, &h) == 4 && h > 0) {
+			int y0 = y < 0 ? 0 : y, y1 = y + h > canvas.h ? canvas.h : y + h;
+			/* a width of 0 or less is the whole width (the first version's "page show"s said it no other way) */
+			int x0 = w > 0 && x > 0 ? x : 0, x1 = w > 0 && x + w < canvas.w ? x + w : canvas.w;
+
+			if (w > 0 && x + w <= 0)
+				x1 = x0;		/* entirely left of the panel: nothing */
+			rows_add(page.cnew, y0, y1, x0, x1);
+			rows_add(page.dirty[0], y0, y1, x0, x1);
+			rows_add(page.dirty[1], y0, y1, x0, x1);
+			page.owe++;
+			again = true;
+		} else if (!strcmp(page.buf, "page hide")) {
+			page_close();
+			return true;
+		} else if (!strcmp(page.buf, "page handover")) {
+			page.handover = true;	/* no answer: the connection ends right after it */
+		} else {
+			send(page.fd, "error page show X Y W H | page handover | page hide\n", 52, MSG_NOSIGNAL);
+		}
+		memmove(page.buf, page.buf + used, page.blen - used + 1);
+		page.blen -= used;
+	}
+	if (page.blen >= sizeof(page.buf) - 1)
+		page.blen = 0;	/* a line that does not end: dropped */
+	return again;
+}
+
+static void page_answer(void)
+{
+	while (page.owe > 0 && page.fd >= 0) {
+		const char *r = osd_waiting ? "ok waiting\n" : "ok\n";
+
+		if (send(page.fd, r, strlen(r), MSG_NOSIGNAL) < 0) {
+			page_close();
+			break;
+		}
+		page.owe--;
+	}
+	page.owe = 0;
+}
+
 /* one connection, one line, one answer */
 static bool serve(int lfd)
 {
-	char line[LINE], reply[1024];
+	char line[LINE], reply[2048];
 	struct timeval tmo = { 1, 0 };
 	ssize_t got;
 	bool again;
@@ -702,8 +1798,11 @@ static bool serve(int lfd)
 		close(fd);
 		return false;
 	}
+	t_cmd = real_s();
 	line[got] = '\0';
 	line[strcspn(line, "\r\n")] = '\0';
+	if (!strcmp(line, "page open"))
+		return page_open_cmd(fd);	/* the connection stays: it is the page's life */
 	again = handle(line, reply, sizeof(reply));
 	if (send(fd, reply, strlen(reply), MSG_NOSIGNAL) < 0)
 		warn("answering \"%s\": %s", line, strerror(errno));
@@ -752,7 +1851,11 @@ static double watch_at;			/* the next question; 0: none due */
 
 static bool watching(void)
 {
-	return tv.fd >= 0 && tv.shown && (want.muted || want.until > now_s()) && m_valid && !m_identity;
+	if (tv.fd < 0 || !tv.shown)
+		return false;
+	if (page.open && page.holes)
+		return true;		/* a pill: what lies under it decides about "cover" (a signal that goes or comes) */
+	return (want.muted || (lau.open && !lau.nosig) || page.open || want.until > now_s()) && m_valid && !m_identity;
 }
 
 /* true when the picture under the overlay no longer matches the way it was drawn */
@@ -762,12 +1865,15 @@ static bool picture_changed(void)
 	bool skew;
 
 	watch_at = 0;
-	if (!tv_say("osd picture\n", answer, sizeof(answer)) || !strcmp(answer, "ok none"))
+	if (!tv_say("osd picture\n", answer, sizeof(answer)) || (!strcmp(answer, "ok none") && !cover_for(answer)))
 		return false;		/* gone (claimed again at the next event), or no picture: nothing is seen */
-	skew = !strcmp(answer, "ok warped");
-	if (skew == last.skew)
+	skew = skew_for(answer);
+	if (skew == last.skew && cover_for(answer) == last.cover)
 		return false;
-	info("the picture under the overlay is %s now -- drawn again", skew ? "warped" : "straight");
+	if (skew != last.skew)
+		info("the picture under the overlay is %s now -- drawn again", skew ? "warped" : "straight");
+	else
+		info("the page is %s now -- shown again", cover_for(answer) ? "over no picture" : "over the picture");
 	return true;
 }
 
@@ -779,11 +1885,22 @@ static void arm(int tfd)
 	struct itimerspec its = { 0 };
 	double next = want.until > 0 ? want.until : 0, dt;
 
-	if (tv.fd < 0 && (want.muted || want.until > 0)) {
+	/* always while h713-tv has not been claimed (unless it said no): its word on the signal is needed without an event */
+	if (tv.fd < 0 && (!tv.refused || want.muted || lau.open || page.open || want.until > 0)) {
 		double r = tv.retry > now_s() ? tv.retry : now_s() + 1.0;
 
 		if (!next || r < next)
 			next = r;
+	}
+	if (lau.open && lau.prefill_at > 0 && (!next || lau.prefill_at < next))
+		next = lau.prefill_at;
+	if (handover_until > 0 && (!next || handover_until < next))
+		next = handover_until;
+	if (lau.open && !lau.nosig) {		/* the clock in the header: the next full minute */
+		double nm = now_s() + 60 - (double)(time(NULL) % 60) + 0.1;
+
+		if (!next || nm < next)
+			next = nm;
 	}
 	if (watching()) {
 		if (!watch_at)
@@ -806,7 +1923,7 @@ static void arm(int tfd)
 
 static int run(void)
 {
-	struct pollfd p[5];
+	struct pollfd p[6];
 	sigset_t mask;
 	char dir[256], *slash, ev[4096];
 	int lfd, tfd, ifd, sfd;
@@ -832,8 +1949,10 @@ static int run(void)
 	sigaddset(&mask, SIGINT);
 	sigprocmask(SIG_BLOCK, &mask, NULL);
 	sfd = signalfd(-1, &mask, SFD_CLOEXEC);
-	if (want.muted)
+	tv_claim();		/* at the start: h713-tv's word on the signal is wanted before any event */
+	if (want.muted || sig.none)
 		refresh();
+	arm(tfd);		/* h713-tv may not be up yet: the claim is tried again every second, without waiting for the first event */
 	info("ready: %s; place %s, look %s; keystone %s", osd_socket,
 	     style.place == OSD_BOTTOM ? "bottom" : style.place == OSD_TOP_RIGHT ? "top-right" : "center",
 	     style.look == OSD_PILL ? "pill" : "bare", m_identity ? "none" : m_valid ? "from warp.conf" : "refused");
@@ -846,20 +1965,25 @@ static int run(void)
 		p[2] = (struct pollfd){ ifd, POLLIN, 0 };
 		p[3] = (struct pollfd){ sfd, POLLIN, 0 };
 		p[4] = (struct pollfd){ tv.fd, POLLIN, 0 };	/* only a hangup is expected here */
-		if (poll(p, 5, -1) < 0 && errno != EINTR)
+		p[5] = (struct pollfd){ page.fd, POLLIN, 0 };	/* -1: ignored */
+		if (poll(p, 6, -1) < 0 && errno != EINTR)
 			break;
 		if (p[3].revents)
 			break;
 		if (p[4].revents) {
-			char c;
+			int r = tv_pump();	/* its notes (the signal), or its hangup */
 
-			if (recv(tv.fd, &c, 1, MSG_DONTWAIT) <= 0) {
-				info("h713-tv went away -- the overlay is claimed again at the next event");
+			if (r < 0) {
+				info("h713-tv went away -- the overlay is claimed again as soon as it is back");
 				tv_drop();
+			} else if (r > 0) {
+				again = true;
 			}
 		}
 		if (p[0].revents)
 			again |= serve(lfd);
+		if (p[5].revents && page.fd >= 0)
+			again |= page_read();
 		if (p[1].revents) {
 			uint64_t ticks;
 
@@ -868,8 +1992,21 @@ static int run(void)
 					want.until = 0;
 					again = true;
 				}
-				if (tv.fd < 0 && (want.muted || want.until))
+				if (handover_until > 0 && handover_until <= now_s()) {
+					info("hand-over: nothing followed within %.1f s -- the page goes", HANDOVER_S);
+					again = true;	/* the refresh takes it away */
+				}
+				if (tv.fd < 0 && (want.muted || lau.open || page.open || want.until))
 					again = true;	/* the claim again */
+				else if (tv.fd < 0 && !tv.refused && tv_claim() && nosig_due() != lau.nosig)
+					again = true;	/* nothing was to be shown: the claim brought the word on the signal */
+				if (lau.open && !lau.nosig && lau_clock_changed())
+					again = true;	/* a new minute: the header is drawn again */
+				if (lau.prefill_at && lau.prefill_at <= now_s()) {
+					lau.prefill_at = 0;
+					if (!again)
+						lau_prefill();	/* idle: the buffer that is not shown gets the page */
+				}
 				if (!again && watch_at && watch_at <= now_s() && watching())
 					again = picture_changed();
 			}
@@ -894,8 +2031,17 @@ static int run(void)
 		}
 		if (again)
 			refresh();
+		if (redo) {		/* a note came while h713-tv was being asked: once more, with the new word */
+			redo = false;
+			refresh();
+		}
+		page_answer();
+		if (again && page_owes_much())
+			refresh();	/* the page has its answer: the other buffer takes its share now, not at the next key */
 		arm(tfd);
 	}
+	if (page.fd >= 0)
+		page_close();
 	info("exit: the overlay off, the buffers back");
 	if (tv.fd >= 0) {
 		char answer[64];
@@ -914,10 +2060,12 @@ int main(int argc, char **argv)
 	tv_socket = env("H713_OSD_TV", "/run/h713-tv/ctl");
 	warp_conf = env("H713_OSD_WARP_CONF", WARP_CONF);
 	osd_conf = env("H713_OSD_CONF", "/etc/h713/osd.conf");
+	fake_clock = env("H713_OSD_CLOCK", "");
+	trace = *env("H713_OSD_TRACE", "") == '1';
 	if (argc >= 2 && !strcmp(argv[1], "run"))
 		return run();
 	if (argc >= 3 && !strcmp(argv[1], "ctl"))
 		return client(argc - 2, argv + 2);
-	fprintf(stderr, "usage: h713-osd run | h713-osd ctl volume N | mute on|off N | focus up|down [edge] | input console|hdmi | power TENTHS standby|off [only] [ALPHA%%] | pair | hide | status\n");
+	fprintf(stderr, "usage: h713-osd run | h713-osd ctl volume N | mute on|off N | focus up|down [edge] | input console|hdmi | power TENTHS standby|off [only] [ALPHA%%] | pair | launcher SEL;NOW;[>]icon:label;... | launcher close | hide | status\n");
 	return 2;
 }

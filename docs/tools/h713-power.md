@@ -5,13 +5,16 @@ seconds, standby on its left, off on its right, the choice bright and underlined
 OK or a second press of the power key carries the choice out at once, Back cancels and the projector stays on; when the
 time is up the choice is carried out. It starts on `default` of `/etc/h713/power.conf` - `poweroff`, the owner's choice.
 Standby is offered only where it can happen (an image built with `--standby`, `[deep]` in `/sys/power/mem_sleep`,
-crust `ready=1`); elsewhere the ring stands alone and ends in a power-off. Without a picture - no signal, no h713-osd -
+crust `ready=1`); elsewhere the ring stands alone and ends in a power-off - on a release image, which runs the vendor
+ARISC firmware since 22.10.2026 ([h713-arisc](h713-arisc.md)), always. Without a page or picture of ours on the wall (the console, no h713-osd)
 nobody would see a countdown, and the default happens at once. The overlay is drawn by [h713-osd](h713-osd.md); each of
 its frames keeps it one second, so a dead h713-power leaves nothing on the wall.
 
-Where crust can take the power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`, the HY310 since
-`doku/190`) that is a real off at 0.3 W, and the key or the remote wakes into a fresh boot of about 30 s; elsewhere it
-is the power-on gate. The standby: 2.4 W, the picture back about 5 s after the wake.
+Where crust runs and can take the power-off (`h713-power status` says so; the HY300PRO-G-EU since `doku/188`, the HY310
+since `doku/190`; experimental, `h713-arisc set crust`) that is a real off at 0.3 W, and the key or the remote wakes into
+a fresh boot of about 30 s; elsewhere - under the vendor's ARISC firmware, what an image runs - it is the power-on gate,
+2.9 W. The standby: 2.4 W on the HY310, 2.0 W on the HY300PRO-G-EU, the picture back about 5 s after the wake; with crust
+the power supply hums in standby and when off (TODO 2.42).
 
 ```
 h713-power set default standby   # the countdown starts on standby
@@ -28,7 +31,7 @@ lives; if it dies, logind's power-off is back ([standby.md](../subsystems/standb
 | Press | Does |
 |---|---|
 | short (released before `long_s`, 3 s) | the countdown (above); without a picture at once: standby if `default = standby` and it can happen, else power-off |
-| during the countdown: Left, Right, OK, Back, power again | standby, off, carry out now, cancel, carry out now |
+| during the countdown: Left, Right, OK, Back, power again | standby, off, carry out now, cancel, carry out now; in the remote's mouse mode OK is the left button (`BTN_LEFT`) and counts as OK: the remote's mouse node (1d5a:c081, no power key) is read and held with the others. Host tests only, not yet tried on a box |
 | held for `long_s` | power-off, without waiting for the release |
 | within `ignore_s` (2 s) after a resume the key itself woke | nothing: it is the press that woke the box |
 
@@ -69,7 +72,20 @@ in `/sys/power/suspend_stats` (`failed_freeze` to `failed_suspend_noirq`) moved,
 the file and an earlier failure would leave the last resume's interrupt there. The file exists with
 `CONFIG_PM_DEBUG`; without it every failure is a refusal, as before (TODO 5.14, review U2).
 
-**The picture after a standby.** The standby parks the display MIPS (cpu_comm, `suspend_late`), and
+**The picture after a standby - systemd's since the launcher.** What this paragraph describes below, h713-power did itself until
+the launcher: any way into the sleep - the power key, the launcher's Standby entry, Kodi's Suspend menu,
+`systemctl suspend` - must end with the picture and the mode back (35 of 35 standbys from every way, `doku/212` §1), so it is now `h713-sleep-pre.service` (`Before=sleep.target`:
+remember the running mode, HDMI or Kodi, in `/run/h713-mode.resume` and end it) and `h713-sleep-post.service`
+(`After=suspend.target`: `h713-mips-restart` when the MIPS is parked, then start what was remembered), both calling
+`h713-mode` (`userspace/h713-power/h713-mode`). The resume file is also what tells [h713-keys](h713-keys.md) that the mode units that end now end for a sleep: no launcher opens for them, and the mode is not forgotten. `h713-mode rescue` is the same road for `h713-tv-rescue.service` (`OnFailure=` of `h713-tv@`): the restart of the display MIPS stops `h713-warp`, which ends the mode units with it, so the running ones are written to the same file first, the MIPS is restarted whether it is parked or not, and they are started again (a SIGKILL of `h713-tv` with Kodi running: Kodi back 9 s later, with the desktop 6 s, HY300PRO-G-EU 20.10.2026); the rescue still runs once per boot. `h713-mode hdmi` (the launcher's HDMI input) first touches `/run/h713-mode.ended` for the same reason, ends the mode units, and leaves the source on `auto`: `h713-tv ctl source hdmi` is only the way to get the ring back at once while the client is still quitting (0.27 s instead of ~2 s), and `auto` is how the box stands (a client before the ring, the ring when none runs), so it is said again when the last unit is gone; with no mode running only `auto` is said. h713-power only waits: while the post unit is `activating` a short press does
+nothing; after a standby that did not happen (aborted by a wake-up, or refused with `refused = log`) it starts the post unit once
+more, which does nothing twice. It also answers `can-standby` (exit 0 when a standby can happen now; the launcher's entry asks), takes
+a datagram on `/run/h713-power.sock` (`H713_POWER_CTL`): `down` is a Power press that the launcher or a page of h713-settings took and let
+go of the devices for - h713-power starts it on the device that has the key down, and the release or the 3 s decide as for any press, so a
+long hold still powers off; `short` is a short press at once (and `down` for a key that is up already). It holds the remote's devices (`EVIOCGRAB`) for the 15 s of its countdown, so that Kodi does not move with Left, Right,
+OK and Back. The earlier text, kept as the record of what h713-power did before:
+
+The standby parks the display MIPS (cpu_comm, `suspend_late`), and
 nothing in the kernel starts it again: after the resume the wall would stay on the console. When the
 projector stays on after a standby - or after a refused one with `refused = log`, the park may have come
 before the refusal - and the driver `sun50i-h713-mips` says `parked`, h713-power starts

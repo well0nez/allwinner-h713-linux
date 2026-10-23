@@ -149,13 +149,19 @@ bool source_start(struct source *s, char *why, size_t n)
 
 	if (s->fd < 0 && !open_node(s, why, n))
 		return false;
-	if (!read_format(s, why, n))
-		return false;
+	/*
+	 * Subscribed before the format is read, so also while there is no signal: the node stays open between two
+	 * tries, and main.c waits on this event for the signal to come (17.10.2026: before, the next try came up to
+	 * RETRY_MS after the signal, and for that second h713-tv showed its straight ring). A second subscription of
+	 * the same event is no error in V4L2.
+	 */
 	memset(&sub, 0, sizeof(sub));
 	sub.type = V4L2_EVENT_SOURCE_CHANGE;
 	if (ioctl(s->fd, VIDIOC_SUBSCRIBE_EVENT, &sub))
 		warn("capture         SUBSCRIBE_EVENT(SOURCE_CHANGE): %s -- a geometry change is then only seen at the next DQBUF error",
 		     strerror(errno));
+	if (!read_format(s, why, n))
+		return false;
 	memset(&rb, 0, sizeof(rb));
 	rb.count = WARP_SLOTS;
 	rb.type = (unsigned int)s->type;

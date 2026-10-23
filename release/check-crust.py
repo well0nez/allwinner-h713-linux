@@ -10,7 +10,11 @@ crust and the standby in the ARTEFACTS. release/build-all.sh runs it in step 10 
       [--standby]
   release/check-crust.py --dt-firmware FILE.dtb     prints the arisc node's firmware-name[0]
 
-Without --crust the board has none: no scp in a FIT, no *-crust.bin in the rootfs or the device tree. A
+Without --crust the board has none: no scp in a FIT, no *-crust.bin in the rootfs or the device tree. With
+--crust and without --standby the image runs the vendor ARISC firmware (the owner's decision of 22.10.2026, the
+power supply hums with crust, TODO 2.42): crust only in the rootfs, as the experimental choice, no scp in the
+release FIT, so that BL31 starts none and a mains-on waits in the power-on gate, and the rootfs's modprobe.d
+says firmware=vendor. With --standby the image runs crust: this crust in the release FIT, no vendor default. A
 check whose input is missing is named as skipped. Exit 0 = may be released, 1 = do not release.
 """
 import argparse
@@ -139,7 +143,8 @@ def rootfs(path):
     """The parts of the rootfs tar this gate reads, by path without ./ and with usr/lib -> lib."""
     want = re.compile(r"(usr/)?lib/firmware/[^/]+-crust\.bin|(etc|(usr/)?lib|usr/local/lib)/systemd/system\.conf(\.d/[^/]+\.conf)?|"
                       r"(etc|(usr/)?lib|usr/local/lib)/systemd/sleep\.conf(\.d/[^/]+\.conf)?|"
-                      r"etc/systemd/system/multi-user\.target\.wants/h713-power\.service")
+                      r"etc/systemd/system/multi-user\.target\.wants/h713-power\.service|"
+                      r"(etc|(usr/)?lib|usr/local/lib)/modprobe\.d/[^/]+\.conf")
     out = {}
     with tarfile.open(path) as t:
         for m in t:
@@ -165,6 +170,24 @@ def effective(parts, conf, keys):
             if eq and k in keys:
                 val[k] = (v, f)
     return val
+
+
+def arisc_option(parts):
+    """The firmware= the arisc driver gets from modprobe.d, as kmod reads it: every *.conf of these directories
+    by name, a name in an earlier directory hiding the same name in a later one, all options lines of the module
+    in that order, the last firmware= wins. (value, file), or None when nothing sets it."""
+    files = {}
+    for d in reversed(WD_DIRS):
+        files.update({os.path.basename(k): k for k in parts if k.startswith(d + "/modprobe.d/")})
+    got = None
+    for n in sorted(files):
+        for line in parts[files[n]].decode(errors="replace").splitlines():
+            w = line.split("#", 1)[0].split()
+            if w[:2] in (["options", "sun50i_h713_arisc"], ["options", "sun50i-h713-arisc"]):
+                for x in w[2:]:
+                    if x.startswith("firmware="):
+                        got = (x[len("firmware="):], files[n])
+    return got
 
 
 def watchdog(parts):
@@ -208,9 +231,13 @@ def main(argv=None):
     # 1. one crust, in the release FIT and in the rootfs; none in the installer's or the probe's FIT
     if o.release_fit:
         scp = fit_scp(o.release_fit)
-        if crust is not None:
+        if crust is not None and o.standby:
             check(scp == crust, "release FIT scp is this crust", "release FIT scp is %s, the crust built is %s"
                   % ("missing" if scp is None else sha(scp) if scp else "empty", sha(crust)))
+        elif crust is not None:
+            check(not scp, "release FIT carries no crust: BL31 starts none, a mains-on waits in the power-on gate",
+                  "release FIT carries %s without --standby: BL31 would start it, and a mains-on would hand the gate's "
+                  "wait to crust, whose power-off hums (TODO 2.42)" % ("this crust" if scp == crust else "an scp " + sha(scp or b"")))
         else:
             check(not scp, "release FIT carries no crust", "release FIT carries an scp nobody built for this board")
     else:
@@ -224,6 +251,14 @@ def main(argv=None):
         if crust is not None:
             check(found == ["lib/firmware/" + name] and parts[found[0]] == crust, "rootfs /lib/firmware/%s is this crust"
                   % name, "rootfs crust %s, wanted only %s %s" % (found or "missing", name, sha(crust)))
+            opt = arisc_option(parts)
+            if o.standby:
+                check(not opt or opt[0] != "vendor", "rootfs runs crust: no vendor default (--standby)",
+                      "rootfs sets firmware=vendor (%s), the build has --standby: the standby needs crust" % (opt or ("", "-"))[1])
+            else:
+                check(opt is not None and opt[0] == "vendor", "rootfs ARISC default firmware=vendor (%s), crust experimental"
+                      % (opt or ("", "-"))[1], "rootfs ARISC default is %s, not firmware=vendor: an image without --standby runs "
+                      "the vendor firmware" % ("firmware=%s (%s)" % opt if opt else "the device tree's crust (no modprobe.d option)"))
         else:
             check(not found, "rootfs carries no crust", "rootfs carries %s" % found)
     else:

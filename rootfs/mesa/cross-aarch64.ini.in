@@ -1,4 +1,6 @@
-# meson cross file for the board: clang + lld against the arm64 sysroot.
+# SPDX-License-Identifier: GPL-2.0-or-later
+# meson cross file for the board: clang + lld against the arm64 sysroot (build-mesa.sh and, as part of its Corresponding
+# Source, rootfs/libva/build-libva.sh use it).
 # @SYSROOT@ is filled in by build-mesa.sh (the sysroot path inside the container).
 [binaries]
 c = ['clang', '--target=aarch64-linux-gnu', '--sysroot=@SYSROOT@']

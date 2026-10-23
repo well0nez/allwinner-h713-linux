@@ -26,8 +26,11 @@ After=dev-%i.device
 # that is the intention.
 StartLimitIntervalSec=60
 StartLimitBurst=3
-# ... and then the display MIPS is reloaded once (h713-tv-rescue.service, TODO 2.63): after a warm start the
-# MIPS can die while Linux registers its routines, and every open of the receiver is refused.
+# The display MIPS is reloaded by h713-tv-rescue.service (TODO 2.63): after a warm start the MIPS can die while Linux
+# registers its routines, and every open of the receiver is refused. OnFailure= fires at EVERY failure of this unit, not only
+# when the start limit is reached: a SIGKILL of the one running process already starts the rescue at once (HY310,
+# 16.10.2026; "Failed with result 'signal'", "Triggering OnFailure= dependencies"), and the restart after RestartSec follows.
+# The rescue restarts h713-warp too, so whatever is BindsTo= the warp (Kodi, the desktop) ends with it.
 OnFailure=h713-tv-rescue.service
 
 [Service]
@@ -51,6 +54,12 @@ RuntimeDirectoryMode=0755
 StateDirectory=h713-tv
 StateDirectoryMode=0755
 
+# "ctl mute" is kept in /run/h713-tv-state/mute over a restart of the program (after a standby, by the rescue), not
+# over a boot. The directory comes from tmpfiles.d (h713-tv.tmpfiles), because the RuntimeDirectory above is
+# emptied at every stop; under ProtectSystem=strict it is writable only through this line. "-": without the
+# directory the unit starts as before and the mute is the run's alone.
+ReadWritePaths=-/run/h713-tv-state
+
 # SIGTERM is the regular way out: the program switches the plane off and hands
 # the console back before it ends. So `systemctl stop` leaves no still frame
 # standing on the wall. SIGHUP evaluates the state again (`systemctl reload`)
@@ -60,8 +69,9 @@ TimeoutStopSec=10s
 ExecReload=/bin/kill -HUP $MAINPID
 
 # The program needs DRM master, the capture device, /dev/tty0 and
-# /sys/class/graphics/fb0/blank (to unblank the console) and -- for
-# "h713-tv ctl rpc" -- the debugfs node of cpu_comm. ProtectSystem=strict
+# /sys/class/graphics/fb0/blank (to unblank the console), /dev/mem and
+# /dev/cpu_comm (the firmware's white balance and colour management) and --
+# for "h713-tv ctl rpc" -- the debugfs node of cpu_comm. ProtectSystem=strict
 # leaves /dev, /proc and /sys writable and everything else read-only;
 # ProtectKernelTunables must therefore NOT be added (it would lock /sys away).
 # No new privileges.

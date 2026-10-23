@@ -3,7 +3,7 @@
 #
 #   release/build-all.sh --version v0.10 [--board hy310] [--variant NAME] [--vendor DIR]
 #                        [--wifi-env FILE] [--jobs N] [--skip-bl31] [--skip-uboot]
-#                        [--skip-kernel] [--skip-rootfs] [--test-image] [--standby] [--dry-run]
+#                        [--skip-kernel] [--skip-rootfs] [--test-image] [--standby] [--profile NAME[,NAME]] [--dry-run]
 #
 # --board <id> (default hy310) picks boards/<id>/board.env: the installer
 # profile, the kernel DTB the FIT carries, the U-Boot base defconfig and the
@@ -21,18 +21,29 @@
 #
 # crust, the ARISC firmware: a board that names CRUST_DEFCONFIG in board.env gets one crust build
 # (step 1b, from mainline/external/crust or CRUST_SRC=<checkout>, the series crust-h713/ mirrors).
-# It goes into the release U-Boot's FIT as "scp", which BL31 starts, and into the rootfs as
-# /lib/firmware/<board>-crust.bin, the name the board's device tree gives the arisc driver; step
-# 10 checks that both are this build (release/check-crust.py). The installer and the probe U-Boot
-# never carry it.
-# --standby offers the standby, experimental (TODO 2.29): BL31 with PSCI SYSTEM_SUSPEND and the rootfs
-# with suspend allowed, so that h713-power (on every image) offers it in its countdown; power.conf's
-# default stays poweroff. Only for STANDBY=sr, which follows from CRUST_DEFCONFIG on a verified board.
+# It goes into the rootfs as /lib/firmware/<board>-crust.bin, the name the board's device tree gives the
+# arisc driver - there it is the experimental choice: the image runs the vendor ARISC firmware from the
+# owner's dump (/etc/modprobe.d/h713-arisc.conf firmware=vendor, the owner's decision of 22.10.2026:
+# with crust the power supply hums in standby and when off, TODO 2.42), and 'h713-arisc set crust' on
+# the device switches. Without --standby the release U-Boot's FIT carries no crust, so that BL31 starts
+# none and a mains-on waits in the power-on gate as a power-off does. Step 10 checks all of it
+# (release/check-crust.py). The installer and the probe U-Boot never carry crust.
+# --standby offers the standby, experimental (TODO 2.29): BL31 with PSCI SYSTEM_SUSPEND, crust in the
+# release FIT as "scp", which BL31 starts, the rootfs with suspend allowed and without the vendor default,
+# so that the image runs crust and h713-power (on every image) offers the standby in its countdown;
+# power.conf's default stays poweroff. Only for STANDBY=sr, which follows from CRUST_DEFCONFIG on a
+# verified board.
+#
+# --profile NAME[,NAME] (media side project): the rootfs gets the packages-NAME.txt lists and the overlay-NAME/ trees on top of the
+# base (build-rootfs.sh --profile), e.g. --profile media,desktop. With a profile of the media family (media, desktop) the VA-API
+# driver is cross-built first (step 6d, rootfs/libva/build-libva.sh) and laid in (build-rootfs.sh --libva). The image is named
+# $IMAGE_NAME-$VERSION-<profiles joined by '-'> (e.g. h713-hy310-v0.97-media-desktop), and the stamp says "profile:" and "libva:".
+# A profile image is not a release image (build-rootfs.sh warns when the tree is over the 500 MiB of doku/107 section 7.1).
 #
 # Order (doku/116 P4):
 #   1 bl31  1b crust  2 U-Boot (+ split SPL/proper + environment with CRC)  2b installer U-Boot (ums)
 #   2b2 probe U-Boot (h713_probe)  2c sunxi-fel (trap door)  3 kernel (+ modules)
-#   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv, h713-osd cross-built  7 rootfs
+#   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv, h713-osd cross-built (6b mesa, 6c h713-warp, 6d libva with --profile)  7 rootfs
 #   8 ext4 inputs  9 image  10 check (with --vendor: the full self-test)  11 stamp
 #
 # Runs on the work machine and drives the container h713-build (doku/50 §Bauen);
@@ -92,11 +103,17 @@ UBOOT_PROBE_DEFCONFIG=h713_probe_defconfig            # FEL -> h713_probe, for u
 KEYRING_DEB_URL="https://deb.debian.org/debian/pool/main/d/debian-archive-keyring/debian-archive-keyring_2025.1_all.deb"
 KEYRING_DEB_SHA256=9ea7778e443144ca490668737a8ab22dd3e748bb99e805e22ec055abeb3c7fac
 KEYRING_IN_DEB=./usr/share/keyrings/debian-archive-keyring.pgp   # byte-identical to the .gpg used so far (12.09.)
-SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev,zlib1g-dev
+# libwayland-dev, libwayland-egl-backend-dev, wayland-protocols, libglvnd-dev: mesa's Wayland platform and glvnd (rootfs/mesa/build-mesa.sh);
+# libglvnd-dev is also where h713-warp finds libEGL.so and libGLESv2.so now (the dispatchers, no longer in the mesa stage)
+# libva-dev: the VA-API headers megi's libva-v4l2_request driver is built against (rootfs/libva/build-libva.sh);
+# the driver is built by that script on demand, not by this one: the base image does not carry it (profile media does)
+# libfreetype-dev: the text of the launcher (userspace/libh713osd/text.c); h713-osd links libfreetype.a and its png, bz2, brotli and
+# zlib archives statically, so the base image needs no FreeType package
+SYSROOT_PACKAGES=libc6-dev,libgcc-14-dev,libstdc++-14-dev,libdrm-dev,libasound2-dev,zlib1g-dev,libwayland-dev,libwayland-egl-backend-dev,wayland-protocols,libglvnd-dev,libva-dev,libfreetype-dev
 DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
-VERSION= BOARD=hy310 VARIANT= VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0 WANT_STANDBY=0
+VERSION= BOARD=hy310 VARIANT= VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0 WANT_STANDBY=0 PROFILES=
 SKIP_BL31=0 SKIP_UBOOT=0 SKIP_KERNEL=0 SKIP_ROOTFS=0
 while (($#)); do
 	case "$1" in
@@ -112,8 +129,9 @@ while (($#)); do
 	--skip-rootfs) SKIP_ROOTFS=1; shift ;;
 	--test-image)  TEST_IMAGE=1; shift ;;
 	--standby)     WANT_STANDBY=1; shift ;;
+	--profile)     PROFILES=${2:?}; shift 2 ;;
 	--dry-run)   DRY=1; shift ;;
-	-h|--help)   sed -n '2,46p' "$0"; exit 0 ;;
+	-h|--help)   sed -n '2,52p' "$0"; exit 0 ;;
 	*) echo "unknown: $1" >&2; exit 2 ;;
 	esac
 done
@@ -204,7 +222,18 @@ KDEF=${KERNEL_DEFCONFIG:-$(sed -n 's/^KERNEL_DEFCONFIG=\([^ #]*\).*/\1/p' "$MAIN
 UBOOT_BASE=${UBOOT_DEFCONFIG:-${UBOOT_BOARD}_defconfig}; UBOOT_BASE=${UBOOT_BASE%_defconfig}
 [[ -n "$VERSION" ]] || { echo "--version vX.Y is missing (name of the image: $IMAGE_NAME-vX.Y)" >&2; exit 2; }
 [[ "$VERSION" =~ ^v[0-9]+\.[0-9]+(-[a-z0-9]+)?$ ]] || { echo "--version: expected vX.Y or vX.Y-beta, not '$VERSION'" >&2; exit 2; }
-NAME="$IMAGE_NAME-$VERSION"
+# A profile image says so in its name: the stamp and the file names must not pass it off as the base image.
+PROFILE_SUFFIX=
+if [[ -n "$PROFILES" ]]; then
+	[[ "$PROFILES" =~ ^[a-z0-9]+(,[a-z0-9]+)*$ ]] || { echo "--profile: expected NAME[,NAME] of lower-case letters and digits, not '$PROFILES'" >&2; exit 2; }
+	for pr in ${PROFILES//,/ }; do
+		[[ -f "$ROOTFS/packages-$pr.txt" ]] || { echo "--profile $pr: there is no $ROOTFS/packages-$pr.txt" >&2; exit 2; }
+	done
+	PROFILE_SUFFIX="-${PROFILES//,/-}"
+fi
+# The VA-API driver goes with the media family (build-rootfs.sh --libva lays it in for media and for desktop).
+WANT_LIBVA=0; [[ ",$PROFILES," == *,media,* || ",$PROFILES," == *,desktop,* ]] && WANT_LIBVA=1
+NAME="$IMAGE_NAME-$VERSION$PROFILE_SUFFIX"
 ((TEST_IMAGE)) && NAME="$NAME-TEST"        # the name is the first place it has to say so
 OUT="$MAINLINE/build/out"
 DELIVERY="$INSTALLER/out"
@@ -215,12 +244,12 @@ DELIVERY="$INSTALLER/out"
 # moved submodule counts as one), reused building blocks (--skip-*), a private
 # --wifi-env. The rootfs is reproducible only against the same mirror state.
 REPRO_GIT=$ROOT; git -C "$REPRO_GIT" rev-parse -q --verify HEAD >/dev/null 2>&1 || REPRO_GIT=$MAINLINE
-REPRO_WHY=()
+REPRO_WHY=() REPRO_DIRTY=
 if SOURCE_DATE_EPOCH=$(git -C "$REPRO_GIT" log -1 --format=%ct 2>/dev/null) && [[ -n "$SOURCE_DATE_EPOCH" ]]; then
-	REPRO_COMMIT=$(git -C "$REPRO_GIT" rev-parse --short HEAD)
-	n=$(git -C "$REPRO_GIT" status --short 2>/dev/null | wc -l); ((n)) && REPRO_WHY+=("$n local changes")
+	REPRO_COMMIT=$(git -C "$REPRO_GIT" rev-parse --short HEAD); REPRO_FULL=$(git -C "$REPRO_GIT" rev-parse HEAD)
+	n=$(git -C "$REPRO_GIT" status --short 2>/dev/null | wc -l); ((n)) && { REPRO_WHY+=("$n local changes"); REPRO_DIRTY=$n; }
 else
-	SOURCE_DATE_EPOCH=$(date +%s); REPRO_COMMIT=none; REPRO_WHY+=("not a git checkout")
+	SOURCE_DATE_EPOCH=$(date +%s); REPRO_COMMIT=none; REPRO_FULL=none; REPRO_WHY+=("not a git checkout")
 fi
 export SOURCE_DATE_EPOCH
 ((SKIP_BL31 || SKIP_UBOOT || SKIP_KERNEL || SKIP_ROOTFS)) && REPRO_WHY+=("--skip-* reused earlier building blocks")
@@ -250,6 +279,8 @@ say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
 info "root $ROOT"
 info "board $UNIT ($STATUS, profile $TEST_PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles${DRAM_CLK:+, DRAM $DRAM_CLK MHz})"
 info "crust ${CRUST_DEFCONFIG:-none}, standby $STANDBY$( ((WANT_STANDBY)) && echo ', offered (--standby)' )"
+info "ARISC: $( [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && echo 'crust, in the release FIT (--standby)' || echo "the vendor firmware from the owner's dump${CRUST_DEFCONFIG:+, crust in the rootfs as the experimental choice (h713-arisc set crust)}" )"
+info "rootfs profile ${PROFILES:-none (base image)}$( ((WANT_LIBVA)) && echo ', with the VA-API driver (step 6d)' )"
 info "$REPRO_LINE"
 ((TEST_IMAGE)) && { say "TEST IMAGE for $UNIT (STATUS=$STATUS) -- not a release"
 	info "Nobody has reported a green run here. The table is marked test_for=$TEST_PROFILE, so h713-install"
@@ -273,7 +304,7 @@ for f in "$INSTALLER/h713-mkimage" "$INSTALLER/mkimage-inputs.sh" "$ROOTFS/build
 done
 [[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR does not look like an h713-extract output (no boot/mips/)"
 mkdir -p "$OUT" "$DELIVERY"
-((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}${CRUST_DEFCONFIG:+ + scp}) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv, rootfs, inputs, image $NAME"; exit 0; }
+((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}$( [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && echo " + scp")) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv${PROFILES:+, libva (profile $PROFILES)}, rootfs${PROFILES:+ (profile $PROFILES)}, inputs, image $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
 if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- skipped (--skip-bl31, $OUT/bl31.bin is there)"
@@ -283,15 +314,25 @@ else
 	# 10.09. built with assertions enabled (49260 instead of 45164 bytes). make
 	# saw everything as up to date and never replaced it -- it sits in v0.8 to v0.10.
 	rm -rf "$MAINLINE/external/arm-trusted-firmware/build"
-	in_container "cd $WORK/mainline && BOARD=$BOARD H713_STANDBY=$WANT_STANDBY H713_TEST_IMAGE=$TEST_IMAGE build/build.sh bl31" | tail -3 | sed 's/^/    /'
+	in_container "cd $WORK/mainline && BOARD=$BOARD ${VARIANT:+VARIANT=$VARIANT }H713_STANDBY=$WANT_STANDBY H713_TEST_IMAGE=$TEST_IMAGE build/build.sh bl31" | tail -3 | sed 's/^/    /'
 fi
 [[ -f "$OUT/bl31.bin" ]] || die "no bl31.bin"
+# The notices that travel with BL31 (TODO 7.20 e; build-rootfs.sh lays $OUT/notice into the image): TF-A's licence, the copyright
+# lines of every file built into it (found through the build's dependency files, release/notice.py), and the BSD-2-Clause text
+# its libfdt is used under.
+NOTICE="$OUT/notice"; TFA="$MAINLINE/external/arm-trusted-firmware"
+rm -rf "$NOTICE/tf-a" "$NOTICE/licenses"; mkdir -p "$NOTICE/tf-a" "$NOTICE/licenses"
+install -m 0644 "$TFA/docs/license.rst" "$NOTICE/tf-a/license.rst"
+install -m 0644 "$MAINLINE/external/u-boot/Licenses/bsd-2-clause.txt" "$NOTICE/licenses/BSD-2-Clause"
+python3 "$ROOT/release/notice.py" copyrights "$TFA" "$TFA/build" --main BSD-3-Clause \
+	--title "Trusted Firmware-A $(git -C "$TFA" rev-parse --short=12 HEAD), BL31 of this image: the copyright notices of its sources" \
+	> "$NOTICE/tf-a/COPYRIGHTS" || die "no copyright notices for BL31 (release/notice.py; is the TF-A build directory there?)"
 
 # --- 1b. crust --------------------------------------------------------------
 # One build feeds the FIT and the rootfs. A few seconds, so always from scratch; the or1k
 # compiler is built once (mainline/tools/or1k-toolchain/, ~6 min) and then kept.
 CR_O="$MAINLINE/build/crust"; OR1K="$MAINLINE/build/toolchain/or1k"
-rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config"   # no crust of an earlier board in this one's image
+rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config" "$NOTICE/crust"   # no crust of an earlier board in this one's image
 if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
 	say "1b/11 crust $CRUST_DEFCONFIG (${CRUST_HEAD:0:12})"
 	# Reused only with the stamp the toolchain script writes last, for its pinned sources: an unfinished
@@ -322,6 +363,12 @@ if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
 	[[ -z "$CRUST_HASH" || "$CRUST_HASH" == "g${CRUST_HEAD:0:12}"* ]] \
 		|| die "crust's notify text names the commit '$CRUST_HASH', the checkout is at ${CRUST_HEAD:0:12}: git did not see it in the container"
 	info "crust $CRUST_VERSION${CRUST_HASH:+-$CRUST_HASH}, $(stat -c %s "$OUT/scp.bin") bytes, sha256 $(sha256sum "$OUT/scp.bin" | cut -c1-16)"
+	# its notices, as for BL31; the kconfig of the build is a host program and not in scp.bin
+	mkdir -p "$NOTICE/crust"
+	install -m 0644 "$CRUST_SRC/LICENSE.md" "$NOTICE/crust/LICENSE.md"
+	python3 "$ROOT/release/notice.py" copyrights "$CRUST_SRC" "$CR_O" --main "BSD-3-Clause OR GPL-2.0-only" --exclude 3rdparty/kconfig/ \
+		--title "crust ${CRUST_HEAD:0:12}, scp.bin of this image: the copyright notices of its sources" \
+		> "$NOTICE/crust/COPYRIGHTS" || die "no copyright notices for crust (release/notice.py)"
 fi
 
 # --- 2. U-Boot: build, split, environment -----------------------------------
@@ -331,8 +378,9 @@ if ((SKIP_UBOOT)) && [[ -f "$OUT/spl-release.bin" && -f "$OUT/uboot-proper-relea
 else
 	say "2/11 U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE"
 	rm -rf "$UB_O"   # as with bl31: no old objects, no old .config
-	# SCP= for this role alone: crust in the release FIT, never in the installer's or the probe's
-	SCP_ENV=; [[ -f "$OUT/scp.bin" ]] && SCP_ENV="SCP=$(c "$OUT")/scp.bin "
+	# SCP= for this role alone and only with --standby: crust in the release FIT, which BL31 starts; never
+	# in the installer's or the probe's. Without it BL31 starts no crust and the vendor default runs (header).
+	SCP_ENV=; [[ -f "$OUT/scp.bin" ]] && ((WANT_STANDBY)) && SCP_ENV="SCP=$(c "$OUT")/scp.bin "
 	in_container "cd $WORK/mainline && ${UB_ENV}${SCP_ENV}build/uboot-build.sh $(c "$UB_O") $UBOOT_BASE $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot build failed (log: $OUT/uboot-build.log)"; }
 	B="$UB_O/u-boot-sunxi-with-spl.bin"; [[ -f "$B" ]] || die "no $B"
 	spl_size_ok "$UB_O/spl/sunxi-spl.bin"
@@ -424,12 +472,17 @@ else
 fi
 KREL=$(ls "$MODROOT/lib/modules" | head -1)
 info "tree $H, release $KREL, $(find "$MODROOT" -name '*.ko' | wc -l) modules"
+# the kernel's licence, with the syscall note it names, for the image's notices
+rm -rf "$NOTICE/linux"; mkdir -p "$NOTICE/linux"
+install -m 0644 "$TREE/COPYING" "$TREE/LICENSES/preferred/GPL-2.0" "$TREE/LICENSES/exceptions/Linux-syscall-note" "$NOTICE/linux/"
 
 # --- 4. aic8800 (always after the kernel, against the same tree) ------------
 say "4/11 aic8800 modules against tree $H"
 in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh aic8800" > "$OUT/aic8800-build.log" 2>&1 || { tail -20 "$OUT/aic8800-build.log"; die "aic8800 build failed"; }
 for k in aic8800_bsp aic8800_fdrv; do [[ -f "$OUT/modules/$k.ko" ]] || die "missing: $OUT/modules/$k.ko"; done
 info "bsp + fdrv are there ($(stat -c %s "$OUT/modules/aic8800_fdrv.ko") bytes fdrv)"
+KVER=$(basename "$TREE" | cut -d- -f2)                    # linux-<version>-<input hash>
+AIC_REV=$(basename "$(ls -dt "$MAINLINE"/build/aic8800-*/ | head -1)" | cut -d- -f2)   # aic8800-<revision>-<input hash>
 
 # --- 5. Debian keyring, pinned ----------------------------------------------
 say "5/11 Debian keyring for $DEBIAN_SUITE"
@@ -437,7 +490,7 @@ KEYRING_DIR="$MAINLINE/build/cache/keyring"; mkdir -p "$KEYRING_DIR"
 KEYRING="$KEYRING_DIR/debian-archive-keyring.pgp"
 if [[ ! -f "$KEYRING" ]]; then
 	DEB="$MAINLINE/build/cache/$(basename "$KEYRING_DEB_URL")"
-	[[ -f "$DEB" ]] || curl -fsSL -o "$DEB" "$KEYRING_DEB_URL"
+	[[ -f "$DEB" ]] || { curl -fsSL --retry 4 --retry-all-errors --retry-delay 5 -o "$DEB.part" "$KEYRING_DEB_URL" && mv "$DEB.part" "$DEB"; }
 	echo "$KEYRING_DEB_SHA256  $DEB" | sha256sum -c --quiet - || die "keyring package: the sha256 does not match -- do not use it"
 	T=$(mktemp -d); ( cd "$T" && ar x "$DEB" && tar -xf data.tar.* "$KEYRING_IN_DEB" ) && cp "$T/$KEYRING_IN_DEB" "$KEYRING"; rm -rf "$T"
 fi
@@ -461,6 +514,12 @@ if [[ ! -f "$SYSROOT_STAMP" ]]; then
 	in_container_root "touch $(c "$SYSROOT_STAMP")"
 fi
 info "sysroot $SYSROOT ($(du -sh "$SYSROOT" 2>/dev/null | cut -f1))"
+# h713-osd and h713-settings link FreeType and its png, bz2, brotli and zlib archives statically (their Makefiles): the copyright
+# files of the -dev packages those archives come from go with the image (TODO 7.20 e). A new static library adds its package here.
+rm -rf "$NOTICE/static"
+for p in libfreetype-dev libpng-dev libbz2-dev libbrotli-dev zlib1g-dev; do
+	install -D -m 0644 "$SYSROOT/usr/share/doc/$p/copyright" "$NOTICE/static/$p/copyright" || die "no copyright file of $p in the sysroot"
+done
 in_container "cd $WORK/userspace/h713-tv && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-tv-cross.log" 2>&1 || { tail -20 "$OUT/h713-tv-cross.log"; die "cross-building h713-tv failed (log: $OUT/h713-tv-cross.log)"; }
 TV="$USERSPACE/h713-tv/h713-tv.aarch64-linux-gnu"; [[ -f "$TV" ]] || die "no $TV"
 info "h713-tv $(stat -c %s "$TV") bytes, $(file -b "$TV" 2>/dev/null | cut -d, -f1-2)"
@@ -469,6 +528,10 @@ info "h713-tv $(stat -c %s "$TV") bytes, $(file -b "$TV" 2>/dev/null | cut -d, -
 in_container "cd $WORK/userspace/h713-osd && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-osd-cross.log" 2>&1 || { tail -20 "$OUT/h713-osd-cross.log"; die "cross-building h713-osd failed (log: $OUT/h713-osd-cross.log)"; }
 OSD="$USERSPACE/h713-osd/h713-osd.aarch64-linux-gnu"; [[ -f "$OSD" ]] || die "no $OSD"
 info "h713-osd $(stat -c %s "$OSD") bytes, $(file -b "$OSD" 2>/dev/null | cut -d, -f1-2)"
+# The settings page (package S): the same libraries, FreeType linked in; install-projekt.sh (5i) wants it too.
+in_container "cd $WORK/userspace/h713-settings && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-settings-cross.log" 2>&1 || { tail -20 "$OUT/h713-settings-cross.log"; die "cross-building h713-settings failed (log: $OUT/h713-settings-cross.log)"; }
+SETTINGS="$USERSPACE/h713-settings/h713-settings.aarch64-linux-gnu"; [[ -f "$SETTINGS" ]] || die "no $SETTINGS"
+info "h713-settings $(stat -c %s "$SETTINGS") bytes, $(file -b "$SETTINGS" 2>/dev/null | cut -d, -f1-2)"
 # The autofocus metric in C (Q11): optional for the tool, which falls back to Python,
 # but the image should carry it - the fallback is ten times slower on the A53.
 in_container "cd $WORK/userspace/h713-autofocus && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-afmetric-cross.log" 2>&1 || { tail -20 "$OUT/h713-afmetric-cross.log"; die "cross-building h713-afmetric failed (log: $OUT/h713-afmetric-cross.log)"; }
@@ -476,21 +539,67 @@ AF="$USERSPACE/h713-autofocus/h713-afmetric.aarch64-linux-gnu"; [[ -f "$AF" ]] |
 info "h713-afmetric $(stat -c %s "$AF") bytes, $(file -b "$AF" 2>/dev/null | cut -d, -f1-2)"
 
 # --- 6b. mesa (panfrost only, no LLVM) for the GPU path -----------------------
-say "6b/11 mesa cross-built (panfrost, EGL, GLES2, GBM; rootfs/mesa/build-mesa.sh)"
-in_container "cd $WORK && rootfs/mesa/build-mesa.sh" > "$OUT/mesa-cross.log" 2>&1 || { tail -20 "$OUT/mesa-cross.log"; die "mesa build failed (log: $OUT/mesa-cross.log, $OUT/mesa-build.log)"; }
+# The revision for the source notes of the mesa and libva tarballs comes from here, the host: in the container a git worktree's
+# .git points to a path that is not mounted, and the scripts would write "revision unknown"
+REPO_REV=$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo unknown)
+say "6b/11 mesa cross-built (panfrost, EGL vendor for glvnd, GBM, Wayland platform; rootfs/mesa/build-mesa.sh)"
+in_container "cd $WORK && REPO_REV=$(printf %q "$REPO_REV") rootfs/mesa/build-mesa.sh" > "$OUT/mesa-cross.log" 2>&1 || { tail -20 "$OUT/mesa-cross.log"; die "mesa build failed (log: $OUT/mesa-cross.log, $OUT/mesa-build.log)"; }
 MESA="$OUT/mesa-panfrost-25.0.7.tar"; [[ -f "$MESA" ]] || die "no $MESA"
 grep -E "NEEDED|installed" "$OUT/mesa-cross.log" | sed 's/^ *//; s/^/    /'
 
 # --- 6c. h713-warp cross-built against the mesa stage -------------------------
-# The keystone warp links libEGL and libGLESv2 out of the stage build-mesa.sh
-# leaves under mainline/build/mesa-stage; install-projekt.sh (5c) wants the
-# binary and refuses without it.
-say "6c/11 h713-warp cross-built (EGL, GLES2 from the mesa stage)"
+# The keystone warp links libEGL and libGLESv2, the glvnd dispatchers: the linker finds libEGL.so and
+# libGLESv2.so in the sysroot (libglvnd-dev), the headers and the vendor library behind them
+# (libEGL_mesa.so.0) come from the stage build-mesa.sh leaves under mainline/build/mesa-stage;
+# install-projekt.sh (5c) wants the binary and refuses without it.
+say "6c/11 h713-warp cross-built (EGL, GLES2: glvnd dispatchers of the sysroot, vendor from the mesa stage)"
 MESA_PREFIX="$MAINLINE/build/mesa-stage/usr/local"
-[[ -f "$MESA_PREFIX/lib/libEGL.so.1" ]] || die "no $MESA_PREFIX/lib/libEGL.so.1 after the mesa step"
+[[ -f "$MESA_PREFIX/lib/libEGL_mesa.so.0" ]] || die "no $MESA_PREFIX/lib/libEGL_mesa.so.0 after the mesa step"
+[[ -e "$SYSROOT/usr/lib/aarch64-linux-gnu/libEGL.so" && -e "$SYSROOT/usr/lib/aarch64-linux-gnu/libGLESv2.so" ]] || \
+	die "no libEGL.so / libGLESv2.so in the sysroot -- libglvnd-dev missing from SYSROOT_PACKAGES?"
 in_container "cd $WORK/userspace/h713-warp && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang MESA_PREFIX=$(c "$MESA_PREFIX")" > "$OUT/h713-warp-cross.log" 2>&1 || { tail -20 "$OUT/h713-warp-cross.log"; die "cross-building h713-warp failed (log: $OUT/h713-warp-cross.log)"; }
 WARP="$USERSPACE/h713-warp/h713-warp.aarch64-linux-gnu"; [[ -f "$WARP" ]] || die "no $WARP"
 info "h713-warp $(stat -c %s "$WARP") bytes, $(file -b "$WARP" 2>/dev/null | cut -d, -f1-2)"
+
+# --- 6d. libva: the VA-API driver for the media family of profiles ---------------
+# Needs the sysroot (libva-dev, libdrm headers) and nothing from the steps in between; the tarball goes into the
+# rootfs with build-rootfs.sh --libva. The base image does not carry it.
+LIBVA_TAR=
+if ((WANT_LIBVA)); then
+	say "6d/11 libva-v4l2_request cross-built (VA-API driver on cedrus; rootfs/libva/build-libva.sh)"
+	in_container "cd $WORK && REPO_REV=$(printf %q "$REPO_REV") rootfs/libva/build-libva.sh" > "$OUT/libva-cross.log" 2>&1 || { tail -20 "$OUT/libva-cross.log"; die "libva build failed (log: $OUT/libva-cross.log, $OUT/libva-build.log)"; }
+	LIBVA_TAR="$OUT/libva-v4l2-request-1.2.tar"; [[ -f "$LIBVA_TAR" ]] || die "no $LIBVA_TAR"
+	LIBVA_COMMIT=$(sed -n 's/^LIBVA_COMMIT=\([0-9a-f]*\).*/\1/p' "$ROOT/rootfs/libva/build-libva.sh")
+	LIBVA_PATCHES=$(grep -cv '^#\|^$' "$ROOT/rootfs/libva/patches/series")
+	grep -E "NEEDED|patches applied|installed" "$OUT/libva-cross.log" | sed 's/^ *//; s/^/    /'
+	info "driver tarball $(stat -c %s "$LIBVA_TAR") bytes, upstream ${LIBVA_COMMIT:0:12} + $LIBVA_PATCHES patches"
+fi
+
+# --- the image's SOURCES (TODO 7.20 e) ---------------------------------------
+# The revisions the boot chain and the kernel were built from, for README's source statement; build-rootfs.sh adds the root file
+# system's part (the Debian suites, Mesa, libva) below it. No path of this machine and no build time in it.
+series_on() { # <mirror dir> -> "N patches on <base> (<what the mirror calls it>)"
+	awk '$1 == "base" { b = substr($2, 1, 12); $1 = $2 = ""; sub(/^ +/, ""); w = $0 } $1 == "count" { n = $2 }
+		END { printf "%s patches on %s %s", n, b, w }' "$ROOT/$1/SERIES.txt"
+}
+write_sources() {
+	local r sha
+	echo "H713 Linux $NAME for $UNIT, built by release/build-all.sh"
+	echo "repository:  https://github.com/well0nez/allwinner-h713-linux, commit $REPRO_FULL${REPRO_DIRTY:+ with $REPRO_DIRTY local changes}"
+	echo "source date: $(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%d') (SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH)"
+	echo
+	echo "boot chain (each fork's commit is the repository's mirror applied to its base)"
+	for r in u-boot:uboot-h713 arm-trusted-firmware:tfa-h713; do
+		sha=$(git -C "$MAINLINE/external/${r%%:*}" rev-parse HEAD)
+		echo "  ${r%%:*} $sha: ${r#*:}/, $(series_on "${r#*:}")"
+	done
+	[[ -n "${CRUST_DEFCONFIG:-}" ]] && echo "  crust $CRUST_HEAD: crust-h713/, $(series_on crust-h713), configuration $CRUST_DEFCONFIG"
+	echo
+	echo "kernel"
+	echo "  Linux $KVER (linux-$KVER.tar.xz of kernel.org) with mainline/patches/kernel/series: $(grep -cv '^#\|^$' "$MAINLINE/patches/kernel/series") patches, series sha256 $(sha256sum "$MAINLINE/patches/kernel/series" | cut -c1-16); configuration mainline/patches/kernel/board/$KDEF"
+	echo "  aic8800 https://github.com/radxa-pkg/aic8800 at $AIC_REV: the vendor's patches it carries, then mainline/patches/aic8800/series"
+	echo
+}
 
 # --- 7. rootfs --------------------------------------------------------------
 if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 rootfs -- skipped (--skip-rootfs)"
@@ -498,29 +607,39 @@ if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 ro
 	# expect hardware this one has not (or hide what it has)
 	rec=$(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./etc/h713/features 2>/dev/null | sed -n 's/^board = //p') || rec=
 	[[ -z "$rec" || "$rec" == "$BOARD" ]] || die "the rootfs to reuse was built for board $rec, not $BOARD -- build it again (no --skip-rootfs)"
+	# ... and its profile: a base tar must not become the image of --profile media,desktop (or the other way round)
+	recp=$(sed -n 's/^profile=//p' "$ROOTFS/out/hy310-rootfs.manifest" 2>/dev/null) || recp=
+	[[ "${recp:-none}" == "${PROFILES:-none}" ]] || die "the rootfs to reuse was built with profile '${recp:-?}', not '${PROFILES:-none}' -- build it again (no --skip-rootfs)"
 else
-	say "7/11 rootfs ($DEBIAN_SUITE/arm64, mmdebstrap in the container as root)"
+	say "7/11 rootfs ($DEBIAN_SUITE/arm64${PROFILES:+, profile $PROFILES}, mmdebstrap in the container as root)"
+	write_sources > "$NOTICE/SOURCES"
 	CRUST_ARGS=; [[ -f "$OUT/scp.bin" ]] && CRUST_ARGS="--crust $(c "$OUT")/scp.bin"
 	((WANT_STANDBY)) && CRUST_ARGS="$CRUST_ARGS --standby"
-	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
+	# --no-ext4: only the tar goes on (step 8 makes the image's own ext4 out of it). build-rootfs.sh's bench ext4 is
+	# --image-size 1G and unread here; it broke the build when the profile tree grew past 1 GiB (16.10.2026, 1152 MiB).
+	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") --notice $(c "$NOTICE") --no-ext4 ${PROFILES:+--profile $PROFILES} ${LIBVA_TAR:+--libva $(c "$LIBVA_TAR")} ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
 fi
 
 # --- 8. ext4 inputs ---------------------------------------------------------
-say "8/11 ext4 inputs (hy310-boot 128 MiB, hy310-rootfs 1 GiB, the vendor files come in at install time)"
+# The base rootfs fits in 1 GiB; the media,desktop tree does not (896 MiB on medien f888d03, 1152 MiB on
+# e3b5a8b with Firefox). A profile image gets 2 GiB: room for the next packages, still a quarter of the partition, grown to the whole at the first start.
+ROOTFS_EXT4_SIZE=1G; [[ -n "$PROFILES" ]] && ROOTFS_EXT4_SIZE=2G
+say "8/11 ext4 inputs (hy310-boot 128 MiB, hy310-rootfs $ROOTFS_EXT4_SIZE, the vendor files come in at install time)"
 # Make tmp/ as the user beforehand: the container writes into it as root, but the
 # self-test (step 10) later puts probe-b-gefuellt.img next to it -- which does not
 # work in a root-owned directory (P3, 12.09.).
 mkdir -p "$INSTALLER/tmp"
-in_container_root "FIT=$(c "$OUT")/h713-kernel.fit ROOTFS_OUT=$(c "$ROOTFS")/out bash $(c "$INSTALLER")/mkimage-inputs.sh" > "$OUT/inputs.log" 2>&1 || { tail -12 "$OUT/inputs.log"; die "ext4 inputs failed"; }
+in_container_root "ROOTFS_EXT4_SIZE=$ROOTFS_EXT4_SIZE FIT=$(c "$OUT")/h713-kernel.fit ROOTFS_OUT=$(c "$ROOTFS")/out bash $(c "$INSTALLER")/mkimage-inputs.sh" > "$OUT/inputs.log" 2>&1 || { tail -12 "$OUT/inputs.log"; die "ext4 inputs failed"; }
 grep -c "  OK" "$OUT/inputs.log" | sed 's/^/    OK lines: /'
 
 # --- 9. image ---------------------------------------------------------------
 say "9/11 image $NAME"
 TEST_FOR=(); ((TEST_IMAGE)) && TEST_FOR=(--test-for "$TEST_PROFILE")
-ARISC_FW=vendor; [[ -n "${CRUST_DEFCONFIG:-}" ]] && ARISC_FW=crust      # the table's "arisc" (TODO 5.20)
+# --board: the table is cut for this board's eMMC (its profile's layout.disk_sectors), a release image too
+ARISC_FW=vendor; [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && ARISC_FW=crust      # the table's "arisc" (TODO 5.20)
 ( cd "$INSTALLER" && python3 h713-mkimage build -o "out/$NAME.img" "${TEST_FOR[@]+"${TEST_FOR[@]}"}" \
-	--arisc "$ARISC_FW" \
+	--board "$TEST_PROFILE" --arisc "$ARISC_FW" \
 	--spl "$OUT/spl-release.bin" --uboot "$OUT/uboot-proper-release.bin" --env "$OUT/hy310-env-release.bin" \
 	--boot-ext4 tmp/hy310-boot.ext4 --rootfs-ext4 tmp/hy310-rootfs-platz.ext4 ) > "$OUT/mkimage.log" 2>&1 \
 	|| { tail -20 "$OUT/mkimage.log"; die "image build failed (log: $OUT/mkimage.log)"; }
@@ -555,6 +674,15 @@ python3 "$ROOT/release/check-crust.py" --board "$BOARD" \
 	&& info "crust gate: green ($(sed -n 's/^crust: //p' "$OUT/crust-gate.log"))" \
 	|| { grep -E "FAIL|Error" "$OUT/crust-gate.log" | sed 's/^/    /'
 	     die "crust gate failed (log: $OUT/crust-gate.log)"; }
+# The licence notices (TODO 7.20 e), in the artefact: the rootfs tar carries the README that says where the source is, and its SOURCES
+# names this image's boot chain and kernel - every line write_sources gives now, but the repository's commit and date.
+NOTICE_TAR=$(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./usr/local/share/doc/h713-linux/SOURCES 2>/dev/null) || die "the rootfs carries no SOURCES (licence notices, build-rootfs.sh --notice)"
+tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./usr/local/share/doc/h713-linux/README 2>/dev/null | grep -q '^Source code\.' || die "the rootfs carries no README that says where the source is"
+while IFS= read -r l; do
+	[[ -z "$l" || "$l" == repository:* || "$l" == "source date:"* || "$l" == "H713 Linux "* ]] && continue
+	grep -qxF -- "$l" <<< "$NOTICE_TAR" || die "the rootfs's SOURCES does not name this build's \"$l\" -- an old rootfs?"
+done < <(write_sources)
+info "licence notices: README and SOURCES in the rootfs, SOURCES names this boot chain and kernel"
 if [[ -n "$VENDOR" ]]; then
 	( cd "$INSTALLER" && python3 mkimage-selftest.py "out/$NAME.tabelle.json" --vendor "$VENDOR" ) > "$OUT/selftest.log" 2>&1 || true
 	if grep -q "ALL GREEN" "$OUT/selftest.log"; then info "self-test with the vendor files: ALL GREEN"
@@ -578,6 +706,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	done
 	if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
 		echo "crust: ${CRUST_HEAD:0:12}${CRUST_SRC_GIVEN:+ (CRUST_SRC)} $CRUST_DEFCONFIG $CRUST_VERSION, $(sed -n 's/^build word //p' "$OUT/crust-gate.log"), or1k $(cut -d' ' -f1,3 "$OR1K/.h713-or1k-toolchain" 2>/dev/null)"
+		echo "arisc: $( ((WANT_STANDBY)) && echo 'crust from the start (release FIT and rootfs)' || echo "the vendor firmware from the owner's dump by default (h713-arisc.conf); crust in the rootfs only, experimental (h713-arisc set crust)" )"
 	else
 		echo "crust: none - the ARISC runs the vendor firmware from the owner's dump"
 	fi
@@ -588,15 +717,23 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	echo "$W: $(git -C "$MAINLINE" rev-parse --short HEAD 2>/dev/null) ($(git -C "$MAINLINE" status --short 2>/dev/null | wc -l) local changes)"
 	echo "source date: $SOURCE_DATE_EPOCH ($(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ'), committer date of $REPRO_COMMIT)"
 	echo "$REPRO_LINE"
-	echo "rootfs packages: dpkg status $(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./var/lib/dpkg/status | sha256sum | cut -c1-16) -- the tar repeats only while $DEBIAN_MIRROR $DEBIAN_SUITE is at this state"
+	echo "profile:  ${PROFILES:-none (base image)}$( [[ -n "$PROFILES" ]] && echo ' -- not a release image: over the 500 MiB of doku/107 section 7.1, the base rootfs tar is replaced by the profile tar' )"
+	if [[ -n "$LIBVA_TAR" ]]; then
+		echo "libva:    libva-v4l2_request ${LIBVA_COMMIT:0:12} + $LIBVA_PATCHES patches (rootfs/libva/patches/series), tar sha256 $(sha256sum "$LIBVA_TAR" | cut -c1-16)"
+	else
+		echo "libva:    none (the base image carries no VA-API driver)"
+	fi
+	echo "sources:  Debian $(sed -n 's/^bootstrap_sources=//p' "$ROOTFS/out/hy310-rootfs.manifest") ($(sed -n 's/^mirror=//p' "$ROOTFS/out/hy310-rootfs.manifest"), security: security.debian.org/debian-security) -- a profile image bootstraps from the suite, its -updates and its -security, the base image from the suite alone"
+	echo "rootfs packages: dpkg status $(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./var/lib/dpkg/status | sha256sum | cut -c1-16) -- the tar repeats only while those Debian suites are at this state"
 	echo "U-Boot:   $(strings -n 8 "$OUT/uboot-proper-release.bin" | grep -m1 '^U-Boot 20')"
 	echo "building blocks (sha256, 16 characters):"
 	for f in spl-release.bin uboot-proper-release.bin hy310-env-release.bin u-boot-installer.bin h713-kernel.fit modules/aic8800_bsp.ko modules/aic8800_fdrv.ko; do
 		printf '  %-28s %s\n' "$f" "$(sha256sum "$OUT/$f" | cut -c1-16)"
 	done
-	[[ -f "$OUT/scp.bin" ]] && printf '  %-28s %s\n' "scp.bin (crust)" "$(sha256sum "$OUT/scp.bin" | cut -c1-16)"
+	[[ -f "$OUT/scp.bin" ]] && printf '  %-28s %s\n' "scp.bin (crust$( ((WANT_STANDBY)) || echo ', rootfs only' ))" "$(sha256sum "$OUT/scp.bin" | cut -c1-16)"
 	printf '  %-28s %s\n' "h713-tv.aarch64-linux-gnu" "$(sha256sum "$TV" | cut -c1-16)"
 	printf '  %-28s %s\n' "mesa-panfrost-25.0.7.tar" "$(sha256sum "$MESA" | cut -c1-16)"
+	[[ -n "$LIBVA_TAR" ]] && printf '  %-28s %s\n' "libva-v4l2-request-1.2.tar" "$(sha256sum "$LIBVA_TAR" | cut -c1-16)"
 	printf '  %-28s %s\n' "hy310-rootfs.tar" "$(sha256sum "$ROOTFS/out/hy310-rootfs.tar" | cut -c1-16)"
 } > "$STAMP"
 sed 's/^/    /' "$STAMP"

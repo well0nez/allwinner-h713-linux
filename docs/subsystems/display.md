@@ -188,7 +188,11 @@ measured; the explanation offered is that crust holds the DRAM controller in res
 request into that window never returns. The green picture after a bad wake fits: the scanout got nothing either.
 
 **The picture stays until the restart.** After the wake the wall shows the last picture until
-`h713-mips-restart` has run; nothing in the kernel starts the firmware (`doku/171` section 4).
+`h713-mips-restart` has run; nothing in the kernel starts the firmware (`doku/171` section 4). While it runs the wall is
+black: a second process of `h713-tv` holds the card open with a black framebuffer on the primary plane, so the kernel's
+console does not take the panel between the two runs of `h713-tv` (TODO 2.96, [h713-mips-restart](../tools/h713-mips-restart.md)).
+The restart of the display firmware does not touch the AFBD registers: `AFBD_CTRL` and `AFBD_SRC` read the same before and
+after it (HY300PRO-G-EU, 20.10.2026, read every 10 ms through all of it).
 
 **The restart needs the TV top first.** The clock and reset words of the TV blocks (`0x06e00000`, three words)
 are set by U-Boot before it starts the MIPS core. A standby switches TVFE and TVCAP off and on, and the words

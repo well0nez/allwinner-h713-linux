@@ -1,0 +1,17 @@
+// Kodi's own power menu (profile desktop). h713-kodi.service runs Kodi as the system user h713-kodi, not as root. Its Suspend,
+// Shut down and Restart entries call logind over D-Bus, and logind lets a caller that is not root do that only when polkit says
+// yes (without polkitd it answers "access denied", and Kodi hides the entries). This rule says yes to that one user for the
+// three actions and their -multiple-sessions variants, and to nothing else: no other user, no other action (not even
+// "-ignore-inhibit"), no other part of the system.
+polkit.addRule(function(action, subject) {
+    var allowed = [
+        "org.freedesktop.login1.suspend",
+        "org.freedesktop.login1.suspend-multiple-sessions",
+        "org.freedesktop.login1.power-off",
+        "org.freedesktop.login1.power-off-multiple-sessions",
+        "org.freedesktop.login1.reboot",
+        "org.freedesktop.login1.reboot-multiple-sessions"
+    ];
+    if (subject.user == "h713-kodi" && allowed.indexOf(action.id) >= 0)
+        return polkit.Result.YES;
+});

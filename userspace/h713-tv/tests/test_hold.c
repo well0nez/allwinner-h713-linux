@@ -1,0 +1,441 @@
+/* SPDX-License-Identifier: GPL-2.0 */
+/*
+ * The wall held black over a restart of the picture path (TODO 2.96), without a device: main.c is compiled into this file, and the
+ * few libdrm calls of these paths are made up here and write down what they were asked (the rest stay abort() stubs). What is
+ * checked: HOLD_FILE names a live holder or nobody; the way out with a holder puts its framebuffer on the primary plane and the video
+ * plane off in one commit and gives the master back, and without one commits nothing; the start after a held restart leaves the
+ * console dark only while the holder's framebuffer is on the plane and the console's framebuffer is known and real; no later look
+ * at the plane (h713-osd's claim) takes the holder's framebuffer for the console's; the console's framebuffer is written down for
+ * that start, never the holder's; the holder that ends with its framebuffer still up never takes it away before the console has the
+ * plane - fbcon when it may paint, else its own commit of the console's framebuffer once it gets the master; an opaque page that goes while the straight ring is to come stays
+ * on the plane for the ring's own commit - for nothing or for a popup that stays (the mute badge) - and goes as before when no picture is to come.
+ *
+ *   test_hold      exit 0 when every case passed
+ */
+#define main h713_tv_main
+#include "../main.c"
+#undef main
+
+static int failed;
+
+static void check(bool ok, const char *what)
+{
+	printf("%s %s\n", ok ? "ok  " : "FAIL", what);
+	if (!ok)
+		failed++;
+}
+
+/* the made-up card: what the planes hold, which framebuffers exist, what was committed */
+#define PRIMARY	34
+#define VIDEO	38
+static uint32_t primary_fb;		/* what drmModeGetPlane() says the primary plane holds */
+static uint32_t real_fb = 46;		/* the one XRGB8888 framebuffer of the panel's size drmModeGetFB2() knows */
+static uint32_t real_format = DRM_FORMAT_XRGB8888;
+static int commits, masters;
+static int master_busy;			/* drmSetMaster() refuses this many more times (another master holds the card) */
+static bool apply;			/* a commit's FB_ID on the primary plane becomes what the plane holds */
+static int fbcon_backs;			/* hold_console_back() calls */
+static int fbcon_from;			/* ... from this call on fbcon may paint (no master): the console's framebuffer goes up; 0 never */
+static struct { uint32_t obj, prop; uint64_t val; } sets[64];
+static int nsets, pending;
+
+drmModeAtomicReqPtr drmModeAtomicAlloc(void)
+{
+	pending = 0;
+	nsets = 0;		/* one request at a time: committed() reads the last one, and 64 slots would fill up over the cases */
+	return (drmModeAtomicReqPtr)calloc(1, 16);
+}
+
+int drmModeAtomicAddProperty(drmModeAtomicReqPtr req, uint32_t obj, uint32_t prop, uint64_t val)
+{
+	(void)req;
+	if (nsets < 64) {
+		sets[nsets].obj = obj, sets[nsets].prop = prop, sets[nsets].val = val;
+		nsets++, pending++;
+	}
+	return 0;
+}
+
+int drmModeAtomicCommit(int fd, drmModeAtomicReqPtr req, uint32_t flags, void *data)
+{
+	int i;
+
+	(void)fd, (void)req, (void)flags, (void)data;
+	commits++;
+	for (i = nsets - pending; apply && i < nsets; i++)
+		if (sets[i].obj == PRIMARY && sets[i].prop == prop_id(&osd.props, "FB_ID"))
+			primary_fb = (uint32_t)sets[i].val;
+	return 0;
+}
+
+drmModePlaneResPtr drmModeGetPlaneResources(int fd)
+{
+	static uint32_t ids[] = { PRIMARY, VIDEO };
+	drmModePlaneResPtr r = calloc(1, sizeof(*r));
+
+	(void)fd;
+	r->count_planes = 2;
+	r->planes = ids;
+	return r;
+}
+
+void drmModeFreePlaneResources(drmModePlaneResPtr r)
+{
+	free(r);
+}
+
+static void fake_console_back(void)
+{
+	fbcon_backs++;
+	if (fbcon_from && fbcon_backs >= fbcon_from)
+		primary_fb = real_fb;
+}
+
+void drmModeAtomicFree(drmModeAtomicReqPtr req)
+{
+	free(req);
+}
+
+int drmSetMaster(int fd)
+{
+	(void)fd;
+	if (master_busy > 0) {
+		master_busy--;
+		errno = EBUSY;
+		return -1;
+	}
+	masters++;
+	return 0;
+}
+
+int drmDropMaster(int fd)
+{
+	(void)fd;
+	masters--;
+	return 0;
+}
+
+drmModePlanePtr drmModeGetPlane(int fd, uint32_t id)
+{
+	drmModePlanePtr p = calloc(1, sizeof(*p));
+
+	(void)fd;
+	p->plane_id = id;
+	p->fb_id = id == PRIMARY ? primary_fb : 0;
+	return p;
+}
+
+void drmModeFreePlane(drmModePlanePtr p)
+{
+	free(p);
+}
+
+drmModeFB2Ptr drmModeGetFB2(int fd, uint32_t id)
+{
+	drmModeFB2Ptr f;
+
+	(void)fd;
+	if (id != real_fb)
+		return NULL;
+	f = calloc(1, sizeof(*f));
+	f->fb_id = id, f->width = 1280, f->height = 720, f->pixel_format = real_format;
+	return f;
+}
+
+void drmModeFreeFB2(drmModeFB2Ptr f)
+{
+	free(f);
+}
+
+/* a plane's property list as props_get() would leave it: ids 100 + n in the order of the names */
+static void fake_props(struct props *p, const char *const *names, unsigned int n, uint32_t base)
+{
+	unsigned int i;
+
+	p->list = calloc(1, sizeof(*p->list));
+	p->list->count_props = n;
+	p->list->props = calloc(n, sizeof(uint32_t));
+	p->list->prop_values = calloc(n, sizeof(uint64_t));
+	p->info = calloc(n, sizeof(*p->info));
+	for (i = 0; i < n; i++) {
+		p->info[i] = calloc(1, sizeof(**p->info));
+		p->info[i]->prop_id = p->list->props[i] = base + i;
+		snprintf(p->info[i]->name, sizeof(p->info[i]->name), "%s", names[i]);
+	}
+}
+
+/* the value the last commit set for the property NAME of plane OBJ (props P), or -1 */
+static int64_t committed(const struct props *p, uint32_t obj, const char *name)
+{
+	uint32_t id = prop_id(p, name);
+	int i;
+
+	for (i = nsets - 1; i >= nsets - pending && i >= 0; i--)
+		if (sets[i].obj == obj && sets[i].prop == id)
+			return (int64_t)sets[i].val;
+	return -1;
+}
+
+static void put(const char *path, const char *text)
+{
+	FILE *f = fopen(path, "w");
+
+	if (f) {
+		fputs(text, f);
+		fclose(f);
+	}
+}
+
+/* what h713-tv answered h713-osd, "" when nothing within ms */
+static const char *heard(int fd, int ms)
+{
+	static char buf[256];
+	struct pollfd pf = { .fd = fd, .events = POLLIN };
+	ssize_t got;
+
+	buf[0] = '\0';
+	if (poll(&pf, 1, ms) == 1 && (got = recv(fd, buf, sizeof(buf) - 1, MSG_DONTWAIT)) > 0)
+		buf[got] = '\0';
+	return buf;
+}
+
+int main(void)
+{
+	static const char *const vid[] = { "FB_ID", "CRTC_ID" };
+	static const char *const pri[] = { "FB_ID", "CRTC_ID", "zpos", "SRC_X", "SRC_Y", "SRC_W", "SRC_H",
+					   "CRTC_X", "CRTC_Y", "CRTC_W", "CRTC_H" };
+	char dir[] = "/tmp/test_hold.XXXXXX", hf[96], cf[96], line[64];
+	struct display d = { .fd = -1, .plane_id = VIDEO, .crtc_id = 36, .width = 1280, .height = 720 };
+	uint32_t fb = 0;
+	pid_t dead;
+	int sv[2], c0;
+	FILE *f;
+
+	if (!mkdtemp(dir) || socketpair(AF_UNIX, SOCK_STREAM, 0, sv))
+		return 2;
+	snprintf(hf, sizeof(hf), "%s/hold", dir);
+	snprintf(cf, sizeof(cf), "%s/console-fb", dir);
+	hold_file = hf;
+	console_fb_file = cf;
+	fake_props(&d.plane_props, vid, 2, 100);
+	fake_props(&osd.props, pri, 11, 200);
+	osd.plane_id = PRIMARY;
+
+	/* HOLD_FILE */
+	check(!hold_read(&fb), "no HOLD_FILE: no holder");
+	snprintf(line, sizeof(line), "%d 77\n", (int)getpid());
+	put(hf, line);
+	check(hold_read(&fb) == getpid() && fb == 77, "HOLD_FILE names a running process and its framebuffer: the holder");
+	if (!(dead = fork()))
+		_exit(0);
+	waitpid(dead, NULL, 0);
+	snprintf(line, sizeof(line), "%d 77\n", (int)dead);
+	put(hf, line);
+	check(!hold_read(&fb), "a holder that is gone: no holder");
+	put(hf, "nonsense\n");
+	check(!hold_read(&fb), "a file that says nothing: no holder");
+	snprintf(line, sizeof(line), "%d 0\n", (int)getpid());
+	put(hf, line);
+	check(!hold_read(&fb), "no framebuffer: no holder");
+
+	/* the way out, no holder: nothing committed, the caller hands the console back as always */
+	unlink(hf);
+	c0 = commits;
+	check(!hold_take(&d) && commits == c0, "stopped without a holder: no commit here, the console as before");
+
+	/* the way out with a holder: one commit, the video plane off, the black framebuffer on the primary plane at zpos 0 */
+	snprintf(line, sizeof(line), "%d 77\n", (int)getpid());
+	put(hf, line);
+	d.on = true;
+	masters = 0;
+	check(hold_take(&d) && commits == c0 + 1, "stopped with a holder: one commit");
+	check(committed(&d.plane_props, VIDEO, "FB_ID") == 0 && committed(&d.plane_props, VIDEO, "CRTC_ID") == 0,
+	      "... the video plane off");
+	check(committed(&osd.props, PRIMARY, "FB_ID") == 77 && committed(&osd.props, PRIMARY, "zpos") == 0 &&
+	      committed(&osd.props, PRIMARY, "CRTC_ID") == 36 && committed(&osd.props, PRIMARY, "CRTC_W") == 1280,
+	      "... the holder's framebuffer on the primary plane, the whole panel, zpos 0");
+	check(!d.master && !masters && !d.on, "... and the master given back, nothing of ours on the wall");
+
+	/* the start after a held restart */
+	osd.console_known = false;
+	primary_fb = 77;
+	unlink(cf);
+	check(!hold_adopt(&d) && !osd.console_known, "the console's framebuffer not written down: the console after all");
+	put(cf, "46\n");
+	check(hold_adopt(&d) && osd.console_known && osd.console_fb == 46,
+	      "the holder's framebuffer on the plane, the console's known and real: no console at the start, the console is 46");
+	osd.console_known = false;
+	primary_fb = 46;
+	check(!hold_adopt(&d) && !osd.console_known, "the plane holds something else (the hold did not go up): the console");
+	primary_fb = 77;
+	put(cf, "77\n");
+	check(!hold_adopt(&d), "the file names the holder's framebuffer itself: the console");
+	put(cf, "45\n");
+	check(!hold_adopt(&d), "the file names a framebuffer the card does not know: the console");
+	put(cf, "46\n");
+	real_format = DRM_FORMAT_ARGB8888;
+	check(!hold_adopt(&d), "... or one that is not the console's kind (a page's ARGB8888): the console");
+	real_format = DRM_FORMAT_XRGB8888;
+	unlink(hf);
+	check(!hold_adopt(&d), "no holder: the console, as every start before");
+
+	/* every later look at the plane (h713-osd's claim learns the console again): the holder's framebuffer is never the console */
+	snprintf(line, sizeof(line), "%d 77\n", (int)getpid());
+	put(hf, line);
+	primary_fb = 77;
+	osd.claimed = false;
+	osd.console_known = false;
+	osd.console_fb = 0;
+	check(osd_learn(&d) && osd.console_known && osd.console_fb == 46,
+	      "the claim looks at the plane while it holds the holder's framebuffer: the console is still 46, not 77");
+	primary_fb = 46;
+	osd.console_known = false;
+	check(osd_learn(&d) && osd.console_fb == 46, "... and with the console on the plane: 46, as always");
+	unlink(hf);
+	primary_fb = 52;
+	osd.console_known = false;
+	check(osd_learn(&d) && osd.console_fb == 52, "no holder: whatever the plane holds, as before");
+
+	/* the holder's end with its framebuffer still up: the console takes the plane before the framebuffer goes */
+	{
+		struct timespec a, b;
+		long ms;
+
+		hold_console_back = fake_console_back;
+		apply = true;
+		put(cf, "46\n");
+		primary_fb = 77;
+		fbcon_from = 1;
+		fbcon_backs = 0;
+		c0 = commits;
+		hold_give_back(&d, 77);
+		check(primary_fb == 46 && fbcon_backs == 1 && commits == c0,
+		      "no master holds the card: fbcon takes the plane back, no commit of the holder's");
+		primary_fb = 77;
+		fbcon_from = 0;
+		fbcon_backs = 0;
+		master_busy = 30;		/* 1.5 s of commits around which h713-tv or h713-osd hold the master */
+		c0 = commits;
+		clock_gettime(CLOCK_MONOTONIC, &a);
+		hold_give_back(&d, 77);
+		clock_gettime(CLOCK_MONOTONIC, &b);
+		ms = (b.tv_sec - a.tv_sec) * 1000 + (b.tv_nsec - a.tv_nsec) / 1000000;
+		check(primary_fb == 46 && !hold_shown(d.fd, 77) && commits == c0 + 1 && masters == 0,
+		      "a master holds the card for 1.5 s: the holder waits, takes the master, puts the console's framebuffer up itself");
+		check(ms >= 1400 && fbcon_backs >= 2, "... it does not give up after a second with its framebuffer on the wall, and asks fbcon meanwhile");
+		unlink(cf);
+		primary_fb = 77;
+		fbcon_from = 3;			/* fbcon may paint from its third chance on (2 s) */
+		fbcon_backs = 0;
+		c0 = commits;
+		hold_give_back(&d, 77);
+		check(primary_fb == 46 && fbcon_backs == 3 && commits == c0,
+		      "no console's framebuffer written down: only fbcon can take the plane, and the holder waits for it");
+		fbcon_from = 0;
+		fbcon_backs = 0;
+		apply = false;
+		hold_console_back = console_restore;
+	}
+
+	/* the console's framebuffer written down for that start - never the holder's */
+	unlink(cf);
+	hold_console_note(46);
+	f = fopen(cf, "r");
+	check(f && fscanf(f, "%u", &fb) == 1 && fb == 46, "osd_learn() writes the console's framebuffer down");
+	if (f)
+		fclose(f);
+	snprintf(line, sizeof(line), "%d 77\n", (int)getpid());
+	put(hf, line);
+	hold_console_note(77);
+	f = fopen(cf, "r");
+	check(f && fscanf(f, "%u", &fb) == 1 && fb == 46, "... but not the holder's black one, should the plane hold it");
+	if (f)
+		fclose(f);
+	unlink(hf);
+
+	/* an opaque page goes, the straight ring is to come: the page stays for the ring's commit */
+	osd.claimed = true;
+	osd.peer = sv[0];
+	osd.fb_id[0] = 48;
+	osd.fb_id[1] = 50;
+	osd.console_fb = 46;
+	osd.console_known = true;
+	osd.want = 0;
+	osd.cover = true;
+	osd.shown = true;
+	cover.on = true;
+	d.on = d.warped = d.master = false;
+	nosig.lost = false;
+	ctl.policy = POLICY_AUTO;
+	ctl.source = SOURCE_AUTO;
+	c0 = commits;
+	check(send(sv[1], "osd hide\n", 9, 0) == 9, "h713-osd takes the page away (the launcher closed, the signal is back)");
+	osd_serve(&d);
+	check(!strcmp(heard(sv[1], 200), "ok\n") && commits == c0 && osd.shown && osd.want < 0,
+	      "... no commit: the page stays on the plane, display_show() takes the wall with the ring");
+	check(osd_wanted(true) < 0, "... and that commit puts the console's framebuffer under the ring");
+
+	/* the same, but no picture is to come: the page goes as before */
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	nosig.lost = true;
+	c0 = commits;
+	check(send(sv[1], "osd hide\n", 9, 0) == 9, "the page goes while there is no signal");
+	osd_serve(&d);
+	check(!strcmp(heard(sv[1], 200), "ok\n") && commits == c0 + 1 && committed(&osd.props, PRIMARY, "FB_ID") == 46 &&
+	      !osd.shown, "... the console's framebuffer goes up at once, as before");
+	nosig.lost = false;
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	ctl.policy = POLICY_OFF;
+	c0 = commits;
+	send(sv[1], "osd hide\n", 9, 0);
+	osd_serve(&d);
+	check(commits == c0 + 1 && !osd.shown, "\"ctl off\" (the console forced): at once");
+	ctl.policy = POLICY_AUTO;
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	ctl.source = SOURCE_CLIENT;
+	c0 = commits;
+	send(sv[1], "osd hide\n", 9, 0);
+	osd_serve(&d);
+	check(commits == c0 + 1 && !osd.shown, "a program is the mode: at once");
+	ctl.source = SOURCE_AUTO;
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	cover.on = false;
+	c0 = commits;
+	send(sv[1], "osd hide\n", 9, 0);
+	osd_serve(&d);
+	check(commits == c0 + 1 && !osd.shown, "a page that did not cover (it waited for a picture): at once");
+	cover.on = true;
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	d.on = true;
+	c0 = commits;
+	send(sv[1], "osd hide\n", 9, 0);
+	osd_serve(&d);
+	check(commits == c0 + 1 && !osd.shown, "a picture under the page already: the overlay goes at once, as before");
+	d.on = false;
+
+	/* the page goes for a popup that stays (the mute badge after a closed launcher): the page stays for the ring's commit */
+	while (heard(sv[1], 0)[0])
+		;			/* the answers the cases above did not read */
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	cover.on = true;
+	c0 = commits;
+	check(send(sv[1], "osd show 1\n", 11, 0) == 11, "h713-osd shows a popup in the place of the page (the launcher closed, the mute badge stays)");
+	osd_serve(&d);
+	check(!strncmp(heard(sv[1], 200), "ok waiting", 10) && commits == c0 && osd.shown && osd.want == 1 && !osd.cover,
+	      "... no commit: the page stays on the plane, the popup waits for the picture");
+	check(osd_wanted(true) == 1 && osd_wanted(false) < 0,
+	      "... the ring's commit lays the popup over the picture; without a picture the console's framebuffer, as before");
+	osd.want = 0, osd.cover = true, osd.shown = true;
+	nosig.lost = true;
+	c0 = commits;
+	send(sv[1], "osd show 1\n", 11, 0);
+	osd_serve(&d);
+	check(!strncmp(heard(sv[1], 200), "ok waiting", 10) && commits == c0 + 1 && committed(&osd.props, PRIMARY, "FB_ID") == 46 &&
+	      !osd.shown, "... and no picture to come (no signal): the console's framebuffer at once, as before");
+	nosig.lost = false;
+
+	unlink(cf);
+	rmdir(dir);
+	printf("%s\n", failed ? "FAILED" : "all passed");
+	return failed ? 1 : 0;
+}

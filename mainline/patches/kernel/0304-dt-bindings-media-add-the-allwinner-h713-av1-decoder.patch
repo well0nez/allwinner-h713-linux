@@ -1,0 +1,102 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] dt-bindings: media: add the Allwinner H713 AV1 decoder
+
+Document the H713's AV1 decoder (a Google core decoded by hantro's H713
+variant), including allwinner,video-engine: the core has its own bus and MBUS
+clock gates and reset, but runs from the video engine's module clock and needs
+the video engine's bus clock and reset released, and those belong to the video
+engine's node.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0148-dt-bindings-media-add-the-allwinner-h713-av1-decoder.patch (0148-dt-bindings-media-add-the-allwinner-h713-av1-decoder.patch, commit fb1a239)
+---
+diff --color -Naur pa/Documentation/devicetree/bindings/media/allwinner,sun50i-h713-av1.yaml pb/Documentation/devicetree/bindings/media/allwinner,sun50i-h713-av1.yaml
+--- /dev/null
++++ b/Documentation/devicetree/bindings/media/allwinner,sun50i-h713-av1.yaml
+@@ -0,0 +1,87 @@
++# SPDX-License-Identifier: (GPL-2.0 OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/media/allwinner,sun50i-h713-av1.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Allwinner H713 AV1 video decoder
++
++maintainers:
++  - Christopher Stenger <chris.h.stenger@gmail.com>
++
++description: |
++  A Google AV1 decoder core (core ID 0x0003b16d, AV1 baseline profile) that
++  sits beside the Allwinner video engine on the H713. It has its own
++  registers, interrupt, bus and MBUS clock gates and reset, but runs from the
++  video engine's module clock and needs the video engine's bus clock and reset
++  released, all of which belong to the video engine's node. The
++  allwinner,video-engine property names that node, so the driver can keep it
++  powered while decoding.
++
++properties:
++  compatible:
++    const: allwinner,sun50i-h713-av1
++
++  reg:
++    maxItems: 1
++
++  interrupts:
++    maxItems: 1
++
++  clocks:
++    items:
++      - description: Bus clock gate
++      - description: MBUS clock gate
++
++  clock-names:
++    items:
++      - const: bus
++      - const: mbus
++
++  resets:
++    maxItems: 1
++
++  iommus:
++    maxItems: 1
++
++  power-domains:
++    maxItems: 1
++
++  allwinner,video-engine:
++    $ref: /schemas/types.yaml#/definitions/phandle
++    description:
++      The video engine (allwinner,sun50i-h6-video-engine compatible) whose
++      module clock the core runs from. Its module clock must be at or below
++      432 MHz; the core stalls above that.
++
++required:
++  - compatible
++  - reg
++  - interrupts
++  - clocks
++  - clock-names
++  - resets
++  - iommus
++  - allwinner,video-engine
++
++additionalProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/interrupt-controller/arm-gic.h>
++    #include <dt-bindings/clock/sun50i-h713-ccu.h>
++    #include <dt-bindings/reset/sun50i-h713-ccu.h>
++
++    video-codec@1c0d000 {
++        compatible = "allwinner,sun50i-h713-av1";
++        reg = <0x01c0d000 0x1000>;
++        interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
++        clocks = <&ccu CLK_BUS_AV1>, <&ccu CLK_MBUS_AV1>;
++        clock-names = "bus", "mbus";
++        resets = <&ccu RST_BUS_AV1>;
++        iommus = <&iommu 5 1>;
++        power-domains = <&ppu 4>;
++        allwinner,video-engine = <&ve>;
++    };
++
++...

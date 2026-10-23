@@ -1,0 +1,77 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: align the capture pitch to 32 so inter chroma is not corrupt
+
+HEVC decoded into a capture buffer whose pitch is a multiple of 16 but not of
+32 produces bit-exact luma, bit-exact intra frames, and grossly wrong chroma on
+every inter-predicted frame.  Measured against a software decode at 642, 648
+and 656 pixels wide: chroma MSE 3800-5800, about 12 dB, where a correct decode
+is 0.0000.  640, 1280 and 1920 are already 32-aligned and were never affected,
+which is why nothing caught this -- every test vector in the tree is one of
+those widths.
+
+The mechanism is a disagreement between the write and read paths over one
+field.  cedrus_dst_format_set() programs
+
+	VE_PRIMARY_FB_LINE_STRIDE_LUMA(stride) |
+	VE_PRIMARY_FB_LINE_STRIDE_CHROMA(stride / 2)
+
+and the engine rounds the chroma field up to 16 in its own units, so the chroma
+stride it actually uses is ALIGN(stride, 32).  When the pitch is 32-aligned the
+rounding is a no-op and the two agree.  When it is not, the engine writes
+chroma at the pitch and reads reference chroma one 16-byte step per line wider.
+Intra frames need no reference and come out right; every inter frame reads
+displaced chroma.  Luma has its own field and is never wrong, which is exactly
+what makes the failure so quiet -- PSNR scored on luma alone reports 56 dB and
+calls it a pass.
+
+Aligning the capture pitch to 32 makes the rounding a no-op at every width.  It
+is the smaller of the two possible fixes: the alternative is to widen what
+DEC_PIC_SIZE advertises, which changes what the engine parses rather than only
+where it puts the result.
+
+Hardware, HY200 bench board:
+
+  642x480, 648x480, 656x480, 642x482   chroma 12-15 dB  ->  bit-exact
+  h09-642x482 Main10                   u 15.02 v 12.15  ->  u 53.26 v 53.27
+  640x482, 1920x1080                   bit-exact, unchanged
+  h07/h08 Main10                       54.30 / 52.80, unchanged
+  HEVC gate                            12 pass 0 fail
+  MPEG-2 gate                          6 pass 0 fail, md5s identical to baseline
+
+The MPEG-2 md5s are unchanged because that path writes tightly packed frames
+through VA-API, so the file never carried the internal pitch either way.
+
+For 32-aligned widths this patch changes nothing at all -- ALIGN(w, 16) and
+ALIGN(w, 32) are the same number -- so the regression surface is limited to the
+widths that were already broken.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0125-media-cedrus-align-the-capture-pitch-to-32.patch (0125-media-cedrus-align-the-capture-pitch-to-32.patch, commit 8b06f15)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -185,9 +185,21 @@
+ 		 * The secondary output has a programmable line stride. Honour a
+ 		 * larger userspace request so a decoder buffer can feed hardware
+ 		 * whose fetch pitch is wider than the visible compose rectangle.
++		 *
++		 * The pitch is aligned to 32, not 16, and that is load-bearing.
++		 * cedrus_dst_format_set() programs the chroma half of
++		 * VE_PRIMARY_FB_LINE_STRIDE as bytesperline / 2, and the engine
++		 * rounds that field up to 16 in its own units -- so the chroma
++		 * stride it uses is ALIGN(bytesperline, 32). At a pitch that is
++		 * 16- but not 32-aligned the engine writes chroma at the pitch
++		 * and reads reference chroma 16 bytes per line wider, so intra
++		 * frames are correct and every inter frame is corrupt in chroma
++		 * alone. Luma is never affected, which is what made it so hard
++		 * to see. Measured at 642, 648 and 656 wide; 640, 1280 and 1920
++		 * are already 32-aligned and were always fine.
+ 		 */
+-		bytesperline = clamp(ALIGN(bytesperline, 16),
+-				     ALIGN(width, 16), CEDRUS_MAX_WIDTH);
++		bytesperline = clamp(ALIGN(bytesperline, 32),
++				     ALIGN(width, 32), CEDRUS_MAX_WIDTH);
+ 
+ 		/* 16-aligned height. */
+ 		height = ALIGN(height, 16);

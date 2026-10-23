@@ -42,6 +42,8 @@ vendor fixtures and the three vendor images skip without `--local`, which adds t
 | `--board <id>`, `--variant <name>` | the board, and for a board with several stock firmwares the variant (required there) - see *Boards* |
 | `--test-image` | a TEST image for a board in test - see *Boards* |
 | `--wifi-env FILE` | put your own `/etc/h713/wifi.env` into the image instead of the public default. Never for an image you hand on: the file, password included, is then inside it, and the stamp says `reproducible: no`. A release is built without it; copy your own file onto the device after installing |
+| `--standby` | offers the standby (experimental): BL31 with PSCI `SYSTEM_SUSPEND`, crust in the release FIT and a rootfs that allows suspend and runs crust. Only for a verified board that names a crust configuration, or a `--test-image` of one. Without it (the release, the owner's decision of 22.10.2026) the image runs the vendor ARISC firmware and carries crust in the rootfs only, as the experimental choice ([docs/tools/h713-arisc.md](docs/tools/h713-arisc.md)) |
+| `--profile NAME[,NAME]` | `media`, `desktop`: the rootfs gets the package lists and overlays of those profiles (players, Kodi, a desktop, a browser) and the VA-API driver - see *The media image* |
 | `--jobs N` | parallelism (default: all cores) |
 
 The skips are for iterating. A release build should run without them: since 2026-09-12 the script wipes
@@ -90,6 +92,20 @@ the eMMC ([docs/tools/h713-probe.md](docs/tools/h713-probe.md)). It gets no FIT 
 leaves `KERNEL_DTB` empty for a board we have no device tree for, and `build.sh kernel` refuses
 rather than ship one written for a different board.
 
+## The media image
+
+```bash
+CRUST_SRC=<checkout of the head crust-h713/SERIES.txt names> \
+  release/build-all.sh --board hy310 --version vX.Y --profile media,desktop
+```
+
+Without `--standby`, as the release: the vendor ARISC firmware, no standby, crust as the experimental choice
+(TODO 2.42); with it, the image runs crust and offers the standby. crust is not a submodule, so `CRUST_SRC=` names its checkout (`crust-h713/README.md` says how to make one). A profile adds the VA-API driver, cross-built before the
+rootfs (`rootfs/libva/build-libva.sh`) and laid in with the package lists and overlays of the profiles; the image is named `<name>-<version>-media-desktop` and the stamp says
+`profile:` and `libva:`. The tree of `media,desktop` is about 1.1 GiB (1152 MiB with Firefox), so a profile image gets a **2 GiB** rootfs file system (the base image keeps 1 GiB; either
+grows to the partition at the first start). The build container is the one of
+[docs/build-container.md](docs/build-container.md) (its recipe has `libwayland-dev` and `libfreetype-dev`, which the profile needs). Measured 16.10.2026: 20 minutes with the downloads cached, 44 minutes cold (`doku/212` §7). A profile image is not a release image.
+
 ## What comes out
 
 ```
@@ -111,7 +127,7 @@ UUIDs and times) - compare stamps, not images ([RELEASES.md](RELEASES.md)).
 ## Pinned inputs
 
 `mainline/config/versions.env` is the single source of truth: kernel 6.18.38 from kernel.org with a
-pinned sha256, the AIC8800 vendor tarball, and the upstream bases the three curated series sit on. The
+pinned sha256, the AIC8800 vendor tarball, and the upstream bases the curated series sit on. The
 Debian keyring is pinned by sha256 in `release/build-all.sh`, so a rootfs built today and one built next
 year trust the same keys.
 
@@ -132,10 +148,16 @@ them the build compiles the same 119 objects. Only measured boot or TPM support 
 
 ```bash
 mainline/build/build.sh bl31                  # TF-A
-BOARD=hy310 mainline/build/build.sh uboot     # U-Boot for one board
+BOARD=hy310 mainline/build/build.sh uboot     # one board's U-Boot base, without a role
 BOARD=hy310 mainline/build/build.sh kernel    # kernel + modules + FIT
 BOARD=hy200-qz713df-a1 VARIANT=projector05061226 mainline/build/build.sh uboot   # one firmware variant
+mainline/build/uboot-build.sh "$PWD/mainline/build/uboot-release" hy310 release   # a U-Boot with a role
 ```
+
+`build.sh uboot` builds the board's base defconfig alone, and that boots nothing on purpose: what a U-Boot
+is for (booting the eMMC, sharing it over USB for the installer) comes from a role fragment, which
+`uboot-build.sh` merges over the base ([docs/uboot/README.md](docs/uboot/README.md)). The U-Boot in an
+image is the `release` role, built by `release/build-all.sh`.
 
 `BOARD` defaults to `ddr3`, the HY200 bench board this port was brought up on - name the board you
 mean. `release/build-all.sh` always passes one.

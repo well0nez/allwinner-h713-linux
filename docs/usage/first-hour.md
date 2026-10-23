@@ -96,15 +96,26 @@ projector in another room.
 
 ## 6. Turning it off, and on again
 
-A short press of the power key while the system runs asks systemd for a `poweroff`; the device ends up
-back where it started - dark, about 4 W, waiting for the next press. `poweroff` over SSH does the same.
-`reboot` skips the gate and comes straight back up, which is why a remote reboot never leaves you with a
-device that needs a finger.
+The power key - on the projector or on the remote - starts a 15 s countdown in the middle of the picture:
+standby on the left, off on the right. Left and Right choose, OK or a second press carries the choice out,
+Back cancels ([h713-power](../tools/h713-power.md)). It starts on `default` in `/etc/h713/power.conf`
+(`poweroff` unless you change it); a long press always powers off.
+
+- **Off**, where crust takes it (the HY300PRO-G-EU and the HY310): about 0.3 W. The projector's key or the
+  remote's Power key wakes it into a fresh boot of about 30 s; a timer (RTC alarm) does not.
+- **Standby**, on images built with `--standby`: about 2.4 W. The remote's Power key, the projector's key or
+  an RTC alarm wakes it; the picture is back about 5 s later, with the mode and mute as they were.
+- Without crust, off is U-Boot's power-on gate: dark, about 4 W, waiting for the next press.
+
+`poweroff` over SSH does the same as off. `reboot` skips the gate and comes straight back up, which is why a
+remote reboot never leaves you with a device that needs a finger.
 
 The stock remote pairs over Bluetooth: hold Left+Right on it until the projector has it (`h713-remote-pair
-status` says so), and it reconnects by itself after a reboot. Its Power key does what the power key does;
-its other keys reach Linux as input events, but nothing in the image acts on them yet
-([wifi.md](../subsystems/wifi.md#bluetooth)).
+status` says so). It reconnects by itself at the first key press after a reboot or a wake; until the
+Bluetooth link is up, a few seconds, its keys arrive over IR, so Power and Home work from the first press
+(the air mouse only once Bluetooth is up). Measured on the HY300PRO-G-EU on 20.10.2026
+([doku/217](../../doku/217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md)) and on the HY310 on
+09.10.2026 (`doku/174`); the Bluetooth side is in [wifi.md](../subsystems/wifi.md#bluetooth).
 
 ## 7. Keeping it up to date
 

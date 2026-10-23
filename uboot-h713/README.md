@@ -8,7 +8,7 @@ way a mirror should be: applying all 101 from the base produces a tree with the 
 hash as the head (`595b6941482e`; before: 100 patches, head `7b1ea388da0d`, tree `9ed108eda593`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31,
 `0097` names the gate word of a standby that did not finish (`doku/179`), `0098` - `0100` are the HDCP
 hardening (no `h713_hdcp14_wait`, the record staged where EL3 says and one write per boot, the guard
-through the watchdog driver; measured over FEL, `doku/180`). `0101` hands a cold start's wait to crust, when crust can power off (`doku/191`). `SERIES.txt` names base,
+through the watchdog driver; measured over FEL, `doku/180`). `0101` hands a cold start's wait to crust, when crust can power off (`doku/191`). `0102` lets the remote's power key (both stock remotes, NEC) start the board from the gate, where no crust runs (22.10.2026, tested over FEL on the HY300PRO-G-EU). `SERIES.txt` names base,
 head and count, and is the only thing that says which fork commit this mirror stands
 on. Whoever wants to change something changes the fork and has the mirror generated
 again. This page explains *why* the changes look the way they do - the original text

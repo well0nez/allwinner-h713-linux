@@ -190,9 +190,10 @@ static void cmd_test(struct runtime *r, struct textbuf *t, const char *what,
 	}
 	if (pattern != r->pattern) {
 		/* the pattern needs no capture and the capture no pattern: the
-		 * GPU path is rebuilt either way
+		 * GPU path is rebuilt either way - not under a Wayland client,
+		 * whose claim the pattern simply draws over
 		 */
-		if (r->state == WARP_ON)
+		if (r->state == WARP_ON && r->src == SRC_RING)
 			warp_disengage(r, "the test pattern changed");
 		r->pattern = pattern;
 		warp_apply(r);
@@ -241,9 +242,16 @@ static void cmd_help(struct textbuf *t)
 		 "                             the corner it touches while the mask is up\n"
 		 "  test grid|border|off       draw a pattern instead of the capture, to aim a\n"
 		 "                             corner with no source plugged in\n"
+		 "  picture                    ok N: the pictures of the Wayland client on the panel\n"
+		 "                             since its window was mapped (also those held under an\n"
+		 "                             opaque page); error: no client picture on the panel\n"
 		 "  help                       this list\n"
 		 "With all eight values 0 and mode front the GPU is not started at all and\n"
 		 "h713-tv shows the capture ring as it does without this service.\n"
+		 "A Wayland client (cage: WAYLAND_DISPLAY=" WAYLAND_SOCKET ") is drawn through the\n"
+		 "GPU whenever h713-tv's \"source\" lets it (h713-tv ctl source client|auto); under\n"
+		 "\"client\" the last picture stays between two programs, never the ring. Under an\n"
+		 "opaque page (h713-tv's \"note cover on\") nothing is drawn.\n"
 		 "The answer starts with ok or error; socket %s (root, 0660)\n", WARP_SOCKET);
 }
 
@@ -260,6 +268,14 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 	} else if (!strcmp(cmd, "status") || !strcmp(cmd, "st")) {
 		warp_status(r, t->b + t->l, t->n - t->l);
 		t->l += strlen(t->b + t->l);
+	} else if (!strcmp(cmd, "picture")) {
+		long n = server_pictures(r->srv);
+
+		if (n < 0)
+			text_add(t, "error no picture of a Wayland client on the panel\n");
+		else
+			text_add(t, "ok %ld pictures of the Wayland client on the panel since its window was mapped%s\n", n,
+				 warp_paused(r) ? " (an opaque page hides them)" : "");
 	} else if (!strcmp(cmd, "on")) {
 		r->on = true;
 		warp_apply(r);
@@ -332,7 +348,7 @@ static void dispatch(struct runtime *r, char *line, struct textbuf *t)
 
 		if (a1 && !number(a1, 1, 100000, &f)) {
 			text_add(t, "error check takes a frame count 1..100000\n");
-		} else if (r->state != WARP_ON || r->pattern != PATTERN_NONE) {
+		} else if (r->state != WARP_ON || r->pattern != PATTERN_NONE || r->src != SRC_RING) {
 			text_add(t, "error check needs the warp on with the capture\n");
 		} else {
 			r->check.want = f;

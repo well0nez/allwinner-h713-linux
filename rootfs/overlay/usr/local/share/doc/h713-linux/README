@@ -1,0 +1,89 @@
+H713 Linux: licences and source code
+====================================
+
+This system was built by release/build-all.sh of H713 Linux,
+https://github.com/well0nez/allwinner-h713-linux. It is free software,
+made of many parts under several licences. This file says which parts
+are in the image, under which licence each one comes, where its licence
+text is, and where its source code is. SOURCES, next to this file,
+names the revisions this image was built from.
+
+The texts of the common licences (GPL-2, GPL-3, LGPL-2.1, Apache-2.0,
+MPL-2.0 and others) are in /usr/share/common-licenses/.
+
+
+Parts of the image and their licences
+-------------------------------------
+
+On the eMMC ahead of the partitions (the boot chain):
+
+  U-Boot, SPL and U-Boot proper    GPL-2.0-or-later. Source: SOURCES.
+  Trusted Firmware-A, BL31         BSD-3-Clause; some files of it under
+                                   other permissive licences. The licence
+                                   is tf-a/license.rst; tf-a/COPYRIGHTS
+                                   lists the copyright lines of every
+                                   source file built into BL31, and the
+                                   head of each file under another
+                                   licence. licenses/BSD-2-Clause is the
+                                   text libfdt is used under.
+  crust (the firmware of the       BSD-3-Clause or GPL-2.0-only, at your
+  ARISC core; boards that name     choice, with a few BSD-1-Clause and
+  one only)                        MIT headers: crust/LICENSE.md;
+                                   crust/COPYRIGHTS as for BL31.
+
+On the boot partition and in /lib/modules (the kernel):
+
+  Linux with this project's        GPL-2.0, with the syscall note of
+  patches, its modules and the     Linux: linux/COPYING. The device
+  device trees                     trees are for the most part
+                                   GPL-2.0-or-later OR MIT.
+  aic8800 Wi-Fi and Bluetooth      GPL-2.0 (modinfo aic8800_fdrv).
+  driver (/lib/modules/*/extra)
+
+In the root file system:
+
+  Debian packages                  each under its own licence, stated in
+                                   /usr/share/doc/<package>/copyright.
+                                   DEBIAN-SOURCES lists every source
+                                   package and its version.
+  Mesa (/usr/local)                mostly MIT; licence texts and the note
+                                   on its source: /usr/local/share/doc/mesa/
+  libva-v4l2-request (images with  GPL-3.0-or-later. Its licence, its
+  the media or desktop profile,    source, the patches and the build
+  /usr/local/lib/dri)              script: /usr/local/share/doc/libva-v4l2-request/
+  This project's programs and      GPL-2.0 (h713-tv, h713-osd, h713-warp,
+  scripts (/usr/local, /etc/h713,  h713-power and the others). Source:
+  the units in /etc/systemd)       the repository named in SOURCES.
+  FreeType, libpng, bzip2, brotli  linked statically into h713-osd and
+  and zlib                         h713-settings. FreeType is used under
+                                   GPL-2.0, its other choice besides the
+                                   FreeType License. The copyright files
+                                   of the Debian packages the static
+                                   libraries come from are
+                                   static/<package>/copyright.
+
+Five packages of the root file system (libgbm1, libegl-mesa0,
+libgl1-mesa-dri, mesa-libgallium, libglx-mesa0) are empty stand-ins this
+project builds (rootfs/equivs/ in the repository), so that Debian's
+packages install against the Mesa in /usr/local. They contain no files.
+
+Not part of this image: the firmware the installer copies from the
+owner's own device (the display processor's, the Wi-Fi chip's and the
+like) and the device's own keys. They stay what they were, under the
+terms the device came with, and this file does not cover them.
+
+
+Source code
+-----------
+
+The source code of this project's own parts, of its patches to Linux,
+U-Boot, Trusted Firmware-A, crust, the aic8800 driver and
+libva-v4l2-request, and of the scripts that build this image, is in the
+repository at the commit SOURCES names. SOURCES also names, for each
+upstream, the revision the patches apply to. Debian's source packages
+are on deb.debian.org and, by version, on snapshot.debian.org.
+
+Source code. The complete corresponding source of this image goes with
+it: next to the image where it is published (its source archives), and
+in the repository at the commit SOURCES names. Whoever passes the
+image on passes these archives on with it.

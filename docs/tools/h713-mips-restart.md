@@ -5,13 +5,13 @@ in the kernel starts it again: after the wake the wall would stay on the last pi
 with standby this tool is the way back. [h713-power](h713-power.md) runs it after a wake when the
 driver `sun50i-h713-mips` says `parked` ([standby.md](../subsystems/standby.md)); nobody has to type
 anything. By hand it also reloads a running MIPS. It is a POSIX shell script of under 100 lines,
-installed as `/usr/local/sbin/h713-mips-restart`, and needs `systemctl`, `logger` and `flock`.
+installed as `/usr/local/sbin/h713-mips-restart`, and needs `systemctl`, `systemd-run`, `logger` and `flock`.
 
 ```
 h713-mips-restart [FIRMWARE]    # FIRMWARE: an absolute path, default /boot/mips/display.bin
 ```
 
-The picture is gone while it runs. The restart is the driver's ([mips.md](../subsystems/mips.md)):
+The picture is gone while it runs; the wall is black meanwhile, not the console ([below](#the-wall-while-it-runs)). The restart is the driver's ([mips.md](../subsystems/mips.md)):
 from the park it loads the firmware and starts the core like U-Boot, from a running MIPS it halts,
 loads and starts like the vendor. The tool is what has to happen around that, because the restart
 rebuilds the `cpu_comm` region and everything the HDMI receiver told the old firmware is gone.
@@ -21,7 +21,8 @@ rebuilds the `cpu_comm` region and everything the HDMI receiver told the old fir
 1. **Refuses before touching anything** (exit 2): FIRMWARE not absolute or not readable, no
    `sun50i-h713-mips` driver bound (no `state` file), or another run holds
    `/run/h713-mips-restart.lock`.
-2. Stops `h713-warp` and `h713-tv@*`, and remembers whether warp ran.
+2. Starts `h713-tv --hold-wall` as the transient unit `h713-wall-hold` (a warning if it does not start), then stops
+   `h713-tv@*` and after it `h713-warp`, and remembers whether warp ran.
 3. Looks for the receiver's video node (the one named `sun50i-h713-hdmirx`). **If a process holds
    it open, it refuses** (exit 2): an unbind under an open node frees memory the close still uses.
    Since patch `0233` the receiver's memory outlives an open handle; that is not measured with a
@@ -41,6 +42,8 @@ rebuilds the `cpu_comm` region and everything the HDMI receiver told the old fir
 | 2 | refused, MIPS untouched (the services are started again) |
 | 3 | the MIPS runs, but the receiver, its node or a service did not come back |
 | 4 | ended by a signal |
+
+The stop of `h713-warp` ends a running mode unit (Kodi, desktop, browser: `BindsTo=`), and the tool does not start it again. Around a standby that is `h713-mode sleep-pre`/`sleep-post`; after `h713-tv` gave up it is `h713-mode rescue`, which `h713-tv-rescue.service` runs; by hand, `h713-mode rescue` is the restart that brings the mode back as well.
 
 Every outcome is a journal line: `journalctl -t h713-mips-restart`. Run by hand it also writes to
 stderr; under systemd only to the journal. The end of a good run:
@@ -82,6 +85,23 @@ did not come back or msp is not in `error`. Measured at the HY310: eight standby
 the rebuilds by hand, one of those at the second; `doku/177` §3), and the laptop's sound audible over HDMI afterwards without a reboot
 (`doku/174` §2). Before this step the sound only came back after a reboot (`doku/173` §3).
 
+## The wall while it runs
+
+`h713-tv` gives the panel to the kernel's console when it stops, and its next start unblanked the console again, so the
+console stood on the wall from the stop to the next picture or page: after every standby, 7.3 to 9.1 s on the HY300PRO-G-EU
+(20.10.2026: 15 of 15 RTC standbys, 10 from HDMI and 5 from Kodi, mean 8.1 s; TODO 2.96). The tool therefore starts a
+holder first, `h713-tv --hold-wall` in the transient unit `h713-wall-hold` ([h713-tv](h713-tv.md#after-a-standby)): it
+keeps the card open and offers a black framebuffer, `h713-tv` stopped while it runs puts that framebuffer on the wall
+instead of the console, and the next `h713-tv` leaves it there until its own first picture or page takes the wall in one
+commit. `h713-tv` stops before `h713-warp`: a warp that goes first releases its claim, and `h713-tv` gave the panel to
+the console for the moment until its own stop. A run that ends without the picture path (exit 1 to 4) stops the holder,
+which gives the console back at once; otherwise the holder ends by itself once its framebuffer is off the wall, or after
+90 s with the console - above this tool's own budget (60 s for the receiver's node, then `h713-tv`'s start), so that a
+slow restart that succeeds never meets it. The holder never takes its framebuffer away while it is shown: the kernel would
+take it off the primary plane and the CRTC with it, and no `h713-tv` would start again. It lets the console take the plane
+first - fbcon when no master holds the card, else its own commit of the console's framebuffer once it gets the master - and
+waits for that without a limit. A holder that does not start (`the wall is not held`) costs nothing but the old console.
+
 ## How long it takes
 
 On the R2 test image: six standbys in one boot, the MIPS ready 300 ms after its start and the
@@ -93,6 +113,7 @@ laptop needs a good 4 s to send again (`doku/174` §1).
 
 ## What is not measured
 
+A holder that was stopped because the run failed: in the tests only (the console it then gives back is its own way out).
 The exit codes 1 to 4 run in the tests only, against a model of sysfs and `systemctl`
 (`userspace/h713-power/tests/`, part of `release/tor.sh --tests`), not at the device. The press of
 the real power key on the whole path was measured with the owner at the box (`doku/174` §1); the

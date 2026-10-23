@@ -25,6 +25,15 @@ Was ein harter Fund ist (doku/116 §2 "Veroeffentlichen", §7):
      und die generierten Patchspiegel uboot-h713/, tfa-h713/, crust-h713/ und mainline/patches/, deren Text
      die Commit-Nachrichten des Forks sind. Nur Regel 7 ist dort aus, alles andere
      wird weiter geprueft.
+  9. Eine Quelldatei (.c .h .S .py .sh .dts .dtsi) unter mainline/ ohne SPDX-Zeile im Kopf. Anlass
+     13.10.2026: cstengers Baum kam ohne Lizenzaussage in mainline/, 70 Dateien mussten wieder
+     raus (doku/210); eine neue Datei ohne Lizenzkopf soll nicht noch einmal still hineinrutschen.
+     Ausgenommen sind die Stellen, die heute ohne SPDX-Zeile sind und es aus gutem Grund bleiben
+     (SPDX_FREI unten). (Regel 8, die Identitaet, steht an ihrer Stelle im Code.)
+  10. Eine MAC-Adresse (sechs Hexpaare mit Doppelpunkt) in einer Textdatei. Anlass 20.10.2026: die Adresse
+     von Marcos Fernbedienung stand in drei Journalseiten, Client- und Ethernet-Adressen in Patch-Texten und
+     einem Boot-Mitschnitt (TODO 2.127). Erlaubt sind die maskierte Form xx:xx:xx:xx:xx:xx und die
+     Testattrappen der Tests (MAC_ATTRAPPEN unten). Die Adresse selbst wird nicht ausgegeben, nur Datei:Zeile.
 Ausgenommen: .git/, __pycache__/, die Arbeitsbaeume der Submodule aus .gitmodules
 (gepusht wird ihr Commit-Zeiger, nicht ihr Inhalt) und alles, was Zeilen in .sperrscan-ignore treffen
 (Zeile = Pfadpraefix relativ zur Wurzel; heute keine).
@@ -59,7 +68,18 @@ UMBAU_FREI = ("doku/", "installer/tests/run.sh",
               # Blobs, Hashes und Abzuege werden in diesen Dateien weiter geprueft
               # (ein Eintrag in .sperrscan-ignore haette genau das mit abgeschaltet).
               "uboot-h713/", "tfa-h713/", "crust-h713/", "mainline/patches/")
+# Regel 9: Quelldateien unter mainline/ brauchen eine SPDX-Zeile in den ersten 2 KiB. Frei sind: die
+# Submodule, die Bauskripte und ihre Ausgaben (mainline/build/) und unser OpenRISC-Compiler-Bau. (Die alte
+# Kopie des AIC8800-Treibers unter mainline/modules/aic8800/ war frei, bis sie am 20.10.2026 ging, TODO 7.20.)
+SPDX_ENDUNGEN = {".c", ".h", ".S", ".py", ".sh", ".dts", ".dtsi"}
+SPDX_FREI = ("mainline/external/", "mainline/build/", "mainline/tools/or1k-toolchain/")
 UMBAU_MAX = 5          # hoechstens so viele Zeilen je Datei nennen, dann zaehlen
+# Regel 10: genau sechs Hexpaare mit Doppelpunkt - ein siebtes Paar davor oder danach (EDID-Kopf, Hexdumps) ist keine Adresse.
+MAC = re.compile(rb"(?<![0-9A-Fa-f:])(?:[0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}(?![0-9A-Fa-f:])")
+# Ganze Adressen, keine Praefixe: 00:11:22 ist ein vergebener OUI-Block, aa:bb:cc die Form lokal verwalteter (zufaelliger)
+# Adressen - ein Praefix liesse echte Adressen durch (Mythos 21.10.2026). Neue Attrappen hier eintragen.
+MAC_ATTRAPPEN = {b"00:11:22:33:44:55", b"11:22:33:44:55:66", b"aa:bb:cc:dd:ee:01", b"aa:bb:cc:dd:ee:02", b"aa:bb:cc:dd:ee:ff",
+                 b"ff:ff:ff:ff:ff:ff", b"00:00:00:00:00:00"}
 SECURE = (b"sunxi-secure-storage", b"hdcpkeyV22", b"wifiBleDatas")
 TEXT_ENDUNGEN = {".md", ".txt", ".py", ".sh", ".c", ".h", ".patch", ".dts", ".dtsi", ".env", ".conf", ".json", ".yaml", ".yml", ".ini", ".xml", ".service", ".rules", ".cfg", ".its", ".mk", ".S", ".s", ".html", ".css", ".js", ".toml", ".gitignore", ".gitmodules", ""}
 
@@ -177,6 +197,18 @@ def main() -> int:
             for s in SECURE:
                 if s in daten and os.path.splitext(f)[1] not in TEXT_ENDUNGEN:
                     funde.append(("Secure-Storage", rel, s.decode())); break
+            # Regel 9: neue Quelldatei unter mainline/ ohne SPDX-Zeile.
+            if (rel.startswith("mainline/") and not rel.startswith(SPDX_FREI)
+                    and os.path.splitext(f)[1] in SPDX_ENDUNGEN and b"SPDX-License-Identifier" not in daten[:2048]):
+                funde.append(("SPDX", rel, "no SPDX line in the head"))
+            # Regel 10: MAC-Adressen in Textdateien (ohne die Adresse auszugeben).
+            if os.path.splitext(f)[1] in TEXT_ENDUNGEN:
+                macs = [m for m in MAC.finditer(daten) if m.group(0).lower() not in MAC_ATTRAPPEN]
+                for m in macs[:UMBAU_MAX]:
+                    funde.append(("MAC-Adresse", "%s:%d" % (rel, daten.count(b"\n", 0, m.start()) + 1),
+                                  "maskieren: xx:xx:xx:xx:xx:xx"))
+                if len(macs) > UMBAU_MAX:
+                    funde.append(("MAC-Adresse", rel, "und %d weitere" % (len(macs) - UMBAU_MAX)))
             # Regel 7: Verweise auf das Umbau-Arbeitsverzeichnis. Nur Textdateien --
             # in einer Binaerdatei waere ein Treffer Zufall. Datei:Zeile melden, damit
             # man sie ohne Suchen findet.

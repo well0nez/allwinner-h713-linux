@@ -1,0 +1,155 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: make compose negotiation match the secondary NV12 output
+
+The secondary engine writes NV12 regardless of the requested capture format.
+Negotiate NV12 while scaling; honor LE/GE and padded geometry, reject unknown
+flags, and avoid selecting outputs smaller than the advertised minimum.
+Never fall back to a small capture buffer for full-size reconstruction.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0101-media-cedrus-harden-compose-negotiation.patch (0101-media-cedrus-harden-compose-negotiation.patch, commit 2952b81)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -299,8 +299,9 @@
+ 
+ 	if (cedrus_scaling(ctx)) {
+ 		cbuf = vb2_to_cedrus_buffer(buf);
+-		if (cbuf->recon_dma)
+-			return cbuf->recon_dma +
++		if (WARN_ON_ONCE(!cbuf->recon))
++			return 0;
++		return cbuf->recon_dma +
+ 			       (dma_addr_t)ctx->recon_fmt.bytesperline *
+ 			       ctx->recon_fmt.height * plane;
+ 	}
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -286,13 +286,18 @@
+ 	if (!fmt)
+ 		return -EINVAL;
+ 
+-	pix_fmt->pixelformat = fmt->pixelformat;
++	pix_fmt->pixelformat = cedrus_scaling(ctx) ? V4L2_PIX_FMT_NV12 :
++						 fmt->pixelformat;
+ 	/*
+ 	 * The capture picture is the coded size divided by whatever the VE has
+ 	 * been asked to scale by; see cedrus_s_selection().
+ 	 */
+-	pix_fmt->width = ctx->src_fmt.width >> ctx->sd_h_shift;
+-	pix_fmt->height = ctx->src_fmt.height >> ctx->sd_v_shift;
++	pix_fmt->width = ctx->sd_h_shift ?
++		ALIGN(ctx->src_fmt.width, 16) >> ctx->sd_h_shift :
++		ctx->src_fmt.width;
++	pix_fmt->height = ctx->sd_v_shift ?
++		ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
++		ctx->src_fmt.height;
+ 	cedrus_prepare_format(pix_fmt);
+ 
+ 	if (ctx->current_codec->extra_cap_size)
+@@ -351,15 +356,38 @@
+  * than refused, which is what V4L2 expects of a compose rectangle, and the
+  * caller reads back what it actually got.
+  */
+-static u8 cedrus_compose_shift(unsigned int coded, unsigned int want)
+-{
+-	u8 shift = 0;
+-
+-	/* Largest reachable size that is still no bigger than asked for. */
+-	while (shift < VE_H264_SDROT_MAX_SHIFT && (coded >> shift) > want)
+-		shift++;
+-
+-	return shift;
++/* Select against the returned NV12 layout, including macroblock padding.
++ * LE/GE constrain the result, not the request. Never change context on error.
++ */
++static int cedrus_compose_shift(unsigned int coded, unsigned int want,
++			       bool vertical, u32 flags)
++{
++	unsigned int shift, size, best_size = UINT_MAX;
++	int best = -ERANGE;
++
++	for (shift = 0; shift <= VE_H264_SDROT_MAX_SHIFT; shift++) {
++		size = shift ? ALIGN(coded, 16) >> shift : coded;
++		/* Do not silently clamp a 4- or 8-pixel output to 16. */
++		if (size < 16)
++			continue;
++		if (vertical)
++			size = ALIGN(size, 16);
++		if ((flags & V4L2_SEL_FLAG_LE) && size > want)
++			continue;
++		if ((flags & V4L2_SEL_FLAG_GE) && size < want)
++			continue;
++		if (flags & V4L2_SEL_FLAG_GE) {
++			if (size < best_size) {
++				best = shift;
++				best_size = size;
++			}
++		} else {
++			best = shift;
++			if (size <= want)
++				break;
++		}
++	}
++	return best;
+ }
+ 
+ static int cedrus_g_selection(struct file *file, void *priv,
+@@ -367,7 +395,9 @@
+ {
+ 	struct cedrus_ctx *ctx = cedrus_file2ctx(file);
+ 
+-	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
++	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
++	    ctx->src_fmt.pixelformat != V4L2_PIX_FMT_H264_SLICE ||
++	    !cedrus_is_capable(ctx, CEDRUS_CAPABILITY_UNTILED))
+ 		return -EINVAL;
+ 
+ 	switch (sel->target) {
+@@ -382,7 +412,7 @@
+ 		sel->r.left = 0;
+ 		sel->r.top = 0;
+ 		sel->r.width = ctx->src_fmt.width;
+-		sel->r.height = ctx->src_fmt.height;
++		sel->r.height = ALIGN(ctx->src_fmt.height, 16);
+ 		return 0;
+ 	default:
+ 		return -EINVAL;
+@@ -394,13 +424,15 @@
+ {
+ 	struct cedrus_ctx *ctx = cedrus_file2ctx(file);
+ 	struct vb2_queue *vq;
+-	u8 h_shift, v_shift;
++	int h_shift, v_shift;
+ 
+ 	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
+ 	    sel->target != V4L2_SEL_TGT_COMPOSE)
+ 		return -EINVAL;
+ 
+-	if (ctx->src_fmt.pixelformat != V4L2_PIX_FMT_H264_SLICE)
++	if (ctx->src_fmt.pixelformat != V4L2_PIX_FMT_H264_SLICE ||
++	    !cedrus_is_capable(ctx, CEDRUS_CAPABILITY_UNTILED) ||
++	    sel->flags & ~(V4L2_SEL_FLAG_LE | V4L2_SEL_FLAG_GE))
+ 		return -EINVAL;
+ 
+ 	/* The buffer size changes with the picture, so nothing may be queued. */
+@@ -408,13 +440,15 @@
+ 	if (vb2_is_busy(vq))
+ 		return -EBUSY;
+ 
+-	if (sel->r.left || sel->r.top || !sel->r.width || !sel->r.height ||
+-	    sel->r.width > ctx->src_fmt.width ||
+-	    sel->r.height > ctx->src_fmt.height)
++	if (sel->r.left || sel->r.top || !sel->r.width || !sel->r.height)
+ 		return -EINVAL;
+ 
+-	h_shift = cedrus_compose_shift(ctx->src_fmt.width, sel->r.width);
+-	v_shift = cedrus_compose_shift(ctx->src_fmt.height, sel->r.height);
++	h_shift = cedrus_compose_shift(ctx->src_fmt.width, sel->r.width,
++				       false, sel->flags);
++	v_shift = cedrus_compose_shift(ctx->src_fmt.height, sel->r.height,
++				       true, sel->flags);
++	if (h_shift < 0 || v_shift < 0)
++		return -ERANGE;
+ 
+ 	ctx->sd_h_shift = h_shift;
+ 	ctx->sd_v_shift = v_shift;

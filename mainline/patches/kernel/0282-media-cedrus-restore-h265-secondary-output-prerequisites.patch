@@ -1,0 +1,142 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: restore the H.265 secondary-output prerequisites
+
+The retained development tree had the HEVC secondary-output setup and compose
+capability gate, but these changes were absent from the series. Consequently
+0117 fails to apply to a clean kernel and 0118 depends on an undefined helper
+and a missing H.265 output routine.
+
+Recover that prerequisite from the pre-scaler development sources. This adds
+the HEVC capability gate, shifted output addresses, low chroma-address bits,
+and secondary control definitions expected by 0117 and 0118. The following
+patches replace the provisional shifter setup with the working scaler.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0116a-media-cedrus-restore-h265-secondary-output-prerequisites.patch (0116a-media-cedrus-restore-h265-secondary-output-prerequisites.patch, commit a861df2)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -288,6 +288,17 @@
+  * VP8. Storing it unconditionally is deliberate: rejecting the value in
+  * s_ctrl instead broke the control framework's own range probing.
+  */
++/*
++ * Both engines scale by powers of two.  ROTATION stays H.264 only: the H.265
++ * field exists but the vendor decoder comments it out with "Rotation doesn't
++ * support" and ships zero, so it has no reference behaviour.
++ */
++static inline bool cedrus_can_scale(struct cedrus_ctx *ctx)
++{
++	return ctx->src_fmt.pixelformat == V4L2_PIX_FMT_H264_SLICE ||
++	       ctx->src_fmt.pixelformat == V4L2_PIX_FMT_HEVC_SLICE;
++}
++
+ static inline unsigned int cedrus_rotation(struct cedrus_ctx *ctx)
+ {
+ 	if (ctx->src_fmt.pixelformat != V4L2_PIX_FMT_H264_SLICE)
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -145,6 +145,42 @@
+  *     VE_PRIMARY_OUT_FMT[3:0]; miss either and a perfectly working scaler
+  *     produces something that renders as horizontal stripes.
+  */
++/*
++ * The H.265 engine's secondary output.
++ *
++ * Every register here is ZEROED AND REBUILT rather than read-modify-written,
++ * which is what the vendor does and what distinguishes this from the first
++ * attempt.  CTRL is the one that matters: cedrus_h265_setup() leaves only the
++ * IRQ mask there, and an RMW therefore never sets DDR_CONSISTENCY_EN, which
++ * the vendor sets alongside write_sc_rt_pic.  Two outputs writing concurrently
++ * is exactly when DDR consistency would matter.
++ */
++static void cedrus_sd_program_h265(struct cedrus_ctx *ctx, dma_addr_t luma,
++				   dma_addr_t chroma)
++{
++	struct cedrus_dev *dev = ctx->dev;
++
++	cedrus_write(dev, VE_DEC_H265_SDRT_LUMA_ADDR,
++		     (u32)(luma >> VE_DEC_H265_SDRT_ADDR_SHIFT));
++	cedrus_write(dev, VE_DEC_H265_SDRT_CHROMA_ADDR,
++		     (u32)(chroma >> VE_DEC_H265_SDRT_ADDR_SHIFT));
++
++	cedrus_write(dev, VE_DEC_H265_LOW_ADDR,
++		     VE_DEC_H265_LOW_ADDR_SECONDARY_CHROMA(chroma) |
++		     VE_DEC_H265_LOW_ADDR_ENTRY_POINTS_BUF(ctx->codec.h265.entry_points_buf_addr));
++
++	cedrus_write(dev, VE_DEC_H265_CTRL,
++		     VE_DEC_H265_CTRL_IRQ_MASK |
++		     VE_DEC_H265_CTRL_ROTATE_SCALE_OUT_EN |
++		     VE_DEC_H265_CTRL_DDR_CONSISTENCY_EN);
++
++	cedrus_write(dev, VE_DEC_H265_SDRT_CTRL,
++		     VE_DEC_H265_SDRT_CTRL_ROTATE(cedrus_rotation(ctx)) |
++		     VE_DEC_H265_SDRT_CTRL_H_SHIFT(ctx->sd_h_shift) |
++		     VE_DEC_H265_SDRT_CTRL_V_SHIFT(ctx->sd_v_shift));
++
++}
++
+ void cedrus_sd_program(struct cedrus_ctx *ctx, struct vb2_buffer *dst)
+ {
+ 	struct cedrus_dev *dev = ctx->dev;
+@@ -156,9 +192,6 @@
+ 	if (!cedrus_transforming(ctx))
+ 		return;
+ 
+-	cedrus_write(dev, VE_H264_SDROT_LUMA_ADDR, (u32)luma);
+-	cedrus_write(dev, VE_H264_SDROT_CHROMA_ADDR, (u32)chroma);
+-
+ 	cedrus_write(dev, VE_SECONDARY_FB_LINE_STRIDE,
+ 		     VE_SECONDARY_FB_LINE_STRIDE_CHROMA(stride / 2) |
+ 		     VE_SECONDARY_FB_LINE_STRIDE_LUMA(stride));
+@@ -172,6 +205,14 @@
+ 	reg &= ~0xfu;
+ 	reg |= VE_SECONDARY_OUT_FMT_EXT_NV12;
+ 	cedrus_write(dev, VE_PRIMARY_OUT_FMT, reg);
++
++	if (ctx->src_fmt.pixelformat == V4L2_PIX_FMT_HEVC_SLICE) {
++		cedrus_sd_program_h265(ctx, luma, chroma);
++		return;
++	}
++
++	cedrus_write(dev, VE_H264_SDROT_LUMA_ADDR, (u32)luma);
++	cedrus_write(dev, VE_H264_SDROT_CHROMA_ADDR, (u32)chroma);
+ 
+ 	reg = cedrus_read(dev, VE_H264_CTRL);
+ 	reg |= VE_H264_CTRL_SDROT_ENABLE;
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
+@@ -490,6 +490,14 @@
+ #define VE_DEC_H265_BITS_END_ADDR_BASE(a)	((a) >> 8)
+ 
+ #define VE_DEC_H265_SDRT_CTRL			(VE_ENGINE_DEC_H265 + 0x50)
++/* Layout from the vendor's regHEVC_EXTRA_CTRL struct; [12]/[13] are
++ * interlaced field controls and stay clear for progressive.
++ */
++#define VE_DEC_H265_SDRT_CTRL_ROTATE(r)		SHIFT_AND_MASK_BITS((r) / 90, 2, 0)
++#define VE_DEC_H265_SDRT_CTRL_H_SHIFT(s)	SHIFT_AND_MASK_BITS(s, 9, 8)
++#define VE_DEC_H265_SDRT_CTRL_V_SHIFT(s)	SHIFT_AND_MASK_BITS(s, 11, 10)
++/* UNLIKE H.264, this engine takes its output addresses shifted right by 8. */
++#define VE_DEC_H265_SDRT_ADDR_SHIFT		8
+ #define VE_DEC_H265_SDRT_LUMA_ADDR		(VE_ENGINE_DEC_H265 + 0x54)
+ #define VE_DEC_H265_SDRT_CHROMA_ADDR		(VE_ENGINE_DEC_H265 + 0x58)
+ 
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -426,7 +426,7 @@
+ 	struct cedrus_ctx *ctx = cedrus_file2ctx(file);
+ 
+ 	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
+-	    ctx->src_fmt.pixelformat != V4L2_PIX_FMT_H264_SLICE ||
++	    !cedrus_can_scale(ctx) ||
+ 	    !cedrus_is_capable(ctx, CEDRUS_CAPABILITY_UNTILED))
+ 		return -EINVAL;
+ 
+@@ -466,7 +466,7 @@
+ 	    sel->target != V4L2_SEL_TGT_COMPOSE)
+ 		return -EINVAL;
+ 
+-	if (ctx->src_fmt.pixelformat != V4L2_PIX_FMT_H264_SLICE ||
++	if (!cedrus_can_scale(ctx) ||
+ 	    !cedrus_is_capable(ctx, CEDRUS_CAPABILITY_UNTILED) ||
+ 	    sel->flags & ~(V4L2_SEL_FLAG_LE | V4L2_SEL_FLAG_GE))
+ 		return -EINVAL;

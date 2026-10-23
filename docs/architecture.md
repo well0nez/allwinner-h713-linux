@@ -65,9 +65,10 @@ BROM -> SPL (DRAM init) -> BL31 (EL3) -> U-Boot proper -> Linux
 This is the opposite of stock Android, where the vendor BL31 loads the ARISC firmware before anything
 else runs. Mainline TF-A does not do that, so the job moved into a Linux driver instead - one more
 reason the ARISC is unreachable, by design, until that driver has bound and its firmware request has
-resolved. With crust (the HY310) our BL31 starts the ARISC again, from the FIT's `scp` image before
-U-Boot proper, and the driver keeps that running image when it is the one its device tree names
-([arisc.md](subsystems/arisc.md)). `cpu_comm` needs no such handoff: the MIPS core is already running display.bin by the time
+resolved. On an image built with the standby, which runs crust, our BL31 starts the ARISC again, from the
+FIT's `scp` image before U-Boot proper, and the driver keeps that running image when it is the one its device
+tree names ([arisc.md](subsystems/arisc.md)); an image without it runs the vendor's firmware and leaves the job
+to the driver, as above (since 22.10.2026, [h713-arisc](tools/h713-arisc.md)). `cpu_comm` needs no such handoff: the MIPS core is already running display.bin by the time
 Linux starts, so its first RPC call can succeed immediately.
 
 Neither vendor firmware file, nor the HDMI EDID blob, nor the panel/picture tables ship in this
@@ -100,6 +101,7 @@ measured on the wall 11.10.2026 (`doku/193`).
                          +-> h713-osd: libh713osd draws, libh713geom pre-distorts (warp.conf -> the matrix)
                                   |   two ARGB8888 buffers of h713-tv's (SCM_RIGHTS), "osd show N"
  HDMI -> capture ring -> h713-warp (GPU, the same matrix) -> three NV12 buffers of h713-tv's, "warp frame N"
+ Kodi -> cage (Wayland client) -^   /run/h713-warp/wayland: dma-bufs in, RGB -> NV12 in the keystone passes
                                   v
                         h713-tv: the only DRM master, the only one that commits
                         video plane (zpos 1): ring or warp      primary plane (zpos 2): overlay, else console
@@ -116,8 +118,15 @@ measured on the wall 11.10.2026 (`doku/193`).
 - **The console is not warped and gets no overlay.** fbcon draws on channel 2 itself and cannot be distorted;
   without a picture an overlay waits for the picture (decided 11.10.2026). h713-tv puts the console's framebuffer
   back at zpos 0 before it lets the master go, on every way the picture leaves.
-- **Later, a desktop** takes channel 2 and the master; `libh713osd` draws there as well (drawing and the place
-  it goes are separate, TODO 2.45).
+- **A desktop is a client of the warp, not a second master** (measured 15.10.2026, `doku/211` §10; this replaces
+  "a desktop takes channel 2 and the master"). h713-warp runs a small Wayland server; cage (with Kodi) and labwc (the desktop and the browser,
+  `docs/tools/h713-desktop.md`) connect with `WLR_BACKENDS=wayland,libinput`, passes its clients' dma-bufs through and reads the remote itself.
+  h713-warp draws the client's RGB buffer through the keystone into the same three NV12 targets - always through the
+  GPU, the colour conversion inside the two keystone passes - and `h713-tv` commits them on the video plane as with
+  the ring, paced by the flip (`OUT_FENCE_PTR`). `h713-tv ctl source hdmi|client|auto` decides what the panel
+  shows; the design keeps the HDMI sound silent while a client is on the panel (not measured: the HDMI source of the
+  test runs sent no sound), the overlays and the volume keys stay. `docs/tools/h713-warp.md`,
+  section "A Wayland client".
 
 ## What this means for software
 

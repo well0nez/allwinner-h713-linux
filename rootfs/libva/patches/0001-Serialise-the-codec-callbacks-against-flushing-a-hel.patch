@@ -1,0 +1,145 @@
+From b192c91d2305c4e2e5979c1b258c6c2d45f08ac7 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Sat, 3 Oct 2026 00:24:16 -0700
+Subject: [PATCH 1/6] Serialise the codec callbacks against flushing a
+ held-back frame
+
+AV1 holds each frame back by one so its refresh_frame_flags can be
+recovered from the next frame's ref_frame_map, and a read of the held
+surface flushes it. With FFmpeg 7.1 the read (vaGetImage, from the filter
+thread) and the next picture (from the decoder thread) arrive at the same
+time. av1_flush() and av1_submit_pending() then race on the pend_* slot,
+and the reader can find the surface with no CAPTURE buffer yet, read the
+standalone backing instead, and have v4l2r_context_bind_surface() munmap
+it underneath the copy: a SIGSEGV in GetImage on the first frame of every
+clip, or garbage frames when it does not crash.
+
+A per-context mutex around Begin/Render/EndPicture and the flush. Begin is
+included because av1_submit_pending() saves and restores ctx->pic.
+
+Measured on the H713 AV1 core: crash on 5/5 clips before, bit-exact 5/5
+after, 10 repeat runs clean.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/libva-v4l2_request/0001-Serialise-the-codec-callbacks-against-flushing-a-hel.patch (0001-Serialise-the-codec-callbacks-against-flushing-a-hel.patch, commit ae94ce3)
+---
+ src/context.c      | 49 ++++++++++++++++++++++++++++++++--------------
+ src/v4l2_request.h |  4 ++++
+ 2 files changed, 38 insertions(+), 15 deletions(-)
+
+diff --git a/src/context.c b/src/context.c
+index d905a6b..26162ea 100644
+--- a/src/context.c
++++ b/src/context.c
+@@ -574,9 +574,14 @@ void v4l2r_context_release_capture(struct v4l2r_context *ctx, int index)
+ 
+ void v4l2r_flush_surface(struct v4l2r_surface *surface)
+ {
+-	if (surface && surface->ctx && surface->ctx->codec &&
+-	    surface->ctx->codec->flush)
+-		surface->ctx->codec->flush(surface->ctx, surface);
++	struct v4l2r_context *ctx = surface ? surface->ctx : NULL;
++
++	if (!ctx || !ctx->codec || !ctx->codec->flush)
++		return;
++
++	pthread_mutex_lock(&ctx->codec_lock);
++	ctx->codec->flush(ctx, surface);
++	pthread_mutex_unlock(&ctx->codec_lock);
+ }
+ 
+ VAStatus v4l2r_context_bind_surface(struct v4l2r_context *ctx,
+@@ -710,6 +715,7 @@ VAStatus v4l2r_CreateContext(VADriverContextP va_ctx, VAConfigID config_id,
+ 	ctx->video_fd = -1;
+ 	ctx->media_fd = -1;
+ 	pthread_mutex_init(&ctx->mutex, NULL);
++	pthread_mutex_init(&ctx->codec_lock, NULL);
+ 	for (unsigned int i = 0; i < V4L2R_OUTPUT_BUFFERS; i++)
+ 		ctx->output[i].request_fd = -1;
+ 
+@@ -918,6 +924,7 @@ VAStatus v4l2r_DestroyContext(VADriverContextP va_ctx, VAContextID context_id)
+ 		ctx->codec->uninit(ctx);
+ 	free(ctx->codec_priv);
+ 	pthread_mutex_destroy(&ctx->mutex);
++	pthread_mutex_destroy(&ctx->codec_lock);
+ 
+ 	pthread_mutex_lock(&drv->mutex);
+ 	v4l2r_handles_free(&drv->contexts, context_id);
+@@ -949,16 +956,16 @@ VAStatus v4l2r_BeginPicture(VADriverContextP va_ctx, VAContextID context_id,
+ 	if (ctx->vpp)
+ 		return v4l2r_vpp_begin_picture(ctx, surface);
+ 
++	pthread_mutex_lock(&ctx->codec_lock);
+ 	status = v4l2r_picture_begin(ctx, surface);
+-	if (status != VA_STATUS_SUCCESS)
+-		return status;
+-
+-	ctx->in_picture = true;
+-
+-	if (ctx->codec->begin_picture)
+-		return ctx->codec->begin_picture(ctx);
++	if (status == VA_STATUS_SUCCESS) {
++		ctx->in_picture = true;
++		if (ctx->codec->begin_picture)
++			status = ctx->codec->begin_picture(ctx);
++	}
++	pthread_mutex_unlock(&ctx->codec_lock);
+ 
+-	return VA_STATUS_SUCCESS;
++	return status;
+ }
+ 
+ VAStatus v4l2r_RenderPicture(VADriverContextP va_ctx, VAContextID context_id,
+@@ -981,8 +988,13 @@ VAStatus v4l2r_RenderPicture(VADriverContextP va_ctx, VAContextID context_id,
+ 		if (!buffer)
+ 			return VA_STATUS_ERROR_INVALID_BUFFER;
+ 
+-		status = ctx->vpp ? v4l2r_vpp_render_buffer(ctx, buffer) :
+-			 ctx->codec->render_buffer(ctx, buffer);
++		if (ctx->vpp) {
++			status = v4l2r_vpp_render_buffer(ctx, buffer);
++		} else {
++			pthread_mutex_lock(&ctx->codec_lock);
++			status = ctx->codec->render_buffer(ctx, buffer);
++			pthread_mutex_unlock(&ctx->codec_lock);
++		}
+ 		if (status != VA_STATUS_SUCCESS)
+ 			return status;
+ 	}
+@@ -1002,12 +1014,19 @@ VAStatus v4l2r_EndPicture(VADriverContextP va_ctx, VAContextID context_id)
+ 	if (!ctx->in_picture)
+ 		return VA_STATUS_ERROR_OPERATION_FAILED;
+ 
+-	status = ctx->vpp ? v4l2r_vpp_end_picture(ctx) :
+-		 ctx->codec->end_picture(ctx);
++	if (ctx->vpp) {
++		status = v4l2r_vpp_end_picture(ctx);
++	} else {
++		pthread_mutex_lock(&ctx->codec_lock);
++		status = ctx->codec->end_picture(ctx);
++	}
+ 
+ 	ctx->in_picture = false;
+ 	ctx->pic.output = NULL;
+ 	ctx->pic.target = NULL;
+ 
++	if (!ctx->vpp)
++		pthread_mutex_unlock(&ctx->codec_lock);
++
+ 	return status;
+ }
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index 80ca83e..35a1877 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -296,6 +296,10 @@ struct v4l2r_context {
+ 	uint64_t submitted;
+ 	uint64_t completed;
+ 	pthread_mutex_t mutex;
++	/* Serialises the codec callbacks against v4l2r_flush_surface(): a
++	 * client may read a surface on one thread (flushing a held-back frame)
++	 * while another thread is mid-picture on the same context. */
++	pthread_mutex_t codec_lock;
+ 
+ 	struct v4l2r_capture_buffer captures[V4L2R_MAX_CAPTURE_BUFFERS];
+ 	unsigned int nb_captures;

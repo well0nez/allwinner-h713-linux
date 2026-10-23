@@ -29,6 +29,7 @@
 #include "warp.h"
 
 #define FAILS_MAX	5	/* consecutive render failures -> bypass (M10) */
+#define FRESH_S		0.010	/* after a pause: a slot handed on this recently is drawn as the next one would be */
 #define FPS_WINDOW	100	/* the last hundred frames, M11 */
 /*
  * The firmware hands a slot on BEFORE it is written to the end. Measured on
@@ -83,6 +84,58 @@ static void note(struct runtime *r, const char *why)
 {
 	snprintf(r->why, sizeof(r->why), "%s", why);
 }
+
+/* The render node closes when nothing needs it: no claim, and no client buffer imported. The bypass
+ * without a client keeps the shipped behaviour: the node is not even open. */
+void warp_gl_idle(struct runtime *r)
+{
+	/*
+	 * Kept open while the ring is wanted and only h713-tv's leave is missing (no signal, "ctl off", h713-tv away): the
+	 * next claim then costs the capture and the claim, not the EGL start - "ctl auto" to the first frame took 0.28 s
+	 * with the start (HY310, 17.10.2026), the straight ring waiting for it. Nothing is drawn meanwhile; the GPU sleeps.
+	 */
+	if (r->state != WARP_ON && !server_busy(r->srv) && gl_is_open() && !warp_want_ring(r))
+		gl_close();
+}
+
+static void on_common(struct runtime *r)
+{
+	r->state = WARP_ON;
+	r->source.held = -1;
+	r->check.slot = -1;
+	r->fails = 0;
+	r->frames = r->dropped = r->refused = 0;
+	r->f_mark = 0;
+	r->t_mark = r->t_start = now_s();
+	r->why[0] = '\0';
+}
+
+/* The panel for the Wayland client : no capture - the claim needs no signal and the
+ * capture ring stays closed (-11.9 MiB, G-M) - only the render node and h713-tv's three targets. */
+static bool engage_client(struct runtime *r)
+{
+	char why[WARP_WHY];
+
+	if (gl_open(r->render_node, why, sizeof(why)) ||
+	    !peer_claim(&r->peer, SRC_CLIENT, why, sizeof(why)) ||
+	    !gl_targets(&r->peer, why, sizeof(why))) {
+		peer_release(&r->peer);
+		gl_targets_drop();
+		note(r, why);
+		warp_gl_idle(r);
+		return false;
+	}
+	r->src = SRC_CLIENT;
+	on_common(r);
+	gl_edge(r->on ? warp_edge_for(r) : 0);
+	info("warp            on: %s renders the Wayland client %ux%u NV12 onto the video plane%s", gl_renderer(),
+	     r->peer.width, r->peer.height, r->on ? "" : " (warp = off: no keystone)");
+	server_panel(r->srv, r->peer.width, r->peer.height);
+	server_engaged(r->srv, true);
+
+	return true;
+}
+
 bool warp_engage(struct runtime *r)
 {
 	char why[WARP_WHY];
@@ -100,6 +153,15 @@ bool warp_engage(struct runtime *r)
 	 * a second, green on the first frame of each return. A ring the GPU
 	 * refused is not tried again until its geometry changes.
 	 */
+	/*
+	 * h713-tv said "source client" the last time: it refuses a ring claim, so the policy is asked alone first - one
+	 * short line instead of STREAMON, six EXPBUF and STREAMOFF once a second for a refusal.
+	 */
+	if (r->peer.tv_source == TV_CLIENT && (!peer_source(&r->peer) || r->peer.tv_source == TV_CLIENT)) {
+		note(r, r->peer.tv_source == TV_CLIENT ? "h713-tv's source is client: no ring until it changes"
+						       : "h713-tv did not answer \"source\"");
+		return false;
+	}
 	if (r->pattern == PATTERN_NONE) {
 		if (!source_start(&r->source, why, sizeof(why))) {
 			note(r, why);
@@ -113,7 +175,9 @@ bool warp_engage(struct runtime *r)
 	}
 	if (gl_open(r->render_node, why, sizeof(why)) ||
 	    (r->pattern == PATTERN_NONE && !gl_source(&r->source, why, sizeof(why)))) {
-		gl_close();
+		gl_source_drop();
+		if (!server_busy(r->srv))
+			gl_close();
 		if (r->pattern == PATTERN_NONE) {
 			r->refused_w = r->source.width;
 			r->refused_h = r->source.height;
@@ -125,24 +189,23 @@ bool warp_engage(struct runtime *r)
 		note(r, why);
 		return false;
 	}
-	if (!peer_claim(&r->peer, why, sizeof(why)) ||
+	if (!peer_claim(&r->peer, SRC_RING, why, sizeof(why)) ||
 	    !gl_targets(&r->peer, why, sizeof(why))) {
+		if (r->peer.fd >= 0) {		/* claimed, and the GPU did not take h713-tv's buffers */
+			r->gpu_failed = true;
+			warp_want_tell(r);	/* "none" before the release: h713-tv waits for no claim of ours */
+		}
 		peer_release(&r->peer);
+		gl_targets_drop();
 		gl_source_drop();
-		gl_close();
+		warp_gl_idle(r);
 		source_stop(&r->source);
 		note(r, why);
 		return false;
 	}
 	gl_edge(warp_edge_for(r));
-	r->state = WARP_ON;
-	r->source.held = -1;
-	r->check.slot = -1;
-	r->fails = 0;
-	r->frames = r->dropped = r->refused = 0;
-	r->f_mark = 0;
-	r->t_mark = r->t_start = now_s();
-	r->why[0] = '\0';
+	r->src = SRC_RING;
+	on_common(r);
 	info("warp            on: %s renders %ux%u NV12 onto the video plane%s",
 	     gl_renderer(), r->peer.width, r->peer.height,
 	     r->pattern == PATTERN_NONE ? "" : ", test pattern");
@@ -150,16 +213,117 @@ bool warp_engage(struct runtime *r)
 	return true;
 }
 
-void warp_disengage(struct runtime *r, const char *why)
+/* the ring is to be drawn through the GPU: a keystone, a mirrored mount or a test pattern (else h713-tv shows it) */
+static bool ring_wanted(const struct runtime *r)
 {
-	if (r->state == WARP_ON) {
+	int eff[WARP_KEYS];
+
+	warp_effective(&r->conf, eff);
+	return r->on && (r->pattern != PATTERN_NONE || !warp_identity(eff) ||
+			 r->conf.mode != MODE_FRONT);	/* a mirrored identity needs the GPU */
+}
+
+/*
+ * The word for h713-tv on the want link (P3 of the media side project): the ring will be claimed as soon as h713-tv lets
+ * it - so h713-tv keeps the straight ring off the video plane and waits for the claim (at most a second). Not when the
+ * ring is not wanted (the identity, "warp = off": h713-tv's own ring is the picture), when the GPU refused this ring's
+ * geometry (until the source changes), or when the GPU failed the last claim (until a frame is drawn again): then the
+ * straight ring is the picture, at once.
+ */
+bool warp_want_ring(const struct runtime *r)
+{
+	bool refused = r->refused_w && r->source.width == r->refused_w && r->source.height == r->refused_h &&
+		       r->source.pitch == r->refused_pitch && r->pattern == PATTERN_NONE;
+
+	return ring_wanted(r) && !r->gpu_failed && !refused;
+}
+
+void warp_want_tell(struct runtime *r)
+{
+	peer_want(&r->peer, warp_want_ring(r), r->on);
+}
+
+/*
+ * From the ring to the client, and back, on the claim that stands ("warp switch", h713-tv of 16.10.2026): the same
+ * three buffers, the video plane up all the time, the wall going from the last frame of the one to the first of
+ * the other. Giving the claim back and claiming again put the unwarped ring on the plane for a moment and switched
+ * the plane off for the new claim - a flash at every change between HDMI and a client. False when it did not
+ * happen: the claim is then as it was, and the caller gives it back and claims again, as before.
+ */
+static bool switch_to_client(struct runtime *r)
+{
+	char why[WARP_WHY];
+
+	if (!peer_switch(&r->peer, SRC_CLIENT, why, sizeof(why))) {
+		warn("warp            no switch to the client on the ring's buffers: %s", why);
+		return false;
+	}
+	gl_source_drop();
+	source_stop(&r->source);
+	r->src = SRC_CLIENT;
+	on_common(r);
+	gl_edge(r->on ? warp_edge_for(r) : 0);
+	info("warp            on: the Wayland client takes over the ring's buffers -- %s renders it %ux%u NV12 onto the video plane%s%s",
+	     gl_renderer(), r->peer.width, r->peer.height, r->on ? "" : " (warp = off: no keystone)",
+	     server_shown(r->srv) ? "" : "; no picture of it yet, the panel keeps the ring's last frame");
+	server_panel(r->srv, r->peer.width, r->peer.height);
+	server_engaged(r->srv, true);
+
+	return true;
+}
+
+static bool switch_to_ring(struct runtime *r)
+{
+	char why[WARP_WHY];
+
+	if (r->pattern == PATTERN_NONE) {
+		if (!source_start(&r->source, why, sizeof(why))) {
+			warn("warp            no switch to the ring: %s", why);
+			return false;
+		}
+		if ((r->source.width == r->refused_w && r->source.height == r->refused_h &&
+		     r->source.pitch == r->refused_pitch) || !gl_source(&r->source, why, sizeof(why))) {
+			gl_source_drop();
+			source_stop(&r->source);
+			warn("warp            no switch to the ring %ux%u: %s", r->source.width, r->source.height,
+			     why[0] ? why : "the GPU refused this geometry before");
+			return false;
+		}
+	}
+	server_engaged(r->srv, false);	/* nothing more of the client is presented; it pauses */
+	if (!peer_switch(&r->peer, SRC_RING, why, sizeof(why))) {
+		warn("warp            no switch to the ring on the client's buffers: %s", why);
 		gl_source_drop();
 		source_stop(&r->source);
+		return false;
+	}
+	r->src = SRC_RING;
+	on_common(r);
+	gl_edge(warp_edge_for(r));
+	info("warp            on: the ring takes over the client's buffers -- %s renders %ux%u NV12 onto the video plane%s",
+	     gl_renderer(), r->peer.width, r->peer.height, r->pattern == PATTERN_NONE ? "" : ", test pattern");
+
+	return true;
+}
+
+void warp_disengage(struct runtime *r, const char *why)
+{
+	bool was = r->state == WARP_ON;
+
+	if (was) {
+		if (r->src == SRC_CLIENT)
+			server_engaged(r->srv, false);
+		gl_source_drop();
+		source_stop(&r->source);
+		gl_targets_drop();
 		peer_release(&r->peer);
-		gl_close();
-		info("warp            off: %s", why);
 	}
 	r->state = r->on ? WARP_BYPASS : WARP_OFF;
+	r->cover = r->resume = false;	/* the claim is gone, and with it the page's word about it (peer_release) */
+	if (was) {
+		warp_gl_idle(r);
+		info("warp            off: %s", why);
+	}
 	note(r, why);
 }
 
@@ -179,20 +343,70 @@ int warp_edge_for(struct runtime *r)
 
 void warp_apply(struct runtime *r)
 {
-	int eff[WARP_KEYS];
-	bool want;
+	bool want = ring_wanted(r), client = server_shown(r->srv);
 
-	warp_effective(&r->conf, eff);
-	want = r->on && (r->pattern != PATTERN_NONE || !warp_identity(eff) ||
-			 r->conf.mode != MODE_FRONT);	/* a mirrored identity needs the GPU */
+	/*
+	 * A Wayland client is drawn whenever it is shown and h713-tv lets it: always through the GPU, even
+	 * at the identity (there is no other way onto the panel for it). A keystone or pattern change only asks
+	 * for the picture again. A ring claim gives way to a client by itself only under "source auto"; under "hdmi"
+	 * h713-tv would refuse the client, and every switch would blink the wall.
+	 */
+	/* h713-tv no longer allows the client ("note source hdmi"): the ring on the same buffers, or the panel back */
+	if (r->state == WARP_ON && r->src == SRC_CLIENT && r->peer.tv_source == TV_HDMI) {
+		if (want && switch_to_ring(r))
+			return;
+		warp_disengage(r, "h713-tv's source is hdmi: the client's claim is given back");
+	}
+	if (r->state == WARP_ON && r->src == SRC_CLIENT) {
+		gl_edge(r->on ? warp_edge_for(r) : 0);
+		server_redraw(r->srv);
+		/* "auto" over a claim that holds a picture and has no client shown: the ring in two seconds, as after a
+		 * client that went (a program that said it starts and never came, then "source auto") */
+		if (!client && r->peer.tv_source == TV_AUTO)
+			server_recheck(r->srv, now_s() + 2.0);
+		return;
+	}
+	/*
+	 * A client is shown while the ring stands and h713-tv's last word was "hdmi": ask it. A policy change
+	 * reaches the warp with the "ok" of the next ring frame, or at once as a note - and a ring that stalls sends no
+	 * frame (HY310, 15.10.2026 after a standby: the ring claimed, 0 frames, Kodi waited five minutes behind it).
+	 * main.c asks again once a second.
+	 */
+	if (r->state == WARP_ON && r->src == SRC_RING && client && r->peer.tv_source != TV_AUTO &&
+	    r->peer.tv_source != TV_CLIENT)
+		peer_source(&r->peer);
+	if (r->state == WARP_ON && r->src == SRC_RING && client &&
+	    (r->peer.tv_source == TV_AUTO || r->peer.tv_source == TV_CLIENT)) {
+		if (switch_to_client(r))
+			return;
+		warp_disengage(r, "a Wayland client came, and h713-tv's source puts it before the ring");
+	}
+	/*
+	 * "note source client" - a program is the mode - and no picture of it yet: the ring's claim becomes the client's on
+	 * the same buffers. The ring is drawn no more and the video plane keeps its last frame until the program's first
+	 * picture: HDMI is a mode, not what fills the time a program needs to start (P2b). If the program does not connect
+	 * within PROGRAM_S, warp_client_gone() decides. Only a refused switch gives the claim back (the console until then).
+	 */
+	if (r->state == WARP_ON && r->src == SRC_RING && !client && r->peer.tv_source == TV_CLIENT) {
+		if (switch_to_client(r)) {
+			server_recheck(r->srv, now_s() + PROGRAM_S);
+			return;
+		}
+		warp_disengage(r, "h713-tv's source is client, and the ring's claim could not become the client's");
+	}
+	if (r->state != WARP_ON && client && engage_client(r))
+		return;
 
 	if (!want) {
+		warp_want_tell(r);	/* "none" before the release: h713-tv puts its ring up at once, without waiting */
 		if (r->state == WARP_ON)
 			warp_disengage(r, r->on ? "the identity needs no GPU (bypass)"
 						: "ctl off");
+		warp_gl_idle(r);	/* the render node kept for a ring that is no longer wanted */
 		r->state = r->on ? WARP_BYPASS : WARP_OFF;
-		note(r, r->on ? "the identity needs no GPU: h713-tv is on the ring (M10)"
-			      : "ctl off");
+		if (!client)	/* else the reason stays the client's: h713-tv's refusal */
+			note(r, r->on ? "the identity needs no GPU: h713-tv is on the ring (M10)"
+				      : "ctl off");
 		return;
 	}
 	if (r->state != WARP_ON)
@@ -258,6 +472,8 @@ bool warp_pump(struct runtime *r)
 
 	if (r->state != WARP_ON)
 		return false;
+	if (warp_paused(r))
+		return true;		/* a page hides the panel: nothing is drawn (the test pattern's heartbeat) */
 	gl_timing(tracing);
 	if (r->pattern == PATTERN_NONE) {
 		if (source_geometry_changed(&r->source) && !source_rebuilt(r))
@@ -265,6 +481,31 @@ bool warp_pump(struct runtime *r)
 		double prev_dq = r->source.dq_s;
 
 		fresh = source_dequeue(&r->source, why, sizeof(why));
+		/*
+		 * The first dequeue after a pause: the capture was not asked while the page stood, so every slot came back
+		 * done long ago, and the firmware has written each many times since - an old slot may be under its pen
+		 * right now. They all go back; the newest is drawn only when it was handed on a moment ago, else the next
+		 * hand-on is waited for (a vsync at most).
+		 */
+		if (r->resume) {
+			int k;
+
+			r->resume = false;
+			if (r->source.held >= 0) {
+				source_queue(&r->source, r->source.held);
+				r->source.held = -1;
+			}
+			while (fresh >= 0 && (k = source_dequeue(&r->source, why, sizeof(why))) >= 0) {
+				source_queue(&r->source, fresh);
+				fresh = k;
+			}
+			if (fresh >= 0 && (r->hold || now_s() - r->source.slot_s[fresh] > FRESH_S)) {
+				source_queue(&r->source, fresh);
+				fresh = -1;
+				why[0] = '\0';
+			}
+			prev_dq = 0;		/* no gap to measure across the pause */
+		}
 		if (fresh < 0) {
 			if (why[0])
 				warn("capture         %s", why);
@@ -342,6 +583,8 @@ bool warp_pump(struct runtime *r)
 		if (r->pattern == PATTERN_NONE)
 			source_queue(&r->source, slot);
 		if (++r->fails >= FAILS_MAX) {
+			r->gpu_failed = true;
+			warp_want_tell(r);	/* "none" before the release */
 			warp_disengage(r, why);
 			return false;
 		}
@@ -355,8 +598,12 @@ bool warp_pump(struct runtime *r)
 	t1 = now_s();
 	if (tracing)
 		c3 = thread_us();
-	rc = peer_frame(&r->peer, target, fence, why, sizeof(why));
+	int flip;
+
+	rc = peer_frame(&r->peer, target, fence, &flip, why, sizeof(why));
 	t2 = now_s();
+	if (flip >= 0)
+		close(flip);	/* a client claim's flip fence: a test pattern does not need it */
 	if (tracing) {
 		const struct gl_cost *g = gl_last_cost();
 		double gpu_ms = -1;
@@ -393,6 +640,7 @@ bool warp_pump(struct runtime *r)
 		r->dropped++;
 	else
 		r->target = (r->target + 1) % WARP_TARGETS;
+	r->gpu_failed = false;		/* a frame was drawn: the ring can be promised to h713-tv again */
 	/* only now: h713-tv has the frame, so the slot may be overwritten */
 	if (r->pattern == PATTERN_NONE) {
 		if (r->check.want > 0 && r->check.slot < 0 && r->frames % 3 == 0) {
@@ -413,8 +661,192 @@ bool warp_pump(struct runtime *r)
 	}
 	account(r, t0);
 	r->check.last_pump = now_s();
+	/* "source auto" came while the ring stood (h713-tv said it with this frame): a client that waits goes first */
+	if (r->peer.tv_source == TV_AUTO && server_shown(r->srv)) {
+		warp_apply(r);
+		return r->state == WARP_ON;
+	}
 
 	return true;
+}
+
+bool warp_client_live(const struct runtime *r)
+{
+	return r->state == WARP_ON && r->src == SRC_CLIENT;
+}
+
+/*
+ * The client's quad: the keystone as for the ring (with "warp = off" none), and a picture smaller
+ * than the panel in the middle at its own size (letterbox) - the unit quad scaled first, so K * S.
+ */
+static void client_matrix(const struct runtime *r, const struct gl_image *im, float out[16])
+{
+	static const double id[16] = { 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1, 0, 0, 0, 0, 1 };
+	const double *k = r->on && r->matrix_valid ? r->m : id;
+	double sx = (double)gl_image_width(im) / r->peer.width, sy = (double)gl_image_height(im) / r->peer.height;
+	int i;
+
+	sx = sx > 1 ? 1 : sx;
+	sy = sy > 1 ? 1 : sy;
+	for (i = 0; i < 16; i++)	/* column-major: S scales the first two columns */
+		out[i] = (float)(k[i] * (i < 4 ? sx : i < 8 ? sy : 1.0));
+}
+
+/* after h713-tv's answer: the target moves on a commit, stays on a busy; a broken link ends the claim */
+static int client_answer(struct runtime *r, int rc, double t0, const char *why)
+{
+	if (rc < 0) {
+		warp_disengage(r, why);
+		return -1;
+	}
+	if (rc == 0) {
+		r->target = (r->target + 1) % WARP_TARGETS;
+		r->gpu_failed = false;
+		account(r, t0);
+	} else {
+		r->dropped++;
+	}
+	return rc;
+}
+
+/* One client frame (wayland.c takes the buffer): draw, the render fence to h713-tv and a dup of it back to the
+ * server - the buffer is released when it signals - and h713-tv's flip fence, the client's clock. */
+int warp_client_frame(struct runtime *r, const struct gl_image *im, int *render, int *flip)
+{
+	char why[WARP_WHY];
+	double t0 = now_s();
+	float m[16];
+	int fence, rc;
+
+	*render = *flip = -1;
+	if (!warp_client_live(r))
+		return -1;
+	client_matrix(r, im, m);
+	if (!gl_draw_client(r->target, im, m, why, sizeof(why))) {
+		if (++r->fails >= FAILS_MAX) {
+			r->gpu_failed = true;	/* the ring would fail the same way: no ring claim promised to h713-tv */
+			warp_disengage(r, why);
+			return -1;
+		}
+		warn("warp            %s (%u of %d)", why, r->fails, FAILS_MAX);
+		return 2;
+	}
+	r->fails = 0;
+	fence = gl_fence();
+	*render = fence >= 0 ? dup(fence) : -1;
+	rc = peer_frame(&r->peer, r->target, fence, flip, why, sizeof(why));
+	if (fence >= 0)
+		close(fence);
+	return client_answer(r, rc, t0, why);
+}
+
+/* after "ok busy": the same target, drawn already, once more; render is the frame's render fence or -1 */
+int warp_client_resend(struct runtime *r, int render, int *flip)
+{
+	char why[WARP_WHY];
+	int rc;
+
+	*flip = -1;
+	if (!warp_client_live(r)) {
+		if (render >= 0)
+			close(render);
+		return -1;
+	}
+	rc = peer_frame(&r->peer, r->target, render, flip, why, sizeof(why));
+	if (render >= 0)
+		close(render);
+	return client_answer(r, rc, now_s(), why);
+}
+
+void warp_client_shown(struct runtime *r)
+{
+	if (r->state != WARP_ON || r->src != SRC_CLIENT)
+		warp_apply(r);
+}
+
+/*
+ * The client's toplevel is gone for good (two seconds without a new one, wayland.c), or a program was waited for.
+ * Under "source client" a program is the mode: while one runs (its connection stands) or has said that it starts
+ * (h713-tv's "note source client" after the last connection came) the claim stays and the video plane keeps the last
+ * picture - between two programs, while one builds its window anew - and nothing is drawn until the next picture
+ * (P2b). Once neither is so, the program has ended: h713-tv's source goes back to "auto", HDMI is the mode again.
+ * Then, and under "auto", the ring's warp takes over the buffers if it is wanted; otherwise the panel goes back and
+ * h713-tv shows what "source" says.
+ */
+void warp_client_gone(struct runtime *r)
+{
+	if (warp_client_live(r) && r->peer.tv_source == TV_CLIENT &&
+	    server_program(r->srv, r->peer.client_said)) {
+		double left = r->peer.client_said + PROGRAM_S - now_s();
+
+		/* a program said it starts and has not connected yet: asked again when it is overdue (with one, the
+		 * last connection's close asks again) */
+		if (left > 0)
+			server_recheck(r->srv, now_s() + left);
+		warp_gl_idle(r);
+		return;
+	}
+	if (warp_client_live(r) && r->peer.tv_source == TV_CLIENT) {
+		info("warp            the program has ended (no connection, none said that it starts): h713-tv's source goes back to auto");
+		peer_set_source(&r->peer, "auto");
+	}
+	if (warp_client_live(r) &&
+	    !(ring_wanted(r) && r->peer.tv_source != TV_CLIENT && switch_to_ring(r))) {
+		warp_disengage(r, "the Wayland client is gone");
+		warp_apply(r);
+	}
+	warp_gl_idle(r);
+}
+
+/* paused: a page hides the panel. h713-tv switches the video plane off under it (nothing of HDMI behind a page, 17.10.2026),
+ * so nothing is drawn at all - also not for a claim made under the page: the first frame comes at the page's end */
+bool warp_paused(const struct runtime *r)
+{
+	return r->state == WARP_ON && r->peer.cover;
+}
+
+/*
+ * h713-tv said "note cover on|off" (main.c sees peer.cover change). On: nothing more is drawn - the ring's capture is
+ * not asked (main.c), a client's pictures are taken and held, not drawn (wayland.c) - and the slots this daemon holds
+ * go back. Off: the next frame is drawn at once - a fresh slot of the ring, the newest picture of the client, or the
+ * client's buffer on the panel once more - and h713-tv lays the end of the page on that frame.
+ */
+void warp_cover(struct runtime *r)
+{
+	r->cover = r->peer.cover;
+	if (r->state != WARP_ON)
+		return;
+	if (r->cover) {
+		if (r->src == SRC_RING && r->source.held >= 0) {
+			source_queue(&r->source, r->source.held);
+			r->source.held = -1;
+		}
+		r->paused_at = now_s();
+		info("warp            paused: an opaque page hides the panel -- nothing is drawn (h713-tv switches the video plane off)");
+		return;
+	}
+	info("warp            on again: the page is gone after %.1f s -- the next frame is drawn now",
+	     r->paused_at > 0 ? now_s() - r->paused_at : 0.0);
+	r->paused_at = 0;
+	if (r->src == SRC_RING)
+		r->resume = r->pattern == PATTERN_NONE;
+	else
+		server_resume(r->srv, r->peer.commits > 0);
+}
+
+/* the client's buffer on the panel committed once more, nothing drawn: the end of a page rides on it */
+int warp_client_repeat(struct runtime *r, int *flip)
+{
+	char why[WARP_WHY];
+	int rc;
+
+	*flip = -1;
+	if (!warp_client_live(r) || !r->peer.commits)
+		return -1;
+	rc = peer_frame(&r->peer, (r->target + WARP_TARGETS - 1) % WARP_TARGETS, -1, flip, why, sizeof(why));
+	if (rc < 0)
+		warp_disengage(r, why);
+	return rc;
 }
 
 /* The self-check's second half, from the main loop once the 12 ms are over:
@@ -522,13 +954,24 @@ void warp_status(struct runtime *r, char *buf, size_t n)
 			 r->peer.width, r->peer.height, r->peer.pitch, r->peer.path);
 	else
 		text_add(&t, "panel           nothing claimed (%s)\n", r->peer.path);
+	text_add(&t, "want            %s%s\n", warp_want_ring(r) ? "ring (the ring is claimed when h713-tv lets it)" :
+		 r->gpu_failed ? "none (the GPU failed the last claim)" : "none",
+		 r->peer.want_refused ? " -- h713-tv does not take \"warp want\"" :
+		 r->peer.want_fd < 0 ? " -- not said: no link to h713-tv" :
+		 r->peer.want_said == (int)warp_want_ring(r) ? ", said to h713-tv" : ", not said yet");
 	text_add(&t, "renderer        %s\n", gl_renderer());
+	if (r->state == WARP_ON)
+		text_add(&t, "drawing         %s\n", r->src == SRC_CLIENT ? "the Wayland client" : "the capture ring");
+	server_status(r->srv, &t);
 	text_add(&t, "frames          %lu at %.1f fps, dropped %lu, commits %lu, busy %lu, link errors %lu\n",
 		 r->frames, r->fps, r->dropped, r->peer.commits, r->peer.busy,
 		 r->peer.errors);
 	text_add(&t, "timing          last frame %.1f ms, worst %.1f ms (DQBUF to the answer), capture timeouts %lu, drawn one vsync late %lu, stale slots skipped %lu\n",
 		 r->frame_ms, r->frame_ms_max, r->source.timeouts, r->source.settled, r->source.stale);
 	text_add(&t, "hold            %s (a slot is drawn one vsync late)\n", r->hold ? "on" : "off");
+	if (warp_paused(r))
+		text_add(&t, "pause           an opaque page hides the panel: nothing is drawn, the video plane is off (%.1f s)\n",
+			 now_s() - r->paused_at);
 	if (r->check.frames || r->check.want)
 		text_add(&t, "check           %lu frames%s, %lu with differing rows (rows %d..%d, at most %lu of 32 sampled in one frame), %lu late samples skipped\n",
 			 r->check.frames, r->check.want ? ", running" : "", r->check.differing,

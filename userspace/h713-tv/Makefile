@@ -9,6 +9,8 @@
 #   make install         install the NATIVE binary (on the board)
 #   make install-cross   install the CROSS-built binary (from the
 #                        workstation, with DESTDIR=/srv/h713-rootfs)
+#   make test            the host test of the want link (tests/, SYSROOT=
+#                        a board root, for the libdrm and ALSA headers)
 #   make clean
 #
 # The kernel is built through build/build.sh in the container and nowhere
@@ -41,10 +43,21 @@ SYSROOT   ?= /srv/h713-rootfs
 TARGET    ?= aarch64-linux-gnu
 CROSS_CC  ?= clang
 
+# main.c is the program; color.c is the display firmware's white balance and colour management (interface: color.h);
+# gamma.c is its gamma curve and colour temperature (interface: gamma.h)
+
+# gamma.c repeats the vendor library's floating point arithmetic operation by operation: no multiplication and addition
+# may be rounded together (a fused multiply-add on arm64 changes the last bit). The flag comes after CFLAGS and so beats
+# whatever was given there; gamma_arith_ok() looks at the result at run time and refuses the control if it was fused.
+GAMMA_FP  = -ffp-contract=off
+
 all: h713-tv
 
-h713-tv: main.c
-	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ $< $(LDLIBS)
+h713-tv: main.c color.c gamma.o color.h gamma.h
+	$(CC) $(CPPFLAGS) $(CFLAGS) $(LDFLAGS) -o $@ main.c color.c gamma.o $(LDLIBS) -lm
+
+gamma.o: gamma.c gamma.h color.h
+	$(CC) $(CFLAGS) $(GAMMA_FP) -c -o $@ gamma.c
 
 cross: h713-tv.$(TARGET)
 
@@ -53,10 +66,14 @@ cross: h713-tv.$(TARGET)
 # clones of the same commit give two different binaries (E1 of v0.96-beta).
 REPRO_CFLAGS = -ffile-prefix-map=$(abspath .)=. -ffile-prefix-map=$(abspath $(SYSROOT))=/sysroot
 
-h713-tv.$(TARGET): main.c
+h713-tv.$(TARGET): main.c color.c gamma.$(TARGET).o color.h gamma.h
 	$(CROSS_CC) --target=$(TARGET) --sysroot=$(SYSROOT) -fuse-ld=lld \
 	    $(CFLAGS) $(REPRO_CFLAGS) $(LDFLAGS) -isystem $(SYSROOT)/usr/include/libdrm \
-	    -L$(SYSROOT)/usr/lib/$(TARGET) -o $@ $< -ldrm -lasound
+	    -L$(SYSROOT)/usr/lib/$(TARGET) -o $@ main.c color.c gamma.$(TARGET).o -ldrm -lasound -lm
+
+gamma.$(TARGET).o: gamma.c gamma.h color.h
+	$(CROSS_CC) --target=$(TARGET) --sysroot=$(SYSROOT) \
+	    $(CFLAGS) $(GAMMA_FP) $(REPRO_CFLAGS) -c -o $@ gamma.c
 
 install: h713-tv
 	install -D -m 0755 h713-tv $(DESTDIR)$(SBINDIR)/h713-tv
@@ -76,7 +93,12 @@ install-data:
 	install -D -m 0644 README.md $(DESTDIR)$(DOCDIR)/README.md
 	install -D -m 0644 gamma-standard.bin $(DESTDIR)$(DATADIR)/gamma-standard.bin
 
-clean:
-	rm -f h713-tv h713-tv.$(TARGET)
+# the host test of the want link and the straight ring's wait (tests/Makefile): needs only the board root's headers
+test:
+	$(MAKE) -C tests run SYSROOT=$(SYSROOT)
 
-.PHONY: all cross install install-cross install-data clean
+clean:
+	rm -f h713-tv h713-tv.$(TARGET) gamma.o gamma.$(TARGET).o
+	$(MAKE) -C tests clean
+
+.PHONY: all cross install install-cross install-data test clean

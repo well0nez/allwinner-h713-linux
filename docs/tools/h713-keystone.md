@@ -46,7 +46,7 @@ default. A reference taken under one sign is refused under the other (`h713-keys
 *next* sample and `st_accel` starts the SC7A20 at 1 Hz, so one reading would cost three seconds: the tool writes
 `sampling_rate` into `sampling_frequency` at the start (offered: 1, 10, 25, 50, 100, 200, 400, 1600). One raw triple at
 rest spreads 77/102/85 LSB peak to peak, five degrees of nothing; ten averaged triples spread 16/12/11, about one
-degree. A reading therefore costs about 0.3 s at 100 Hz and the loop runs at roughly three readings a second, not ten -
+degree. A reading through sysfs therefore costs about 0.3 s at 100 Hz (*superseded 19.10.2026: measured on the HY310 it is 0.7 s with nothing else reading and 1.4 s while the watch unit reads too; the IIO buffer below brings it to 0.14 s*) and the loop of `run` runs at roughly three readings a second, not ten -
 and the threshold is sized from that averaged degree, not from AP2h 4a's 0.1146 degree ADC digit or the vendor's 0.3
 degree dead band, which would fire on noise. `hysteresis_degrees = 1.0` held for `hold_seconds = 1.0`, on *either* angle
 - the vendor leaves GsY without any. The first reading of a run is applied at once: a projector that waits before it
@@ -58,6 +58,50 @@ section 5) and `throw_ratio = ini` uses those `camprjspe.ini` constants untouche
 The default is the word `ini`, not `0.82`: that is a rounding of 0.8176, and writing it back would move the vendor
 optics by 0.3 % for nothing.
 
+## Reading the sensor: the IIO buffer
+
+`st_accel` switches the SC7A20 on for every sysfs value, waits for it to boot (`bootime` sample periods) and switches it off
+again. Measured on the HY310 on 19.10.2026: about 24 ms a value when nothing else reads (on the new kernel, with the sysfs path that is now the fall back), so 0.72 s for the thirty values of one
+averaged reading; the watch unit read the sensor all the time and the two serialised on the driver, so every other reading took
+1.4 s, `h713-keystone read` 1.8 s and `once --apply` 1.9 s. The settings page's "Turn to wall" followed the keys 2 to 4 s late.
+
+Since 19.10.2026 a reading is one burst through the IIO buffer. The kernel needs `CONFIG_IIO_BUFFER`, `CONFIG_IIO_SW_TRIGGER` and
+`CONFIG_IIO_HRTIMER_TRIGGER` (all three in the board defconfig; the sensor has no interrupt line in the device tree, so a timer
+trigger clocks the buffer). The tool makes the trigger `h713-keystone` through configfs the first time
+(`/sys/kernel/config/iio/triggers/hrtimer/h713-keystone`; systemd mounts configfs, the tool mounts it if nobody did) and sets its rate
+to `sampling_rate`. A burst then
+
+1. opens `/dev/iio:deviceN` first: the kernel lets one process have it, so a second reader (the unit and the settings page) waits for the
+   burst of the first, 3 s at most, instead of disturbing its switches;
+2. clears a `buffer/enable` that a killed run left on, selects the trigger, enables the three channels, sets the buffer length;
+3. enables the buffer, reads `average_samples` plus 3 scans (the format comes from `scan_elements/*_type`, `le:s12/16>>4` here;
+   the first 3 are thrown away, because the driver itself waits two sample periods after the switch-on), and disables the buffer.
+
+So the sensor is on only while it is read: 0.14 s for ten triples at 100 Hz, and `watch` takes a burst, then pauses 0.5 s. Without a
+buffer (a kernel without `CONFIG_IIO_BUFFER`, no node in `/dev`, no timer trigger) or when a burst fails, the reading goes through
+sysfs as before and the journal says why, once per cause (`warning: no IIO buffer (...) - reading through sysfs, about 2.0 s a reading`;
+`-q` keeps it quiet); the buffer is tried again at the next reading. The start line of `watch` says which way the readings go and what
+they cost (`a reading every ~0.66 s through the IIO buffer`). While a burst has the buffer on, the kernel refuses sysfs reads of
+`in_accel_*_raw` (`Device or resource busy`): anything that reads them by hand has to stop `h713-keystone-auto.service` first.
+
+Measured on the HY310 on 19.10.2026 (one warm start after the deploy, the unit running all the time as in use):
+
+| | sysfs, before | IIO buffer, after |
+|---|---|---|
+| the 10 triples of one reading (in the process, median of 12) | 1.43 s | 0.14 s |
+| `h713-keystone read`, whole call (median of 12) | 1.83 s | 0.51 s |
+| `h713-keystone once --apply`, whole call (median of 12) | 1.94 s | 0.74 s |
+| twelve presses of Right through the settings page, 0.12 s apart: the last corners are written | 4.0 s after the first press (2 runs) | 2.3 s after the first press (3 runs) |
+| the unit `h713-keystone-auto` (60 s) | 2.3 % of a core (0.1 s pause) | 1.2 % of a core (0.5 s pause) |
+| all four cores, not idle (60 s) / load average (the whole box, 8.5 h after a boot against 11 min after one) | 4.1 % / 2.0 | 0.6 % / 0.2 |
+
+The rest of `once --apply` is the start of Python, the model's search for the rectangle and the eight `h713-warp` calls. The averages
+of ten contiguous triples scatter a little more than those of ten sysfs triples taken over 0.7 s (30 averages, alternating, standard
+deviation 5.7/4.3/8.0 LSB against 4.9/4.4/4.0; single triples scatter alike, 14 to 17 LSB, and no two consecutive triples were equal);
+twenty triples (0.24 s) give 4.6/3.3/5.9, which `average_samples = 20` would use. Not measured: the current the sensor and the CPU
+draw (only the CPU shares above), whether the first triples after a switch-on are stale after a pose change (at rest they are
+indistinguishable from the later ones in 80 cold starts, which cannot show it), and the HY300PRO-G-EU.
+
 ## The configuration: `/etc/h713/keystone.conf`
 
 ```
@@ -68,6 +112,7 @@ axis_roll          = -x        # the roll (GsX), and the vertical one
 axis_vertical      = +z
 throw_ratio        = ini       # ini = camprjspe.ini (0.8176), or a measured number
 zoom_scale         = 0         # 0/1/2 -> target width 1920/1728/1440 (16:9, 16:10, 4:3)
+turn_to_wall       = 0         # degrees, -30..30: + when the RIGHT side of the picture is the higher one (the settings page writes it)
 sampling_rate      = 100       # Hz written into sampling_frequency at the start
 average_samples    = 10        # raw triples averaged per reading
 hysteresis_degrees = 1.0       # a change this big applies ...
@@ -114,10 +159,14 @@ it back when it stops, so switching the automatic off leaves the picture as the 
 tolerantly (`tl_x = 12`, `tl x 12`, `tl-x: 12`), the daemon being written in parallel; one without all eight values
 counts as no answer.
 
-`python3 -m unittest discover -s tests -v` from `userspace/h713-keystone/` runs 176 tests: the 87 that came with the
-models, unchanged, and 89 for this tool - the IIO reader against a fake sysfs directory, the reference file and the
+`python3 -m unittest discover -s tests -v` from `userspace/h713-keystone/` runs 227 tests: the 87 that came with the
+models, unchanged, and 140 for this tool (29 of them for the turn to the wall, below, and 22 for the IIO buffer, with a fake kernel: a directory with the buffer's files and a FIFO for the node) - the IIO reader against a fake sysfs directory, the reference file and the
 ideal, the hysteresis, the poses table above, the configuration parser, the h713-warp verbs against a recorder. `run
 --dry-run` does the whole loop on the real node and only prints.
+
+## The turn to the wall
+
+An accelerometer sees how the projector is tilted and rolled, not how far it stands turned to the side of the wall; the vendor takes that from its camera, which this firmware path does not use. `turn_to_wall` in `keystone.conf` is that number, set by hand: degrees from -30 to 30, positive when the RIGHT side of the picture is the higher (the farther) one and negative for the left, as the viewer sees it; the settings page's "Turn to wall" writes it. It goes into the vendor's chain as `du_r` together with the tilt, in `once`, `watch` and `run`, and nothing in the tool ever changes it, so it stays after a move until it is changed; the unit reads the key again at every apply, so a value set while it runs counts at the next move. The sign of `du_r` depends on the mount - minus the turn for front and rear-ceiling, plus for rear and ceiling, where the viewer's right is the panel's left - and `MODE_PERM` then carries the pulled-in corners to the viewer's side; `tests/test_turn.py` settles both against a ray model of the wall in which a corrected picture is right only if its four corners are a rectangle on the wall (12 degrees to the right, level, front mount: 214 px across and 110 px at top and bottom on the right edge, 25 px and 1 px on the left, the mirror image for the left; with a tilt as well, and in all four mounts). The value is applied whenever the automatic runs: `once --apply` (which the page runs at every change) and `watch` after a move; with `after_move = off` nothing runs on a move, so the value waits for the next `once --apply`. Every application replaces the eight corners, those set by hand included, and a result line ends in `wall turn +12 degrees` while a turn is set. Measured on the HY310 on 19.10.2026: `once --apply` took 1.9 s, of which the reading of the sensor was 1.8 s (not the 0.3 s given above), with a turn as without; the settings page therefore never runs two at once, and the run that follows a press takes the last value. *Superseded the same day by the IIO buffer (above): `once --apply` takes 0.74 s and the last corners of twelve presses are written 2.3 s after the first.* Not measured: the mounts other than front on a projector (the ray model only), whether a step of one degree is what the eye wants (one degree is about 2 % of height between the two sides), and the HY300PRO-G-EU.
 
 ## Limits, honestly
 

@@ -94,6 +94,12 @@ def _parser() -> argparse.ArgumentParser:
                    help="gamma level 1.8..2.4; with --source tse the default "
                         "is 2.2, the vendor's neutral factor (raw curve)")
     g.add_argument("--lut", metavar="FILE", type=Path, default=None)
+    g.add_argument("--export-slots", metavar="FILE", type=Path, default=None,
+                   dest="export_slots",
+                   help="write the board's raw curves, one per colour "
+                        "temperature the TSE has, for h713-tv, which computes "
+                        "the gamma level and the colour temperature from them "
+                        "itself; takes --tse and --project, nothing else")
     g.add_argument("--channel", choices=CHANNELS, dest="channel",
                    default="r")
     g.add_argument("--kanal", choices=CHANNELS, dest="channel",
@@ -251,6 +257,22 @@ def main(argv: list[str] | None = None) -> int:
                 print(f"h713-pq: {e.args[0] if e.args else e}", file=sys.stderr)
                 return 2
         output.print_curves(data, args.value, features, args.group)
+        return 0
+
+    if args.command == "gamma" and args.export_slots is not None:
+        try:
+            project = (int(str(args.tse_project), 0) if args.tse_project is not None
+                       else tse.DEFAULT_PROJECT)
+            states = tse.gamma_states(tse.find_file(args.tse_path, project))
+            curves = tse.slot_curves(states)
+            # the ProjectID the file itself names, the asked-for one when it names none
+            n = output.write_slots(args.export_slots, curves,
+                                   (states[0].project_id if states else 0) or project)
+        except (FileNotFoundError, KeyError, ValueError, OSError) as e:
+            print(f"h713-pq: {e.args[0] if e.args else e}", file=sys.stderr)
+            return 2
+        print(f"  Slots        : {', '.join(tse.SLOT_NAMES[s] for s in sorted(curves))}")
+        print(f"  File         : {args.export_slots} ({n} byte)")
         return 0
 
     if args.command == "gamma":

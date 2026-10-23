@@ -1,0 +1,2 @@
+# /etc/h713/labwc-browser/environment - read by labwc before it starts the session client (variable=value).
+XCURSOR_SIZE=48

@@ -1,0 +1,33 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: map capture buffers bidirectionally
+
+A capture buffer is the decoder's output and, for every later inter frame, a
+reference it reads. vb2 maps an imported dma-buf in its queue's direction,
+DMA_FROM_DEVICE for CAPTURE, and the H713's IOMMU enforces that: the page is
+mapped write-only. With V4L2_MEMORY_DMABUF capture the key frame decodes and
+the first inter frame faults reading it ("Page fault ... master 1, dir rd")
+and times out. MMAP buffers never showed it: dma_alloc maps them read-write.
+
+Set dst_vq->bidirectional, as hantro and rkvdec already do for the same
+reason. Found when the VA driver moved capture to a DMA-BUF heap (libva
+0018); VP9 on cedrus failed at frame 1 while AV1 on hantro passed.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0151-media-cedrus-map-capture-buffers-bidirectionally.patch (0151-media-cedrus-map-capture-buffers-bidirectionally.patch, commit fc15587)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c	2026-10-01 02:33:50.589472779 -0700
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c	2026-10-01 02:33:50.598979041 -0700
+@@ -1128,6 +1128,14 @@
+ 
+ 	dst_vq->type = V4L2_BUF_TYPE_VIDEO_CAPTURE;
+ 	dst_vq->io_modes = VB2_MMAP | VB2_DMABUF;
++	/*
++	 * Capture buffers are read back as reference frames, not only
++	 * written. vb2 maps an imported dma-buf DMA_FROM_DEVICE unless told
++	 * otherwise, and behind the H713's IOMMU that is a write-only page:
++	 * the first inter frame faults on its reference and times out. MMAP
++	 * buffers never showed it because dma_alloc maps them read-write.
++	 */
++	dst_vq->bidirectional = true;
+ 	dst_vq->drv_priv = ctx;
+ 	dst_vq->buf_struct_size = sizeof(struct cedrus_buffer);
+ 	dst_vq->ops = &cedrus_qops;

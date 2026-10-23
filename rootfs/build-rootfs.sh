@@ -27,7 +27,7 @@
 #
 # ============================================================================
 # WHAT THIS SCRIPT DELIBERATELY DOES *NOT* DO -- how it differs from
-# mainline/tools/rootfs/build.sh (cstenger)
+# cstenger's rootfs build (tools/rootfs/build.sh in his repository at 8860991)
 # ============================================================================
 #  * No VIDEO_RUNTIME_PACKAGES. There the GStreamer/Mesa/GTK chain is part of
 #    the base system ("this is a projector"). For us it is the single biggest
@@ -63,11 +63,13 @@ PROJECT_ROOT=$(project_root "$HERE") || { echo "no project root (mainline/build/
 SUITE=trixie
 ARCH=arm64
 MIRROR=http://deb.debian.org/debian
+SECURITY_MIRROR=http://security.debian.org/debian-security   # a profile image bootstraps from it too (see bootstrap_sources)
 OUT_DIR="$HERE/out"
 IMAGE_SIZE=1G
 MAKE_EXT4=1
 DRY_RUN=0
 SKIP_PROJECT=0
+PROFILES=       # --profile: packages-<name>.txt on top of packages.txt (media, desktop); none = the base image
 BOARD=          # --board: boards/<id>/board.env FEATURES -> /etc/h713/features
 VARIANT=        # --variant: boards/<id>/variants/<name>/variant.env over it
 CRUST_BIN=      # --crust: this build's crust image -> /lib/firmware/<board>-crust.bin
@@ -85,6 +87,8 @@ MODROOT="$PROJECT_ROOT/mainline/build/modroot.GUT-bad2f16b"
 H713_TV_SRC="$PROJECT_ROOT/userspace/h713-tv"
 H713_TV_BIN="$H713_TV_SRC/h713-tv.aarch64-linux-gnu"
 MESA_TAR="$PROJECT_ROOT/mainline/build/out/mesa-panfrost-25.0.7.tar"   # rootfs/mesa/build-mesa.sh
+LIBVA_TAR="$PROJECT_ROOT/mainline/build/out/libva-v4l2-request-1.2.tar" # rootfs/libva/build-libva.sh; laid in by profiles media and desktop
+NOTICE_DIR="$PROJECT_ROOT/mainline/build/out/notice"   # release/build-all.sh: SOURCES and the notices of the boot chain and the kernel
 H713_PQ_SRC="$PROJECT_ROOT/userspace/h713-pq"
 
 usage() {
@@ -112,6 +116,16 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
   --mesa FILE          the panfrost-only mesa tarball out of rootfs/mesa/build-mesa.sh
                         (default: ${MESA_TAR#"$PROJECT_ROOT"/}); "none" builds without a GPU
                         userspace
+  --libva FILE         the VA-API driver tarball out of rootfs/libva/build-libva.sh (default:
+                        ${LIBVA_TAR#"$PROJECT_ROOT"/}); laid in by --profile media and by --profile desktop (with
+                        rootfs/overlay-va/: environment, the unit drop-in); media also lays rootfs/overlay-media/
+                        (mpv.conf); "none" leaves the driver out
+  --notice DIR         the licence notices release/build-all.sh assembles (default:
+                        ${NOTICE_DIR#"$PROJECT_ROOT"/}): SOURCES with the revisions
+                        of the boot chain and the kernel, tf-a/, crust/, linux/, static/, licenses/;
+                        they go to /usr/local/share/doc/h713-linux/ next to its README.
+                        "none" for a bench tree: the image then names no revisions and
+                        is not for passing on
   --authorized-key FILE optionally build in an SSH key. NOT the default and
                         not the release way (107 §3).
   --wifi-env FILE       your own /etc/h713/wifi.env (mode=ap|sta|off, ssid,
@@ -128,11 +142,20 @@ on top and installs the project parts (h713-tv, kernel modules, h713-pq).
   --crust FILE          the crust image of this build (release/build-all.sh 1b)
                         as /lib/firmware/<board>-crust.bin, the name the
                         board's device tree gives the ARISC driver. Needs a
-                        --board whose board.env names CRUST_DEFCONFIG
+                        --board whose board.env names CRUST_DEFCONFIG.
+                        Without --standby it is the experimental choice:
+                        /etc/modprobe.d/h713-arisc.conf says firmware=vendor
   --standby             offer the standby: suspend to RAM through crust only
-                        (sleep.conf.d); h713-power (on every image) then
-                        offers it in its countdown. Needs
-                        --crust; without it the image never suspends
+                        (sleep.conf.d), and the image runs crust; h713-power
+                        (on every image) then offers it in its countdown.
+                        Needs --crust; without it the image never suspends
+  --profile NAME[,NAME] packages-NAME.txt on top of packages.txt: 'media' (ffmpeg, mpv, GStreamer, PipeWire, and the
+                        VA-API driver for the hardware decoders) and/or 'desktop' (cage, labwc, Kodi, seatd).
+                        A profile NAME with an overlay-NAME/ directory lays it over overlay/. A profile
+                        image also bootstraps from the suite's -updates and -security (a browser must have
+                        the fixes the tests ran on); the base image from the suite alone. Without
+                        --profile the base image, unchanged.
+                        The same --out names are written; keep profile builds in their own --out.
   --skip-project        the Debian base system + overlay/ only
   --keep-work           do not delete the work directory
   --dry-run             build nothing, write nothing, fetch nothing from the
@@ -154,12 +177,15 @@ while (($#)); do
 	--modroot)         MODROOT=${2:?missing value for --modroot}; shift 2 ;;
 	--h713-tv)        H713_TV_BIN=${2:?missing value for --h713-tv}; shift 2 ;;
 	--mesa)           MESA_TAR=${2:?missing value for --mesa}; shift 2 ;;
+	--libva)          LIBVA_TAR=${2:?missing value for --libva}; shift 2 ;;
+	--notice)         NOTICE_DIR=${2:?missing value for --notice}; shift 2 ;;
 	--authorized-key)  AUTHORIZED_KEY=${2:?missing value for --authorized-key}; shift 2 ;;
 	--wifi-env)        WIFI_ENV=${2:?missing value for --wifi-env}; shift 2 ;;
 	--board)           BOARD=${2:?missing value for --board}; shift 2 ;;
 	--variant)         VARIANT=${2:?missing value for --variant}; shift 2 ;;
 	--crust)           CRUST_BIN=${2:?missing value for --crust}; shift 2 ;;
 	--standby)         STANDBY=1; shift ;;
+	--profile)         PROFILES=${2:?missing value for --profile}; shift 2 ;;
 	--skip-project|--skip-projekt) SKIP_PROJECT=1; shift ;;
 	--keep-work)       KEEP_WORK=1; shift ;;
 	--dry-run)         DRY_RUN=1; shift ;;
@@ -171,6 +197,41 @@ done
 OVERLAY="$HERE/overlay"
 PACKAGES_FILE="$HERE/packages.txt"
 PROJECT_SCRIPT="$HERE/install-projekt.sh"
+# The mesa stand-ins (rootfs/equivs/*.control): see build_equivs
+EQUIVS_DIR="$HERE/equivs"
+EQUIVS_INC=     # set by the real run (build_equivs); the dry run shows a placeholder
+# apt runs outside the chroot, dpkg inside, and apt hands over the path of a local .deb verbatim (mmdebstrap(1),
+# --include): the dummies are copied into the chroot under the same path by a setup hook and removed by a customize
+# hook. (mmdebstrap's own file-mirror-automount hook bind-mounts them; the rootless build container may not mount.)
+EQUIVS_WORK=    # the directory of the built dummies (<work>/equivs); set by the real run, a placeholder in the dry run
+# Profile lists, in the order given; the base list always comes first
+PACKAGE_FILES=("$PACKAGES_FILE")
+PROFILE_NAMES=()
+if [[ -n "$PROFILES" ]]; then
+	IFS=, read -ra _profiles <<< "$PROFILES"
+	PROFILE_NAMES=("${_profiles[@]}")
+	for _p in "${_profiles[@]}"; do
+		[[ "$_p" =~ ^[a-z][a-z0-9-]*$ && -r "$HERE/packages-$_p.txt" ]] || {
+			echo "error: --profile $_p: no $HERE/packages-$_p.txt (profiles: $(cd "$HERE" && ls packages-*.txt 2>/dev/null | sed 's/^packages-//; s/\.txt$//' | paste -sd' '))" >&2
+			exit 2
+		}
+		PACKAGE_FILES+=("$HERE/packages-$_p.txt")
+	done
+fi
+
+# What the profiles bring besides packages: an overlay directory per profile, and for `media` and `desktop` the VA-API
+# driver of rootfs/libva (the decoders are reached through it; libva2, which loads it, is Debian's).
+has_profile() { local p; for p in "${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}"; do [[ "$p" == "$1" ]] && return 0; done; return 1; }
+# The VA-API wiring (driver, environment) belongs to every profile whose players decode through it: `media` (mpv, ffmpeg, GStreamer)
+# and `desktop` (Kodi); a Kodi image without it would have no driver. mpv.conf and its shader stay with `media`.
+WANT_VA=0
+if has_profile media || has_profile desktop; then WANT_VA=1; fi
+WANT_LIBVA=0
+if ((WANT_VA)) && [[ "$LIBVA_TAR" != none ]]; then WANT_LIBVA=1; fi
+# the overlay directories to lay, in order: overlay-va/ (the VA wiring, shared) before the profiles' own
+OVERLAY_NAMES=()
+if ((WANT_VA)); then OVERLAY_NAMES+=(va); fi
+OVERLAY_NAMES+=("${PROFILE_NAMES[@]+"${PROFILE_NAMES[@]}"}")
 
 # Resolve wifi.env. The check is done by the same script that runs on the
 # device -- what passes here passes there, and the other way round.
@@ -209,6 +270,7 @@ fi
 # is missing in the container h713-build (ubuntu:24.04).
 declare -A TOOL_PKG=(
 	[mmdebstrap]=mmdebstrap
+	[dpkg-deb]=dpkg
 	[tar]=tar
 	[mke2fs]=e2fsprogs
 	[e2fsck]=e2fsprogs
@@ -384,10 +446,36 @@ EOF
 # 2. Read the package list
 # ---------------------------------------------------------------------------
 read_packages() {
-	[[ -r "$PACKAGES_FILE" ]] || die "packages.txt is not readable: $PACKAGES_FILE"
-	# comments and blank lines out, the first word of a line is the package name
+	local f
+	for f in "${PACKAGE_FILES[@]}"; do
+		[[ -r "$f" ]] || die "package list is not readable: $f"
+	done
+	# comments and blank lines out, the first word of a line is the package name; a package named in the
+	# base list and a profile list counts once
 	sed -e 's/#.*//' -e 's/[[:space:]]\+/ /g' -e 's/^ //' -e 's/ $//' \
-		"$PACKAGES_FILE" | awk 'NF { print $1 }'
+		"${PACKAGE_FILES[@]}" | awk 'NF && !seen[$1]++ { print $1 }'
+}
+
+# The mesa packages Debian's compositors, Kodi and libegl1 depend on (libgbm1, libegl-mesa0,
+# libgl1-mesa-dri, mesa-libgallium, libglx-mesa0) are dummies: the files are the mesa of rootfs/mesa/build-mesa.sh. They
+# are built from rootfs/equivs/*.control with dpkg-deb (no equivs package, no debhelper in the build
+# container) and go into the bootstrap as local .deb files, so that apt resolves Debian's packages against
+# them instead of against the real ones (libllvm19, 187 MiB). Prints the comma-separated paths.
+build_equivs() {
+	local dir=$1 f name
+	local -a debs=()
+	install -d "$dir"
+	for f in "$EQUIVS_DIR"/*.control; do
+		[[ -r "$f" ]] || die "no control files in $EQUIVS_DIR"
+		name=$(sed -n 's/^Package: //p' "$f")
+		[[ -n "$name" ]] || die "$f has no Package field"
+		install -d "$dir/$name/DEBIAN"
+		grep -v '^#' "$f" > "$dir/$name/DEBIAN/control"
+		dpkg-deb --root-owner-group -Zgzip --build "$dir/$name" "$dir/$name.deb" >/dev/null || die "dpkg-deb failed for $f"
+		debs+=("$dir/$name.deb")
+	done
+	local IFS=,
+	echo "${debs[*]}"
 }
 
 # ---------------------------------------------------------------------------
@@ -405,6 +493,8 @@ mmdebstrap_argv() {
 		--variant=minbase \
 		"--architectures=$ARCH" \
 		--skip=check/qemu \
+		"--setup-hook=mkdir -p \"\$1\"$EQUIVS_WORK && cp $EQUIVS_WORK/*.deb \"\$1\"$EQUIVS_WORK/" \
+		"--customize-hook=rm -rf \"\$1\"${EQUIVS_WORK%/equivs}" \
 		"--keyring=$keyring" \
 		'--aptopt=Acquire::Languages "none"' \
 		'--dpkgopt=path-exclude=/usr/share/man/*' \
@@ -412,10 +502,22 @@ mmdebstrap_argv() {
 		'--dpkgopt=path-include=/usr/share/doc/*/copyright' \
 		'--dpkgopt=path-exclude=/usr/share/locale/*' \
 		'--dpkgopt=path-include=/usr/share/locale/locale.alias' \
-		"--include=$(read_packages | paste -sd,)" \
+		"--include=$(read_packages | paste -sd,)${EQUIVS_INC:+,$EQUIVS_INC}" \
 		"$SUITE" \
-		'<output>.tar' \
-		"deb $MIRROR $SUITE main"
+		'<output>.tar'
+	bootstrap_sources
+}
+
+# The apt sources the bootstrap installs from, one deb line each. The base image: the suite alone, as ever. A profile
+# image (media, desktop) carries a browser and a media centre and takes the updates and the security fixes of the suite
+# in, the way a box that ran apt would: on 15.10.2026 the HY310 had Firefox ESR 153.5 and GStreamer 1.26.2-1+deb13u2 from
+# trixie-security/-updates, a bootstrap from `trixie main` alone gave 140.15 and +deb13u1 - the browser the tests had run
+# on was not the browser in the image. The pinned archive keyring signs all three. The image's own sources file
+# (overlay/etc/apt/sources.list.d/debian.sources) names the same suites.
+bootstrap_sources() {
+	printf '%s\n' "deb $MIRROR $SUITE main"
+	[[ -n "$PROFILES" ]] || return 0
+	printf '%s\n' "deb $MIRROR $SUITE-updates main" "deb $SECURITY_MIRROR $SUITE-security main"
 }
 
 dry_run() {
@@ -424,6 +526,7 @@ dry_run() {
 	info "project tree:  $PROJECT_ROOT"
 	info "output would be: $OUT_DIR"
 	info "suite/arch:    $SUITE/$ARCH over $MIRROR"
+	info "sources:       $(bootstrap_sources | sed 's/^deb //; s/ main$//' | paste -sd';' | sed 's/;/; /g')"
 	info "ext4 image:    $( ((MAKE_EXT4)) && echo "yes, $IMAGE_SIZE (grows via x-systemd.growfs)" || echo no )"
 	echo
 
@@ -431,10 +534,14 @@ dry_run() {
 	check_tools || true
 	echo
 
-	say "2. package list ($PACKAGES_FILE)"
+	say "2. package list (${PACKAGE_FILES[*]##*/})"
+	info "profile: ${PROFILES:-none (the base image)}"
 	local n; n=$(read_packages | wc -l)
 	read_packages | sed 's/^/    /'
 	info "-- $n packages beyond minbase"
+	info "plus the mesa dummies out of rootfs/equivs/ (built with dpkg-deb, local .deb files in the bootstrap):"
+	local f; for f in "$EQUIVS_DIR"/*.control; do info "    $(sed -n 's/^Package: //p' "$f") $(sed -n 's/^Version: //p' "$f")"; done
+	EQUIVS_INC="<$(ls "$EQUIVS_DIR"/*.control | wc -l) local .deb files>"; EQUIVS_WORK="<work>/equivs"
 	echo
 
 	say "3. bootstrap call (this is how it would read)"
@@ -448,6 +555,14 @@ dry_run() {
 	else
 		warn "overlay/ is missing: $OVERLAY"
 	fi
+	local _p
+	for _p in "${OVERLAY_NAMES[@]+"${OVERLAY_NAMES[@]}"}"; do
+		[[ -d "$HERE/overlay-$_p" ]] || continue
+		info "plus overlay-$_p/ ($([[ $_p == va ]] && echo "VA-API wiring of media and desktop" || echo "profile $_p")):"
+		(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) -printf '    /%P\n' | sort)
+	done
+	if ((WANT_LIBVA)); then info "plus the VA-API driver: ${LIBVA_TAR#"$PROJECT_ROOT"/}"; fi
+	info "plus the licence notices: $( [[ "$NOTICE_DIR" == none ]] && echo "none (a bench tree)" || echo "${NOTICE_DIR#"$PROJECT_ROOT"/}" ) -> /usr/local/share/doc/h713-linux/"
 	echo
 
 	say "5. WLAN ($WIFI_ENV_ORIGIN: $WIFI_ENV)"
@@ -515,6 +630,8 @@ trap cleanup EXIT
 
 TREE="$WORK/tree"
 BOOTSTRAP_TAR="$WORK/bootstrap.tar"
+EQUIVS_WORK="$WORK/equivs"
+EQUIVS_INC=$(build_equivs "$EQUIVS_WORK")
 
 # --- 1. bootstrap ----------------------------------------------------------
 say "0/6 check wifi.env ($WIFI_ENV_ORIGIN)"
@@ -525,7 +642,8 @@ if ((WIFI_IS_DEFAULT)); then
 	warn "or rootfs/wifi.env -- or change /etc/h713/wifi.env on the device."
 fi
 
-say "1/6 mmdebstrap --variant=minbase"
+say "1/6 mmdebstrap --variant=minbase${PROFILES:+ (profile $PROFILES)}"
+info "mesa dummies: $(basename -a ${EQUIVS_INC//,/ } | paste -sd' ')"
 mapfile -t MMARGV < <(mmdebstrap_argv)
 # replace the placeholder argument '<output>.tar' with the real path
 for i in "${!MMARGV[@]}"; do
@@ -548,17 +666,33 @@ rm -f "$BOOTSTRAP_TAR"
 
 # --- 3. overlay ------------------------------------------------------------
 say "3/6 lay the overlay"
-# -a keeps permissions and symlinks; the overlay is deliberately root:root, so
-# a chown to 0:0 follows (in case it was built as a user, see --mode=unshare).
+# The overlay is deliberately root:root, so a chown to 0:0 follows (in case it was built
+# as a user, see --mode=unshare).
 # --exclude: a __pycache__ appears as soon as somebody starts a script out of
 # the overlay by hand, and would otherwise end up in the image (11.09.2026).
-tar -C "$OVERLAY" --exclude=__pycache__ --exclude="*.pyc" -cf - . |
-	tar -C "$TREE" --no-same-owner -xf -
+# The modes are fixed, not taken from the checkout: git keeps only the executable bit, so the
+# files came out as 0664/0775 under umask 002 and 0644/0755 under 022 - two builds of one commit,
+# two trees. LAY_MODE gives files 0644 (0755 if executable) and directories 0755 whatever the
+# umask was; tar -p keeps them on the way in.
+LAY_MODE='u+rwX,go+rX,go-w'
+lay_overlay() { # $1 = a directory of the repository, laid over $TREE
+	tar -C "$1" --exclude=__pycache__ --exclude="*.pyc" --mode="$LAY_MODE" -cf - . |
+		tar -C "$TREE" --no-same-owner -p -xf -
+}
+lay_overlay "$OVERLAY"
 (cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) -printf '%P\n') | \
 	while read -r rel; do
 		chown 0:0 "$TREE/$rel" 2>/dev/null || true
 	done
 info "$(cd "$OVERLAY" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) files from overlay/"
+# A profile's own files: overlay-<profile>/ over overlay/, laid the same way.
+for _p in "${OVERLAY_NAMES[@]+"${OVERLAY_NAMES[@]}"}"; do
+	[[ -d "$HERE/overlay-$_p" ]] || continue
+	lay_overlay "$HERE/overlay-$_p"
+	(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) -printf '%P\n') | \
+		while read -r rel; do chown 0:0 "$TREE/$rel" 2>/dev/null || true; done
+	info "$(cd "$HERE/overlay-$_p" && find . -mindepth 1 \( -type f -o -type l \) | wc -l) files from overlay-$_p/ (profile $_p)"
+done
 # wifi.env: the chosen version, 0600 root -- it carries a password.
 install -m 0600 -o 0 -g 0 "$WIFI_ENV" "$TREE/etc/h713/wifi.env" 2>/dev/null || \
 	{ install -m 0600 "$WIFI_ENV" "$TREE/etc/h713/wifi.env"; chown 0:0 "$TREE/etc/h713/wifi.env" 2>/dev/null || true; }
@@ -572,6 +706,14 @@ if [[ "$MESA_TAR" != none ]]; then
 	info "mesa: $(tar -tf "$MESA_TAR" | grep -c "\.so") libraries, $(du -sh "$TREE/usr/local/lib" | cut -f1) under /usr/local/lib ($(basename "$MESA_TAR"))"
 else
 	info "mesa: none (--mesa none)"
+fi
+# The VA-API driver for the hardware decoders (rootfs/libva/build-libva.sh), with profile media or desktop: one module under
+# /usr/local/lib/dri, which libva finds through LIBVA_DRIVERS_PATH (overlay-va/etc/environment.d). No ldconfig needed.
+if ((WANT_LIBVA)); then
+	[[ -f "$LIBVA_TAR" ]] || die "no VA-API driver tarball at $LIBVA_TAR (rootfs/libva/build-libva.sh makes it; --libva none builds without)"
+	tar -C "$TREE" --no-same-owner -xf "$LIBVA_TAR"
+	(cd "$TREE" && tar -tf "$LIBVA_TAR" | while read -r rel; do chown 0:0 "$rel" 2>/dev/null || true; done)
+	info "libva driver: $(basename "$LIBVA_TAR") ($(tar -tf "$LIBVA_TAR" | grep -c '\.so$') module)"
 fi
 
 # --- 4. rework -------------------------------------------------------------
@@ -675,7 +817,7 @@ rm -rf "$TREE/var/log/journal"
 # Debian signature and would reject the database. So point at -upstream. For the
 # aic8800 (self-managed wiphy, default_ccode) that has no consequences; for
 # cfg80211's global realm it is the difference between "loaded" and "discarded".
-# (cstenger's finding, mainline/tools/rootfs/customize.sh.)
+# (cstenger's finding, tools/rootfs/customize.sh in his repository at 8860991.)
 # Without a chroot: the alternative is only a symlink under /etc/alternatives.
 for alt in regulatory.db regulatory.db.p7s; do
 	if [[ -e "$TREE/lib/firmware/$alt-upstream" && -L "$TREE/etc/alternatives/$alt" ]]; then
@@ -683,6 +825,15 @@ for alt in regulatory.db regulatory.db.p7s; do
 	fi
 done
 info "regulatory.db -> upstream-signed (the kernel knows only sforshee/wens)"
+
+# 4k. Profile desktop: its mode units (Kodi, the desktop) are Wayland clients of h713-warp's server, which h713-tv shows only
+# under `source auto` - and h713-tv does not keep a source across its own restart (a restart with Kodi running put the panel
+# back on the ring and Kodi out of sight). So this image starts h713-tv on auto; the last line of tv.conf wins.
+if has_profile desktop; then
+	printf '\n# profile desktop (rootfs/build-rootfs.sh): a client of h713-warp stays on the panel across a restart of h713-tv\nsource = auto\n' \
+		>> "$TREE/etc/h713/tv.conf"
+	info "tv.conf: source = auto (profile desktop)"
+fi
 
 # --- 5. project parts ------------------------------------------------------
 if ((SKIP_PROJECT)); then
@@ -694,6 +845,54 @@ else
 	H713_TV_BIN="$H713_TV_BIN" H713_PQ_SRC="$H713_PQ_SRC" H713_CRUST_BIN="$CRUST_BIN" H713_STANDBY="$STANDBY" \
 		"$PROJECT_SCRIPT" "$TREE"
 fi
+
+# --- 5b. ld.so cache --------------------------------------------------------
+# The libraries of the mesa tarball sit in /usr/local/lib, which the cache of the finished bootstrap does not
+# know yet (the package triggers ran before the tarball was unpacked). glvnd opens its vendor library
+# (libEGL_mesa.so.0) by name, and Debian's compositors need libgbm.so.1 from there: without a cache entry the
+# GPU path stays dark until the first apt run refreshes it. Needs root (chroot, qemu-user through binfmt).
+LDCACHE_DONE=0
+if [[ "$MESA_TAR" != none ]]; then
+	if ((EUID == 0)); then
+		chroot "$TREE" /sbin/ldconfig || die "ldconfig in the tree failed (qemu-user through binfmt?)"
+		LDCACHE_DONE=1
+		info "ld.so.cache refreshed in the tree"
+	else
+		warn "not root: ld.so.cache not refreshed, libEGL_mesa.so.0 will not be found until ldconfig runs on the device"
+	fi
+fi
+
+# --- 5c. licence notices (TODO 7.20 e) ---------------------------------------
+# The overlay's /usr/local/share/doc/h713-linux/README says which part of the image comes under which licence and how to get
+# the source. Here comes what only this build knows: the notices release/build-all.sh assembled (--notice: SOURCES with the
+# revisions of the boot chain and the kernel, the BSD notices of BL31 and crust, the kernel's licence, the copyright files of
+# the static libraries), the root file system's part of SOURCES and the list of Debian's source packages. Debian's own
+# /usr/share/doc/<package>/copyright stay (path-include above; a package whose directory is a link to the one of another
+# package of the same source, Debian Policy 12.5, keeps its link), and the acceptance asks every package for its file.
+NOTICE_DST="$TREE/usr/local/share/doc/h713-linux"
+install -d -m 0755 "$NOTICE_DST"
+if [[ "$NOTICE_DIR" != none ]]; then
+	[[ -f "$NOTICE_DIR/SOURCES" ]] || die "no $NOTICE_DIR/SOURCES (release/build-all.sh writes it; --notice none for a bench tree)"
+	tar -C "$NOTICE_DIR" --mode="$LAY_MODE" --owner=0 --group=0 --numeric-owner -cf - . | tar -C "$NOTICE_DST" --no-same-owner -p -xf -
+	info "licence notices from ${NOTICE_DIR#"$PROJECT_ROOT"/}: $(cd "$NOTICE_DIR" && find . -type f | wc -l) files"
+else
+	printf '%s\n' "This root file system was built by rootfs/build-rootfs.sh by itself, not by release/build-all.sh: the revisions" \
+		"of the boot chain and of the kernel are not recorded here. A bench tree, not an image to pass on." "" > "$NOTICE_DST/SOURCES"
+	warn "--notice none: the image names no revisions of its boot chain and kernel -- a bench tree, not for passing on"
+fi
+{
+	echo "root file system"
+	echo "  Debian $SUITE/$ARCH from $(bootstrap_sources | sed 's/^deb //; s/ main$//' | paste -sd';' | sed 's/;/; /g'); every source package and its version: DEBIAN-SOURCES"
+	if [[ "$MESA_TAR" != none ]]; then echo "  Mesa: /usr/local/share/doc/mesa/README"; fi
+	if ((WANT_LIBVA)); then echo "  libva-v4l2-request: /usr/local/share/doc/libva-v4l2-request/SOURCE"; fi
+	if ((! SKIP_PROJECT)); then echo "  this project's programs: userspace/, rootfs/ and installer/ of the repository"; fi
+} >> "$NOTICE_DST/SOURCES"
+python3 "$PROJECT_ROOT/release/notice.py" debian-sources "$TREE/var/lib/dpkg/status" > "$NOTICE_DST/DEBIAN-SOURCES"
+chmod 0644 "$NOTICE_DST/SOURCES" "$NOTICE_DST/DEBIAN-SOURCES"
+info "DEBIAN-SOURCES: $(wc -l < "$NOTICE_DST/DEBIAN-SOURCES") source packages"
+# the mesa stand-ins are ours and empty (README says so): no copyright file is asked of them
+NOTICE_EXCEPT=()
+for _f in "$EQUIVS_DIR"/*.control; do NOTICE_EXCEPT+=(--except "$(sed -n 's/^Package: //p' "$_f")"); done
 
 # --- 6. acceptance, tar, ext4 ----------------------------------------------
 say "6/6 acceptance and output"
@@ -732,7 +931,8 @@ t "apt source signed"         grep -q '^Signed-By:' "$TREE/etc/apt/sources.list.
 # nothing.
 t "no trusted=yes"            bash -c "! grep -rhv '^[[:space:]]*#' '$TREE/etc/apt' 2>/dev/null | grep -q 'trusted=yes'"
 t "no compiler"               test ! -e "$TREE/usr/bin/gcc"
-t "no GStreamer"              test ! -e "$TREE/usr/bin/gst-launch-1.0"
+# the base image carries no GStreamer; the media profile does (packages-media.txt)
+[[ -n "$PROFILES" ]] || t "no GStreamer"              test ! -e "$TREE/usr/bin/gst-launch-1.0"
 # WLAN has been in since 12.09. (Marco). Until then this said "no
 # wpa_supplicant" -- the sentence was turned round, not deleted.
 t "wpa_supplicant present"    test -x "$TREE/usr/sbin/wpa_supplicant"
@@ -747,6 +947,99 @@ t "h713-wifi linked"          test -L "$TREE/etc/systemd/system/multi-user.targe
 t "aic8800 quiet"             grep -q 'aicwf_dbg_level=0x1' "$TREE/etc/modprobe.d/aic8800.conf"
 t "regulatory.db upstream"    test "$(readlink "$TREE/etc/alternatives/regulatory.db")" = /lib/firmware/regulatory.db-upstream
 t "v4l2-ctl (TODO 5.12)"      test -x "$TREE/usr/bin/v4l2-ctl"
+# The mesa of rootfs/mesa/build-mesa.sh is the only one: the five dummies are installed, and nothing of Debian's
+# mesa (libgallium, LLVM, its libgbm/libEGL_mesa) came with a profile's packages. libEGL.so.1 and libGLESv2.so.2
+# are glvnd's, from libegl1 and libgles2.
+for _pkg in libgbm1 libegl-mesa0 libgl1-mesa-dri mesa-libgallium libglx-mesa0; do
+	t "mesa dummy $_pkg"      grep -q "^Package: $_pkg\$" "$TREE/var/lib/dpkg/status"
+done
+t "no Debian libgallium"     test -z "$(find "$TREE/usr/lib/aarch64-linux-gnu" -maxdepth 1 \( -name 'libgallium*' -o -name 'libLLVM*' -o -name 'libgbm.so*' -o -name 'libEGL_mesa*' \) -print -quit)"
+t "glvnd libEGL.so.1"        test -e "$TREE/usr/lib/aarch64-linux-gnu/libEGL.so.1"
+t "glvnd libGLESv2.so.2"     test -e "$TREE/usr/lib/aarch64-linux-gnu/libGLESv2.so.2"
+# The licences (TODO 7.20 e): the notices that must travel with the binaries in this image, and where their source is.
+t "licences: README says where the source is" grep -q '^Source code\.' "$NOTICE_DST/README"
+t "licences: SOURCES names the root file system" grep -qx 'root file system' "$NOTICE_DST/SOURCES"
+t "licences: DEBIAN-SOURCES lists the source packages" grep -q '^base-files ' "$NOTICE_DST/DEBIAN-SOURCES"
+t "licences: the GPL-2 text (common-licenses)" test -s "$TREE/usr/share/common-licenses/GPL-2"
+t "licences: every Debian package has its copyright file" python3 "$PROJECT_ROOT/release/notice.py" copyright-files "$TREE" "${NOTICE_EXCEPT[@]}"
+if [[ "$NOTICE_DIR" != none ]]; then
+	t "licences: SOURCES names the boot chain and the kernel" bash -c 'grep -qx "boot chain.*" "$1" && grep -qx kernel "$1"' _ "$NOTICE_DST/SOURCES"
+	t "licences: TF-A's licence and the notices of BL31" test -s "$NOTICE_DST/tf-a/license.rst" -a -s "$NOTICE_DST/tf-a/COPYRIGHTS" -a -s "$NOTICE_DST/licenses/BSD-2-Clause"
+	t "licences: the kernel's COPYING and syscall note" test -s "$NOTICE_DST/linux/COPYING" -a -s "$NOTICE_DST/linux/Linux-syscall-note"
+	if [[ -n "$CRUST_BIN" ]]; then
+		t "licences: crust's licence and notices" test -s "$NOTICE_DST/crust/LICENSE.md" -a -s "$NOTICE_DST/crust/COPYRIGHTS"
+	fi
+	if [[ -e "$TREE/usr/local/sbin/h713-osd" || -e "$TREE/usr/local/bin/h713-settings" ]]; then
+		for _pk in libfreetype-dev libpng-dev libbz2-dev libbrotli-dev zlib1g-dev; do
+			t "licences: static $_pk (h713-osd, h713-settings)" test -s "$NOTICE_DST/static/$_pk/copyright"
+		done
+	fi
+fi
+if [[ "$MESA_TAR" != none ]]; then
+	t "mesa licence texts (MIT notice)" test -f "$TREE/usr/local/share/doc/mesa/licenses/MIT" -a -f "$TREE/usr/local/share/doc/mesa/license.rst"
+	t "ICD file for libEGL_mesa"  grep -q '"libEGL_mesa.so.0"' "$TREE/etc/glvnd/egl_vendor.d/50_mesa.json"
+	t "libEGL_mesa.so.0 there"    test -e "$TREE/usr/local/lib/libEGL_mesa.so.0"
+	((! LDCACHE_DONE)) || t "ld.so.cache lists libgbm from /usr/local" grep -qa '/usr/local/lib/libgbm.so.1' "$TREE/etc/ld.so.cache"
+fi
+# The VA-API wiring (profiles media and desktop): the players reach the hardware decoders through the VA-API driver of
+# rootfs/libva, which libva2 (Debian's, a dependency of ffmpeg, mpv and Kodi) loads from LIBVA_DRIVERS_PATH under the name in
+# LIBVA_DRIVER_NAME. Every link of that chain is checked; a system unit (cage, Kodi) gets the same variables from the same file
+# through the drop-in /usr/local/share/h713/systemd/h713-media-env.conf, so the file must be plain KEY=VALUE lines (EnvironmentFile=).
+if ((WANT_VA)); then
+	_ENVF="$TREE/etc/environment.d/h713-media.conf"
+	t "va: environment names the VA driver"   grep -qx 'LIBVA_DRIVER_NAME=v4l2_request' "$_ENVF"
+	t "va: environment lifts GStreamer's va filter" grep -qx 'GST_VA_ALL_DRIVERS=1' "$_ENVF"
+	t "va: environment is plain KEY=VALUE (EnvironmentFile= reads it)" bash -c '! grep -vE "^(#|[[:space:]]*$|[A-Z][A-Z0-9_]*=[^\"'"'"'\$ ]*$)" "$1"' _ "$_ENVF"
+	t "va: login shells read the environment" grep -q 'environment.d/h713-media.conf' "$TREE/etc/profile.d/h713-media.sh"
+	t "va: unit drop-in names the environment file" grep -qx 'EnvironmentFile=-/etc/environment.d/h713-media.conf' "$TREE/usr/local/share/h713/systemd/h713-media-env.conf"
+	t "va: libva2 (loads the driver)"         grep -q '^Package: libva2$' "$TREE/var/lib/dpkg/status"
+	if ((WANT_LIBVA)); then
+		t "va: LIBVA_DRIVERS_PATH holds the driver" bash -c 'd=$(sed -n "s/^LIBVA_DRIVERS_PATH=//p" "$2"); test -n "$d" && test -f "$1$d/v4l2_request_drv_video.so"' _ "$TREE" "$_ENVF"
+		t "va: driver licence and source note"    test -f "$TREE/usr/local/share/doc/libva-v4l2-request/COPYING" -a -f "$TREE/usr/local/share/doc/libva-v4l2-request/SOURCE"
+		t "va: the Corresponding Source rides along" test -f "$TREE/usr/local/share/doc/libva-v4l2-request/source/patches/series" -a -f "$TREE/usr/local/share/doc/libva-v4l2-request/source/build-libva.sh"
+	fi
+fi
+# Profile media only: mpv's own configuration, the 10 bit shader, and the GStreamer decoder elements the decoder tests use.
+if has_profile media; then
+	t "media: mpv.conf: hwdec=vaapi"             grep -qx 'hwdec=vaapi' "$TREE/etc/mpv/mpv.conf"
+	t "media: 10 bit shader for mpv.conf"        test -f "$TREE/usr/local/share/h713/mpv/lsb10-x64.glsl"
+	t "media: GStreamer va and v4l2codecs"       test -e "$TREE/usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstva.so" -a -e "$TREE/usr/lib/aarch64-linux-gnu/gstreamer-1.0/libgstv4l2codecs.so"
+	# Nothing starts PipeWire by itself (packages-media.txt): the four user units are masked for every user
+	for _u in pipewire.service pipewire.socket wireplumber.service filter-chain.service; do
+		t "media: user unit $_u masked"          test "$(readlink "$TREE/etc/systemd/user/$_u")" = /dev/null
+	done
+fi
+# Profile desktop only: the three client modes (Kodi, the desktop, the browser) are units nobody wants (the panel shows the HDMI
+# input until the launcher starts one), they exclude each other, and every launcher entry names a unit that exists.
+if has_profile desktop; then
+	for _m in kodi desktop browser; do
+		t "desktop: h713-$_m.service has no [Install]" bash -c '! grep -q "^\[Install\]" "$1"' _ "$TREE/etc/systemd/system/h713-$_m.service"
+		t "desktop: h713-$_m.service takes the VA-API drop-in" test -L "$TREE/etc/systemd/system/h713-$_m.service.d/10-h713-media-env.conf"
+		t "desktop: h713-$_m.service tells h713-tv its source" grep -qE '^ExecStartPre=\+?(/usr/local/sbin/h713-tv ctl source auto|/usr/local/sbin/h713-kodi-switch source)$' "$TREE/etc/systemd/system/h713-$_m.service"
+	done
+	t "desktop: the desktop and the browser conflict with Kodi" bash -c 'for u in desktop browser; do grep -q "^Conflicts=h713-kodi.service" "$1/etc/systemd/system/h713-$u.service" || exit 1; done' _ "$TREE"
+	t "desktop: labwc configuration"       test -f "$TREE/etc/h713/labwc/rc.xml" -a -f "$TREE/etc/h713/labwc/menu.xml" -a -f "$TREE/etc/h713/labwc/autostart" -a -f "$TREE/etc/h713/labwc/environment" -a -f "$TREE/etc/xdg/foot/foot.ini" -a -f "$TREE/etc/h713/labwc-browser/rc.xml"
+	t "desktop: labwc configuration is well-formed XML" python3 -c 'import sys, xml.dom.minidom as m; [m.parse(f) for f in sys.argv[1:]]' "$TREE/etc/h713/labwc/rc.xml" "$TREE/etc/h713/labwc/menu.xml" "$TREE/etc/h713/labwc-browser/rc.xml"
+	t "desktop: labwc keeps no default keybinds (amixer on the volume keys)" bash -c 'for f in labwc labwc-browser; do ! grep -q "<default" <(sed -n "/<keyboard>/,/<\/keyboard>/p" "$1/etc/h713/$f/rc.xml") || exit 1; done' _ "$TREE"
+	t "desktop: both labwc configurations bind Home, F4 and F5 to nothing (the focus keys stay focus keys)" bash -c 'for f in labwc labwc-browser; do for k in XF86_HomePage F4 F5; do grep -q "key=\"$k\"><action name=\"Execute\" command=\"true\"" "$1/etc/h713/$f/rc.xml" || exit 1; done; done' _ "$TREE"
+	t "desktop: h713-browser.service runs Firefox as labwc's session client" grep -q '^ExecStart=/usr/bin/labwc -C /etc/h713/labwc-browser -S ' "$TREE/etc/systemd/system/h713-browser.service"
+	t "desktop: h713-desktop.service runs the terminal as labwc's session client, and the autostart starts no second one" bash -c 'grep -q "^ExecStart=/usr/bin/labwc -C /etc/h713/labwc -S /usr/bin/foot$" "$1/etc/systemd/system/h713-desktop.service" && ! grep -v "^#" "$1/etc/h713/labwc/autostart" | grep -q foot' _ "$TREE"
+	t "desktop: no mode unit ends itself at the sleep target (h713-mode does)" bash -c '! grep -q "^Conflicts=.*sleep.target" "$1"/etc/systemd/system/h713-{desktop,browser}.service' _ "$TREE"
+	t "desktop: Firefox plays through ALSA, which is the DSP bridge (no PipeWire daemon, no pipewire-alsa default)" bash -c 'grep -q "media.cubeb.backend\", \"alsa\"" "$1/var/lib/h713-desktop/firefox/user.js" && ! test -e "$1/etc/alsa/conf.d/99-pipewire-default.conf"' _ "$TREE"
+	t "desktop: sysusers.d entry for h713-desktop"  grep -q '^u h713-desktop ' "$TREE/usr/lib/sysusers.d/h713-desktop.conf"
+	t "desktop: the desktop and the browser run as h713-desktop, hardened, without MemoryDenyWriteExecute (Firefox compiles JavaScript)" bash -c 'for u in desktop browser; do f="$1/etc/systemd/system/h713-$u.service"; grep -qx "User=h713-desktop" "$f" && grep -qx "NoNewPrivileges=yes" "$f" && grep -qx "ProtectSystem=strict" "$f" && ! grep -q "^MemoryDenyWriteExecute" "$f" || exit 1; done' _ "$TREE"
+	t "desktop: the desktop's menu ends labwc itself (a user cannot stop a unit)" grep -q '<item label="HDMI input"><action name="Exit" />' "$TREE/etc/h713/labwc/menu.xml"
+	t "desktop: Firefox's decoder process keeps its sandbox (MOZ_DISABLE_RDD_SANDBOX is only a commented line; foreign web content)" bash -c '! grep -q "^Environment=MOZ_DISABLE_RDD_SANDBOX" "$1"/etc/systemd/system/h713-{browser,desktop}.service' _ "$TREE"
+	t "desktop: foot names its shell (the account h713-desktop has none; the window would close at once)" grep -qx 'shell=/bin/bash' "$TREE/etc/xdg/foot/foot.ini"
+	t "desktop: Firefox profile lifts the VA-API blocklist" grep -q 'media.hardware-video-decoding.force-enabled", true' "$TREE/var/lib/h713-desktop/firefox/user.js"
+	t "desktop: Kodi's defaults are in appliance.xml, each where Kodi's settings.xml has it, and the image lays no guisettings.xml of its own" python3 -I "$HERE/check-kodi-appliance.py" "$TREE"
+	t "desktop: launcher entries that name a unit name an existing one" bash -c 'for f in "$1"/etc/h713/launcher.d/*.conf; do u=$(sed -n "s/^unit *= *//p" "$f"); [ -z "$u" ] || test -f "$1/etc/systemd/system/$u" || exit 1; done' _ "$TREE"
+	t "desktop: launcher entries with a wait command: the command is in the image" bash -c 'for f in "$1"/etc/h713/launcher.d/*.conf; do w=$(sed -n "s/^wait *= *//p" "$f" | cut -d" " -f1); [ -z "$w" ] || test -x "$1$w" || exit 1; done' _ "$TREE"
+	t "desktop: the browser's and the desktop's wait files are the ones their labwc touches at the first window" bash -c 'for m in browser desktop; do d=labwc; [ $m = browser ] && d=labwc-browser; grep -q "^wait *= */usr/bin/test -e /run/h713-$m/mapped\$" "$1/etc/h713/launcher.d/"*-$m.conf && grep -q "command=\"touch /run/h713-$m/mapped\"" "$1/etc/h713/$d/rc.xml" || exit 1; done' _ "$TREE"
+	t "desktop: the wall is a TV interface: Firefox at twice its size, foot and the labwc font larger than the defaults" bash -c 'grep -q "layout.css.devPixelsPerPx\", \"2.0\"" "$1/var/lib/h713-desktop/firefox/user.js" && grep -qE "^font=monospace:size=(2[0-9]|3[0-9])" "$1/etc/xdg/foot/foot.ini" && grep -qE "<font name=\"sans\" size=\"(1[8-9]|2[0-9])\"" "$1/etc/h713/labwc/rc.xml"' _ "$TREE"
+	t "desktop: Firefox's page scale follows the panel (h713-firefox-scale before the browser and the desktop, 960 CSS pixels across)" bash -c 'test -x "$1/usr/local/sbin/h713-firefox-scale" && for u in browser desktop; do grep -qx "ExecStartPre=/usr/local/sbin/h713-firefox-scale /var/lib/h713-desktop/firefox/user.js" "$1/etc/systemd/system/h713-$u.service" || exit 1; done' _ "$TREE"
+	for _pk in cage labwc foot firefox-esr; do t "desktop: $_pk installed" grep -q "^Package: $_pk\$" "$TREE/var/lib/dpkg/status"; done
+fi
 t "h713-arisc (TODO 5.20)"    test -x "$TREE/usr/local/sbin/h713-arisc"
 # Standby only where the image offers it (docs/subsystems/standby.md): else no suspend at all, which
 # would fall back to s2idle; with it suspend to RAM through crust and h713-power on the key.
@@ -769,8 +1062,16 @@ fi
 t "h713-power linked"         test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
 t "h713-mips-restart"         test -x "$TREE/usr/local/sbin/h713-mips-restart"
 t "h713-tv-rescue"            test -f "$TREE/etc/systemd/system/h713-tv-rescue.service"
+t "h713-mode"                 test -x "$TREE/usr/local/sbin/h713-mode"
+t "h713-tv-rescue brings the mode back (h713-mode rescue, not h713-mips-restart alone: its stop of h713-warp ends Kodi)" grep -qx 'ExecStart=/usr/local/sbin/h713-mode rescue' "$TREE/etc/systemd/system/h713-tv-rescue.service"
 if [[ -n "$CRUST_BIN" ]]; then
 	t "crust as $BOARD-crust.bin" cmp -s "$CRUST_BIN" "$TREE/lib/firmware/$BOARD-crust.bin"
+	# the vendor ARISC firmware by default, crust the experimental choice; with --standby the image runs crust
+	if ((STANDBY)); then
+		t "ARISC: crust, as the device tree names it" test ! -e "$TREE/etc/modprobe.d/h713-arisc.conf"
+	else
+		t "ARISC: the vendor firmware by default" grep -qx 'options sun50i_h713_arisc firmware=vendor' "$TREE/etc/modprobe.d/h713-arisc.conf"
+	fi
 else
 	t "no crust image"            test -z "$(find "$TREE/usr/lib/firmware" "$TREE/lib/firmware" -maxdepth 1 -name '*-crust.bin' -print -quit 2>/dev/null)"
 fi
@@ -781,6 +1082,21 @@ if ((! SKIP_PROJECT)); then
 	t "h713-features linked"      test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-features.service"
 	t "h713-cpufreq linked"       test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-cpufreq.service"
 	t "keystone udev start"       test -f "$TREE/etc/udev/rules.d/99-h713-keystone.rules"
+	# Profile desktop: Kodi does not run as root (h713-kodi.service), its user comes from sysusers.d at the first boot, h713-warp
+	# hands its Wayland socket to the group the compositor is in, and h713-tv comes up on `auto`
+	if has_profile desktop; then
+		t "desktop: tv.conf starts on source auto"     grep -qx 'source = auto' "$TREE/etc/h713/tv.conf"
+		t "desktop: sysusers.d entry for h713-kodi"    grep -q '^u h713-kodi ' "$TREE/usr/lib/sysusers.d/h713-kodi.conf"
+		t "desktop: Kodi runs as h713-kodi"            grep -qx 'User=h713-kodi' "$TREE/etc/systemd/system/h713-kodi.service"
+		t "desktop: the Kodi unit is hardened"         grep -qx 'NoNewPrivileges=yes' "$TREE/etc/systemd/system/h713-kodi.service"
+		t "desktop: the Wayland socket has a group"    grep -q '^ExecStart=.* -g video ' "$TREE/etc/systemd/system/h713-warp.service"
+		# Kodi's own power menu: polkitd and one narrow rule (that user, the three logind actions and their -multiple-sessions variants)
+		t "desktop: polkitd installed"                 grep -q '^Package: polkitd$' "$TREE/var/lib/dpkg/status"
+		_RULE="$TREE/etc/polkit-1/rules.d/50-h713-kodi.rules"
+		t "desktop: polkit rule is for h713-kodi"      grep -q 'subject.user == "h713-kodi"' "$_RULE"
+		t "desktop: polkit rule names six logind actions" test "$(grep -c '^        "org.freedesktop.login1.' "$_RULE")" = 6
+		t "desktop: polkit rule names nothing else"    bash -c '! grep -o "org\.freedesktop\.[A-Za-z0-9._-]*" "$1" | grep -qvxE "org\.freedesktop\.login1\.(suspend|power-off|reboot)(-multiple-sessions)?"' _ "$_RULE"
+	fi
 	if [[ -n "$BOARD" ]]; then
 		t "features of $BOARD"    grep -qx "board = $BOARD" "$TREE/etc/h713/features"
 	else
@@ -791,7 +1107,7 @@ fi
 TREE_KIB=$(du -sxk "$TREE" | cut -f1)
 info "tree size: $((TREE_KIB / 1024)) MiB ($TREE_KIB KiB, du -sx)"
 if ((TREE_KIB > 500 * 1024)); then
-	warn "over the acceptance limit of 107 §7.1 (500 MiB)"
+	warn "over the acceptance limit of 107 §7.1 (500 MiB)${PROFILES:+ -- profile $PROFILES, not a release image}"
 fi
 
 say "write the tar"
@@ -827,6 +1143,7 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "suite=$SUITE"
 	echo "arch=$ARCH"
 	echo "mirror=$MIRROR"
+	echo "bootstrap_sources=$(bootstrap_sources | sed 's/^deb [^ ]* //; s/ main$//' | paste -sd,)"
 	echo "keyring=$KEYRING"
 	echo "built=$(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 	echo "source_date_epoch=${SOURCE_DATE_EPOCH:-unset}"
@@ -837,6 +1154,10 @@ MANIFEST="$OUT_DIR/hy310-rootfs.manifest"
 	echo "modroot=${MODROOT#"$PROJECT_ROOT"/}"
 	echo "h713_tv=${H713_TV_BIN#"$PROJECT_ROOT"/}"
 	echo "mesa=$( [[ "$MESA_TAR" == none ]] && echo none || echo "${MESA_TAR#"$PROJECT_ROOT"/}" )"
+	echo "profile=${PROFILES:-none}"
+	echo "libva=$( ((WANT_LIBVA)) && echo "${LIBVA_TAR#"$PROJECT_ROOT"/}" || echo none )"
+	echo "notice=${NOTICE_DIR#"$PROJECT_ROOT"/}"
+	echo "mesa_dummies=$(sed -n 's/^Package: //p' "$EQUIVS_DIR"/*.control | paste -sd,)"
 	echo "crust=$( [[ -n "$CRUST_BIN" ]] && echo "$BOARD-crust.bin $(sha256sum "$CRUST_BIN" | cut -c1-16)" || echo none )"
 	echo "standby=$( ((STANDBY)) && echo offered || echo no )"
 	echo "ssh_key_built_in=$( [[ -n "$AUTHORIZED_KEY" ]] && echo yes || echo no )"

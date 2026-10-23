@@ -1,0 +1,77 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: cedrus: a job of another codec starts from a reset engine
+
+With VP9 on the VE (0292), an H.265 stream decoded next to a VP9 one
+fails every job: "Failed to setup decoding job: -22", and GStreamer hands
+out 300 identical, undecoded pictures with exit 0. Alone, the same H.265
+clip is bit-exact; after the VP9 stream ends it is bit-exact again once
+runtime PM has reset the engine between streams.
+
+VP9 runs on the H.265 engine and programs registers there that H.265
+never writes. One is +0x504, where VP9 puts its frame header with bits 31
+and 26 always set; H.265 writes that register only after it has read the
+slice header through the engine's bit reader, so the reader runs in
+whatever mode VP9 left and returns the zero byte cedrus_h265_setup()
+rejects. Clearing +0x504 before the read ended the -EINVAL but not the
+wrong pictures (0/300), and clearing the other registers only VP9 writes
+(+0x51c, +0x590..+0x5ac) did not either: the rest of what VP9 leaves is
+not found. A reset between two jobs of different codecs ends both, the
+way the engine is reset between streams anyway.
+
+Every codec programs the engine in full for each job (VP9's probability
+adaptation is the CPU's), so the reset loses nothing. Measured on the
+HY310, 13.10.2026, two streams at a time, both compared frame by frame
+against their software references: VP8+H.265, VP9+H.265, MPEG-2+H.264,
+VP8+VP9 and H.265 10-bit+VP9, two rounds, all bit-exact and no driver
+error; the same run without this patch fails VP9+H.265 and H.265
+10-bit+VP9 in both rounds (0/300, 300-304 setup errors each). Three streams
+at once (H.264 1080p, H.265 1080p, VP9 720p) are bit-exact.
+
+Not cstenger's: found while porting his series (13.10.2026); it belongs
+in front of his VP9 work wherever that goes.
+---
+diff --git a/drivers/staging/media/sunxi/cedrus/cedrus.h b/drivers/staging/media/sunxi/cedrus/cedrus.h
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -268,6 +268,8 @@ struct cedrus_dev {
+ 
+ 	struct reset_control	*rstc;
+ 	struct reset_control	*rstc_ve3;
++	/* pixel format of the last job, to reset the engine on a codec switch */
++	u32			last_pixfmt;
+ 
+ 	unsigned int		capabilities;
+ 
+diff --git a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+@@ -13,6 +13,7 @@
+  * Marek Szyprowski, <m.szyprowski@samsung.com>
+  */
+ 
++#include <linux/reset.h>
+ #include <media/v4l2-device.h>
+ #include <media/v4l2-ioctl.h>
+ #include <media/v4l2-event.h>
+@@ -99,6 +100,21 @@ void cedrus_device_run(void *priv)
+ 
+ 	v4l2_m2m_buf_copy_metadata(run.src, run.dst, true);
+ 
++	/*
++	 * A job of another codec than the last one starts from a reset
++	 * engine. VP9 runs on the H.265 engine and leaves registers set that
++	 * H.265 never writes - its frame header at +0x504 with bits 31 and 26
++	 * set, read by the bit reader before H.265 writes that register - so
++	 * an H.265 job after a VP9 one failed its slice header (-EINVAL)
++	 * until runtime PM reset the engine between streams. Clearing that
++	 * register alone ended the errors but not the wrong pictures; a reset
++	 * on the switch ends both. Every codec programs the engine in full for
++	 * each job (VP9's adaptation is the CPU's), so nothing is lost.
++	 */
++	if (dev->last_pixfmt && dev->last_pixfmt != ctx->src_fmt.pixelformat)
++		reset_control_reset(dev->rstc);
++	dev->last_pixfmt = ctx->src_fmt.pixelformat;
++
+ 	/*
+ 	 * The primary output describes the RECONSTRUCTION, which is the coded
+ 	 * size.  With the scaler off that is dst_fmt; with it on, dst_fmt is

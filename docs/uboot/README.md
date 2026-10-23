@@ -43,8 +43,10 @@ A good boot prints `PSCI: SCP firmware (crust) started from 0x110000` (measured 
 `doku/163`, and as the installed firmware of the R1 test image on 08.10.2026, `doku/170`). With no image in the
 FIT the SPL says `Skip load 'scp': image size is 0!`, BL31 says `no SCP firmware staged, the ARISC is Linux's to
 load`, and the arisc driver loads the vendor's firmware as before. Only a board whose `board.env` names a
-`CRUST_DEFCONFIG` (the HY310) gets the image, and only in its release build: the installer and the probe never
-carry it. BL31 also holds what the standby needs - PSCI `SYSTEM_SUSPEND` through crust, built only with
+`CRUST_DEFCONFIG` (the HY310, the HY200 QZ713DF A1) gets the image, and only in a release build with `--standby`, which
+runs crust: the installer and the probe never carry it, and since 22.10.2026 an image without the standby neither - it
+runs the vendor's ARISC firmware, with crust in the rootfs as the experimental choice
+([h713-arisc](../tools/h713-arisc.md)). *Superseded (22.10.2026):* "and only in its release build". BL31 also holds what the standby needs - PSCI `SYSTEM_SUSPEND` through crust, built only with
 `release/build-all.sh --standby` and refused at run time unless crust runs and speaks contract version 5 - and
 the watchdog sequences of a reset and a power-off ([power-gate.md](power-gate.md), [standby.md](../subsystems/standby.md);
 the patches are mirrored in [`tfa-h713/`](../../tfa-h713/README.md)).
@@ -52,10 +54,9 @@ the patches are mirrored in [`tfa-h713/`](../../tfa-h713/README.md)).
 ## Relation to the fork
 
 U-Boot is a git submodule, `mainline/external/u-boot`, pinned to our own fork of
-[cstenger/u-boot](https://github.com/cstenger/u-boot) (`mainline/.gitmodules`).
-The branch is **`h713-hy310`**, and that is what this repository's own `.gitmodules` pins. The file
-inside `mainline/` is cstenger's and names his branch `h713`; git only reads the one at the root, so
-his copy is inert here. A board still in test can have a branch of its own next to it until its work is
+[cstenger/u-boot](https://github.com/cstenger/u-boot) (his branch is `h713`).
+The branch is **`h713-hy310`**, and that is what this repository's `.gitmodules` pins. A board still in test
+can have a branch of its own next to it until its work is
 taken in: `hy300-pro-ab` carried the panel A/B for the HY300 Pro of issue #1, and its commits are in
 `h713-hy310` now.
 The submodule is a pinned commit in a fork, and `uboot-h713/` mirrors the same commits as

@@ -2,7 +2,8 @@
 /*
  * osd-mockup DIR [W H] - every place, look and case of libh713osd as one PAM picture each (RGB_ALPHA,
  * straight alpha), DIR/<place>-<look>-<case>.pam, default 1920 x 1080. A host tool: the pictures are laid over a photo to choose
- * a look; it is not installed.
+ * a look; it is not installed. With a font (env OSD_FONT, else the image's path) it also draws the launcher in the
+ * states of the mock-up, DIR/launcher-<case>.pam, band by band as h713-osd does.
  */
 #include <stdio.h>
 #include <stdlib.h>
@@ -60,10 +61,27 @@ static int write_pam(const char *path, const struct osd_canvas *c)
 	return fclose(f);
 }
 
+/* the launcher's pictures: the mock-up's six rows with Kodi chosen, and the rows that are there in the Kodi image */
+static const struct {
+	const char *name;
+	struct osd_launcher l;
+} LAUNCHERS[] = {
+	{ "mockup-kodi", { "20:47 \xc2\xb7 HDMI 1080p60", 6, 1, { { OSD_ICON_HDMI, "HDMI input", 0 }, { OSD_ICON_FILM, "Kodi", 0 },
+	    { OSD_ICON_GLOBE, "Browser", 0 }, { OSD_ICON_DESK, "Desktop", 0 }, { OSD_ICON_SLIDERS, "Settings", 0 },
+	    { OSD_ICON_POWER, "Standby", 1 } } } },
+	{ "h-hdmi", { "20:47 \xc2\xb7 HDMI 1080p60", 3, 0, { { OSD_ICON_HDMI, "HDMI input", 0 }, { OSD_ICON_FILM, "Kodi", 0 },
+	    { OSD_ICON_POWER, "Standby", 1 } } } },
+	{ "h-kodi", { "20:47 \xc2\xb7 Kodi", 3, 1, { { OSD_ICON_HDMI, "HDMI input", 0 }, { OSD_ICON_FILM, "Kodi", 0 },
+	    { OSD_ICON_POWER, "Standby", 1 } } } },
+	{ "h-standby", { "20:47 \xc2\xb7 HDMI 1080p60", 3, 2, { { OSD_ICON_HDMI, "HDMI input", 0 }, { OSD_ICON_FILM, "Kodi", 0 },
+	    { OSD_ICON_POWER, "Standby", 1 } } } },
+};
+
 int main(int argc, char **argv)
 {
 	struct osd_canvas c = { 0 };
 	char path[512];
+	const char *font = getenv("OSD_FONT") ? getenv("OSD_FONT") : OSD_FONT;
 
 	if (argc != 2 && argc != 4) {
 		fprintf(stderr, "usage: osd-mockup DIR [W H]\n");
@@ -95,6 +113,23 @@ int main(int argc, char **argv)
 		osd_clear(&c);
 		osd_draw(&c, &st, &NEW[k].it, NULL);
 		snprintf(path, sizeof(path), "%s/neu-%s.pam", argv[1], NEW[k].name);
+		if (write_pam(path, &c)) {
+			perror(path);
+			return 1;
+		}
+	}
+	if (osd_font_open(font)) {
+		fprintf(stderr, "osd-mockup: no font at %s (OSD_FONT=...): the launcher is left out\n", font);
+		return 0;
+	}
+	for (size_t k = 0; k < sizeof(LAUNCHERS) / sizeof(LAUNCHERS[0]); k++) {
+		int box[2 * (OSD_LAUNCHER_ROWS + 3)][4], bands;
+
+		osd_clear(&c);
+		bands = osd_launcher_bands(&c, &LAUNCHERS[k].l, box);
+		for (int b = 0; b < bands; b++)
+			osd_launcher_draw(&c, &LAUNCHERS[k].l, b);
+		snprintf(path, sizeof(path), "%s/launcher-%s.pam", argv[1], LAUNCHERS[k].name);
 		if (write_pam(path, &c)) {
 			perror(path);
 			return 1;

@@ -1,0 +1,80 @@
+# h713-browser.service - Firefox on the panel, in a labwc of its own (profile desktop).
+#
+# Not wanted by anything, on purpose (the launcher's "Browser" entry, /etc/h713/launcher.d/25-browser.conf). Built like
+# h713-desktop.service (the same road): labwc is a Wayland client of h713-warp's server, h713-warp draws its window
+# through the keystone, h713-tv stays the DRM master. What differs: the configuration is /etc/h713/labwc-browser/ (the window
+# maximized without a frame, no menu, no terminal) and labwc starts Firefox as its session client (-S): when Firefox ends, labwc
+# ends, the unit ends, and the HDMI ring is back two seconds later (h713-warp puts h713-tv's source back to `auto`, nothing to undo).
+# * Why a compositor and not cage alone, which passes a fullscreen client's buffers through without a copy (Kodi): the launcher lets
+#   the press that opens the launcher reach the client like any other (its grab waits for Home's release; Kodi's keymap maps it to nothing; Firefox has no such
+#   layer, and its home-page key would take the page away under the launcher), and the focus keys of the remote are KEY_F4/KEY_F5,
+#   F5 reloading a page. Only a compositor can bind those keys to nothing. The price is a second GPU pass over a full window and
+#   about 20 MiB of RAM; H4 measures it against cage as the control arm (laeufe/box/h2.sh h4 cage).
+# * One client at a time: Conflicts= stops Kodi and the desktop when this unit starts (After= on Kodi: the start waits for its stop).
+# * BindsTo=h713-warp.service: a stop or restart of the warp ends the browser.
+# * A standby: no Conflicts=sleep.target here, on purpose; h713-sleep-pre/-post end every mode unit that a launcher.d
+#   entry names and start it again after the wake (see h713-desktop.service). SIGTERM goes to labwc, which closes its clients:
+#   Firefox ends without a restore page (the profile prefs ask for none).
+# * Decoding is software, on purpose (decided 15.10.2026): Firefox loads foreign web content, and its decoder process
+#   (RDD) stays inside its sandbox. Measured on the HY310 (H4): inside the sandbox "Failed to create VA-API device context" (probably
+#   the driver's device nodes: it works with /dev/media* and /dev/video*, and the paths in Firefox 153's libxul are /dev/dri and /dev/video%d, no
+#   /dev/media*; the denied path was not traced. Firefox has no pref for the decoder process's sandbox: security.sandbox.content.*_path_whitelist
+#   are the content process's, the one switch is MOZ_DISABLE_RDD_SANDBOX, all or nothing), so the clip was
+#   decoded in software: 47 of 60 fps for 1080p60, not measured at 30 fps. The hardware path, for whoever prefers it and takes the price (the
+#   decoder process then runs without its sandbox, as the unprivileged user h713-desktop under this unit's hardening): remove the "#" below; then
+#   "VA-API FFmpeg init successful", 60 fps decoded by the video engine (60 VE interrupts/s). The driver and its environment are the drop-in
+#   h713-browser.service.d/10-h713-media-env.conf (LIBVA_DRIVER_NAME, LIBVA_DRIVERS_PATH), the profile's user.js lifts the VA-API blocklist.
+# * The keys: volume, mute and focus are h713-keys', Home the launcher's, the power key h713-power's - labwc-browser/rc.xml binds
+#   them to nothing so that Firefox does not see them. Arrows, Back (history back) and the remote's mouse mode (REL_X/REL_Y, OK as
+#   the left button) reach the page through labwc and libinput.
+# * Not root (the userspace-fix's way for Kodi, h713-kodi.service): the system user h713-desktop (usr/lib/sysusers.d/h713-desktop.conf), shared
+#   by the desktop and the browser (one runs at a time; the desktop's Firefox window and the browser mode share one profile), with the
+#   groups the devices ask for: video (seatd's socket, h713-warp's Wayland socket, the decoders' /dev/video* and /dev/media*), render
+#   (renderD128), audio (ALSA, the DSP bridge). HOME is the StateDirectory /var/lib/h713-desktop, chowned to the user at the first start
+#   (the Firefox profile lives there); /tmp is private. The hardening is h713-warp.service's without MemoryDenyWriteExecute: Firefox
+#   compiles JavaScript. The source command is the one thing that needs root (h713-tv's socket is root's): "+" runs it outside the user
+#   and the sandbox; it does nothing without h713-tv's socket.
+[Unit]
+Description=Firefox on the panel (labwc, a Wayland client of h713-warp)
+Documentation=file:/usr/local/share/h713/systemd/h713-media-env.conf
+Requires=seatd.service
+After=seatd.service
+BindsTo=h713-warp.service
+After=h713-warp.service
+Conflicts=h713-kodi.service h713-desktop.service
+After=h713-kodi.service
+
+[Service]
+Type=simple
+RuntimeDirectory=h713-browser
+RuntimeDirectoryMode=0700
+User=h713-desktop
+Group=h713-desktop
+SupplementaryGroups=video render audio
+StateDirectory=h713-desktop
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+Environment=XDG_RUNTIME_DIR=/run/h713-browser
+Environment=HOME=/var/lib/h713-desktop
+Environment=LIBSEAT_BACKEND=seatd
+Environment=WAYLAND_DISPLAY=/run/h713-warp/wayland
+Environment=WLR_BACKENDS=wayland,libinput
+Environment=WLR_RENDER_DRM_DEVICE=/dev/dri/by-path/platform-1800000.gpu-render
+Environment=WLR_RENDERER=gles2
+Environment=WLR_NO_HARDWARE_CURSORS=1
+Environment=MOZ_ENABLE_WAYLAND=1
+Environment=MOZ_CRASHREPORTER_DISABLE=1
+#Environment=MOZ_DISABLE_RDD_SANDBOX=1
+ExecStartPre=+/usr/local/sbin/h713-kodi-switch source
+# the page scale follows the panel (1920 -> 2.0, 1280 -> 1.333), as the unit's user: the profile is its own
+ExecStartPre=/usr/local/sbin/h713-firefox-scale /var/lib/h713-desktop/firefox/user.js
+ExecStart=/usr/bin/labwc -C /etc/h713/labwc-browser -S "/usr/bin/firefox-esr --no-remote --profile /var/lib/h713-desktop/firefox"
+KillSignal=SIGTERM
+TimeoutStopSec=20s
+# Firefox keeps ".startup-incomplete" in its profile until it has run for about 35 s, and the start after a stop that came sooner takes the
+# slow path (caches rebuilt, 8.3 s to the first window instead of 5.7 s, measured on the HY310). This unit is stopped on purpose (a mode switch, a
+# standby) with SIGTERM and Firefox ends cleanly, so the marker is not a crash: remove it.
+ExecStopPost=-/bin/rm -f /var/lib/h713-desktop/firefox/.startup-incomplete

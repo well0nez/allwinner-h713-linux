@@ -2,9 +2,12 @@
 import importlib.machinery
 import importlib.util
 import os
+import struct
 import subprocess
 import sys
 import tempfile
+import threading
+import time
 import unittest
 
 HERE = os.path.dirname(os.path.abspath(__file__))
@@ -14,6 +17,76 @@ TOOL = next(p for p in (os.path.join(HERE, "..", "h713-remote-pair"), os.path.jo
 FAKE = os.path.join(HERE, "fake_bluetoothctl.py")
 CTL = sys.executable + " " + FAKE
 REMOTE = "AA:BB:CC:DD:EE:01"
+FOREIGN = "AA:BB:CC:DD:EE:02"
+# The stock remote's advert in pairing mode, byte for byte as captured on 20.10.2026 (HY300PRO-G-EU, btmon):
+# flags 0x05 (LE Limited Discoverable, BR/EDR not supported), HID service 0x1812, appearance remote control, name.
+PAIRING_AD = bytes.fromhex("020105" "03031218" "03198001") + bytes([17, 0x09]) + b"Bluetooth remote"
+
+
+def le_addr(addr):
+    return bytes.fromhex(addr.replace(":", ""))[::-1]
+
+
+def adv_report(addr, etype=0x00, data=PAIRING_AD):
+    """an HCI LE Advertising Report event with one report (etype 0 ADV_IND, 1 ADV_DIRECT_IND, 3 ADV_NONCONN_IND)"""
+    body = bytes([0x02, 1, etype, 0x00]) + le_addr(addr) + bytes([len(data)]) + data + bytes([0xc1])
+    return bytes([0x3e, len(body)]) + body
+
+
+def ext_adv_report(addr, etype=0x0013, data=PAIRING_AD):
+    """an HCI LE Extended Advertising Report event with one report (0x0013: a legacy ADV_IND)"""
+    rep = (struct.pack("<HB", etype, 0x00) + le_addr(addr) + bytes([1, 0, 0xff, 0x7f, 0xc1]) + struct.pack("<H", 0)
+           + bytes(7) + bytes([len(data)]) + data)
+    body = bytes([0x0d, 1]) + rep
+    return bytes([0x3e, len(body)]) + body
+
+
+def frames(*events):
+    """HCI events as the kernel's monitor channel hands them out (opcode 3: event, index 0)"""
+    return b"".join(struct.pack("<HHH", 3, 0, len(e)) + e for e in events)
+
+
+def add_device_command(addr, action, cookie=1):
+    """bluetoothd's mgmt Add Device as the monitor channel shows it (opcode 16: a program's mgmt command)"""
+    payload = struct.pack("<IH", cookie, 0x0033) + le_addr(addr) + bytes([1, action])
+    return struct.pack("<HHH", 16, 0, len(payload)) + payload
+
+
+def add_devices(path):
+    """(address, type, action) of the mgmt Add Device commands watch wrote to its mgmt file"""
+    out, data = [], open(path, "rb").read()
+    while len(data) >= 6:
+        op, _, size = struct.unpack_from("<HHH", data)
+        cp, data = data[6:6 + size], data[6 + size:]
+        if op == 0x0033:
+            out.append((":".join("%02X" % b for b in reversed(cp[:6])), cp[6], cp[7]))
+    return out
+
+
+#: an undirected advert without the pairing flag: a remote that wakes without a directed advert
+WAKE = adv_report(REMOTE, 0x00, b"")
+
+
+class FifoFeed:
+    """Opens the FIFO watch reads as its monitor channel, writes frames, keeps it open (so the stand-in can
+    add its own) until the block ends."""
+    def __init__(self, path, data):
+        self.path, self.data, self.done = path, data, threading.Event()
+
+    def _run(self):
+        with open(self.path, "wb") as w:
+            w.write(self.data)
+            w.flush()
+            self.done.wait(90)
+
+    def __enter__(self):
+        self.thread = threading.Thread(target=self._run, daemon=True)
+        self.thread.start()
+        return self
+
+    def __exit__(self, *exc):
+        self.done.set()
+        self.thread.join(5)
 
 
 def load_tool():
@@ -24,8 +97,11 @@ def load_tool():
     return mod
 
 
-def run(args, scenario="found", log=None):
-    env = dict(os.environ, FAKE_SCENARIO=scenario, H713_BLUETOOTHCTL=CTL)
+def run(args, scenario="found", log=None, monitor=os.devnull, mgmt=os.devnull, **extra):
+    """monitor: the HCI monitor frames watch reads, mgmt: where it writes mgmt commands (default nothing,
+    never the host's own controller)"""
+    env = dict(os.environ, FAKE_SCENARIO=scenario, H713_BLUETOOTHCTL=CTL, H713_HCI_MONITOR=monitor,
+               H713_HCI_MGMT=mgmt, **extra)
     if log:
         env["FAKE_LOG"] = log
     return subprocess.run([sys.executable, TOOL] + args, env=env, capture_output=True, text=True, timeout=60)
@@ -86,6 +162,13 @@ class Commands(unittest.TestCase):
             self.assertIn("cmd %s %s" % (verb, REMOTE), sent)
         self.assertNotIn("AA:BB:CC:DD:EE:02", sent, "the foreign device must not be paired")
 
+    def test_pair_finds_a_remote_whose_unpaired_object_is_left_over(self):
+        """HY300PRO-G-EU 20.10.2026: bluez kept the remote's object, the scan showed it only as [CHG] for 40 s"""
+        r = run(["pair", "--timeout", "5"], scenario="leftover")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("found " + REMOTE + " BLE_X_RMC", r.stdout)
+        self.assertIn("ok paired " + REMOTE, r.stdout)
+
     def test_pair_times_out_without_a_remote(self):
         r = run(["pair", "--timeout", "1"], scenario="none")
         self.assertEqual(r.returncode, 1)
@@ -139,14 +222,15 @@ class Commands(unittest.TestCase):
     def test_watch_says_each_line_while_it_runs(self):
         """under systemd stdout is a pipe: the lines must come while watch keeps running, not at its end"""
         import select, time
-        env = dict(os.environ, FAKE_SCENARIO="empty", H713_BLUETOOTHCTL=CTL)
+        env = dict(os.environ, FAKE_SCENARIO="empty", H713_BLUETOOTHCTL=CTL, H713_HCI_MONITOR=os.devnull,
+                   H713_HCI_MGMT=os.devnull)
         p = subprocess.Popen([sys.executable, TOOL, "watch", "--interval", "30", "--timeout", "3"], env=env,
                              stdout=subprocess.PIPE, stderr=subprocess.DEVNULL, text=True)
         try:
             got, end = "", time.monotonic() + 10
             while "ok paired" not in got and time.monotonic() < end:
-                if select.select([p.stdout], [], [], 0.2)[0]:
-                    got += p.stdout.readline()
+                if select.select([p.stdout], [], [], 0.2)[0]:     # not readline: a second line kept in its
+                    got += os.read(p.stdout.fileno(), 4096).decode()    # buffer is invisible to select
             self.assertIsNone(p.poll(), "watch should still be running")
             self.assertIn("found " + REMOTE, got)
             self.assertIn("ok paired " + REMOTE, got)
@@ -154,8 +238,13 @@ class Commands(unittest.TestCase):
             p.kill()
             p.wait()
 
-    def test_watch_once_reconnects_a_bonded_remote(self):
-        r = run(["watch", "--once", "--timeout", "5"], scenario="unconnected")
+    def test_watch_once_reconnects_a_remote_that_wakes_undirected(self):
+        """a directed advert is the kernel's to connect; an undirected one without the pairing flag is watch's"""
+        with tempfile.TemporaryDirectory() as d:
+            hci = os.path.join(d, "hci")
+            with open(hci, "wb") as f:
+                f.write(frames(WAKE))
+            r = run(["watch", "--once", "--timeout", "5"], scenario="unconnected", monitor=hci)
         self.assertEqual(r.returncode, 0, r.stderr)
         self.assertIn("ok connected " + REMOTE, r.stdout)
         r = run(["watch", "--once", "--timeout", "5"], scenario="found")
@@ -174,10 +263,26 @@ class Commands(unittest.TestCase):
         self.assertNotIn("cmd remove ", sent)
         self.assertNotIn("cmd scan ", sent)
 
+    def test_watch_lets_the_kernel_connect_on_directed_adverts_only(self):
+        """bluetoothd lets the kernel connect a bonded remote on any advert, also on its pairing advert
+        (Add Device action 2); watch sets action 1 and does not connect by itself without a waking advert"""
+        with tempfile.TemporaryDirectory() as d:
+            log, mgmt = os.path.join(d, "log"), os.path.join(d, "mgmt")
+            r = run(["watch", "--once", "--timeout", "3"], scenario="unconnected", log=log, mgmt=mgmt)
+            added = add_devices(mgmt)
+            with open(log) as f:
+                sent = f.read()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertEqual(added, [(REMOTE, 1, 1)])
+        self.assertIn("directed adverts only", r.stdout)
+        self.assertNotIn("cmd connect ", sent)
+
     def test_watch_does_not_repair_after_connection_failure(self):
         with tempfile.TemporaryDirectory() as d:
-            log = os.path.join(d, "log")
-            r = run(["watch", "--once", "--timeout", "3"], scenario="connectfail", log=log)
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            with open(hci, "wb") as f:
+                f.write(frames(WAKE))
+            r = run(["watch", "--once", "--timeout", "3"], scenario="connectfail", log=log, monitor=hci)
             self.assertEqual(r.returncode, 2, r.stderr)
             with open(log) as f:
                 sent = f.read()
@@ -239,6 +344,175 @@ class Commands(unittest.TestCase):
                            capture_output=True, text=True, timeout=30)
         self.assertEqual(r.returncode, 3)
         self.assertIn("cannot run", r.stderr)
+
+
+class Adverts(unittest.TestCase):
+    """the pairing-mode advert, read from HCI events"""
+
+    def setUp(self):
+        self.m = load_tool()
+
+    def test_the_pairing_advert_is_found(self):
+        self.assertEqual(list(self.m.pairing_adverts(adv_report(REMOTE))), [REMOTE])
+        self.assertEqual(list(self.m.pairing_adverts(ext_adv_report(REMOTE))), [REMOTE])
+
+    def test_other_adverts_are_no_pairing_request(self):
+        general = bytes.fromhex("020106") + PAIRING_AD[3:]          # LE General Discoverable only
+        for event in (adv_report(REMOTE, 0x01, b""),                 # ADV_DIRECT_IND: how a bonded remote wakes
+                      adv_report(REMOTE, 0x00, general),
+                      adv_report(REMOTE, 0x03),                      # not connectable
+                      adv_report(REMOTE, 0x04),                      # a scan response
+                      ext_adv_report(REMOTE, 0x0015, b""),           # extended: directed
+                      ext_adv_report(REMOTE, 0x0010),                # extended: not connectable
+                      bytes([0x0e, 4, 1, 0x0c, 0x0c, 0]),            # a command complete
+                      adv_report(REMOTE)[:9],                        # cut short
+                      bytes([0x3e, 3, 0x02, 9, 0])):                 # claims nine reports, has none
+            with self.subTest(event=event.hex()):
+                self.assertEqual(list(self.m.pairing_adverts(event)), [])
+
+
+class StaleBond(unittest.TestCase):
+    """TODO 2.92: Left+Right pairs afresh while the box keeps a bond the remote has lost"""
+
+    def test_watch_pairs_afresh_when_the_bonded_remote_is_in_pairing_mode(self):
+        with tempfile.TemporaryDirectory() as d:
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            with open(hci, "wb") as f:
+                f.write(frames(adv_report(REMOTE)))
+            r = run(["watch", "--once", "--timeout", "5"], scenario="stale", log=log, monitor=hci)
+            with open(log) as f:
+                sent = f.read()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("cmd remove " + REMOTE, sent)
+        self.assertLess(sent.index("cmd remove " + REMOTE), sent.index("cmd pair " + REMOTE))
+        self.assertIn("ok forgot " + REMOTE, r.stdout)
+        self.assertIn("ok paired " + REMOTE, r.stdout)
+
+    def test_the_remote_that_asked_is_paired_not_a_neighbour(self):
+        """after the forget a second stock remote in pairing mode shows up first: only ours is paired"""
+        with tempfile.TemporaryDirectory() as d:
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            with open(hci, "wb") as f:
+                f.write(frames(adv_report(REMOTE)))
+            r = run(["watch", "--once", "--timeout", "5"], scenario="staleneighbour", log=log, monitor=hci)
+            with open(log) as f:
+                sent = f.read()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("cmd pair " + REMOTE, sent)
+        self.assertNotIn("cmd pair " + FOREIGN, sent)
+
+    def test_the_advert_that_comes_during_a_reconnect_counts(self):
+        """as on 20.10.2026: the stale link looks connected for a moment, the advert arrives meanwhile"""
+        with tempfile.TemporaryDirectory() as d:
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            os.mkfifo(hci)
+            with FifoFeed(hci, frames(WAKE)):       # it woke undirected, watch connects, then Left + Right
+                r = run(["watch", "--once", "--timeout", "5"], scenario="stale", log=log, monitor=hci,
+                        FAKE_HCI=hci, FAKE_HCI_FRAMES=frames(adv_report(REMOTE)).hex())
+            with open(log) as f:
+                sent = f.read()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertLess(sent.index("cmd connect " + REMOTE), sent.index("cmd remove " + REMOTE))
+        self.assertIn("ok paired " + REMOTE, r.stdout)
+
+    def test_the_advert_ends_a_connect_that_gets_no_answer(self):
+        """the connect gets no answer; the advert must not wait for its timeout of 20 s"""
+        with tempfile.TemporaryDirectory() as d:
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            os.mkfifo(hci)
+            start = time.monotonic()
+            with FifoFeed(hci, frames(WAKE)):
+                r = run(["watch", "--once", "--timeout", "20"], scenario="stalesilent", log=log, monitor=hci,
+                        FAKE_HCI=hci, FAKE_HCI_FRAMES=frames(adv_report(REMOTE)).hex())
+            took = time.monotonic() - start
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ok paired " + REMOTE, r.stdout)
+        self.assertLess(took, 15, "the connect was waited out")
+
+    def test_the_advert_is_acted_on_at_once(self):
+        """the bonded remote is connected and watch idles: the advert must lead to the forget before another
+        round of bluetoothctl queries (each costs 1.5 s; on the G-EU the remote stopped its pairing mode
+        0.3 s after the forget that came 1.5 s late, 20.10.2026)"""
+        with tempfile.TemporaryDirectory() as d:
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            os.mkfifo(hci)
+            open(log, "w").close()
+            env = dict(os.environ, FAKE_SCENARIO="found", H713_BLUETOOTHCTL=CTL, FAKE_LOG=log, H713_HCI_MONITOR=hci,
+                       H713_HCI_MGMT=os.devnull)
+            p = subprocess.Popen([sys.executable, TOOL, "watch", "--interval", "30", "--timeout", "5"], env=env,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            try:
+                with open(hci, "wb") as w:              # waits for watch's reader
+                    end = time.monotonic() + 15
+                    while time.monotonic() < end and "cmd info " + REMOTE not in open(log).read():
+                        time.sleep(0.1)
+                    time.sleep(2)                       # the round is over, watch idles
+                    rounds = open(log).read().count("cmd devices Paired")
+                    w.write(frames(adv_report(REMOTE)))
+                    w.flush()
+                    start = time.monotonic()
+                    while time.monotonic() < end + 10 and "cmd remove " + REMOTE not in open(log).read():
+                        time.sleep(0.05)
+                    took = time.monotonic() - start
+            finally:
+                p.kill()
+                out = p.communicate()[0]
+            with open(log) as f:
+                sent = f.read()
+        self.assertIn("cmd remove " + REMOTE, sent, out)
+        self.assertEqual(sent[:sent.index("cmd remove ")].count("cmd devices Paired"), rounds, "a round came first")
+        self.assertLess(took, 1.0, out)
+
+    def test_a_normal_reconnect_never_forgets_the_bond(self):
+        """control: the bonded remote wakes (directed advert), other adverts of it and a foreign remote in pairing
+        mode; bluez's AdvertisingFlags still say 05 from the last pairing"""
+        general = bytes.fromhex("020106") + PAIRING_AD[3:]
+        with tempfile.TemporaryDirectory() as d:
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            with open(hci, "wb") as f:
+                f.write(frames(adv_report(REMOTE, 0x01, b""), adv_report(REMOTE, 0x00, general),
+                               adv_report(REMOTE, 0x03), adv_report(FOREIGN)))
+            r = run(["watch", "--once", "--timeout", "5"], scenario="unconnected", log=log, monitor=hci)
+            with open(log) as f:
+                sent = f.read()
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ok connected " + REMOTE, r.stdout)
+        for cmd in ("cmd remove ", "cmd pair ", "cmd scan "):
+            self.assertNotIn(cmd, sent)
+
+    def test_a_new_bond_is_kept_after_the_adverts_that_made_it(self):
+        """first pairing: the remote's pairing adverts came before the bond; the next rounds must not forget it"""
+        with tempfile.TemporaryDirectory() as d:
+            log, hci = os.path.join(d, "log"), os.path.join(d, "hci")
+            with open(hci, "wb") as f:
+                f.write(frames(adv_report(REMOTE)))
+            open(log, "w").close()
+            env = dict(os.environ, FAKE_SCENARIO="empty", H713_BLUETOOTHCTL=CTL, FAKE_LOG=log, H713_HCI_MONITOR=hci,
+                       H713_HCI_MGMT=os.devnull)
+            p = subprocess.Popen([sys.executable, TOOL, "watch", "--interval", "0.5", "--timeout", "5"], env=env,
+                                 stdout=subprocess.PIPE, stderr=subprocess.STDOUT, text=True)
+            try:
+                end = time.monotonic() + 30
+                while time.monotonic() < end:
+                    with open(log) as f:
+                        if f.read().count("cmd devices Paired") >= 3:
+                            break
+                    time.sleep(0.2)
+            finally:
+                p.kill()
+                out = p.communicate()[0]
+            with open(log) as f:
+                sent = f.read()
+        self.assertGreaterEqual(sent.count("cmd devices Paired"), 3, out)
+        self.assertIn("ok paired " + REMOTE, out)
+        self.assertEqual(sent.count("cmd pair " + REMOTE), 1, out)
+        self.assertNotIn("cmd remove ", sent, out)
+
+    def test_watch_without_the_monitor_channel_keeps_working(self):
+        r = run(["watch", "--once", "--timeout", "5"], scenario="unconnected", monitor="/nonexistent/hci")
+        self.assertEqual(r.returncode, 0, r.stdout + r.stderr)
+        self.assertIn("ok connected " + REMOTE, r.stdout)
+        self.assertIn("HCI monitor", r.stderr)
 
 
 if __name__ == "__main__":

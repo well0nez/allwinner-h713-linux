@@ -1,0 +1,44 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: drop the AV1 node of 0024 that no driver binds
+
+Two nodes sat at 0x01c0d000: av1-decoder@1c0d000 from 0024 (compatible
+"allwinner,sunxi-google-ve", "allwinner,sun50i-h713-av1-decoder", status
+"okay", the video engine's resets RST_BUS_VE and RST_BUS_VE3, no driver)
+and av1@1c0d000 from 0302, the node hantro's H713 variant binds and 0310
+disables. dtc warns about the duplicate unit address (W=1,
+unique_unit_address). A driver written for either string of the first,
+or the AV1 decoder brought back, would meet a second, enabled node that
+names the video engine's resets.
+
+The first node goes. decd_reserved stays: the TV decoder (dec@5600000)
+uses it.
+---
+ arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi | 15 ---------------
+ 1 file changed, 15 deletions(-)
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+index 0af693952..60ee4c271 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1353,21 +1353,6 @@ iommu: iommu@2010000 {
+ 		 * Testing without SRAM property first - may be optional on H713.
+ 		 */
+ 
+-		/*
+-		 * H713 AV1 decoder block (separate address from Cedrus VE to avoid 0x01c0e000 conflict)
+-		 */
+-		av1_decoder: av1-decoder@1c0d000 {
+-			compatible = "allwinner,sunxi-google-ve", "allwinner,sun50i-h713-av1-decoder";
+-			reg = <0x01c0d000 0x1000>, <0x03000000 0x10>;
+-			interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
+-			clocks = <&ccu CLK_BUS_VE>, <&ccu CLK_BUS_VE3>, <&ccu CLK_BUS_AV1>, <&ccu CLK_MBUS_VE3>;
+-			clock-names = "bus_ve", "bus_ve3", "av1", "mbus_ve3";
+-			resets = <&ccu RST_BUS_VE>, <&ccu RST_BUS_VE3>;
+-			reset-names = "reset_ve", "reset_ve3";
+-			memory-region = <&decd_reserved>;
+-			status = "okay";
+-		};
+-
+ 		ve: video-codec@1c0e000 {
+ 			compatible = "allwinner,sun50i-h6-video-engine";
+ 			/*

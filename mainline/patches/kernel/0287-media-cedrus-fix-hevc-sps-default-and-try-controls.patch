@@ -1,0 +1,76 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: use a supported HEVC SPS default and keep TRY pure
+
+The generic HEVC SPS default is all zero, including chroma_format_idc.
+Cedrus only supports 4:2:0, so querying that default and passing it to
+TRY_EXT_CTRLS returns EINVAL. This is the remaining v4l2-compliance failure.
+Provide an 8-bit 4:2:0 default instead of relaxing decoder validation.
+
+HEVC try_ctrl also changed ctx->bit_depth and capture/reconstruction sizing.
+A successful TRY of Main10 could silently enlarge allocations, leave the
+stored SPS at 8-bit, and let a later depth increase bypass the busy guard.
+Keep validation in try_ctrl and perform format changes only from s_ctrl.
+Allocated buffers retain their negotiated maximum depth, as before.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0121-media-cedrus-fix-hevc-sps-default-and-try-controls.patch (0121-media-cedrus-fix-hevc-sps-default-and-try-controls.patch, commit a861df2)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.c
+@@ -73,18 +73,45 @@
+ 		if (vb2_is_busy(vq)) {
+ 			if (ctx->bit_depth < bit_depth)
+ 				return -EINVAL;
+-		} else {
+-			ctx->bit_depth = bit_depth;
+-			cedrus_reset_cap_format(ctx);
+-			cedrus_update_recon_format(ctx);
+ 		}
+ 	}
+ 
++	return 0;
++}
++
++static int cedrus_s_ctrl(struct v4l2_ctrl *ctrl)
++{
++	struct cedrus_ctx *ctx = container_of(ctrl->handler, struct cedrus_ctx, hdl);
++	const struct v4l2_ctrl_hevc_sps *sps;
++	struct vb2_queue *vq;
++	unsigned int bit_depth;
++
++	if (ctrl->id != V4L2_CID_STATELESS_HEVC_SPS)
++		return 0;
++
++	sps = ctrl->p_new.p_hevc_sps;
++	bit_depth = max(sps->bit_depth_luma_minus8,
++			sps->bit_depth_chroma_minus8) + 8;
++	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
++
++	/* Allocated buffers retain their negotiated maximum bit depth. */
++	if (vb2_is_busy(vq) || bit_depth == ctx->bit_depth)
++		return 0;
++
++	ctx->bit_depth = bit_depth;
++	cedrus_reset_cap_format(ctx);
++	cedrus_update_recon_format(ctx);
+ 	return 0;
+ }
+ 
+ static const struct v4l2_ctrl_ops cedrus_ctrl_ops = {
+ 	.try_ctrl = cedrus_try_ctrl,
++	.s_ctrl = cedrus_s_ctrl,
++};
++
++/* The generic zero default denotes monochrome, which Cedrus cannot decode. */
++static const struct v4l2_ctrl_hevc_sps cedrus_hevc_sps_default = {
++	.chroma_format_idc = 1,
+ };
+ 
+ static const struct cedrus_control cedrus_controls[] = {
+@@ -187,6 +214,7 @@
+ 		.cfg = {
+ 			.id	= V4L2_CID_STATELESS_HEVC_SPS,
+ 			.ops	= &cedrus_ctrl_ops,
++			.p_def.p_const = &cedrus_hevc_sps_default,
+ 		},
+ 		.capabilities	= CEDRUS_CAPABILITY_H265_DEC,
+ 	},

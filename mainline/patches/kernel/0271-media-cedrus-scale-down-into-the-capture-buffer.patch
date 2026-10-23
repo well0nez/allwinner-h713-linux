@@ -1,0 +1,562 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: scale down into the V4L2 capture buffer
+
+Stage 1 of the only no-GPU route to 1080p on this 1280x720 panel.  The VE's
+secondary output can halve or quarter each axis at decode time, which is how
+the vendor plays 1080p on this SoC -- it downscales at the DECODER, not in the
+display pipeline, which is why an exhaustive census of the display blocks found
+nothing that could do it.
+
+Patch 0097 proved the hardware works but left the scaled frame in a private
+debugfs buffer, where nothing could reach it.  This makes it the V4L2 capture
+buffer, so the existing zero-copy dma-buf path to DECD carries it to the panel
+unchanged.  1920x1080 decodes to 960x544; drm/h713-afbd then magnifies that
+back to the panel.
+
+Userspace asks for it with V4L2_SEL_TGT_COMPOSE on the capture queue, which is
+the standard way a decoder advertises scaling.  Each axis divides by 1, 2 or 4
+and nothing between -- there is no arbitrary ratio on this part, and the
+register block that would provide one is present, accepts every write, and has
+no datapath behind it.  A request is rounded down to the next reachable size
+and read back, rather than refused.  Offered for H.264 only, because
+VE_H264_SDROT_* live inside the H.264 engine block.
+
+THE RECONSTRUCTION CANNOT LIVE IN THE CAPTURE BUFFER ANY MORE.
+
+That is the whole difficulty.  The capture buffer now holds a scaled picture,
+which is not something the decoder can predict from, so every reference frame
+has to be somewhere else.  Each capture buffer gets a private full-size frame,
+and the primary output plus every DPB pointer aim at that instead:
+
+  - all frame addresses now go through one helper, cedrus_frame_addr().  Both
+    call sites -- the DPB list and the current picture -- already shared
+    cedrus_fill_ref_pic(), and the other codecs share cedrus_dst_buf_addr(), so
+    there is a single place where this can be got right or wrong.
+  - the frames are per capture buffer rather than a shared pool, because the
+    DPB indexes by capture buffer.  Two references alive at once are two
+    distinct frames; sharing one would corrupt prediction in a way that still
+    decodes and still looks like video.
+  - cedrus_dst_format_set() is handed recon_fmt while scaling, so the primary
+    output's stride and chroma offset describe the full-size frame.  Handing it
+    the now-smaller dst_fmt would put the chroma plane in the wrong place.
+
+Failure here does not look like failure.  It looks like plausible corruption,
+so bisect against the known-good MD5s in tools/video/va-decode-test.sh before
+trusting any output.
+
+The secondary output is programmed after the codec's setup, because that is
+where cedrus_engine_enable() writes VE_MODE and a disabled engine takes the
+control word while silently dropping the addresses -- they read back as zero,
+which is what made a full 16-value sweep look like absent silicon.  The
+addresses go in raw and unshifted, and linear NV12 needs BOTH the EXT table in
+VE_CHROMA_BUF_LEN[31:30] and the format in VE_PRIMARY_OUT_FMT[3:0]; miss either
+and the tiled default renders as horizontal stripes from a scaler that is
+working perfectly.  The driver warns once if the luma address reads back zero.
+
+Compile-tested only.  Nothing here has run on the board yet.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0099-media-cedrus-scale-down-into-the-capture-buffer.patch (0099-media-cedrus-scale-down-into-the-capture-buffer.patch, commit fe65505)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+@@ -92,13 +92,28 @@
+ 
+ 	v4l2_m2m_buf_copy_metadata(run.src, run.dst, true);
+ 
+-	cedrus_dst_format_set(dev, &ctx->dst_fmt);
++	/*
++	 * The primary output describes the RECONSTRUCTION, which is the coded
++	 * size.  With the scaler off that is dst_fmt; with it on, dst_fmt is
++	 * the smaller picture userspace sees and would size the primary's
++	 * stride and chroma offset wrongly.
++	 */
++	cedrus_dst_format_set(dev, cedrus_scaling(ctx) ? &ctx->recon_fmt
++						       : &ctx->dst_fmt);
+ 
+ 	error = ctx->current_codec->setup(ctx, &run);
+ 	if (error)
+ 		v4l2_err(&ctx->dev->v4l2_dev,
+ 			 "Failed to setup decoding job: %d\n", error);
+ 
++	/*
++	 * Same reason, same place: the engine is on from here, and the
++	 * secondary output has to be pointed at the capture buffer before the
++	 * trigger.
++	 */
++	if (!error)
++		cedrus_sd_program(ctx, &run.dst->vb2_buf);
++
+ 	/* Complete request(s) controls if needed. */
+ 
+ 	if (src_req)
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -96,6 +96,16 @@
+ struct cedrus_buffer {
+ 	struct v4l2_m2m_buffer          m2m_buf;
+ 
++	/*
++	 * Full-size reconstruction frame, allocated only while the VE is
++	 * scaling down.  The capture buffer then holds the SCALED picture, so
++	 * it cannot also be the reference frame the decoder predicts from --
++	 * this is where the primary output and every DPB pointer go instead.
++	 */
++	void				*recon;
++	dma_addr_t			recon_dma;
++	size_t				recon_size;
++
+ 	union {
+ 		struct {
+ 			unsigned int			position;
+@@ -118,6 +128,14 @@
+ 
+ 	struct v4l2_pix_format		src_fmt;
+ 	struct v4l2_pix_format		dst_fmt;
++	/*
++	 * Geometry of the reconstruction, which is the coded size and is NOT
++	 * dst_fmt once scaling is on: dst_fmt then describes the smaller
++	 * picture userspace dequeues.
++	 */
++	struct v4l2_pix_format		recon_fmt;
++	u8				sd_h_shift;
++	u8				sd_v_shift;
+ 	struct cedrus_dec_ops		*current_codec;
+ 	unsigned int			bit_depth;
+ 
+@@ -237,11 +255,56 @@
+ 	       pix_fmt->height * plane : 0);
+ }
+ 
++static inline struct cedrus_buffer *
++vb2_v4l2_to_cedrus_buffer(const struct vb2_v4l2_buffer *p)
++{
++	return container_of(p, struct cedrus_buffer, m2m_buf.vb);
++}
++
++static inline struct cedrus_buffer *
++vb2_to_cedrus_buffer(const struct vb2_buffer *p)
++{
++	return vb2_v4l2_to_cedrus_buffer(to_vb2_v4l2_buffer(p));
++}
++
++static inline bool cedrus_scaling(struct cedrus_ctx *ctx)
++{
++	return ctx->sd_h_shift || ctx->sd_v_shift;
++}
++
++/*
++ * Where the decoder writes and predicts from.  EVERY frame address goes
++ * through here -- the current picture and every DPB reference alike -- because
++ * they must agree.  While the VE is scaling, the capture buffer holds the
++ * scaled output and is not a decodable reference, so the frame the hardware
++ * reconstructs into is the buffer's private full-size one.  Getting this
++ * wrong does not fail cleanly: it produces plausible-looking corruption.
++ */
++static inline dma_addr_t cedrus_frame_addr(struct cedrus_ctx *ctx,
++					   struct vb2_buffer *buf,
++					   unsigned int plane)
++{
++	struct cedrus_buffer *cbuf;
++
++	if (!buf)
++		return 0;
++
++	if (cedrus_scaling(ctx)) {
++		cbuf = vb2_to_cedrus_buffer(buf);
++		if (cbuf->recon_dma)
++			return cbuf->recon_dma +
++			       (dma_addr_t)ctx->recon_fmt.bytesperline *
++			       ctx->recon_fmt.height * plane;
++	}
++
++	return cedrus_buf_addr(buf, &ctx->dst_fmt, plane);
++}
++
+ static inline dma_addr_t cedrus_dst_buf_addr(struct cedrus_ctx *ctx,
+ 					     struct vb2_buffer *buf,
+ 					     unsigned int plane)
+ {
+-	return buf ? cedrus_buf_addr(buf, &ctx->dst_fmt, plane) : 0;
++	return cedrus_frame_addr(ctx, buf, plane);
+ }
+ 
+ static inline void cedrus_write_ref_buf_addr(struct cedrus_ctx *ctx,
+@@ -257,18 +320,6 @@
+ 	cedrus_write(dev, chroma_reg, cedrus_dst_buf_addr(ctx, buf, 1));
+ }
+ 
+-static inline struct cedrus_buffer *
+-vb2_v4l2_to_cedrus_buffer(const struct vb2_v4l2_buffer *p)
+-{
+-	return container_of(p, struct cedrus_buffer, m2m_buf.vb);
+-}
+-
+-static inline struct cedrus_buffer *
+-vb2_to_cedrus_buffer(const struct vb2_buffer *p)
+-{
+-	return vb2_v4l2_to_cedrus_buffer(to_vb2_v4l2_buffer(p));
+-}
+-
+ static inline bool
+ cedrus_is_capable(struct cedrus_ctx *ctx, unsigned int capabilities)
+ {
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_h264.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_h264.c
+@@ -77,8 +77,8 @@
+ 	pic->bottom_field_order_cnt = cpu_to_le32(bottom_field_order_cnt);
+ 	pic->frame_info = cpu_to_le32(buf->codec.h264.pic_type << 8);
+ 
+-	pic->luma_ptr = cpu_to_le32(cedrus_buf_addr(vbuf, &ctx->dst_fmt, 0));
+-	pic->chroma_ptr = cpu_to_le32(cedrus_buf_addr(vbuf, &ctx->dst_fmt, 1));
++	pic->luma_ptr = cpu_to_le32(cedrus_frame_addr(ctx, vbuf, 0));
++	pic->chroma_ptr = cpu_to_le32(cedrus_frame_addr(ctx, vbuf, 1));
+ 	pic->mv_col_top_ptr = cpu_to_le32(cedrus_h264_mv_col_buf_addr(buf, 0));
+ 	pic->mv_col_bot_ptr = cpu_to_le32(cedrus_h264_mv_col_buf_addr(buf, 1));
+ }
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -128,6 +128,64 @@
+ 	}
+ }
+ 
++/*
++ * Point the VE's secondary output at the V4L2 capture buffer and set the
++ * per-axis division.  The primary reconstruction keeps writing full size into
++ * the buffer's private frame; this is the copy userspace actually gets.
++ *
++ * Three things here are not optional, and each of them fails silently:
++ *
++ *   - THIS MUST RUN AFTER THE CODEC'S OWN SETUP, which is where
++ *     cedrus_engine_enable() writes VE_MODE.  A disabled engine accepts the
++ *     control word and then DROPS THE ADDRESSES, which read back as zero.
++ *   - the addresses go in raw and unshifted, unlike several neighbouring
++ *     engine registers.
++ *   - the secondary output defaults to TILED_32_NV12.  Linear NV12 needs both
++ *     the EXT table selected in VE_CHROMA_BUF_LEN[31:30] and the format in
++ *     VE_PRIMARY_OUT_FMT[3:0]; miss either and a perfectly working scaler
++ *     produces something that renders as horizontal stripes.
++ */
++void cedrus_sd_program(struct cedrus_ctx *ctx, struct vb2_buffer *dst)
++{
++	struct cedrus_dev *dev = ctx->dev;
++	dma_addr_t luma = cedrus_buf_addr(dst, &ctx->dst_fmt, 0);
++	dma_addr_t chroma = cedrus_buf_addr(dst, &ctx->dst_fmt, 1);
++	unsigned int stride = ctx->dst_fmt.bytesperline;
++	u32 reg;
++
++	if (!cedrus_scaling(ctx))
++		return;
++
++	cedrus_write(dev, VE_H264_SDROT_LUMA_ADDR, (u32)luma);
++	cedrus_write(dev, VE_H264_SDROT_CHROMA_ADDR, (u32)chroma);
++
++	cedrus_write(dev, VE_SECONDARY_FB_LINE_STRIDE,
++		     VE_SECONDARY_FB_LINE_STRIDE_CHROMA(stride) |
++		     VE_SECONDARY_FB_LINE_STRIDE_LUMA(stride));
++
++	reg = cedrus_read(dev, VE_CHROMA_BUF_LEN);
++	reg &= ~GENMASK(31, 30);
++	reg |= VE_SECONDARY_OUT_FMT_EXT;
++	cedrus_write(dev, VE_CHROMA_BUF_LEN, reg);
++
++	reg = cedrus_read(dev, VE_PRIMARY_OUT_FMT);
++	reg &= ~0xfu;
++	reg |= VE_SECONDARY_OUT_FMT_EXT_NV12;
++	cedrus_write(dev, VE_PRIMARY_OUT_FMT, reg);
++
++	cedrus_write(dev, VE_H264_SDROT_CTRL,
++		     VE_H264_SDROT_CTRL_H_SHIFT(ctx->sd_h_shift) |
++		     VE_H264_SDROT_CTRL_V_SHIFT(ctx->sd_v_shift));
++
++	/*
++	 * A zero address here means the engine was not enabled when we wrote
++	 * it, and the decode would quietly produce nothing at all.
++	 */
++	if (!cedrus_read(dev, VE_H264_SDROT_LUMA_ADDR))
++		dev_warn_once(dev->dev,
++			      "scale-down address did not latch; engine off?\n");
++}
++
+ static irqreturn_t cedrus_irq(int irq, void *data)
+ {
+ 	struct cedrus_dev *dev = data;
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.h
+@@ -19,6 +19,7 @@
+ int cedrus_engine_enable(struct cedrus_ctx *ctx);
+ void cedrus_engine_disable(struct cedrus_dev *dev);
+ 
++void cedrus_sd_program(struct cedrus_ctx *ctx, struct vb2_buffer *dst);
+ void cedrus_dst_format_set(struct cedrus_dev *dev,
+ 			   struct v4l2_pix_format *fmt);
+ 
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_regs.h
+@@ -63,6 +63,15 @@
+ #define VE_PRIMARY_FB_LINE_STRIDE_CHROMA(s)	SHIFT_AND_MASK_BITS(s, 31, 16)
+ #define VE_PRIMARY_FB_LINE_STRIDE_LUMA(s)	SHIFT_AND_MASK_BITS(s, 15, 0)
+ 
++/*
++ * Secondary (scale-down) output line stride, {chroma << 16, luma}: the same
++ * packing as VE_PRIMARY_FB_LINE_STRIDE at 0xc8, which it follows.
++ */
++#define VE_SECONDARY_FB_LINE_STRIDE		0xcc
++
++#define VE_SECONDARY_FB_LINE_STRIDE_CHROMA(s)	SHIFT_AND_MASK_BITS(s, 31, 16)
++#define VE_SECONDARY_FB_LINE_STRIDE_LUMA(s)	SHIFT_AND_MASK_BITS(s, 15, 0)
++
+ #define VE_CHROMA_BUF_LEN			0xe8
+ 
+ #define VE_SECONDARY_OUT_FMT_TILED_32_NV12	(0x00 << 30)
+@@ -607,6 +616,27 @@
+ #define VE_H264_VLD_LEN			0x238
+ #define VE_H264_VLD_END			0x23c
+ #define VE_H264_SDROT_CTRL		0x240
++/*
++ * Two independent 2-bit fields, one per axis: 0 = 1:1, 1 = 1/2, 2 = 1/4.
++ * A field of 3 is not a valid eighth -- it produces a partial write.  There
++ * is no arbitrary ratio here, so 1920x1080 cannot become 1280x720 in one
++ * step; the closest reachable raster is 960x544, which the display side then
++ * magnifies back to the panel.
++ */
++#define VE_H264_SDROT_CTRL_H_SHIFT(s)	SHIFT_AND_MASK_BITS(s, 9, 8)
++#define VE_H264_SDROT_CTRL_V_SHIFT(s)	SHIFT_AND_MASK_BITS(s, 11, 10)
++#define VE_H264_SDROT_MAX_SHIFT		2
++/*
++ * The two registers following VE_H264_SDROT_CTRL are the scale-down output
++ * addresses. Mainline leaves the gap unnamed, but three sources agree on what
++ * lives there: the vendor libawh264.so exports sd_rotate_ctrl_reg40,
++ * sd_rotate_buf_addr_reg44 and sd_rotate_chroma_buf_addr_reg48, whose numbers
++ * are offsets within this engine block (0x200), matching SDROT_CTRL at 0x240;
++ * and the H.265 engine carries the same trio as VE_DEC_H265_SDRT_{CTRL,
++ * LUMA_ADDR,CHROMA_ADDR} at its own +0x50/0x54/0x58.
++ */
++#define VE_H264_SDROT_LUMA_ADDR		0x244
++#define VE_H264_SDROT_CHROMA_ADDR	0x248
+ #define VE_H264_OUTPUT_FRAME_IDX	0x24c
+ #define VE_H264_EXTRA_BUFFER1		0x250
+ #define VE_H264_EXTRA_BUFFER2		0x254
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -25,6 +25,7 @@
+ #include "cedrus_video.h"
+ #include "cedrus_dec.h"
+ #include "cedrus_hw.h"
++#include "cedrus_regs.h"
+ 
+ /*
+  * DMA overrun detection for the H713 (sunxi_cedrus.dma_guard=<bytes>).
+@@ -286,8 +287,12 @@
+ 		return -EINVAL;
+ 
+ 	pix_fmt->pixelformat = fmt->pixelformat;
+-	pix_fmt->width = ctx->src_fmt.width;
+-	pix_fmt->height = ctx->src_fmt.height;
++	/*
++	 * The capture picture is the coded size divided by whatever the VE has
++	 * been asked to scale by; see cedrus_s_selection().
++	 */
++	pix_fmt->width = ctx->src_fmt.width >> ctx->sd_h_shift;
++	pix_fmt->height = ctx->src_fmt.height >> ctx->sd_v_shift;
+ 	cedrus_prepare_format(pix_fmt);
+ 
+ 	if (ctx->current_codec->extra_cap_size)
+@@ -325,6 +330,103 @@
+ 	return cedrus_try_fmt_vid_out_p(cedrus_file2ctx(file), &f->fmt.pix);
+ }
+ 
++/*
++ * The reconstruction is always the full coded size in linear NV12, whatever
++ * the capture queue has been scaled to.
++ */
++void cedrus_update_recon_format(struct cedrus_ctx *ctx)
++{
++	ctx->recon_fmt = ctx->dst_fmt;
++	ctx->recon_fmt.width = ctx->src_fmt.width;
++	ctx->recon_fmt.height = ctx->src_fmt.height;
++	ctx->recon_fmt.pixelformat = V4L2_PIX_FMT_NV12;
++	cedrus_prepare_format(&ctx->recon_fmt);
++}
++
++/*
++ * Scaling is a property of the H.264 engine block -- VE_H264_SDROT_* live at
++ * 0x240 inside it -- so it is offered for H.264 only.  Each axis divides by 1,
++ * 2 or 4 and nothing between: the VE has no arbitrary-ratio scaler that works
++ * on this part.  A request is rounded DOWN to the next reachable size rather
++ * than refused, which is what V4L2 expects of a compose rectangle, and the
++ * caller reads back what it actually got.
++ */
++static u8 cedrus_compose_shift(unsigned int coded, unsigned int want)
++{
++	u8 shift = 0;
++
++	/* Largest reachable size that is still no bigger than asked for. */
++	while (shift < VE_H264_SDROT_MAX_SHIFT && (coded >> shift) > want)
++		shift++;
++
++	return shift;
++}
++
++static int cedrus_g_selection(struct file *file, void *priv,
++			      struct v4l2_selection *sel)
++{
++	struct cedrus_ctx *ctx = cedrus_file2ctx(file);
++
++	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
++		return -EINVAL;
++
++	switch (sel->target) {
++	case V4L2_SEL_TGT_COMPOSE:
++		sel->r.left = 0;
++		sel->r.top = 0;
++		sel->r.width = ctx->dst_fmt.width;
++		sel->r.height = ctx->dst_fmt.height;
++		return 0;
++	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
++	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
++		sel->r.left = 0;
++		sel->r.top = 0;
++		sel->r.width = ctx->src_fmt.width;
++		sel->r.height = ctx->src_fmt.height;
++		return 0;
++	default:
++		return -EINVAL;
++	}
++}
++
++static int cedrus_s_selection(struct file *file, void *priv,
++			      struct v4l2_selection *sel)
++{
++	struct cedrus_ctx *ctx = cedrus_file2ctx(file);
++	struct vb2_queue *vq;
++	u8 h_shift, v_shift;
++
++	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
++	    sel->target != V4L2_SEL_TGT_COMPOSE)
++		return -EINVAL;
++
++	if (ctx->src_fmt.pixelformat != V4L2_PIX_FMT_H264_SLICE)
++		return -EINVAL;
++
++	/* The buffer size changes with the picture, so nothing may be queued. */
++	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
++	if (vb2_is_busy(vq))
++		return -EBUSY;
++
++	if (sel->r.left || sel->r.top || !sel->r.width || !sel->r.height ||
++	    sel->r.width > ctx->src_fmt.width ||
++	    sel->r.height > ctx->src_fmt.height)
++		return -EINVAL;
++
++	h_shift = cedrus_compose_shift(ctx->src_fmt.width, sel->r.width);
++	v_shift = cedrus_compose_shift(ctx->src_fmt.height, sel->r.height);
++
++	ctx->sd_h_shift = h_shift;
++	ctx->sd_v_shift = v_shift;
++	cedrus_reset_cap_format(ctx);
++	cedrus_update_recon_format(ctx);
++
++	sel->r.width = ctx->dst_fmt.width;
++	sel->r.height = ctx->dst_fmt.height;
++
++	return 0;
++}
++
+ static int cedrus_s_fmt_vid_cap(struct file *file, void *priv,
+ 				struct v4l2_format *f)
+ {
+@@ -397,7 +499,14 @@
+ 	ctx->dst_fmt.xfer_func = pix_fmt->xfer_func;
+ 	ctx->dst_fmt.ycbcr_enc = pix_fmt->ycbcr_enc;
+ 	ctx->dst_fmt.quantization = pix_fmt->quantization;
++	/*
++	 * A new coded size invalidates any scaling factor chosen against the
++	 * old one, and the reconstruction geometry follows the source.
++	 */
++	ctx->sd_h_shift = 0;
++	ctx->sd_v_shift = 0;
+ 	cedrus_reset_cap_format(ctx);
++	cedrus_update_recon_format(ctx);
+ 
+ 	return 0;
+ }
+@@ -450,6 +559,9 @@
+ 	.vidioc_try_fmt_vid_out		= cedrus_try_fmt_vid_out,
+ 	.vidioc_s_fmt_vid_out		= cedrus_s_fmt_vid_out,
+ 
++	.vidioc_g_selection		= cedrus_g_selection,
++	.vidioc_s_selection		= cedrus_s_selection,
++
+ 	.vidioc_reqbufs			= v4l2_m2m_ioctl_reqbufs,
+ 	.vidioc_querybuf		= v4l2_m2m_ioctl_querybuf,
+ 	.vidioc_qbuf			= v4l2_m2m_ioctl_qbuf,
+@@ -584,6 +696,50 @@
+ 	return 0;
+ }
+ 
++/*
++ * While the VE is scaling, each capture buffer needs a private full-size frame
++ * for the reconstruction to live in, because the buffer itself holds the
++ * smaller picture.  It is per buffer rather than a shared pool because the DPB
++ * indexes by capture buffer: two references alive at once are two distinct
++ * frames, and sharing one would corrupt prediction in a way that still decodes.
++ */
++static int cedrus_buf_init(struct vb2_buffer *vb)
++{
++	struct vb2_queue *vq = vb->vb2_queue;
++	struct cedrus_ctx *ctx = vb2_get_drv_priv(vq);
++	struct cedrus_buffer *cbuf = vb2_to_cedrus_buffer(vb);
++	struct cedrus_dev *dev = ctx->dev;
++
++	if (V4L2_TYPE_IS_OUTPUT(vq->type) || !cedrus_scaling(ctx))
++		return 0;
++
++	cbuf->recon_size = ctx->recon_fmt.sizeimage;
++	cbuf->recon = dma_alloc_attrs(dev->dev, cbuf->recon_size,
++				      &cbuf->recon_dma, GFP_KERNEL,
++				      DMA_ATTR_NO_KERNEL_MAPPING);
++	if (!cbuf->recon) {
++		cbuf->recon_size = 0;
++		return -ENOMEM;
++	}
++
++	return 0;
++}
++
++static void cedrus_buf_cleanup(struct vb2_buffer *vb)
++{
++	struct cedrus_ctx *ctx = vb2_get_drv_priv(vb->vb2_queue);
++	struct cedrus_buffer *cbuf = vb2_to_cedrus_buffer(vb);
++
++	if (!cbuf->recon)
++		return;
++
++	dma_free_attrs(ctx->dev->dev, cbuf->recon_size, cbuf->recon,
++		       cbuf->recon_dma, DMA_ATTR_NO_KERNEL_MAPPING);
++	cbuf->recon = NULL;
++	cbuf->recon_dma = 0;
++	cbuf->recon_size = 0;
++}
++
+ static int cedrus_buf_prepare(struct vb2_buffer *vb)
+ {
+ 	struct vb2_queue *vq = vb->vb2_queue;
+@@ -680,6 +836,8 @@
+ 
+ static const struct vb2_ops cedrus_qops = {
+ 	.queue_setup		= cedrus_queue_setup,
++	.buf_init		= cedrus_buf_init,
++	.buf_cleanup		= cedrus_buf_cleanup,
+ 	.buf_prepare		= cedrus_buf_prepare,
+ 	.buf_finish		= cedrus_buf_finish,
+ 	.buf_queue		= cedrus_buf_queue,
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.h
+@@ -28,6 +28,7 @@
+ 		      struct vb2_queue *dst_vq);
+ void cedrus_prepare_format(struct v4l2_pix_format *pix_fmt);
+ void cedrus_reset_cap_format(struct cedrus_ctx *ctx);
++void cedrus_update_recon_format(struct cedrus_ctx *ctx);
+ void cedrus_reset_out_format(struct cedrus_ctx *ctx);
+ 
+ #endif

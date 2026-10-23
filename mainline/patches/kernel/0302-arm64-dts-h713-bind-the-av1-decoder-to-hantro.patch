@@ -1,0 +1,79 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] arm64: dts: h713: bind the AV1 decoder to hantro
+
+Move the AV1 node from the presence probe's compatible to the decoder's,
+and name the video engine whose module clock, bus clock and reset the
+core runs from, so the driver can link to it.
+
+Adapted for this series from the original: the original's hunk changes
+the node its 0140 added for the AV1 presence probe (compatible
+"allwinner,sun50i-h713-av1-probe"). This series has neither 0140 nor the
+probe (0141), so the hunk adds the node whole -- 0140's node and comment
+with the original's change applied, which is the node the original
+series ends with, in the same place (after the video engine). The node
+the board patch 0024 already carries at this address
+(av1-decoder@1c0d000, "allwinner,sunxi-google-ve", resets RST_BUS_VE and
+RST_BUS_VE3) stays, as it does in the original series: no driver binds
+it, so it claims none of its clocks or resets.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0146-arm64-dts-h713-bind-the-av1-decoder-to-hantro.patch (0146-arm64-dts-h713-bind-the-av1-decoder-to-hantro.patch, commit 46bc559, adapted; with 0140-arm64-dts-h713-add-the-av1-decoder-node.patch, commit 3ca3a5e)
+---
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -1462,6 +1462,56 @@
+ 			status = "okay";
+ 		};
+ 
++		/*
++		 * The AV1 decoder -- Google IP, not Allwinner's and not
++		 * VeriSilicon's. The stock DTB calls it
++		 * compatible = "allwinner,sunxi-google-ve" at this address, and
++		 * libawav1.so is built around taffel::ctypes::SwRegisters and
++		 * BigSeaRegisters, which are Google AV1 codenames. There is no
++		 * driver for it in any tree; mainline's only AV1 backend is
++		 * Rockchip's VPU981, whose register file reaches 394 where this
++		 * block's holds 292. See
++		 * docs/reference/vp9-av1-codec-scouting-2026-09-24.md.
++		 *
++		 * This node exists so a probe driver can read the core ID and
++		 * settle two questions at once: whether the block is alive on
++		 * this die, and which of its two register-file variants this is
++		 * (AsicRegisterMapWidth picks 1168 or 816 bytes by comparing an
++		 * ID against 0xb16c).
++		 *
++		 * DELIBERATELY NARROWER THAN STOCK. The vendor node also lists
++		 * "bus_ve" and "reset_ve", and both are cedrus's. A reset is not
++		 * safely shared: deasserting reset_ve here could reset the video
++		 * engine underneath a running decode. bus_av1 and mbus_av1 are
++		 * this block's own, and reset_av1 has no other consumer, so the
++		 * probe takes only those. If the ID reads as garbage, adding
++		 * bus_ve as a SHARED CLOCK (refcounted, unlike a reset) is the
++		 * next thing to try -- not reset_ve.
++		 *
++		 * The "av1" module clock the stock node lists is absent from our
++		 * CCU and is deliberately not required here: it drives the
++		 * decode core, while register access needs only the bus clock.
++		 */
++		av1: av1@1c0d000 {
++			/*
++			 * Decoded by hantro's H713 variant. The core also runs
++			 * from the VE's module clock and needs the VE's bus
++			 * clock and reset released; those stay cedrus's, and
++			 * the driver keeps them up through a runtime-PM link
++			 * to the VE named here.
++			 */
++			compatible = "allwinner,sun50i-h713-av1";
++			reg = <0x01c0d000 0x1000>;
++			interrupts = <GIC_SPI 107 IRQ_TYPE_LEVEL_HIGH>;
++			clocks = <&ccu CLK_BUS_AV1>, <&ccu CLK_MBUS_AV1>;
++			clock-names = "bus", "mbus";
++			resets = <&ccu RST_BUS_AV1>;
++			allwinner,video-engine = <&ve>;
++			iommus = <&iommu 5 1>;
++			power-domains = <&ppu 4>;
++			status = "okay";
++		};
++
+ 		/* === GPU (Mali-G31 Bifrost, Panfrost driver) === */
+ 		gpu: gpu@1800000 {
+ 			compatible = "allwinner,sun50i-h616-mali",

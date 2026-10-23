@@ -1,0 +1,469 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: iommu/sun50i, cedrus: release the VE's IOMMU ports once its engine has stopped
+
+A damaged H.265 stream can send the video engine to an unmapped address.
+The IOMMU reports the fault and resets the faulting master's port at
+once, in its interrupt handler - while the engine is still running. The
+engine keeps reading, the port is blocked again, and the engine stays
+dead: the job times out, the next jobs' bit reader times out in setup
+("timed out waiting to skip bits", -EINVAL), and every later
+inter-predicted picture of every codec fails until a reboot, while
+intra pictures still decode. The engine
+reset, runtime suspend with the VE power domain off, reloading the
+module - none of it helps, because none of it touches the port.
+
+Measured on the HY310, 14.10.2026:
+
+- With the engine idle, one more pulse of the engine's two master bits
+  in IOMMU_RESET_REG (a single 32-bit write pair from user space, nothing
+  else) brought a dead engine back every time: the probe decoded 0/300
+  before and 300/300 after, twice. The fault's display in
+  IOMMU_L1PG_INT_REG and IOMMU_INT_ERR_ADDR_L1_REG stays set through it
+  and through the recovery - a sticky indicator, not the block. Only the
+  undocumented bits 16 and 17 of IOMMU_RESET_REG clear it, and they reset
+  units shared by all masters; the vendor's driver never writes them and
+  never clears the display either (its fault handler, read from the stock
+  5.4.99 kernel, invalidates at the fault address, clears the interrupt
+  and resets the master bits).
+- The release must not happen next to a decoding AV1 core (master 5,
+  behind the same bus): before, after or during the engine's bus reset,
+  guarded or not, from the error interrupt or from process context, it
+  cost the AV1 stream frames or stopped the SoC until the watchdog reset
+  it - in every variant tried, next to the damaged sets. Without the
+  release the engine stays dead (the control arm), and on the kernel
+  before this patch the AV1 stream next to the damaged sets is untouched
+  only because the engine is dead from the first fault on (0 to 1 faults,
+  840 to 888 bit-reader timeouts per run).
+- With this patch, no AV1 stream open: six damaged sets (H.265 8/10 bit,
+  VP9, VP8, MPEG-2, H.264) with a probe after every clip, 60 of 60 probes
+  bit-exact, no timeout; valid streams unchanged - of 12 H.265 8/10 bit
+  clips 11 bit-exact in the run and the twelfth bit-exact in a repeat (its
+  buffer-size probe fell into a watchdog recovery after one read fault at
+  the end of the valid 10-bit 1080p60 clip before it, cause open), five
+  pairs of codecs at once 10 of 10 rounds bit-exact.
+
+So the IOMMU driver exports sun50i_iommu_reset_client(), which pulses
+the master bits of the client's fwspec, nothing more, under the IOMMU
+lock. cedrus_recover() runs it before the engine's next job after a job
+that ended in error (error interrupt, failed setup, watchdog): inside
+the guard of 0305, while the engine's bus reset is held - nothing of
+the engine is on the bus then - and only while no AV1 stream is open.
+The AV1 driver tells the guard about its streams
+(sunxi_ve_reset_stream_begin/end, with the core's power); while one is
+open the engine is reset but its ports are left alone, and the engine
+lives with them blocked until the stream closes. The H.265 bit reader
+gives up at once when it times out, so a job with a blocked port ends
+without further register access. Without a sun50i IOMMU the release is
+a stub. Valid streams never take these paths, so nothing changes for
+them.
+---
+--- a/drivers/iommu/sun50i-iommu.c
++++ b/drivers/iommu/sun50i-iommu.c
+@@ -25,6 +25,7 @@
+ #include <linux/sizes.h>
+ #include <linux/slab.h>
+ #include <linux/spinlock.h>
++#include <linux/sun50i-iommu.h>
+ #include <linux/types.h>
+ 
+ #include "iommu-pages.h"
+@@ -1075,6 +1076,59 @@
+ 	return IRQ_HANDLED;
+ }
+ 
++/**
++ * sun50i_iommu_reset_client() - release a client's ports once its engine stopped
++ * @dev: a device whose "iommus" property points at a sun50i IOMMU
++ *
++ * After a page fault the interrupt handler resets the faulting master's
++ * port at once, while the master is still running. An engine that keeps
++ * reading leaves the port blocked again: its job times out, the next jobs'
++ * bit reader times out in setup, and every later job of every codec fails
++ * until a reboot. Only the client knows when its engine has stopped (its
++ * own reset); it calls this afterwards, and the ports of all its masters
++ * are reset once more. Measured on the H713 (14.10.2026):
++ * with the engine idle this pulse brings a dead video engine back every
++ * time, from user space and from here.
++ *
++ * Nothing else is touched. The fault stays on display in
++ * IOMMU_L1PG_INT_REG/IOMMU_L2PG_INT_REG and the error address register:
++ * only the undocumented bits 16 and 17 of IOMMU_RESET_REG clear those, and
++ * they reset units shared by all masters - the AV1 core on master 5 then
++ * loses frames (measured 14.10.2026). The display has no effect
++ * on the port; the vendor's driver never clears it either.
++ *
++ * Return: 0, or -ENODEV if @dev is not a client of this driver.
++ */
++int sun50i_iommu_reset_client(struct device *dev)
++{
++	struct iommu_fwspec *fwspec = dev_iommu_fwspec_get(dev);
++	struct sun50i_iommu *iommu;
++	unsigned long flags;
++	unsigned int i;
++	u32 mask = 0;
++
++	if (!fwspec || !dev->iommu || !dev->iommu->iommu_dev ||
++	    dev->iommu->iommu_dev->ops != &sun50i_iommu_ops)
++		return -ENODEV;
++
++	iommu = container_of(dev->iommu->iommu_dev, struct sun50i_iommu, iommu);
++
++	for (i = 0; i < fwspec->num_ids; i++)
++		mask |= BIT(fwspec->ids[i]);
++	mask &= sun50i_iommu_master_mask(iommu);
++	if (!mask)
++		return -ENODEV;
++
++	spin_lock_irqsave(&iommu->iommu_lock, flags);
++	iommu_write(iommu, IOMMU_RESET_REG, ~mask);
++	iommu_read(iommu, IOMMU_RESET_REG);
++	iommu_write(iommu, IOMMU_RESET_REG, IOMMU_RESET_RELEASE_ALL);
++	spin_unlock_irqrestore(&iommu->iommu_lock, flags);
++
++	return 0;
++}
++EXPORT_SYMBOL_GPL(sun50i_iommu_reset_client);
++
+ static int sun50i_iommu_probe(struct platform_device *pdev)
+ {
+ 	struct sun50i_iommu *iommu;
+--- a/drivers/soc/sunxi/sunxi_ve_reset.c
++++ b/drivers/soc/sunxi/sunxi_ve_reset.c
+@@ -25,6 +25,7 @@
+  * video engine per SoC, so the state is global.
+  */
+ 
++#include <linux/delay.h>
+ #include <linux/export.h>
+ #include <linux/jiffies.h>
+ #include <linux/printk.h>
+@@ -36,6 +37,7 @@
+ 
+ static DEFINE_SPINLOCK(sunxi_ve_reset_lock);
+ static unsigned int sunxi_ve_reset_holders;
++static unsigned int sunxi_ve_reset_streams;
+ static DECLARE_WAIT_QUEUE_HEAD(sunxi_ve_reset_wq);
+ 
+ /*
+@@ -65,12 +67,51 @@
+ EXPORT_SYMBOL_GPL(sunxi_ve_reset_release);
+ 
+ /*
++ * A borrower has a stream open (its core powered, frames to come) or has
++ * closed it. While a stream is open, sunxi_ve_reset_pulse_and() pulses the
++ * line but leaves @fn out: on the H713 the owner's IOMMU port release next
++ * to a decoding AV1 core cost AV1 frames or stopped the SoC - before, after
++ * or during the bus reset, guarded or not (measured 14.10.2026). The
++ * release waits until the borrower is gone; the engine lives with its
++ * blocked port until then.
++ */
++void sunxi_ve_reset_stream_begin(void)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&sunxi_ve_reset_lock, flags);
++	sunxi_ve_reset_streams++;
++	spin_unlock_irqrestore(&sunxi_ve_reset_lock, flags);
++}
++EXPORT_SYMBOL_GPL(sunxi_ve_reset_stream_begin);
++
++void sunxi_ve_reset_stream_end(void)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&sunxi_ve_reset_lock, flags);
++	if (!WARN_ON_ONCE(!sunxi_ve_reset_streams))
++		sunxi_ve_reset_streams--;
++	spin_unlock_irqrestore(&sunxi_ve_reset_lock, flags);
++}
++EXPORT_SYMBOL_GPL(sunxi_ve_reset_stream_end);
++
++/*
+  * Pulse the line (assert, 10 us, deassert, as the CCU does it) with nobody
+- * holding it. A holder ends its frame within its own watchdog's 2 s; one
+- * that does not is given up on after 3 s and the pulse happens anyway,
+- * since the alternative is an engine that never comes back.
++ * holding it; @fn, if given, runs while the line is asserted - the engine
++ * is dead then, nothing of it is on the bus - and only while no borrower
++ * has a stream open (see sunxi_ve_reset_stream_begin()). @fn runs with the
++ * guard's spinlock held and interrupts off; it must not sleep. Returns 0
++ * when the line was pulsed and @fn ran (or there was none), 1 when the
++ * line was pulsed but @fn was left out for an open stream, negative when
++ * the pulse itself failed.
++ *
++ * A holder ends its frame within its own watchdog's 2 s; one that does not
++ * is given up on after 3 s and the pulse happens anyway, since the
++ * alternative is an engine that never comes back.
+  */
+-int sunxi_ve_reset_pulse(struct reset_control *rstc)
++int sunxi_ve_reset_pulse_and(struct reset_control *rstc,
++			     int (*fn)(void *data), void *data)
+ {
+ 	unsigned long flags;
+ 	int ret;
+@@ -92,9 +133,28 @@
+ 		}
+ 		spin_unlock_irqrestore(&sunxi_ve_reset_lock, flags);
+ 	}
+-	ret = reset_control_reset(rstc);
++	ret = reset_control_assert(rstc);
++	if (!ret) {
++		int fret = 0;
++
++		udelay(10);
++		if (fn && !sunxi_ve_reset_streams)
++			fret = fn(data);
++		else if (fn)
++			fret = 1;
++		udelay(10);
++		ret = reset_control_deassert(rstc);
++		if (!ret)
++			ret = fret;
++	}
+ 	spin_unlock_irqrestore(&sunxi_ve_reset_lock, flags);
+ 
+ 	return ret;
+ }
++EXPORT_SYMBOL_GPL(sunxi_ve_reset_pulse_and);
++
++int sunxi_ve_reset_pulse(struct reset_control *rstc)
++{
++	return sunxi_ve_reset_pulse_and(rstc, NULL, NULL);
++}
+ EXPORT_SYMBOL_GPL(sunxi_ve_reset_pulse);
+--- a/include/linux/soc/sunxi/sunxi_ve_reset.h
++++ b/include/linux/soc/sunxi/sunxi_ve_reset.h
+@@ -14,15 +14,30 @@
+ void sunxi_ve_reset_hold(void);
+ void sunxi_ve_reset_release(void);
+ int sunxi_ve_reset_pulse(struct reset_control *rstc);
++int sunxi_ve_reset_pulse_and(struct reset_control *rstc,
++			     int (*fn)(void *data), void *data);
++void sunxi_ve_reset_stream_begin(void);
++void sunxi_ve_reset_stream_end(void);
+ 
+ #else
+ 
+ static inline void sunxi_ve_reset_hold(void) {}
++static inline void sunxi_ve_reset_stream_begin(void) {}
++static inline void sunxi_ve_reset_stream_end(void) {}
+ static inline void sunxi_ve_reset_release(void) {}
+ static inline int sunxi_ve_reset_pulse(struct reset_control *rstc)
+ {
+ 	return reset_control_reset(rstc);
+ }
++static inline int sunxi_ve_reset_pulse_and(struct reset_control *rstc,
++					   int (*fn)(void *data), void *data)
++{
++	int ret = reset_control_assert(rstc);
++
++	if (!ret && fn)
++		ret = fn(data);
++	return reset_control_deassert(rstc) ?: ret;
++}
+ 
+ #endif
+ 
+--- a/drivers/media/platform/verisilicon/sunxi_h713_av1_hw.c
++++ b/drivers/media/platform/verisilicon/sunxi_h713_av1_hw.c
+@@ -202,6 +202,7 @@
+ 
+ 		mutex_lock(&hw->lock);
+ 		hw->streams--;
++		sunxi_ve_reset_stream_end();
+ 		clk_bulk_disable(vpu->variant->num_clocks, vpu->clocks);
+ 		pm_runtime_put_autosuspend(vpu->dev);
+ 		mutex_unlock(&hw->lock);
+@@ -260,6 +261,8 @@
+ 		goto err_unlock;
+ 	}
+ 	a->powered = true;
++	/* the VE's owner leaves its IOMMU port release alone while this stream is open */
++	sunxi_ve_reset_stream_begin();
+ 	if (!hw->streams++) {
+ 		sunxi_ve_reset_hold();
+ 		h713_av1_block_reset(vpu);
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -270,6 +270,8 @@
+ 	struct reset_control	*rstc_ve3;
+ 	/* pixel format of the last job, to reset the engine on a codec switch */
+ 	u32			last_pixfmt;
++	/* a job ended in error: reset the engine and clear an IOMMU fault before the next one */
++	bool			recover;
+ 
+ 	unsigned int		capabilities;
+ 
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+@@ -113,8 +113,16 @@
+ 	 * The line is shared with the H713's AV1 core: the pulse goes through
+ 	 * the guard (cedrus_ve_reset), which waits for an AV1 frame in flight.
+ 	 */
+-	if (dev->last_pixfmt && dev->last_pixfmt != ctx->src_fmt.pixelformat)
++	/*
++	 * The job before ended in error: the engine is reset and its IOMMU
++	 * ports released before it runs again (cedrus_recover).
++	 */
++	if (READ_ONCE(dev->recover)) {
++		WRITE_ONCE(dev->recover, false);
++		cedrus_recover(dev);
++	} else if (dev->last_pixfmt && dev->last_pixfmt != ctx->src_fmt.pixelformat) {
+ 		cedrus_ve_reset(dev);
++	}
+ 	dev->last_pixfmt = ctx->src_fmt.pixelformat;
+ 
+ 	/*
+@@ -152,6 +160,7 @@
+ 
+ 		ctx->current_codec->trigger(ctx);
+ 	} else {
++		WRITE_ONCE(dev->recover, true);
+ 		ctx->decode_error = false;
+ 		v4l2_m2m_buf_done_and_job_finish(ctx->dev->m2m_dev,
+ 						 ctx->fh.m2m_ctx,
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -24,6 +24,7 @@
+ #include <linux/reset.h>
+ #include <linux/soc/sunxi/sunxi_sram.h>
+ #include <linux/soc/sunxi/sunxi_ve_reset.h>
++#include <linux/sun50i-iommu.h>
+ 
+ #include <media/videobuf2-core.h>
+ #include <media/v4l2-mem2mem.h>
+@@ -404,8 +405,10 @@
+ 	src_buf = v4l2_m2m_next_src_buf(ctx->fh.m2m_ctx);
+ 	held = src_buf && (src_buf->flags & V4L2_BUF_FLAG_M2M_HOLD_CAPTURE_BUF);
+ 
+-	if (status == CEDRUS_IRQ_ERROR)
++	if (status == CEDRUS_IRQ_ERROR) {
+ 		ctx->decode_error = true;
++		WRITE_ONCE(ctx->dev->recover, true);
++	}
+ 
+ 	state = ctx->decode_error ? VB2_BUF_STATE_ERROR : VB2_BUF_STATE_DONE;
+ 	if (!held)
+@@ -433,6 +436,36 @@
+ 		dev_err_ratelimited(dev->dev, "VE reset failed: %d\n", ret);
+ }
+ 
++static int cedrus_release_ports(void *data)
++{
++	struct cedrus_dev *dev = data;
++
++	return sun50i_iommu_reset_client(dev->dev);
++}
++
++/*
++ * After a job that ended in error (its error interrupt, a failed setup,
++ * the watchdog). A read from an unmapped address - a damaged stream can
++ * send the engine there - leaves the engine's IOMMU ports blocked: the
++ * IOMMU resets them in its fault interrupt while the engine still reads,
++ * and they block again; the engine then stays dead until a reboot. The
++ * ports are released while the engine is held in reset, inside the guard:
++ * nothing of the engine is on the bus then, and no AV1 frame is in flight.
++ * Released next to a live engine, or next to a running AV1 frame, the
++ * release cost AV1 frames or stopped the SoC (measured on the H713,
++ * 14.10.2026). Without a sun50i IOMMU the release is a stub.
++ * Process context only, like cedrus_ve_reset().
++ */
++void cedrus_recover(struct cedrus_dev *dev)
++{
++	int ret = sunxi_ve_reset_pulse_and(dev->rstc, cedrus_release_ports, dev);
++
++	if (ret == 1)
++		dev_info_ratelimited(dev->dev, "IOMMU ports left blocked while the AV1 core decodes\n");
++	else if (ret && ret != -ENODEV)
++		dev_err_ratelimited(dev->dev, "recovery failed: %d\n", ret);
++}
++
+ void cedrus_watchdog(struct work_struct *work)
+ {
+ 	struct cedrus_dev *dev;
+@@ -446,7 +479,7 @@
+ 		return;
+ 
+ 	v4l2_err(&dev->v4l2_dev, "frame processing timed out!\n");
+-	cedrus_ve_reset(dev);
++	cedrus_recover(dev);
+ 	ctx->decode_error = false;
+ 	v4l2_m2m_buf_done_and_job_finish(ctx->dev->m2m_dev, ctx->fh.m2m_ctx,
+ 					 VB2_BUF_STATE_ERROR);
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.h
+@@ -31,5 +31,6 @@
+ 
+ void cedrus_watchdog(struct work_struct *work);
+ void cedrus_ve_reset(struct cedrus_dev *dev);
++void cedrus_recover(struct cedrus_dev *dev);
+ 
+ #endif
+--- /dev/null
++++ b/include/linux/sun50i-iommu.h
+@@ -0,0 +1,16 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++#ifndef __LINUX_SUN50I_IOMMU_H
++#define __LINUX_SUN50I_IOMMU_H
++
++struct device;
++
++#if IS_ENABLED(CONFIG_SUN50I_IOMMU)
++int sun50i_iommu_reset_client(struct device *dev);
++#else
++static inline int sun50i_iommu_reset_client(struct device *dev)
++{
++	return -ENODEV;
++}
++#endif
++
++#endif /* __LINUX_SUN50I_IOMMU_H */
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_h265.c
+@@ -231,7 +231,8 @@
+ 	}
+ }
+ 
+-static void cedrus_h265_skip_bits(struct cedrus_dev *dev, int num)
++/* A blocked IOMMU port hangs the bit reader: give up at once, recovery follows. */
++static int cedrus_h265_skip_bits(struct cedrus_dev *dev, int num)
+ {
+ 	int count = 0;
+ 
+@@ -242,11 +243,15 @@
+ 			     VE_DEC_H265_TRIGGER_FLUSH_BITS |
+ 			     VE_DEC_H265_TRIGGER_TYPE_N_BITS(tmp));
+ 
+-		if (cedrus_wait_for(dev, VE_DEC_H265_STATUS, VE_DEC_H265_STATUS_VLD_BUSY))
++		if (cedrus_wait_for(dev, VE_DEC_H265_STATUS, VE_DEC_H265_STATUS_VLD_BUSY)) {
+ 			dev_err_ratelimited(dev->dev, "timed out waiting to skip bits\n");
++			return -ETIMEDOUT;
++		}
+ 
+ 		count += tmp;
+ 	}
++
++	return 0;
+ }
+ 
+ static u32 cedrus_h265_show_bits(struct cedrus_dev *dev, int num)
+@@ -533,7 +538,8 @@
+ 	if (slice_params->data_byte_offset == 0)
+ 		return -EOPNOTSUPP;
+ 
+-	cedrus_h265_skip_bits(dev, (slice_params->data_byte_offset - 1) * 8);
++	if (cedrus_h265_skip_bits(dev, (slice_params->data_byte_offset - 1) * 8))
++		return -EINVAL;
+ 
+ 	padding = cedrus_h265_show_bits(dev, 8);
+ 
+@@ -548,7 +554,8 @@
+ 	/* Include the one bit. */
+ 	count++;
+ 
+-	cedrus_h265_skip_bits(dev, 8 - count);
++	if (cedrus_h265_skip_bits(dev, 8 - count))
++		return -EINVAL;
+ 
+ 	/* Bitstream parameters. */
+ 

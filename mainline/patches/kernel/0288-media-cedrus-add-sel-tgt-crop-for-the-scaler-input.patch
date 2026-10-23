@@ -1,0 +1,340 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: add V4L2_SEL_TGT_CROP so the scaler can skip coded padding
+
+TOP1_IN_SIZE bounds what the polyphase scaler READS, and it was being handed
+the coded size.  H.264 stores 1080p as 1088 rows, so scaling to 720 spent eight
+rows of the height budget on encoder padding and shortened the picture by 0.74%.
+Because encoders pad by replicating the last row, the visible result is the
+bottom edge of the frame smeared to nearly twice its thickness -- measured at 11
+panel rows against a nominal 6, both in the decoder's own output and on the
+panel.
+
+The decoder interface already names the rectangle needed.  CROP on CAPTURE is
+"the rectangle within the coded resolution to be output to CAPTURE", writable on
+hardware with compose/scaling capabilities; COMPOSE is "the rectangle inside a
+CAPTURE buffer into which the cropped frame is written".  They are the input and
+the output of one scaling operation, and only the input was missing.  COMPOSE
+keeps exactly the meaning it already had.
+
+So everything that treated src_fmt as the scaler's input now uses ctx->crop,
+which defaults to the full coded size: a client that never sets it gets byte
+identical output to before.  Setting CROP to 1920x1080 makes the ratio an exact
+1.5 on both axes and reproduces a natively rasterised 720p reference border for
+border.
+
+Offsets are refused.  TOP1_IN_SIZE bounds the extent the scaler reads, but no
+register has been found that moves its origin, so a non-zero left or top could
+only be silently ignored -- and a crop that does not crop where it was asked to
+is worse than one that admits it cannot.
+
+Two conformance bugs in the COMPOSE family go with it.  COMPOSE_BOUNDS is the
+largest rectangle the cropped frame can be composed into, which is the capture
+BUFFER and not the coded size once scaling is on; COMPOSE_DEFAULT is defined as
+equal to CROP.  Both returned src_fmt.  G_SELECTION also refused every target
+unless the hardware could scale, where the interface says such targets are
+read-only rather than absent.
+
+Validated on an H713.  The CROP path reproduces a register-level override of
+TOP1_IN_SIZE byte for byte (md5 a1b57792782154dadf21a4eb1da64a77), and a crop
+equal to the coded size is byte identical to no crop at all
+(3fb46599f06f6fc27aaa0b3ca420ac92) -- the control that separates "the register
+works" from "touching this perturbs something".  v4l2-compliance stays 49/49
+with zero warnings, and now reports Cropping and Composing as OK where both
+previously read "Not Supported".  cedrus-scaler-api-test and cedrus-control-test
+pass unchanged, as do the three decode gates.
+
+Co-Authored-By: Claude Opus 5 <noreply@anthropic.com>
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0122-media-cedrus-add-sel-tgt-crop-for-the-scaler-input.patch (0122-media-cedrus-add-sel-tgt-crop-for-the-scaler-input.patch, commit 10ffaad)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus.h
+@@ -145,6 +145,18 @@
+ 	 * picture userspace dequeues.
+ 	 */
+ 	struct v4l2_pix_format		recon_fmt;
++	/*
++	 * The two rectangles of one scaling operation, as the decoder interface
++	 * names them: crop is what the scaler READS out of the coded frame,
++	 * compose is where it WRITES inside the capture buffer.
++	 *
++	 * crop exists so a client can exclude coded padding.  H.264 stores
++	 * 1080p as 1088 rows, and scaling all 1088 into 720 puts eight rows of
++	 * encoder padding into the picture and shortens everything else by
++	 * 0.74%.  Defaults to the full coded size, so a client that never sets
++	 * it sees exactly the old behaviour.
++	 */
++	struct v4l2_rect		crop;
+ 	struct v4l2_rect		compose;
+ 	void				*scaler_buf;
+ 	dma_addr_t			scaler_buf_addr;
+@@ -287,10 +299,17 @@
+ 		ctx->src_fmt.pixelformat == V4L2_PIX_FMT_HEVC_SLICE);
+ }
+ 
++/*
++ * The secondary output is in use whenever what userspace dequeues is not simply
++ * the whole coded frame -- because it was scaled, or because it was cropped, or
++ * both.
++ */
+ static inline bool cedrus_scaling(struct cedrus_ctx *ctx)
+ {
+ 	return ctx->compose.width != ctx->src_fmt.width ||
+-	       ctx->compose.height != ctx->src_fmt.height;
++	       ctx->compose.height != ctx->src_fmt.height ||
++	       ctx->crop.width != ctx->src_fmt.width ||
++	       ctx->crop.height != ctx->src_fmt.height;
+ }
+ 
+ /*
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -326,8 +326,15 @@
+ 		cedrus_write(dev, VE_CHROMA_BUF_LEN, reg);
+ 	}
+ 
++	/*
++	 * TOP1_IN_SIZE bounds what the scaler READS, so the crop rectangle --
++	 * not the coded size -- is its input. Measured: feeding it 1080 instead
++	 * of H.264's 1088 coded rows reproduces a natively rasterised 720p
++	 * reference border for border, against a bottom border nearly twice too
++	 * thick when the padding is scaled in with the picture.
++	 */
+ 	cedrus_top1_configure(ctx, ctx->scaler_buf_addr,
+-			      ctx->src_fmt.width, ctx->src_fmt.height,
++			      ctx->crop.width, ctx->crop.height,
+ 			      ctx->compose.width, ctx->compose.height);
+ }
+ 
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -250,11 +250,11 @@
+ 
+ 	if (cedrus_can_scale(ctx) && fsize->pixel_format == V4L2_PIX_FMT_NV12) {
+ 		fsize->type = V4L2_FRMSIZE_TYPE_STEPWISE;
+-		fsize->stepwise.min_width = cedrus_scale_min(ctx->src_fmt.width);
+-		fsize->stepwise.max_width = ctx->src_fmt.width & ~1U;
++		fsize->stepwise.min_width = cedrus_scale_min(ctx->crop.width);
++		fsize->stepwise.max_width = ctx->crop.width & ~1U;
+ 		fsize->stepwise.step_width = 2;
+-		fsize->stepwise.min_height = cedrus_scale_min(ctx->src_fmt.height);
+-		fsize->stepwise.max_height = ALIGN(ctx->src_fmt.height, 16);
++		fsize->stepwise.min_height = cedrus_scale_min(ctx->crop.height);
++		fsize->stepwise.max_height = ALIGN(ctx->crop.height, 16);
+ 		fsize->stepwise.step_height = 2;
+ 	} else {
+ 		struct v4l2_pix_format pix_fmt = ctx->src_fmt;
+@@ -376,15 +376,17 @@
+ 
+ 	pix_fmt->pixelformat = fmt->pixelformat;
+ 	if (cedrus_can_scale(ctx) && pix_fmt->pixelformat == V4L2_PIX_FMT_NV12) {
+-		pix_fmt->width = cedrus_scale_size(ctx->src_fmt.width,
++		pix_fmt->width = cedrus_scale_size(ctx->crop.width,
+ 						 pix_fmt->width, 0);
+-		pix_fmt->height = cedrus_scale_size(ctx->src_fmt.height,
++		pix_fmt->height = cedrus_scale_size(ctx->crop.height,
+ 						  pix_fmt->height, 0);
+ 		scaling = pix_fmt->width != ctx->src_fmt.width ||
+-			  pix_fmt->height != ctx->src_fmt.height;
++			  pix_fmt->height != ctx->src_fmt.height ||
++			  ctx->crop.width != ctx->src_fmt.width ||
++			  ctx->crop.height != ctx->src_fmt.height;
+ 	} else {
+-		pix_fmt->width = ctx->src_fmt.width;
+-		pix_fmt->height = ctx->src_fmt.height;
++		pix_fmt->width = ctx->crop.width;
++		pix_fmt->height = ctx->crop.height;
+ 	}
+ 	cedrus_prepare_capture_format(ctx, pix_fmt, scaling);
+ 	return 0;
+@@ -443,32 +445,120 @@
+ 			ctx->current_codec->extra_cap_size(ctx, &ctx->recon_fmt);
+ }
+ 
++/*
++ * CAPTURE selection, as the decoder interface defines it: CROP is the rectangle
++ * within the CODED resolution that is output, and COMPOSE is the rectangle
++ * inside the capture BUFFER it is written to. They are the input and the output
++ * of the same scaling operation.
++ *
++ * The targets are readable whatever the hardware can do -- the interface says
++ * they are read-only, not absent, without compose/scaling support -- so a
++ * client can discover the coded size here even on a context that cannot scale.
++ * Writing them is what requires the scaler; see cedrus_s_selection().
++ */
+ static int cedrus_g_selection(struct file *file, void *priv,
+ 			      struct v4l2_selection *sel)
+ {
+ 	struct cedrus_ctx *ctx = cedrus_file2ctx(file);
+ 
+-	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
+-	    !cedrus_can_scale(ctx) ||
+-	    !cedrus_is_capable(ctx, CEDRUS_CAPABILITY_UNTILED))
++	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE)
+ 		return -EINVAL;
+ 
+ 	switch (sel->target) {
++	case V4L2_SEL_TGT_CROP:
++		sel->r = ctx->crop;
++		return 0;
++	case V4L2_SEL_TGT_CROP_DEFAULT:
++	case V4L2_SEL_TGT_CROP_BOUNDS:
++		/*
++		 * CROP_BOUNDS is the coded resolution. CROP_DEFAULT should be
++		 * the VISIBLE rectangle, which a stateless decoder cannot know:
++		 * userspace parses the stream, and neither v4l2_ctrl_h264_sps
++		 * nor v4l2_ctrl_hevc_sps carries the cropping fields. Reporting
++		 * the coded size is the honest answer, and userspace narrows it
++		 * with S_SELECTION(CROP) when it knows better.
++		 */
++		sel->r.left = 0;
++		sel->r.top = 0;
++		sel->r.width = ctx->src_fmt.width;
++		sel->r.height = ctx->src_fmt.height;
++		return 0;
+ 	case V4L2_SEL_TGT_COMPOSE:
+ 		sel->r = ctx->compose;
+ 		return 0;
+ 	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
++		/* "equal to V4L2_SEL_TGT_CROP", placed at the buffer origin. */
++		sel->r.left = 0;
++		sel->r.top = 0;
++		sel->r.width = ctx->crop.width;
++		sel->r.height = ctx->crop.height;
++		return 0;
+ 	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
++	case V4L2_SEL_TGT_COMPOSE_PADDED:
++		/*
++		 * The largest rectangle the cropped frame can be composed into
++		 * is the capture BUFFER, which is not the coded size once
++		 * scaling is on -- reporting the coded size here was wrong.
++		 */
+ 		sel->r.left = 0;
+ 		sel->r.top = 0;
+-		sel->r.width = ctx->src_fmt.width;
+-		sel->r.height = ctx->src_fmt.height;
++		sel->r.width = ctx->dst_fmt.width;
++		sel->r.height = ctx->dst_fmt.height;
+ 		return 0;
+ 	default:
+ 		return -EINVAL;
+ 	}
+ }
+ 
++/*
++ * Narrow what the scaler reads out of the coded frame.
++ *
++ * This is how a client excludes coded padding: H.264 stores 1080p as 1088 rows,
++ * and scaling all 1088 into 720 spends eight rows of the height budget on
++ * encoder padding and shortens the picture by 0.74%. Setting CROP to 1920x1080
++ * makes the ratio exact on both axes.
++ *
++ * Offsets are refused. TOP1_IN_SIZE bounds the extent the scaler reads but no
++ * register has been found that moves its origin, so a non-zero left or top
++ * would have to be silently ignored, and a crop that does not crop where it was
++ * asked to is worse than one that says it cannot.
++ */
++static int cedrus_s_selection_crop(struct cedrus_ctx *ctx,
++				   struct v4l2_selection *sel)
++{
++	struct v4l2_rect crop = sel->r;
++
++	if (crop.left || crop.top || !crop.width || !crop.height ||
++	    crop.width > INT_MAX || crop.height > INT_MAX)
++		return -EINVAL;
++
++	/* Even, and never larger than the coded frame the decoder produced. */
++	crop.width = clamp(crop.width & ~1U, 16U, ctx->src_fmt.width & ~1U);
++	crop.height = clamp(crop.height & ~1U, 16U, ctx->src_fmt.height & ~1U);
++
++	if (((sel->flags & V4L2_SEL_FLAG_LE) &&
++	     (crop.width > sel->r.width || crop.height > sel->r.height)) ||
++	    ((sel->flags & V4L2_SEL_FLAG_GE) &&
++	     (crop.width < sel->r.width || crop.height < sel->r.height)))
++		return -ERANGE;
++
++	ctx->crop = crop;
++
++	/*
++	 * The output rectangle was clamped against the OLD input, so re-derive
++	 * it: a compose that is now larger than the crop, or more than the 4x
++	 * the scaler is validated for below it, is no longer reachable.
++	 */
++	ctx->compose.width = cedrus_scale_size(crop.width, ctx->compose.width, 0);
++	ctx->compose.height = cedrus_scale_size(crop.height, ctx->compose.height, 0);
++	ctx->dst_fmt.width = max_t(u32, ctx->dst_fmt.width, ctx->compose.width);
++	ctx->dst_fmt.height = max_t(u32, ctx->dst_fmt.height, ctx->compose.height);
++	cedrus_reset_cap_format(ctx);
++	cedrus_update_recon_format(ctx);
++	sel->r = crop;
++	return 0;
++}
++
+ static int cedrus_s_selection(struct file *file, void *priv,
+ 			      struct v4l2_selection *sel)
+ {
+@@ -477,7 +567,9 @@
+ 	struct v4l2_rect compose = sel->r;
+ 
+ 	if (sel->type != V4L2_BUF_TYPE_VIDEO_CAPTURE ||
+-	    sel->target != V4L2_SEL_TGT_COMPOSE || !cedrus_can_scale(ctx) ||
++	    (sel->target != V4L2_SEL_TGT_COMPOSE &&
++	     sel->target != V4L2_SEL_TGT_CROP) ||
++	    !cedrus_can_scale(ctx) ||
+ 	    !cedrus_is_capable(ctx, CEDRUS_CAPABILITY_UNTILED) ||
+ 	    sel->flags & ~(V4L2_SEL_FLAG_LE | V4L2_SEL_FLAG_GE))
+ 		return -EINVAL;
+@@ -485,12 +577,16 @@
+ 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+ 	if (vb2_is_busy(vq))
+ 		return -EBUSY;
++
++	if (sel->target == V4L2_SEL_TGT_CROP)
++		return cedrus_s_selection_crop(ctx, sel);
++
+ 	if (compose.left || compose.top || !compose.width || !compose.height ||
+ 	    compose.width > INT_MAX || compose.height > INT_MAX)
+ 		return -EINVAL;
+ 
+-	compose.width = cedrus_scale_size(ctx->src_fmt.width, compose.width, sel->flags);
+-	compose.height = cedrus_scale_size(ctx->src_fmt.height, compose.height, sel->flags);
++	compose.width = cedrus_scale_size(ctx->crop.width, compose.width, sel->flags);
++	compose.height = cedrus_scale_size(ctx->crop.height, compose.height, sel->flags);
+ 	if (((sel->flags & V4L2_SEL_FLAG_LE) &&
+ 	     (compose.width > sel->r.width || compose.height > sel->r.height)) ||
+ 	    ((sel->flags & V4L2_SEL_FLAG_GE) &&
+@@ -524,8 +620,8 @@
+ 
+ 	ctx->dst_fmt = f->fmt.pix;
+ 	ctx->compose = (struct v4l2_rect) {
+-		.width = min(f->fmt.pix.width, ctx->src_fmt.width),
+-		.height = min(f->fmt.pix.height, ctx->src_fmt.height),
++		.width = min(f->fmt.pix.width, ctx->crop.width),
++		.height = min(f->fmt.pix.height, ctx->crop.height),
+ 	};
+ 	cedrus_update_recon_format(ctx);
+ 
+@@ -542,8 +638,8 @@
+ 	ctx->dst_fmt.sizeimage = 0;
+ 	if (!cedrus_scaling(ctx)) {
+ 		ctx->dst_fmt.bytesperline = 0;
+-		ctx->dst_fmt.width = ctx->src_fmt.width;
+-		ctx->dst_fmt.height = ctx->src_fmt.height;
++		ctx->dst_fmt.width = ctx->crop.width;
++		ctx->dst_fmt.height = ctx->crop.height;
+ 	}
+ 	cedrus_prepare_capture_format(ctx, &ctx->dst_fmt, cedrus_scaling(ctx));
+ }
+@@ -598,10 +694,11 @@
+ 	 * A new coded size invalidates any scaling factor chosen against the
+ 	 * old one, and the reconstruction geometry follows the source.
+ 	 */
+-	ctx->compose = (struct v4l2_rect) {
++	ctx->crop = (struct v4l2_rect) {
+ 		.width = ctx->src_fmt.width,
+ 		.height = ctx->src_fmt.height,
+ 	};
++	ctx->compose = ctx->crop;
+ 	ctx->dst_fmt.pixelformat = 0;
+ 	ctx->dst_fmt.bytesperline = 0;
+ 	cedrus_reset_cap_format(ctx);

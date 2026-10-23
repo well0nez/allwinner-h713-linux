@@ -67,7 +67,8 @@ cross builds map their checkout and sysroot paths out of their debug info, so th
 either. For `v0.96-beta` two builds of one commit - the working tree and a fresh clone elsewhere - gave the
 same hash for every building block in the stamp, the boot chain and the backup GPT byte for byte.
 The stamp's `reproducible:` line says whether a build was made that way, and if not, why (local changes,
-`--skip-*`, a private `--wifi-env`). The rootfs tar repeats only while the Debian mirror is at the same
+`--skip-*`, a private `--wifi-env`). Since 15.10.2026 the stamp also has `profile:` (`none (base image)` or the profiles built in),
+`libva:` (the VA-API driver's revision and patch count, or `none`) and `sources:` (the Debian suites the rootfs was bootstrapped from). The rootfs tar repeats only while the Debian mirror is at the same
 state; `rootfs packages:` names the package set for that comparison. Image checksums still differ between
 builds (the ext4 inputs carry their own UUIDs and times), so compare the stamp, not the image. Quote the
 stamp in a bug report. A TEST image for a board below *verified* says so in its first line and names the
@@ -142,6 +143,18 @@ LVDS, project 0x34, the remote, Bluetooth after a cold start, three cold starts.
 
 **Files:** the table at the top of this page, with `v0.96-beta` for `vX.Y`. Unpack nothing by hand:
 `h713-install install <the folder>` finds them all ([FLASHING.md](FLASHING.md)).
+
+## The media image (branch `medien`, not a release)
+
+`release/build-all.sh --board hy310 --version vX.Y --profile media,desktop --standby` builds, from the `medien` branch, the image the
+HY310 test device runs since 16.10.2026: Debian's ffmpeg, mpv, GStreamer, Kodi, cage, labwc, foot and Firefox on top of the base image,
+the VA-API driver, hardware decode behind the IOMMU, a launcher and a settings page on the remote, standby from every mode, the RTC on the
+crystal ([BUILDING.md](BUILDING.md), *The media image*; `doku/211` to `doku/213`). Its system part is 2177 MiB on a 2 GiB root file system
+that grows to the partition at the first start; the stamp says `profile: media,desktop`, `standby: sr, offered`, `sources: Debian
+trixie,trixie-updates,trixie-security`, and `h713-mkimage` calls it "not a release image" because it is far above the 500 MiB a release
+is held to. **It has no tag and is not published.** Measured on the HY310 only; nothing of it has run on the HY300PRO-G-EU. What it does
+not carry, and why: AV1 decode (the driver is there and switched off, `0310`), hardware decode in Firefox (its decoder sandbox stays on),
+a reconnect of the Bluetooth remote after a stale bond (a fix is built and not yet measured) - [known-issues](docs/known-issues.md).
 
 ## Superseded releases
 

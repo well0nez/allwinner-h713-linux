@@ -6,8 +6,9 @@ projective homography built from eight per-mille corner insets, ported function 
 `getKeyStoneMatrix` in the stock `system_a_libkeystone.so` and tested against that reference.
 
 Nothing about the ordinary picture path changes. With all eight values at 0 - the state a fresh image comes up
-in - the daemon does not open the render node at all, and `h713-tv` shows the capture ring exactly as it does
-without this service.
+in - the daemon does not open the render node at all (after the format query at its start), and `h713-tv` shows
+the capture ring exactly as it does without this service. A Wayland client is the second source next to the ring:
+see "A Wayland client" below.
 
 ## Who does what
 
@@ -15,6 +16,7 @@ without this service.
 |---|---|---|
 | `h713-warp` | `/dev/dri/renderD128` (panfrost), the capture buffers, the shader, the matrix | reads the HDMI capture as dma-bufs, draws one warped frame per capture frame, hands it over with a fence |
 | `h713-tv` | `/dev/dri/card1`, the DRM master, the panel | allocates the three NV12 target buffers, and commits them on the **video** plane with `IN_FENCE_FD` and `hdmi-ring` 0 |
+| a Wayland client (cage) | `renderD128` for its own drawing, evdev through libinput | connects to `/run/h713-warp/wayland`, hands its pictures over as dma-bufs; never opens a card node |
 | the kernel | the console | paints the console whenever neither of the two holds the master |
 
 There is exactly one DRM master, and it stays `h713-tv`'s: two masters on one card cannot coexist, and a
@@ -24,6 +26,16 @@ over `h713-tv`'s control socket, with the file descriptors in `SCM_RIGHTS` (READ
 Per frame: `DQBUF` a capture slot, draw it through the matrix into the next of three targets, make a native
 fence, send `warp frame N` with that fence, and give the slot back only after `h713-tv` has answered - a slot
 is overwritten every third frame and nothing in the dma-buf says so.
+
+A second connection stays open for as long as both run, the *want link* (17.10.2026): `warp want ring` or `warp want
+none`, said once at the start and again only when it changes, tells `h713-tv` whether this daemon will claim the ring
+when it may - `ring` with a keystone, a mirrored mount or a test pattern; `none` at the identity, with `warp = off`, for a
+ring geometry the GPU refused and after the GPU failed a claim (until a frame is drawn again). `none` goes out before a
+claim is given back. With `ring`, `h713-tv` keeps its straight ring off the video plane when the signal stands, says `note
+claim` on the link and waits up to a second; this daemon claims at once on that note, and its first frame turns the plane
+on - one switch from black to the warped picture, see [h713-tv](h713-tv.md), "The first picture". The link is made again
+once a second while `h713-tv` is away; an `h713-tv` of before that day answers the line with an error and is not asked again.
+`ctl status` says the word on its `want` line.
 
 ## `h713-warp ctl` - the control channel
 
@@ -46,11 +58,108 @@ so the exit code is decided without parsing further.
 | `check [FRAMES]` | the self-check, no eyes needed: every third slot drawn a second time 4 ms later into a scratch buffer and compared in 32 rows; "N frames, 0 with differing rows" on the status line is the pass, one journal line per differing frame. While it runs the readback stalls the loop and frames are dropped (`busy`); it ends by itself. 11.10.2026, `hold off`, a moving 1080p60 source: 300 frames, 0 differing rows |
 | `trace [N] [gpu]` | log the next N frames with what they cost: this thread's CPU microseconds per step (dequeue, the two passes, the fence, h713-tv's answer) and, with `gpu`, the GPU's time from the submit to the out-fence - the only honest GPU clock here, Panfrost answers `GL_EXT_disjoint_timer_query` from the CPU clock |
 | `trace [N]` | log the next N dequeues with their timestamps, gaps between pumps and slow phases (draw, the peer's answer) |
+| `picture` | `ok N ...`: the pictures of the Wayland client on the panel since its window was mapped, those taken under an opaque page included; `error` when no client picture is on the panel. What the launcher's "Starting Kodi..." waits for (`h713-kodi-switch ready`: a picture of Kodi's after Kodi said it is up) |
 
 `CORNER` is `tl tr bl br` **as the picture stands on the wall**, `AXIS` is `x` or `y`. Every change is clamped
 and saved at once. The clamp is the vendor's: the x of a corner is limited by the corner at the other end of
 its row and the y by the one at the other end of its column, so the picture can never be pulled past its own
 width or height. The value that gives way is the one being set, never the one already there.
+
+## A Wayland client
+
+The daemon is also a minimal Wayland server on `/run/h713-warp/wayland` (0660; `-w PATH` for another place, `-g GROUP`
+for the group that owns it - the unit passes `video`, so that cage, which is not root, can connect),
+so that Kodi under cage reaches the wall through the warp - with the keystone, the overlays and h713-tv as the one
+master (measured on the HY310 on 15.10.2026, `doku/211` §10).
+
+- **Protocols:** `wl_compositor`, `wl_shm`, `xdg_wm_base` (one fullscreen toplevel in the panel's size, a second one
+  is asked to close at once - if it stays, it takes the panel over when the first one goes; popups are dismissed), `zwp_linux_dmabuf_v1` v4 with a format table out of EGL (every RGB
+  format and modifier the render node imports, Kodi's AR30 + AFBC `0x0800000000000062` among them - without it cage
+  copies every picture), `wl_output`, `wp_presentation` (CLOCK_MONOTONIC). No `wl_seat`: cage reads the remote
+  through libinput itself.
+- **What h713-tv shows** is `h713-tv ctl source hdmi|client|auto` (`source =` in `tv.conf` at the start, default
+  `hdmi`; the image of the profile `desktop` sets `auto`, because h713-tv does not keep a source across its own
+  restart). The warp claims the panel with `warp claim client` once a toplevel has its first picture; the claim
+  needs no signal, and the capture stays closed. Between the ring and a client the claim is not given back: the
+  warp switches it (`warp switch client|ring` to h713-tv) and draws the other source into the same three buffers,
+  the video plane up all the time - so a change between HDMI and a client goes from the last frame of the one to
+  the first of the other (giving the claim back and claiming again flashed white in 8 of 8 handovers; with the switch 0 of 24, 16.10.2026, `doku/213` §1). This happens when a
+  client comes under `auto`, when the client is gone and the ring is to be warped, and when h713-tv's `source`
+  forbids the claim that stands: h713-tv says so unasked on the connection (`note source hdmi`), the warp switches
+  to the ring - or gives the claim back when the ring needs no GPU, has no signal, or the switch is refused; then it
+  claims again at once as before. The answer to a claim names the policy (`... source auto`). A claim the new policy allows stands, and the
+  `ok` of the next frame names the policy (`ok source auto`): `hdmi` <-> `auto` no longer takes the ring off the
+  panel. A client that waits behind a ring claim does not rely on that frame - a stalled ring sends none - the warp
+  asks h713-tv's `source` when the client comes and once a second while it waits. Under `auto` a client goes before the ring. Under `client` without a client the warp asks `source` alone
+  once a second instead of starting the capture for a ring claim that would be refused (measured 15.10.2026).
+- **`client` is a program, and HDMI is a mode, not a filler** (17.10.2026): a mode unit sets `source client` at its start
+  (`h713-kodi-switch source`). A ring claim then turns into the client's on the same buffers at once, with no picture of
+  the program yet: the ring is drawn no more and the video plane keeps its last frame until the program's first picture.
+  When a client's window goes, the claim stays and the last picture stands - while the program runs (its connection
+  stands) or another program has said that it starts (h713-tv repeats `note source client` for every unit's start). Only
+  when neither is so two seconds later has the program ended: the warp sets `h713-tv source auto` itself and the ring
+  takes over (a program that said it starts and has not connected within 30 s counts as ended). Under `auto` a client that
+  goes is followed by the ring after two seconds, as before; `hdmi` takes the panel to the ring at once. Measured on the
+  HY310 on 17.10.2026: Kodi -> launcher -> browser and back, three times each - the claim stayed the client's throughout
+  (no switch to the ring in the journal), the camera saw the page and then the new program, no HDMI picture and no
+  straight ring between them.
+- **A buffer's life:** pending when committed (a newer commit releases an untaken one at once), taken when its
+  dma-buf is readable and the previous frame is on the panel (h713-tv's flip fence, sent with the `ok`), the frame
+  callbacks done right then, released when the render fence of the frame that read it signals, presented with the
+  flip fence's timestamp. At most one client frame per vsync; `--client-rate half` takes every second vsync.
+- **Colour:** BT.709 limited range computed inside the two keystone passes from the client's RGB; a picture smaller
+  than the panel sits in the middle (letterbox), never scaled, and gets the configure once more - cage misses the
+  first one and would stay at 1280x720 (measured 15.10.2026). With `warp = off` the client is shown without
+  keystone. The client is drawn through the GPU even at the identity: the video plane takes NV12 only.
+- **Limits:** four connections (a fifth gets an error and is closed), eight surfaces and eight imported dma-bufs per client, a buffer
+  larger than the panel is refused, a buffer before the first configure is a protocol error; a client that goes
+  away keeps the panel for two seconds (a cage restart), then the warp gives it back. A dma-buf shorter than the
+  layout the GPU reads for its modifier fails before the import - LINEAR offset + pitch x height, u-interleaved in
+  lines of 16, AFBC a 16-byte header per superblock plus the whole body, as mesa's panfrost lays it out; a test client had a
+  20-KB buffer described as 1920x1080 AFBC fault the GPU. A `wl_shm` line shorter than 4 x width is a protocol
+  error (libwayland checks only stride >= width), and a `wl_shm` picture goes up in one call (measured 15.10.2026).
+- **Status:** `ctl status` has three more lines, `wayland` (clients, toplevel, formats), `client` (taken,
+  presented, discarded, busy, released, imports) and `pictures` (of the toplevel on the panel, one held under a page).
+
+## Under an opaque page - the pause
+
+An opaque page on the wall (the launcher, a settings page: h713-osd's `osd show N cover`) hides the whole picture, and the
+mode under it pauses: h713-tv says `note cover on` on the claim's connection and the warp draws nothing more - the ring's
+capture is not asked (its slots stay with the driver), a client's pictures are taken once a panel period as without the
+page (frame callbacks done, feedback discarded: the client runs on, Kodi plays on) and the newest one is held instead of
+drawn. The claim, the capture, the link and HDCP stay; h713-tv switches the video plane **off** under the page (since 17.10.2026
+evening, Marco: nothing of HDMI lies behind a page, and nothing nobody sees is read), and a claim made under a page draws nothing
+until the page goes. Between two opaque pages (the settings page and the launcher, either way) the first stays on the wall until
+the second is drawn in its place (h713-osd, "page handover" / "launcher close keep"), so the pause and the dark plane last through
+the change. `note cover
+off` - the page goes, or turns into the settings' slider pill over the picture, which is not opaque - and the next frame is
+drawn at once: the ring's slots that stood are given back and the next one handed on is drawn (a slot handed on less than
+10 ms ago is drawn at once), a client's held picture is drawn, or with none the client's buffer on the panel is committed
+once more. h713-tv lays the end of the page on that frame, so the wall goes from the page to a new picture in one commit.
+`ctl status` says `pause` while it lasts. Measured on the HY310 on 17.10.2026 (1080p60 source): under the launcher and a
+settings page 0 warp frames a second, 0 changes of the video plane's address, the GPU runtime-suspended the whole time,
+0.006 / 0.000 cores without the sampler (HDMI on the wall: 0.156); Kodi under the launcher answers JSON-RPC and ~23 of its
+pictures a second are taken and held, none drawn; the settings' slider pill: the warp at 60 frames a second; from
+`launcher close` to the first new frame 23-36 ms (5 runs), and with the camera no black, straight or tinted picture between
+the page and HDMI (6 runs).
+
+Kodi sees 0 Hz under cage (wlroots' nested output has no rate) and picks the presentation protocol for its video
+sync: leave Kodi's "Sync playback to display" off (the default) - with it on, 1080p60 played at 18 fps and Kodi hung
+on stopping the video (measured 15.10.2026).
+
+Kodi's unit (`h713-kodi.service`, profile `desktop`) runs cage and Kodi as the system user `h713-kodi` (groups `video`,
+`render`, `audio`; not root), sets `WAYLAND_DISPLAY=/run/h713-warp/wayland` and
+`WLR_BACKENDS=wayland,libinput`, binds itself to `h713-warp.service`, and sets `h713-tv ctl source client` at its
+start (since 17.10.2026, before `auto`; without a running h713-tv there is nothing to set: it comes up on `auto`); there is
+no way back to run at its end - however Kodi ends (Quit, a crash, a SIGKILL of the whole unit), the warp sees cage's
+connection close, and when no other program says it starts it sets `source auto` and the ring is there again two seconds
+after cage is gone (measured 15.10.2026: a SIGKILL of the unit's cgroup skipped the old `ExecStopPost=... source hdmi`
+and left the console). Measured: the host test (`make
+test`, a client against the server with the GPU stubbed); on the device see `doku/211` §10 and, for the user `h713-kodi`, `source auto` surviving a restart of h713-tv (Kodi shown again after 1.7 to 2.0 s)
+and the polkit rule, `doku/212` §4.
+
+Memory, measured once on the HY310 (17.10.2026, `doku/215` §4): with the EGL context open and no claim (under a page) h713-warp's RSS is 26 936 kB,
+with it closed 25 860 kB - the open context costs about 1 MiB.
 
 ## `/etc/h713/warp.conf`
 
@@ -95,7 +204,11 @@ Every one of these leaves a picture on the wall; that is the rule.
 | no GPU, no mesa, a missing EGL extension | `ctl on` is refused by name (`ctl status` says which piece), the ring stays |
 | no signal | nothing to warp; the daemon idles and `h713-tv`'s own console handback covers the wall |
 | no `h713-tv` | nothing is claimed; the daemon retries once a second |
-| five failed renders in a row, or a lost EGL context | released back to bypass, once in the journal |
+| five failed renders in a row, or a lost EGL context | released back to bypass, once in the journal; the want link says `none` first, so `h713-tv` puts its ring up at once, and `ring` again after the next drawn frame |
+| the GPU does not take `h713-tv`'s buffers after a claim | the same: `none`, the claim given back, the straight ring at once |
+| `h713-warp` restarts | `h713-tv` keeps the `ring` of the closed want link for one second and starts the wait anew when the new daemon says `ring`; the restarted daemon claims within it (HY310, 17.10.2026: the first frame 0.48 s after the stop, 3 of 3 restarts without a straight frame) |
+| `h713-warp` stops, hangs, or does not claim | after one second without a claim `h713-tv` shows the straight ring (journal: `h713-warp did not claim within ... -- the straight ring after all`) and keeps it until a claim's first frame |
+| an `h713-tv` of before 17.10.2026 | it answers `warp want` with an error; the daemon does not ask again, and the straight ring stands until the claim, as before |
 | the source changes resolution | on every `SOURCE_CHANGE` the queue is stopped, the driver asked (`QUERY_DV_TIMINGS`, then `G_FMT` - a streaming queue keeps its format, so `G_FMT` alone could only repeat the old ring, which it did until 12.10.2026) and the six capture images are rebuilt; the driver also reports a ring that moved without a firmware callback since kernel 0260 (`doku/206`) |
 
 ## Limits
@@ -131,7 +244,10 @@ behind that block, re-apps AP2j). Measured against the RGB path on the HY310, sa
 GPU governor settles at 432 instead of 600 MHz, the die cools instead of warming, the bytes per frame halve
 (10.4 MB instead of 20.7), the warp's CPU rises by about three points for the second pass. NV16 on that plane
 shows with every other chroma line dropped, so NV12 loses nothing. Without a signal `h713-tv` releases the
-warp and shows the console; the warp asks again once a second and is back within a second of the signal. The warp costs about 0.6 GB/s of memory
+warp and shows the console; the warp waits on the capture node's source-change event and is back about 0.2 s after the signal (17.10.2026, HY310: signal 9.53 s, claim 9.74 s, `doku/214` §3; until then it asked once a second and came up to a second late, with h713-tv's straight ring on the wall in between); a node that answers poll with an error falls back to once a second. Since the want link (above) `h713-tv` also says `note claim` once the signal stands, and keeps the straight ring off the plane until the claim's first frame (HY310, 17.10.2026, the source's DPMS off and on: the claim 0.08 s
+after h713-tv's signal line, the warped picture 0.20-0.22 s after it on the camera, 3 of 3 without a straight or tinted frame). While
+the ring is wanted the render node stays open between two claims (no signal, `ctl off`): a claim on `note claim` then costs the
+capture and the claim, not the EGL start - 0.08 s instead of 0.28 s after `ctl auto`. The warp costs about 0.6 GB/s of memory
 bandwidth (read 4.15 MB of NV16, write 3.1 MB of NV12, scanout reads 3.1 MB instead of 4.15 MB per frame)
 and 9.3 MB of CMA for the three targets. The vendor's edge blend is in (`edge`, since 27.09.2026): the same
 darkening ring the stock draws as a blended alpha quad over its warped frame - luma towards Y 16, chroma

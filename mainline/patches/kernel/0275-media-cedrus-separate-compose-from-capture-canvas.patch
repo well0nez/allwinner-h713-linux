@@ -1,0 +1,88 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: separate the compose window from its capture canvas
+
+V4L2 compose describes the active output rectangle inside a capture buffer.
+Do not replace the capture format with that rectangle when the H.264 secondary
+output is enabled.  Preserve the requested capture canvas, enlarge it if the
+scaled picture would not fit, and report the active scaled dimensions through
+G_SELECTION.
+
+This lets a 960x544 secondary picture occupy the top-left of a 1280x720 NV12
+capture allocation.  Its chroma plane then starts at 1280*720, matching the
+native framebuffer layout required by the H713 display path.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0107-media-cedrus-separate-compose-from-capture-canvas.patch (0107-media-cedrus-separate-compose-from-capture-canvas.patch, commit 2952b81)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_video.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_video.c
+@@ -294,15 +294,23 @@ static int cedrus_try_fmt_vid_cap_p(struct cedrus_ctx *ctx,
+ 	pix_fmt->pixelformat = cedrus_scaling(ctx) ? V4L2_PIX_FMT_NV12 :
+ 						 fmt->pixelformat;
+ 	/*
+-	 * The capture picture is the coded size divided by whatever the VE has
+-	 * been asked to scale by; see cedrus_s_selection().
++	 * COMPOSE is a window inside the capture allocation.  Keep userspace's
++	 * requested canvas while scaling and only enlarge it when the secondary
++	 * picture would not fit.  Conflating these dimensions put the chroma plane
++	 * immediately after the 544 visible rows and forced the display fetcher to
++	 * use a small raster, which this H713 hardware wraps and shears.
+ 	 */
+-	pix_fmt->width = ctx->sd_h_shift ?
+-		ALIGN(ctx->src_fmt.width, 16) >> ctx->sd_h_shift :
+-		ctx->src_fmt.width;
+-	pix_fmt->height = ctx->sd_v_shift ?
+-		ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
+-		ctx->src_fmt.height;
++	if (cedrus_scaling(ctx)) {
++		pix_fmt->width = max(pix_fmt->width,
++				     ALIGN(ctx->src_fmt.width, 16) >>
++				     ctx->sd_h_shift);
++		pix_fmt->height = max(pix_fmt->height,
++				      ALIGN(ctx->src_fmt.height, 16) >>
++				      ctx->sd_v_shift);
++	} else {
++		pix_fmt->width = ctx->src_fmt.width;
++		pix_fmt->height = ctx->src_fmt.height;
++	}
+ 	cedrus_prepare_format(pix_fmt);
+ 
+ 	if (ctx->current_codec->extra_cap_size)
+@@ -411,8 +419,12 @@ static int cedrus_g_selection(struct file *file, void *priv,
+ 	case V4L2_SEL_TGT_COMPOSE:
+ 		sel->r.left = 0;
+ 		sel->r.top = 0;
+-		sel->r.width = ctx->dst_fmt.width;
+-		sel->r.height = ctx->dst_fmt.height;
++		sel->r.width = ctx->sd_h_shift ?
++			ALIGN(ctx->src_fmt.width, 16) >> ctx->sd_h_shift :
++			ctx->src_fmt.width;
++		sel->r.height = ctx->sd_v_shift ?
++			ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
++			ctx->src_fmt.height;
+ 		return 0;
+ 	case V4L2_SEL_TGT_COMPOSE_DEFAULT:
+ 	case V4L2_SEL_TGT_COMPOSE_BOUNDS:
+@@ -442,7 +454,7 @@ static int cedrus_s_selection(struct file *file, void *priv,
+ 	    sel->flags & ~(V4L2_SEL_FLAG_LE | V4L2_SEL_FLAG_GE))
+ 		return -EINVAL;
+ 
+-	/* The buffer size changes with the picture, so nothing may be queued. */
++	/* The output layout can change, so nothing may be queued. */
+ 	vq = v4l2_m2m_get_vq(ctx->fh.m2m_ctx, V4L2_BUF_TYPE_VIDEO_CAPTURE);
+ 	if (vb2_is_busy(vq))
+ 		return -EBUSY;
+@@ -462,8 +474,12 @@ static int cedrus_s_selection(struct file *file, void *priv,
+ 	cedrus_reset_cap_format(ctx);
+ 	cedrus_update_recon_format(ctx);
+ 
+-	sel->r.width = ctx->dst_fmt.width;
+-	sel->r.height = ctx->dst_fmt.height;
++	sel->r.width = ctx->sd_h_shift ?
++		ALIGN(ctx->src_fmt.width, 16) >> ctx->sd_h_shift :
++		ctx->src_fmt.width;
++	sel->r.height = ctx->sd_v_shift ?
++		ALIGN(ctx->src_fmt.height, 16) >> ctx->sd_v_shift :
++		ctx->src_fmt.height;
+ 
+ 	return 0;
+ }

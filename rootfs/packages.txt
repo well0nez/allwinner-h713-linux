@@ -92,6 +92,16 @@ libubootenv-tool    # fw_printenv/fw_setenv per /etc/fw_env.config (0x700000, 64
                     # h713_boot, h713_gate, h713_project are otherwise only reachable
                     # at the U-Boot prompt. Small (~100 KiB), no u-boot-tools needed.
 
+# --- GPU userspace: the glvnd dispatchers (13.10.2026) ---
+# mesa (rootfs/mesa/build-mesa.sh) is a glvnd vendor now: it no longer ships libEGL.so.1 and
+# libGLESv2.so.2, these two packages do. h713-warp links both. Behind them sits OUR mesa
+# (libEGL_mesa.so.0 in /usr/local/lib, ICD file /etc/glvnd/egl_vendor.d/50_mesa.json). libegl1 depends on
+# libegl-mesa0 - one of the five dummies in rootfs/equivs/ that stand in for Debian's mesa packages, so
+# neither mesa-libgallium nor libllvm19 comes with it. The Wayland client/server libraries and libdrm come
+# in through the dummies' Depends (libEGL_mesa and libgbm link them).
+libegl1             # libEGL.so.1: the glvnd dispatcher. 160 KiB + libglvnd0 (1.5 MiB)
+libgles2            # libGLESv2.so.2: the same for OpenGL ES 2. 230 KiB
+
 # --- Clock (doku/107 section 8) ----------------------------------------------
 systemd-timesyncd   # without a buffered RTC the system starts in 1970: apt fails at the
                     # signature check, logs are useless, every TLS connection breaks. ~1 MiB.
@@ -118,8 +128,13 @@ debian-archive-keyring  # /usr/share/keyrings/debian-archive-keyring.gpg - witho
 #     25.0.7 with only the Panfrost driver, EGL, GLES2 and GBM (15 MiB, no LLVM),
 #     build-rootfs.sh puts it under /usr/local (--mesa). Reason: the keystone path
 #     (working journal `keystone`).
+#     Changed 13.10.2026: libegl1 and libgles2 ARE in now, above - they are
+#     glvnd's small dispatchers, and mesa became their vendor. libgbm1, libgl1-mesa-dri (and libegl-mesa0,
+#     mesa-libgallium, libglx-mesa0) stay out as Debian's packages: rootfs/equivs/ builds dummies of the same names, so
+#     Debian's compositors and Kodi (rootfs/packages-*.txt, build-rootfs.sh --profile) install without LLVM.
 # gstreamer1.0-*, mpv, ffmpeg
-#     cstenger's video runtime (mainline/tools/rootfs/build.sh, VIDEO_RUNTIME_PACKAGES).
+#     (13.10.2026: still not in the base image; they are the profile `media`, packages-media.txt.)
+#     cstenger's video runtime (tools/rootfs/build.sh in his repository at 8860991, VIDEO_RUNTIME_PACKAGES).
 #     Pulls in GTK3, x265, aom, libllvm - doku/107 section 1: the biggest single item of
 #     today's netboot root. The projector moves HDMI input onto a DRM plane,
 #     it decodes nothing. v4l-utils stood here with them until 12.10.2026; it is only

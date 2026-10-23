@@ -1,0 +1,329 @@
+From 34cd8e8a96cf5536f190dd8030f6a4b90cc397ce Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Sat, 3 Oct 2026 00:24:17 -0700
+Subject: [PATCH 3/6] Keep decoded frames alive when their context is destroyed
+
+On a mid-stream resolution change FFmpeg destroys the decode context while
+frames from it still sit in its filter queue. DestroyContext munmapped and
+closed every CAPTURE buffer, so the next vaGetImage of such a frame read
+freed memory: SIGSEGV on all three resolution-change vectors (H.264, HEVC,
+VP9).
+
+Now DestroyContext first submits any held-back frame and waits for the
+decodes in flight, because STREAMOFF would discard them. Then it hands
+each decoded frame's CAPTURE buffer to its surface as standalone backing.
+The dma-buf fds and the mapping move over instead of being closed, and
+they keep the vb2 memory alive after the queue is freed. A driver-wide
+rwlock keeps readers (images, exports) out while that happens.
+
+decode-reinit-test: 0/3 -> 3/3, every frame bit-exact against software.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/libva-v4l2_request/0003-Keep-decoded-frames-alive-when-their-context-is-dest.patch (0003-Keep-decoded-frames-alive-when-their-context-is-dest.patch, commit ae94ce3)
+---
+ src/context.c      | 30 ++++++++++++++++++--
+ src/driver.c       |  2 ++
+ src/image.c        | 65 ++++++++++++++++++++++++++++++++++++-------
+ src/surface.c      | 69 ++++++++++++++++++++++++++++++++++++++++++++--
+ src/v4l2_request.h |  8 ++++++
+ 5 files changed, 159 insertions(+), 15 deletions(-)
+
+diff --git a/src/context.c b/src/context.c
+index 26162ea..47c7d0b 100644
+--- a/src/context.c
++++ b/src/context.c
+@@ -889,6 +889,18 @@ VAStatus v4l2r_DestroyContext(VADriverContextP va_ctx, VAContextID context_id)
+ 	if (!ctx)
+ 		return VA_STATUS_ERROR_INVALID_CONTEXT;
+ 
++	/* Finish what was submitted, so frames a client still holds are
++	 * complete when DestroyContext hands them to their surfaces below;
++	 * STREAMOFF would discard them. A held-back frame is submitted first. */
++	if (ctx->codec && ctx->codec->flush) {
++		pthread_mutex_lock(&ctx->codec_lock);
++		ctx->codec->flush(ctx, NULL);
++		pthread_mutex_unlock(&ctx->codec_lock);
++	}
++	for (unsigned int i = 0; i < ctx->nb_captures; i++)
++		if (ctx->captures[i].surface)
++			v4l2r_sync_capture(ctx, i);
++
+ 	if (ctx->video_fd >= 0 && ctx->streaming) {
+ 		type = ctx->output_format.type;
+ 		ioctl(ctx->video_fd, VIDIOC_STREAMOFF, &type);
+@@ -902,8 +914,20 @@ VAStatus v4l2r_DestroyContext(VADriverContextP va_ctx, VAContextID context_id)
+ 	for (unsigned int i = 0; i < V4L2R_OUTPUT_BUFFERS; i++)
+ 		output_buffer_cleanup(ctx, &ctx->output[i]);
+ 
+-	for (unsigned int i = 0; i < ctx->nb_captures; i++)
+-		capture_buffer_cleanup(ctx, &ctx->captures[i]);
++	pthread_rwlock_wrlock(&drv->view_lock);
++
++	/* Decoded frames outlive their context (see
++	 * v4l2r_surface_adopt_capture); a frame mid-decode has no content
++	 * worth keeping. */
++	for (unsigned int i = 0; i < ctx->nb_captures; i++) {
++		struct v4l2r_capture_buffer *capture = &ctx->captures[i];
++
++		if (capture->surface &&
++		    capture->surface->status == VASurfaceReady)
++			v4l2r_surface_adopt_capture(capture->surface, ctx,
++						    capture);
++		capture_buffer_cleanup(ctx, capture);
++	}
+ 
+ 	/* Detach surfaces that were attached but never bound. */
+ 	pthread_mutex_lock(&drv->mutex);
+@@ -915,6 +939,8 @@ VAStatus v4l2r_DestroyContext(VADriverContextP va_ctx, VAContextID context_id)
+ 	}
+ 	pthread_mutex_unlock(&drv->mutex);
+ 
++	pthread_rwlock_unlock(&drv->view_lock);
++
+ 	if (ctx->video_fd >= 0)
+ 		close(ctx->video_fd);
+ 	if (ctx->media_fd >= 0)
+diff --git a/src/driver.c b/src/driver.c
+index 1615127..fae4870 100644
+--- a/src/driver.c
++++ b/src/driver.c
+@@ -877,6 +877,7 @@ VAStatus v4l2r_Terminate(VADriverContextP va_ctx)
+ 	v4l2r_handles_destroy(&drv->images);
+ 
+ 	pthread_mutex_destroy(&drv->mutex);
++	pthread_rwlock_destroy(&drv->view_lock);
+ 
+ 	free(drv);
+ 	va_ctx->pDriverData = NULL;
+@@ -984,6 +985,7 @@ VAStatus V4L2R_DRIVER_INIT(VADriverContextP va_ctx)
+ 	}
+ 
+ 	pthread_mutex_init(&drv->mutex, NULL);
++	pthread_rwlock_init(&drv->view_lock, NULL);
+ 	va_ctx->pDriverData = drv;
+ 
+ 	enumerate_decoders(drv);
+diff --git a/src/image.c b/src/image.c
+index 923d923..0601f27 100644
+--- a/src/image.c
++++ b/src/image.c
+@@ -131,8 +131,8 @@ static void shift_samples(uint8_t *base, unsigned int pitch,
+ 	}
+ }
+ 
+-VAStatus v4l2r_DeriveImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+-			   VAImage *image)
++static VAStatus derive_image(VADriverContextP va_ctx, VASurfaceID surface_id,
++			    VAImage *image)
+ {
+ 	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
+ 	struct v4l2r_surface *surface;
+@@ -225,6 +225,19 @@ VAStatus v4l2r_DeriveImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+ 	return VA_STATUS_SUCCESS;
+ }
+ 
++VAStatus v4l2r_DeriveImage(VADriverContextP va_ctx, VASurfaceID surface_id,
++			   VAImage *image)
++{
++	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
++	VAStatus status;
++
++	pthread_rwlock_rdlock(&drv->view_lock);
++	status = derive_image(va_ctx, surface_id, image);
++	pthread_rwlock_unlock(&drv->view_lock);
++
++	return status;
++}
++
+ VAStatus v4l2r_DestroyImage(VADriverContextP va_ctx, VAImageID image_id)
+ {
+ 	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
+@@ -251,9 +264,9 @@ VAStatus v4l2r_SetImagePalette(VADriverContextP va_ctx, VAImageID image,
+ 	return VA_STATUS_ERROR_UNIMPLEMENTED;
+ }
+ 
+-VAStatus v4l2r_GetImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+-			int x, int y, unsigned int width, unsigned int height,
+-			VAImageID image_id)
++static VAStatus get_image(VADriverContextP va_ctx, VASurfaceID surface_id,
++			  int x, int y, unsigned int width, unsigned int height,
++			  VAImageID image_id)
+ {
+ 	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
+ 	struct v4l2r_surface *surface;
+@@ -346,11 +359,25 @@ VAStatus v4l2r_GetImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+ 	return VA_STATUS_SUCCESS;
+ }
+ 
+-VAStatus v4l2r_PutImage(VADriverContextP va_ctx, VASurfaceID surface_id,
+-			VAImageID image_id, int src_x, int src_y,
+-			unsigned int src_width, unsigned int src_height,
+-			int dest_x, int dest_y, unsigned int dest_width,
+-			unsigned int dest_height)
++VAStatus v4l2r_GetImage(VADriverContextP va_ctx, VASurfaceID surface_id,
++			int x, int y, unsigned int width, unsigned int height,
++			VAImageID image_id)
++{
++	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
++	VAStatus status;
++
++	pthread_rwlock_rdlock(&drv->view_lock);
++	status = get_image(va_ctx, surface_id, x, y, width, height, image_id);
++	pthread_rwlock_unlock(&drv->view_lock);
++
++	return status;
++}
++
++static VAStatus put_image(VADriverContextP va_ctx, VASurfaceID surface_id,
++			  VAImageID image_id, int src_x, int src_y,
++			  unsigned int src_width, unsigned int src_height,
++			  int dest_x, int dest_y, unsigned int dest_width,
++			  unsigned int dest_height)
+ {
+ 	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
+ 	struct v4l2r_surface *surface;
+@@ -452,6 +479,24 @@ shift:
+ 	return VA_STATUS_SUCCESS;
+ }
+ 
++VAStatus v4l2r_PutImage(VADriverContextP va_ctx, VASurfaceID surface_id,
++			VAImageID image_id, int src_x, int src_y,
++			unsigned int src_width, unsigned int src_height,
++			int dest_x, int dest_y, unsigned int dest_width,
++			unsigned int dest_height)
++{
++	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
++	VAStatus status;
++
++	pthread_rwlock_rdlock(&drv->view_lock);
++	status = put_image(va_ctx, surface_id, image_id, src_x, src_y,
++			   src_width, src_height, dest_x, dest_y,
++			   dest_width, dest_height);
++	pthread_rwlock_unlock(&drv->view_lock);
++
++	return status;
++}
++
+ /* --- subpictures are not supported --- */
+ 
+ VAStatus v4l2r_QuerySubpictureFormats(VADriverContextP va_ctx,
+diff --git a/src/surface.c b/src/surface.c
+index f7fe03d..afa38a5 100644
+--- a/src/surface.c
++++ b/src/surface.c
+@@ -278,6 +278,53 @@ void v4l2r_surface_free_backing(struct v4l2r_surface *surface)
+ 	surface->backing = NULL;
+ }
+ 
++/*
++ * The context that decoded into this surface is going away, but the surface
++ * is not: FFmpeg destroys the old context on a resolution change while frames
++ * from it still sit in its filter queue. Keep the frame by turning the CAPTURE
++ * buffer into the surface's standalone backing. Its dma-buf fds and mapping
++ * move over instead of being closed, and they keep the vb2 memory alive after
++ * the queue is freed. Returns false (and takes nothing) if the surface already
++ * has backing of its own, as the converter's destination does.
++ */
++bool v4l2r_surface_adopt_capture(struct v4l2r_surface *surface,
++				 struct v4l2r_context *ctx,
++				 struct v4l2r_capture_buffer *capture)
++{
++	struct v4l2r_surface_backing *backing;
++	const struct v4l2_format *format = &ctx->capture_format;
++	int index = capture - ctx->captures;
++
++	if (surface->backing)
++		return false;
++
++	if (v4l2r_export_capture_dmabufs(ctx, capture, index) < 0)
++		return false;
++
++	backing = calloc(1, sizeof(*backing));
++	if (!backing)
++		return false;
++
++	backing->pixelformat = v4l2r_format_pixelformat(format);
++	backing->width = v4l2r_format_width(format);
++	backing->height = v4l2r_format_height(format);
++	backing->pitch = v4l2r_format_bytesperline(format);
++	backing->nb_planes = capture->nb_planes;
++	for (unsigned int i = 0; i < VIDEO_MAX_PLANES; i++) {
++		backing->dmabuf_fd[i] = -1;
++		if (i >= capture->nb_planes)
++			continue;
++		backing->plane_size[i] = capture->plane_size[i];
++		backing->dmabuf_fd[i] = capture->dmabuf_fd[i];
++		backing->map[i] = capture->map[i];
++		capture->dmabuf_fd[i] = -1;
++		capture->map[i] = NULL;
++	}
++
++	surface->backing = backing;
++	return true;
++}
++
+ /*
+  * Allocate dma-buf backing for a surface that is not bound to a decode
+  * context, using the CAPTURE queue of one of the enumerated decoders on
+@@ -760,9 +807,10 @@ static VAStatus fill_prime_descriptor(const struct v4l2r_frame_view *view,
+ 	return VA_STATUS_SUCCESS;
+ }
+ 
+-VAStatus v4l2r_ExportSurfaceHandle(VADriverContextP va_ctx, VASurfaceID surface_id,
+-				   uint32_t mem_type, uint32_t flags,
+-				   void *descriptor)
++static VAStatus export_surface_handle(VADriverContextP va_ctx,
++				      VASurfaceID surface_id,
++				      uint32_t mem_type, uint32_t flags,
++				      void *descriptor)
+ {
+ 	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
+ 	struct v4l2r_surface *surface;
+@@ -790,6 +838,21 @@ VAStatus v4l2r_ExportSurfaceHandle(VADriverContextP va_ctx, VASurfaceID surface_
+ 	return fill_prime_descriptor(&view, flags, descriptor);
+ }
+ 
++VAStatus v4l2r_ExportSurfaceHandle(VADriverContextP va_ctx, VASurfaceID surface_id,
++				   uint32_t mem_type, uint32_t flags,
++				   void *descriptor)
++{
++	struct v4l2r_driver *drv = v4l2r_driver(va_ctx);
++	VAStatus status;
++
++	pthread_rwlock_rdlock(&drv->view_lock);
++	status = export_surface_handle(va_ctx, surface_id, mem_type, flags,
++				       descriptor);
++	pthread_rwlock_unlock(&drv->view_lock);
++
++	return status;
++}
++
+ /* --- unsupported display path --- */
+ 
+ VAStatus v4l2r_PutSurface(VADriverContextP va_ctx, VASurfaceID surface,
+diff --git a/src/v4l2_request.h b/src/v4l2_request.h
+index 71843fb..7d5f020 100644
+--- a/src/v4l2_request.h
++++ b/src/v4l2_request.h
+@@ -205,6 +205,10 @@ VAStatus v4l2r_surface_view(struct v4l2r_driver *drv,
+ 			    struct v4l2r_surface *surface, bool need_maps,
+ 			    struct v4l2r_frame_view *view);
+ void v4l2r_surface_free_backing(struct v4l2r_surface *surface);
++struct v4l2r_capture_buffer;
++bool v4l2r_surface_adopt_capture(struct v4l2r_surface *surface,
++				 struct v4l2r_context *ctx,
++				 struct v4l2r_capture_buffer *capture);
+ 
+ /* Per CAPTURE buffer state, lives in the context that allocated it. The
+  * buffer holds the current decoded content of ->surface, or is free when
+@@ -381,6 +385,10 @@ struct v4l2r_driver {
+ 	struct v4l2r_handles buffers;
+ 	struct v4l2r_handles images;
+ 	pthread_mutex_t mutex;
++	/* Readers of surface memory (images, exports) hold this shared;
++	 * DestroyContext holds it exclusively while it hands still-referenced
++	 * CAPTURE buffers over to their surfaces. */
++	pthread_rwlock_t view_lock;
+ 
+ 	struct v4l2r_decoder decoders[V4L2R_MAX_DECODERS];
+ 	unsigned int nb_decoders;

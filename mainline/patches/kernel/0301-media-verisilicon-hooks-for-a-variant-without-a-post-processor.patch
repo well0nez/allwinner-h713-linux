@@ -1,0 +1,111 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: verisilicon: hooks for a variant with its own interrupt and no post-processor
+
+Four small changes the H713 AV1 decoder needs from the hantro core, none of
+which change what an existing variant does:
+
+  - hantro_dev gains a variant_priv pointer, for a variant that keeps
+    device state of its own (the H713 requests its interrupt itself, so
+    that it can be left disabled between frames).
+  - An AV1 sequence with film grain no longer forces post-processing on a
+    variant that has no post-processor. The VPU981 applies grain there; the
+    H713 core grains its own output.
+  - The VPU981's AV1 entropy and film-grain helpers move behind a hidden
+    VIDEO_HANTRO_AV1 symbol, so that another AV1 variant can share them
+    without pulling in the Rockchip code.
+  - A variant init that returns -EPROBE_DEFER no longer logs "Failed to
+    init VPU hardware" at error level: dev_err_probe() records the reason
+    for a deferral and prints only a real failure. (The H713 variant defers
+    until the video engine it borrows its clocks from has bound.)
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0145-media-verisilicon-hooks-for-a-variant-without-a-post-processor.patch (0145-media-verisilicon-hooks-for-a-variant-without-a-post-processor.patch, commit fb1a239)
+---
+diff --color -Naur pa/drivers/media/platform/verisilicon/hantro_drv.c pb/drivers/media/platform/verisilicon/hantro_drv.c
+--- a/drivers/media/platform/verisilicon/hantro_drv.c
++++ b/drivers/media/platform/verisilicon/hantro_drv.c
+@@ -367,8 +367,14 @@
+ 		int bit_depth = ctrl->p_new.p_av1_sequence->bit_depth;
+ 		bool need_postproc = HANTRO_AUTO_POSTPROC;
+ 
+-		if (ctrl->p_new.p_av1_sequence->flags
+-		    & V4L2_AV1_SEQUENCE_FLAG_FILM_GRAIN_PARAMS_PRESENT)
++		/*
++		 * The VPU981 applies film grain only in its post-processor. A
++		 * variant without one (the H713's core grains its own output)
++		 * must not be forced onto post-processed formats it lacks.
++		 */
++		if ((ctrl->p_new.p_av1_sequence->flags
++		     & V4L2_AV1_SEQUENCE_FLAG_FILM_GRAIN_PARAMS_PRESENT) &&
++		    ctx->dev->variant->num_postproc_fmts)
+ 			need_postproc = HANTRO_FORCE_POSTPROC;
+ 
+ 		if (ctx->bit_depth == bit_depth &&
+@@ -1157,10 +1163,9 @@
+ 
+ 	if (vpu->variant->init) {
+ 		ret = vpu->variant->init(vpu);
+-		if (ret) {
+-			dev_err(&pdev->dev, "Failed to init VPU hardware\n");
+-			return ret;
+-		}
++		if (ret)
++			return dev_err_probe(&pdev->dev, ret,
++					     "Failed to init VPU hardware\n");
+ 	}
+ 
+ 	pm_runtime_set_autosuspend_delay(vpu->dev, 100);
+diff --color -Naur pa/drivers/media/platform/verisilicon/hantro.h pb/drivers/media/platform/verisilicon/hantro.h
+--- a/drivers/media/platform/verisilicon/hantro.h
++++ b/drivers/media/platform/verisilicon/hantro.h
+@@ -190,6 +190,7 @@
+  * @irqlock:		Spinlock to synchronize access to data structures
+  *			shared with interrupt handlers.
+  * @variant:		Hardware variant-specific parameters.
++ * @variant_priv:	The variant's own device state, if it keeps any.
+  * @watchdog_work:	Delayed work for hardware timeout handling.
+  */
+ struct hantro_dev {
+@@ -210,6 +211,7 @@
+ 	struct mutex vpu_mutex;	/* video_device lock */
+ 	spinlock_t irqlock;
+ 	const struct hantro_variant *variant;
++	void *variant_priv;
+ 	struct delayed_work watchdog_work;
+ };
+ 
+diff --color -Naur pa/drivers/media/platform/verisilicon/Kconfig pb/drivers/media/platform/verisilicon/Kconfig
+--- a/drivers/media/platform/verisilicon/Kconfig
++++ b/drivers/media/platform/verisilicon/Kconfig
+@@ -45,10 +45,14 @@
+ 	help
+ 	  Enable support for Microchip SAMA5D4 SoCs.
+ 
++config VIDEO_HANTRO_AV1
++	bool
++
+ config VIDEO_HANTRO_ROCKCHIP
+ 	bool "Hantro VPU Rockchip support"
+ 	depends on VIDEO_HANTRO
+ 	depends on ARCH_ROCKCHIP || COMPILE_TEST
++	select VIDEO_HANTRO_AV1
+ 	default y
+ 	help
+ 	  Enable support for RK3288, RK3328, and RK3399 SoCs.
+diff --color -Naur pa/drivers/media/platform/verisilicon/Makefile pb/drivers/media/platform/verisilicon/Makefile
+--- a/drivers/media/platform/verisilicon/Makefile
++++ b/drivers/media/platform/verisilicon/Makefile
+@@ -33,10 +33,12 @@
+ 		rockchip_vpu2_hw_mpeg2_dec.o \
+ 		rockchip_vpu2_hw_vp8_dec.o \
+ 		rockchip_vpu981_hw_av1_dec.o \
+-		rockchip_av1_filmgrain.o \
+-		rockchip_av1_entropymode.o \
+ 		rockchip_vpu_hw.o
+ 
++hantro-vpu-$(CONFIG_VIDEO_HANTRO_AV1) += \
++		rockchip_av1_filmgrain.o \
++		rockchip_av1_entropymode.o
++
+ hantro-vpu-$(CONFIG_VIDEO_HANTRO_SUNXI) += \
+ 		sunxi_vpu_hw.o
+ 

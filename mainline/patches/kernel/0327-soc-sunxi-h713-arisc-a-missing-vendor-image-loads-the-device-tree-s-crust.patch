@@ -1,0 +1,87 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: soc: sunxi: h713-arisc: a missing vendor image loads the device tree's crust
+
+The release runs the vendor ARISC firmware by default (decision of
+22.10.2026): the image carries /etc/modprobe.d/h713-arisc.conf with
+firmware=vendor, its boot chain starts no crust (no scp in the U-Boot FIT
+without the standby), and the device tree still names the board's crust
+image, which stays in /lib/firmware as the experimental choice
+(h713-arisc set crust).
+
+Until now a missing h713-arisc.bin was harmless only because BL31 had
+started crust: the driver kept the running crust (arisc_keep_without_file).
+Without a crust in the boot chain there is nothing to keep, the probe
+fails, and the HDMI front end (hot plug, EDID) stays without a firmware -
+nothing hangs, since the driver maps none of the R_ block, but the input
+is dead until a reinstall. h713-install refuses a dump without the file,
+so this is the case of a file gone since, or of an image put together
+by hand.
+
+When the module option chose the vendor image and it cannot be loaded,
+the driver now loads the device tree's image instead, with a warning,
+and the state file says so (firmware_from=device tree, the vendor image
+missing). A board whose tree names the vendor image itself is unchanged,
+and so is a vendor image that loads but whose layout cannot be resolved
+(the probe refuses it, as before).
+
+Measured on the HY300PRO-G-EU, 22.10.2026, with this module in
+/lib/modules/6.18.38/updates and firmware=vendor in modprobe.d, on an image
+whose FIT still starts crust: h713-arisc.bin moved away, a warm start
+logs '"h713-arisc.bin" cannot be loaded (-2) -- loading the device tree's
+"hy200-qz713df-a1-crust.bin" instead', then 'crust is running ..., image
+kept', the EDID sequence completes and the state file says
+firmware=hy200-qz713df-a1-crust.bin, firmware_from=device tree, the
+vendor image missing. The series' module in the same case kept crust too,
+but with firmware=- in the state file. With the file back the vendor
+image loads as before (no fallback). The fresh ARISC of an image without
+crust in its FIT is not measured yet.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -423,7 +423,7 @@
+ 
+ 	struct h713_arisc_offsets off;		/* resolved from the image */
+ 	const char		*fw_name;	/* the file it came from */
+-	const char		*fw_from;	/* "device tree" or "module option" */
++	const char		*fw_from;	/* "device tree", "module option", or why not */
+ 	char			image_version[64];	/* its git describe */
+ 	u8			lane;		/* 0 or 3, see arisc_notify_version() */
+ 
+@@ -3418,12 +3418,13 @@
+ static int h713_arisc_start(struct h713_arisc *a)
+ {
+ 	const struct firmware *fw;
+-	const char *name = FW_NAME_ARISC;
++	const char *name = FW_NAME_ARISC, *dt_name;
+ 	bool kept;
+ 	int ret;
+ 
+ 	of_property_read_string_index(a->dev->of_node, "firmware-name", 0,
+ 				      &name);
++	dt_name = name;
+ 	a->fw_from = "device tree";
+ 	if (firmware && *firmware) {
+ 		if (!strcmp(firmware, "vendor") || !strcmp(firmware, FW_NAME_ARISC)) {
+@@ -3456,6 +3457,20 @@
+ 
+ 	ret = request_firmware(&fw, name, a->dev);
+ 	/*
++	 * The option asked for the vendor image and it is not there - a dump
++	 * without it, or a file gone since: the device tree's crust image
++	 * instead, so that the HDMI front end keeps a firmware. An image whose
++	 * boot chain starts no crust (a release without the standby) has no
++	 * running crust that the code below could keep.
++	 */
++	if (ret && !strcmp(name, FW_NAME_ARISC) && strcmp(dt_name, FW_NAME_ARISC)) {
++		dev_warn(a->dev, "\"%s\" cannot be loaded (%d) -- loading the device tree's \"%s\" instead\n",
++			 name, ret, dt_name);
++		name = dt_name;
++		a->fw_from = "device tree, the vendor image missing";
++		ret = request_firmware(&fw, name, a->dev);
++	}
++	/*
+ 	 * A DT whose "sram" window stops short of crust's contract page is
+ 	 * older than this driver: through it crust can be neither loaded nor
+ 	 * kept, and nothing the DT does not describe is mapped. The vendor

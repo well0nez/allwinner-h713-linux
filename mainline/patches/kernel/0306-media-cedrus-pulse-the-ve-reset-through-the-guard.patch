@@ -1,0 +1,94 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: cedrus: pulse the VE reset through the guard
+
+Every pulse of the engine's bus reset - the watchdog's and 0298's at a
+codec switch - goes through the guard from the patch before, so on the
+H713 it waits for an AV1 frame in flight instead of stalling it.
+
+Measured on the HY310, 14.10.2026: the five codec pairs of 0298 stay
+bit-exact with the guarded pulse (23 pair runs); an AV1 stream
+next to 20 single codec switches (11 runs of 600 frames) and next to
+60 s storms of H.264+VP9 and VP9+H.265 switches (2400 cedrus jobs each,
+six runs of 4 x 300 AV1 frames) is bit-exact with no driver line, where
+the unguarded pulse stalled the core within 0.4 s and the SoC 15 s later.
+
+One residue is not this patch's: an H.264 job next to a VP8 stream,
+right after a VP9 or H.265 job, times out once in about every third such
+transition - with the original 0298 module as well (control arm in the
+same boot), and the stream recovers on the next job.
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.h
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.h
+@@ -30,5 +30,6 @@
+ void cedrus_hw_remove(struct cedrus_dev *dev);
+ 
+ void cedrus_watchdog(struct work_struct *work);
++void cedrus_ve_reset(struct cedrus_dev *dev);
+ 
+ #endif
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_hw.c
+@@ -23,6 +23,7 @@
+ #include <linux/regmap.h>
+ #include <linux/reset.h>
+ #include <linux/soc/sunxi/sunxi_sram.h>
++#include <linux/soc/sunxi/sunxi_ve_reset.h>
+ 
+ #include <media/videobuf2-core.h>
+ #include <media/v4l2-mem2mem.h>
+@@ -416,6 +417,22 @@
+ 	return IRQ_HANDLED;
+ }
+ 
++/*
++ * Pulse the engine's bus reset. On the H713 the AV1 core, a separate
++ * device driven by hantro, runs behind this reset line and stalls for good
++ * if it is pulsed with one of its frames in flight: every pulse goes
++ * through the guard, which waits for such a frame to end. Process context
++ * only (the watchdog work and device_run, which the m2m core runs from a
++ * work item).
++ */
++void cedrus_ve_reset(struct cedrus_dev *dev)
++{
++	int ret = sunxi_ve_reset_pulse(dev->rstc);
++
++	if (ret)
++		dev_err_ratelimited(dev->dev, "VE reset failed: %d\n", ret);
++}
++
+ void cedrus_watchdog(struct work_struct *work)
+ {
+ 	struct cedrus_dev *dev;
+@@ -429,7 +446,7 @@
+ 		return;
+ 
+ 	v4l2_err(&dev->v4l2_dev, "frame processing timed out!\n");
+-	reset_control_reset(dev->rstc);
++	cedrus_ve_reset(dev);
+ 	ctx->decode_error = false;
+ 	v4l2_m2m_buf_done_and_job_finish(ctx->dev->m2m_dev, ctx->fh.m2m_ctx,
+ 					 VB2_BUF_STATE_ERROR);
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_dec.c
+@@ -13,7 +13,6 @@
+  * Marek Szyprowski, <m.szyprowski@samsung.com>
+  */
+ 
+-#include <linux/reset.h>
+ #include <media/v4l2-device.h>
+ #include <media/v4l2-ioctl.h>
+ #include <media/v4l2-event.h>
+@@ -110,9 +109,12 @@
+ 	 * register alone ended the errors but not the wrong pictures; a reset
+ 	 * on the switch ends both. Every codec programs the engine in full for
+ 	 * each job (VP9's adaptation is the CPU's), so nothing is lost.
++	 *
++	 * The line is shared with the H713's AV1 core: the pulse goes through
++	 * the guard (cedrus_ve_reset), which waits for an AV1 frame in flight.
+ 	 */
+ 	if (dev->last_pixfmt && dev->last_pixfmt != ctx->src_fmt.pixelformat)
+-		reset_control_reset(dev->rstc);
++		cedrus_ve_reset(dev);
+ 	dev->last_pixfmt = ctx->src_fmt.pixelformat;
+ 
+ 	/*

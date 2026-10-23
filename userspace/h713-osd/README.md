@@ -12,6 +12,7 @@ h713-osd ctl volume 40               the volume overlay, 40 of 100
 h713-osd ctl mute on 40 | mute off 40   mute: the overlay, and the badge that stays while muted
 h713-osd ctl focus up|down [edge]    the focus; "edge": the end of the travel, the arrow turns red
 h713-osd ctl input console|hdmi      which input the picture comes from
+h713-osd ctl launcher 1;HDMI 1080p60;hdmi:HDMI input;film:Kodi;>power:Standby    the launcher (below); "launcher 2" moves, "launcher close" closes
 h713-osd ctl hide                    the overlay away now (a mute badge stays)
 h713-osd ctl status                  state, channel, matrix, style, and where the last refresh spent its time
 ```
@@ -27,6 +28,14 @@ h713-osd ctl status                  state, channel, matrix, style, and where th
    inverse (`warp_unpoint`) to the canvas and takes what lies there (bilinear). Keystone, zoom and the projection
    mode (rear, ceiling: mirrored) are in that one matrix, so the overlay sits in the picture like the picture.
 4. **Show**: "osd show N" to h713-tv; over the warp it goes with the warp's next frame.
+
+**The page without a signal.** h713-tv tells this daemon on the overlay connection, unasked, `note signal none` or `note signal TEXT`, and
+answers `osd signal` once after every claim. With `none` and neither the launcher nor a page of the page channel open, the daemon opens
+the page "No signal on HDMI / HOME: menu" - the launcher's machinery with three tiles of its own (`osd_nosignal_*` in libh713osd), shown with
+`osd show N cover`. The launcher and the settings take its place and give it back; the word `TEXT` takes it away. The daemon claims at its
+start and again whenever h713-tv is back, so the page does not wait for an event (`tests/test_nosignal.py`). While a power countdown stands the page
+draws its middle band without the symbol and the words, so that the ring is alone on the ground as over the launcher, and draws it whole again
+when the countdown ends.
 
 What lies under a shown overlay can change without an event: the signal comes back over the ring and the warp
 takes over a second later, or the warp is switched off and on. So while something is to be seen over a keystone
@@ -64,10 +73,43 @@ draws the warp) would add an EGL dependency and share the GPU with the warp's 60
 happens a few times per key press; not worth it at these times - a later desktop compositor draws there anyway.
 `ctl status` shows the split of the last refresh: draw, ask, clear, pre-distort or copy, show.
 
+## The launcher
+
+`launcher SEL;NOW;[>]icon:label;...` ([docs/tools/h713-osd.md](../../docs/tools/h713-osd.md)):
+the launcher is an **opaque page** over the whole panel - a ground, the mock-up's "Launcher C" list in the column on the left (header
+and hint line, up to six rows, Standby set apart at the foot), the rest calm, everything inside the 5 % safe margin - that stays
+until it is closed. h713-keys is its controller; this daemon only draws and shows it. It is cut into **tiles** (libh713osd: the page's
+bands - the header, one per row of 124 units, the foot, the gap - each in a left part, the column, and a right part, the ground).
+A tile is drawn again in the canvas when it changes and put into a buffer when that buffer does not hold its current version
+(`gen[]`, `cgen[]`, `ver[]`, `held[][]` in `main.c`): moving the selection costs two row tiles of the column, not the page. Over a
+keystone the put is the pre-distortion, which walks every pixel it writes: the page is two million pixels, two row tiles are
+about 170 000. So the buffer that is **not shown is filled in the idle time** after a refresh (`prefill_at`, 0.12 s): the next key
+finds the page in it and puts two tiles. The volume strip, the mute badge and the power countdown are drawn into the page's
+canvas and ride in the tiles they touch (the tiles under the last strip are repainted to take it off).
+What makes the tiles meet on the panel: each tile's source has two rows and columns of its neighbours around it, so the bilinear
+sample at its edge is right; it writes only the panel pixels whose source lies in the tile itself, so two tiles never overwrite each
+other's edge with a half-transparent one; and only the pixels that count are written - the margin pixels of a run, which the
+range test turned down, belong to a neighbouring tile (the tiles meet along slanted lines through the matrix) and a zero written
+there is a hole in an opaque page (found by the move-equals-fresh test when the tiles were split left and right). When the matrix
+changes, the picture under the page turns warped or straight, h713-tv comes back or the launcher closes, the buffers are cleared
+(the page covers all of a buffer) and the tiles are put again. The launcher and the pages of the page channel share the two buffers,
+so a buffer is cleared in one way for all it holds (`buf_wipe`: the launcher's tiles, a page's rows and the popups' places are
+forgotten together), every put asks the same question whether it must clear first (`buf_stale`), and the idle time's fill clears a
+closed page's pixels before it puts the launcher. On 19.10.2026 (HY310, turned about 24 degrees to the wall) a clear for the closed
+settings page left the launcher's tiles recorded: every second move after the page put two tiles into an empty buffer, the rest of the
+launcher transparent - pitch black on the wall, where the picture under an opaque page is off. A new matrix makes the pixels of a page
+stale like the launcher's (the corners and the turn to the wall are set on the settings page, the automatic after a move rewrites
+warp.conf under any page): the next refresh puts the page whole through the new one. `H713_OSD_FONT` names the font (the image's Quicksand by default),
+`H713_OSD_CLOCK` a fixed header time and `H713_OSD_TRACE=1` a journal line per refresh and per prefill with wall-clock times (the
+tests; the key-to-wall measurement of 15.10.2026, doku/212).
+
 ## Building and testing
 
 In the container `h713-build`: `make cross SYSROOT=...` for the board (clang, as h713-tv is built), `make host`
-and `make test` for the host tests (`tests/test_osd.py`, 11 tests, ~11 s): a fake h713-tv on a Unix socket that
+and `make test` for the host tests (`tests/test_osd.py`, 11 tests, ~11 s; `tests/test_launcher.py`, 10 tests with a font: `OSD_TEST_FONT`;
+`tests/test_wall.py`, 5 tests with the font at the box's 1920x1080 through the HY310's keystone and stronger ones, ~2.5 min: the launcher
+and a page cut into pieces like the settings', walked through moves, areas and the ways between them, every step held against the same
+page put whole, and a new keystone under each): a fake h713-tv on a Unix socket that
 hands memfds over instead of dma-bufs; the tests read where the overlay landed in the buffer - bottom centre,
 pre-distorted inward over a keystone, mirrored in rear mode, following a new warp.conf, the badge staying and
 coming back after h713-tv restarts, the badge drawn again when the picture under it turns warped or straight, and
@@ -76,8 +118,11 @@ no questions to h713-tv without a keystone. The environment variables `H713_OSD_
 
 ## Limits
 
-- No overlay without a picture yet: on the console (no signal, `h713-tv ctl off`) "osd show" waits; the overlay
-  over the console is the next step (TODO 2.46, P5).
+- A popup without a picture waits: on the console (no signal, `h713-tv ctl off`) "osd show" answers `ok waiting`
+  and the popup comes with the picture. An opaque page - the launcher, a settings page - does not wait: it goes as
+  "osd show N cover" and h713-tv shows it over black, pre-distorted with warp.conf's keystone when that says
+  `warp = on` (it stands where the warped picture would). Until 16.10.2026 the launcher did not open without a
+  signal at all.
 - No fade: an overlay goes after `seconds` at once.
 - The badge and the overlay never overlap in any place; the pre-distortion relies on it.
 - Not measured: the warp's frame rate while overlays change quickly (P6), the colours on the wall against the

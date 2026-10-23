@@ -1,0 +1,88 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: cedrus: vp9: keep only the tx and skip probabilities across load_probs()
+
+cedrus_vp9_finish() put a whole struct v4l2_vp9_frame_context, about
+2 KiB, on the stack to keep 15 bytes of it - the tx and skip
+probabilities an intra frame keeps across load_probs(). Every kernel
+build warned "stack frame size (2496) exceeds limit (2048) in
+'cedrus_vp9_finish'". It runs in process context with a 16 KiB stack, so
+nothing broke, but upstream would not take it so.
+
+The copy now goes to a struct of just those four fields, declared with
+the frame context's own member types, through two small helpers in place
+of copy_tx_and_skip(). The same bytes are copied; the adaptation is
+unchanged.
+---
+ .../staging/media/sunxi/cedrus/cedrus_vp9.c   | 37 +++++++++++++++----
+ 1 file changed, 29 insertions(+), 8 deletions(-)
+
+diff --git a/drivers/staging/media/sunxi/cedrus/cedrus_vp9.c b/drivers/staging/media/sunxi/cedrus/cedrus_vp9.c
+index 728118912..39cfed4f4 100644
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_vp9.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_vp9.c
+@@ -19,6 +19,7 @@
+  * context, since this driver completes jobs from the hard interrupt.
+  */
+ 
++#include <linux/container_of.h>
+ #include <linux/delay.h>
+ #include <linux/slab.h>
+ #include <linux/types.h>
+@@ -388,13 +389,33 @@ static void cedrus_vp9_counts_from_hw(struct cedrus_vp9_ctx *vp9)
+ 					}
+ }
+ 
+-static void copy_tx_and_skip(struct v4l2_vp9_frame_context *dst,
++/*
++ * The tx and skip probabilities an intra frame keeps across load_probs():
++ * 15 bytes, so the copy need not be a 2 KiB frame context on the stack.
++ */
++struct cedrus_vp9_tx_skip {
++	typeof_member(struct v4l2_vp9_frame_context, tx8) tx8;
++	typeof_member(struct v4l2_vp9_frame_context, tx16) tx16;
++	typeof_member(struct v4l2_vp9_frame_context, tx32) tx32;
++	typeof_member(struct v4l2_vp9_frame_context, skip) skip;
++};
++
++static void save_tx_and_skip(struct cedrus_vp9_tx_skip *dst,
+ 			     const struct v4l2_vp9_frame_context *src)
+ {
+-	memcpy(dst->tx8, src->tx8, sizeof(src->tx8));
+-	memcpy(dst->tx16, src->tx16, sizeof(src->tx16));
+-	memcpy(dst->tx32, src->tx32, sizeof(src->tx32));
+-	memcpy(dst->skip, src->skip, sizeof(src->skip));
++	memcpy(dst->tx8, src->tx8, sizeof(dst->tx8));
++	memcpy(dst->tx16, src->tx16, sizeof(dst->tx16));
++	memcpy(dst->tx32, src->tx32, sizeof(dst->tx32));
++	memcpy(dst->skip, src->skip, sizeof(dst->skip));
++}
++
++static void restore_tx_and_skip(struct v4l2_vp9_frame_context *dst,
++				const struct cedrus_vp9_tx_skip *src)
++{
++	memcpy(dst->tx8, src->tx8, sizeof(dst->tx8));
++	memcpy(dst->tx16, src->tx16, sizeof(dst->tx16));
++	memcpy(dst->tx32, src->tx32, sizeof(dst->tx32));
++	memcpy(dst->skip, src->skip, sizeof(dst->skip));
+ }
+ 
+ /*
+@@ -429,15 +450,15 @@ static void cedrus_vp9_finish(struct cedrus_ctx *ctx)
+ 		bool frame_is_intra = cur->flags &
+ 			(V4L2_VP9_FRAME_FLAG_KEY_FRAME |
+ 			 V4L2_VP9_FRAME_FLAG_INTRA_ONLY);
+-		struct v4l2_vp9_frame_context tx_skip;
++		struct cedrus_vp9_tx_skip tx_skip;
+ 
+ 		cedrus_vp9_counts_from_hw(vp9);
+ 
+ 		if (frame_is_intra)
+-			copy_tx_and_skip(&tx_skip, probs);
++			save_tx_and_skip(&tx_skip, probs);
+ 		*probs = vp9->frame_context[fctx_idx];
+ 		if (frame_is_intra)
+-			copy_tx_and_skip(probs, &tx_skip);
++			restore_tx_and_skip(probs, &tx_skip);
+ 
+ 		v4l2_vp9_adapt_coef_probs(probs, &vp9->symbols,
+ 					  !vp9->last_valid ||

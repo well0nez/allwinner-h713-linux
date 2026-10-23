@@ -31,6 +31,7 @@
 #include "warp.h"
 
 #define RETRY_MS	1000	/* while the wanted state cannot be reached */
+#define WANT_RETRY_MS	200	/* the want link to h713-tv, while there is none (peer.c: WANT_RETRY_S) */
 #define PATTERN_MS	500	/* the test pattern's heartbeat, see below */
 
 void info(const char *fmt, ...)
@@ -111,7 +112,8 @@ static int signal_fd(void)
 _Noreturn static void usage(const char *me)
 {
 	fprintf(stderr,
-		"usage: %s [-c CONF] [-s SOCKET] [-t TV_SOCKET] [-r RENDER] [-v VIDEO] run\n"
+		"usage: %s [-c CONF] [-s SOCKET] [-t TV_SOCKET] [-r RENDER] [-v VIDEO] [-w WAYLAND] [-g GROUP]\n"
+		"          [--client-rate full|half] run\n"
 		"       %s ctl [-s SOCKET] COMMAND [ARG...]      (h713-warp ctl help)\n"
 		"\n"
 		"  -c FILE     the eight corner values and the start state; default %s\n"
@@ -120,8 +122,11 @@ _Noreturn static void usage(const char *me)
 		"              the frames travel; default %s\n"
 		"  -r PATH     the render node; default %s (never a card node: h713-tv\n"
 		"              owns the display and does every commit)\n"
-		"  -v PATH     the capture device; without it the driver \"%s\" is searched for\n",
-		me, me, WARP_CONF, WARP_SOCKET, TV_SOCKET, RENDER_NODE, V4L2_NAME);
+		"  -v PATH     the capture device; without it the driver \"%s\" is searched for\n"
+		"  -w PATH     the Wayland server's socket, a client's WAYLAND_DISPLAY; default %s\n"
+		"  -g GROUP    the group of that socket (0660), for a client that is not root; default root only\n"
+		"  --client-rate full|half  a client frame on every vsync (default) or on every second\n",
+		me, me, WARP_CONF, WARP_SOCKET, TV_SOCKET, RENDER_NODE, V4L2_NAME, WAYLAND_SOCKET);
 	exit(2);
 }
 
@@ -129,14 +134,18 @@ int main(int argc, char **argv)
 {
 	struct runtime r;
 	struct control ctl;
-	const char *sock = WARP_SOCKET, *tv = TV_SOCKET, *video = NULL;
-	struct pollfd fds[5];
+	const char *sock = WARP_SOCKET, *tv = TV_SOCKET, *video = NULL, *wl = WAYLAND_SOCKET;
+	struct pollfd fds[8];
+	bool watch_off = false;		/* the node gave POLLERR without a stream: back to RETRY_MS alone */
+	bool applied;			/* this round claimed on h713-tv's "note claim" already */
 	int sfd, arg, rc = 0;
+	double asked;			/* the last time a waiting client asked h713-tv's source */
 
 	setvbuf(stdout, NULL, _IOLBF, 0);
 	memset(&r, 0, sizeof(r));
 	r.conf.path = WARP_CONF;
 	r.render_node = RENDER_NODE;
+	r.client_rate = 1;
 
 	if (argc >= 2 && !strcmp(argv[1], "ctl")) {
 		int a = 2;
@@ -158,6 +167,13 @@ int main(int argc, char **argv)
 			r.render_node = argv[++arg];
 		else if (!strcmp(argv[arg], "-v") && arg + 1 < argc)
 			video = argv[++arg];
+		else if (!strcmp(argv[arg], "-w") && arg + 1 < argc)
+			wl = argv[++arg];
+		else if (!strcmp(argv[arg], "-g") && arg + 1 < argc)
+			r.wl_group = argv[++arg];
+		else if (!strcmp(argv[arg], "--client-rate") && arg + 1 < argc &&
+			 (!strcmp(argv[arg + 1], "full") || !strcmp(argv[arg + 1], "half")))
+			r.client_rate = !strcmp(argv[++arg], "half") ? 2 : 1;
 		else if (!strcmp(argv[arg], "run"))
 			continue;
 		else
@@ -181,6 +197,10 @@ int main(int argc, char **argv)
 	signal(SIGPIPE, SIG_IGN);
 	control_listen(&ctl);
 	sfd = signal_fd();
+	/* the word to h713-tv first (P3): it holds its straight ring back for our claim from now on */
+	warp_want_tell(&r);
+	/* the Wayland server: a client next to the ring; without it the ring works as before */
+	r.srv = server_start(wl, &r);
 	warp_apply(&r);
 	if (r.state != WARP_ON)
 		info("warp            %s: %s", r.on ? "bypass" : "off", r.why);
@@ -198,24 +218,44 @@ int main(int argc, char **argv)
 	r.check.slot = -1;
 	r.source.held = -1;
 	r.mark_corner = -1;		/* "test mask" marks no corner until one is named */
+	asked = 0;
 	for (;;) {
 		bool live = r.state == WARP_ON;
+		bool want = r.on || server_shown(r.srv);	/* something to claim the panel for */
 		int timeout = -1;
+		/* a client waits behind a ring claim: h713-tv's source is asked once a second (loop.c warp_apply) */
+		bool waiting = live && r.src == SRC_RING && server_shown(r.srv) && r.peer.tv_source != TV_AUTO;
+
+		server_flush(r.srv);
+		fds[5].fd = server_fd(r.srv);
+		fds[5].events = POLLIN;
 
 		/*
-		 * The capture paces the loop; the peer is polled only for its
-		 * hangup, which is h713-tv going away (A2's lifetime rule).
+		 * The capture paces the loop; the peer is polled for its
+		 * hangup, which is h713-tv going away (A2's lifetime rule), and
+		 * for a note it says unasked between two frames ("note source").
 		 * A test pattern has no capture to wait for, so it is redrawn
 		 * on a slow heartbeat -- the plane keeps showing the last
 		 * buffer in between, this only proves the path is alive.
 		 */
-		fds[2].fd = live && r.pattern == PATTERN_NONE ? r.source.fd : -1;
+		/* under an opaque page the capture is not asked: its slots stay with the driver (loop.c warp_pump) */
+		fds[2].fd = live && r.pattern == PATTERN_NONE && r.src == SRC_RING && !warp_paused(&r) ? r.source.fd : -1;
 		fds[2].events = POLLIN | POLLPRI;
 		fds[3].fd = live ? r.peer.fd : -1;
-		fds[3].events = 0;
-		if (live && r.pattern != PATTERN_NONE)
+		fds[3].events = POLLIN;
+		/*
+		 * No claim yet and a ring wanted: the capture node, open since the last try, wakes the loop with its
+		 * source-change event when the signal comes, and warp_apply() claims at once instead of up to RETRY_MS
+		 * later (17.10.2026, HY310: signal 9.06 s, claim 10.14 s, and h713-tv's straight ring on the wall in
+		 * between). POLLPRI alone: a capture queue that does not stream answers POLLIN with POLLERR.
+		 */
+		fds[6].fd = !live && r.on && r.pattern == PATTERN_NONE && !watch_off ? r.source.fd : -1;
+		fds[6].events = POLLPRI;
+		if (live && r.pattern != PATTERN_NONE && !warp_paused(&r))
 			timeout = PATTERN_MS;
-		else if (!live && r.on)
+		else if (!live && want)
+			timeout = RETRY_MS;
+		if (waiting && (timeout < 0 || timeout > RETRY_MS))
 			timeout = RETRY_MS;
 		if (r.check.slot >= 0)
 			timeout = 2;		/* the self-check's second draw is due */
@@ -225,7 +265,13 @@ int main(int argc, char **argv)
 		fds[4].events = POLLIN;
 		if (ctl.cfd >= 0 && (timeout < 0 || control_left(&ctl) < timeout))
 			timeout = control_left(&ctl);
-		if (poll(fds, 5, timeout) < 0) {
+		/* the want link to h713-tv (P3): its "note claim", and a try to make it again once a second while there is none */
+		fds[7].fd = r.peer.want_fd;
+		fds[7].events = POLLIN;
+		/* every 200 ms while there is none: a restarted h713-tv waits for the word up to a second (h713-tv's start) */
+		if (r.on && r.peer.want_fd < 0 && !r.peer.want_refused && (timeout < 0 || timeout > WANT_RETRY_MS))
+			timeout = WANT_RETRY_MS;
+		if (poll(fds, 8, timeout) < 0) {
 			if (errno == EINTR)
 				continue;
 			warn("poll: %s", strerror(errno));
@@ -250,15 +296,65 @@ int main(int argc, char **argv)
 			info("exit            signal %u received", si.ssi_signo);
 			break;
 		}
-		if (fds[3].fd >= 0 && (fds[3].revents & (POLLHUP | POLLERR | POLLNVAL)))
+		if (fds[5].fd >= 0 && fds[5].revents) {
+			server_dispatch(r.srv);
+			/* The dispatch may have handed the panel from the ring to a client (its first picture): the capture
+			 * event polled above belongs to a ring that is gone, and source_stop() left its fd open - a pump now
+			 * would dequeue from a stopped queue, or restart the capture under the client's claim. */
+			if (r.state != WARP_ON || r.src != SRC_RING)
+				fds[2].revents = 0;
+		}
+		if (fds[6].fd >= 0 && fds[6].revents) {
+			if (fds[6].revents & (POLLERR | POLLHUP | POLLNVAL)) {
+				watch_off = true;
+				warn("capture         %s answers poll with an error while not streaming -- the signal is looked for once a second",
+				     r.source.path);
+			} else {
+				source_geometry_changed(&r.source);	/* takes the events off the queue */
+			}
+		}
+		/* h713-tv said "note claim" (the signal stands, "ctl auto", our restart): the ring is claimed now, not at the next try */
+		if (fds[7].fd >= 0 && fds[7].revents)
+			peer_want_notes(&r.peer);
+		applied = false;
+		if (r.peer.claim_noted) {
+			r.peer.claim_noted = false;
+			if (!live && r.on) {
+				warp_apply(&r);
+				applied = true;		/* not once more below */
+			}
+		}
+		if (fds[3].fd >= 0 && (fds[3].revents & POLLIN) && !(fds[3].revents & (POLLHUP | POLLERR | POLLNVAL)) &&
+		    !peer_notes(&r.peer))
+			fds[3].revents |= POLLHUP;	/* read nothing but the end */
+		if (fds[3].fd >= 0 && (fds[3].revents & (POLLHUP | POLLERR | POLLNVAL))) {
 			warp_disengage(&r, "h713-tv closed the connection");
-		else if (fds[2].fd >= 0 && (fds[2].revents & (POLLIN | POLLPRI)))
+			/* h713-tv gave the claim back on purpose ("ctl source"): ask again at once */
+			if (server_shown(r.srv))
+				warp_apply(&r);
+		} else if (fds[2].fd >= 0 && (fds[2].revents & (POLLIN | POLLPRI))) {
 			warp_pump(&r);
-		else if (live && r.pattern != PATTERN_NONE)
+		} else if (live && r.pattern != PATTERN_NONE && !fds[5].revents) {
 			warp_pump(&r);
-		else if (!live && r.on)
+		} else if (!live && want && !fds[5].revents && !applied) {
 			warp_apply(&r);
+		}
+		if (waiting && r.state == WARP_ON && r.src == SRC_RING && server_shown(r.srv) &&
+		    r.peer.tv_source != TV_AUTO && now_s() - asked >= RETRY_MS / 1e3) {
+			asked = now_s();
+			warp_apply(&r);
+		}
+		/* h713-tv's "source" no longer allows the claim (a note, read in an exchange or above): switch it or give it back */
+		if (r.peer.noted) {
+			r.peer.noted = false;
+			if (r.state == WARP_ON)
+				warp_apply(&r);
+		}
+		/* an opaque page came or went ("note cover on|off", read wherever it came): pause, or draw at once */
+		if (r.peer.cover != r.cover)
+			warp_cover(&r);
 		warp_check_tick(&r);
+		warp_want_tell(&r);	/* the word, when this round changed it (a keystone, on/off, a refused ring, the GPU) */
 		if ((fds[0].fd >= 0 && (fds[0].revents & POLLIN)) ||
 		    (fds[4].fd >= 0 && fds[4].revents) ||
 		    (ctl.cfd >= 0 && control_left(&ctl) == 0))
@@ -271,6 +367,9 @@ int main(int argc, char **argv)
 	 * connection alone would do it, but saying it is better than implying it.
 	 */
 	warp_disengage(&r, "h713-warp is stopping");
+	server_stop(r.srv);
+	if (gl_is_open())
+		gl_close();
 	control_close(&ctl);
 	close(sfd);
 

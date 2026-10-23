@@ -41,6 +41,11 @@ esac
 exit 0
 """
 LOGGER = '#!/bin/sh\necho "logger $*" >> "$H713_ROOT/events"\n'
+# stand-in for systemd-run: the holder of the wall (h713-tv --hold-wall in the unit h713-wall-hold) "started"; hold-rc 1: it did not
+SYSTEMD_RUN = r"""#!/bin/sh
+echo "systemd-run $*" >> "$H713_ROOT/events"
+[ ! -e "$H713_ROOT/hold-rc" ] || exit "$(cat "$H713_ROOT/hold-rc")"
+"""
 KEYTOOL = r"""#!/bin/sh
 # stand-in for h713-hdcp-key --bind DEV: binds DEV unless key-rc says 1, exits with key-rc (0 default). The real
 # bind write returns after the probe, so the stand-in waits until the fake kernel has taken it, as systemctl does.
@@ -70,7 +75,8 @@ class Box:
         self.put("events", "")
         self.put("bin/systemctl", SYSTEMCTL)
         self.put("bin/logger", LOGGER)
-        for b in ("systemctl", "logger"):
+        self.put("bin/systemd-run", SYSTEMD_RUN)
+        for b in ("systemctl", "logger", "systemd-run"):
             os.chmod(self.p("bin/" + b), 0o755)
         if keytool:                     # "new" knows --bind, "old" is the tool before it did
             self.put("usr/local/sbin/h713-hdcp-key", KEYTOOL if keytool == "new" else
@@ -328,6 +334,11 @@ class Box:
         raise AssertionError("no %r in %r" % (line, self.events()))
 
 
+# the holder of the wall, started before h713-tv stops (TODO 2.96)
+HOLD = ("systemd-run -q --collect -u h713-wall-hold.service -p Type=notify -p TimeoutStartSec=5 "
+        "/usr/local/sbin/h713-tv --hold-wall")
+
+
 class Base(unittest.TestCase):
     def box(self, **kw):
         b = Box(**kw)
@@ -354,8 +365,8 @@ class Success(Base):
         ev = b.events()
         self.assertEqual(rc, 0, ev)
         self.clean(ev)
-        self.ordered(ev, "systemctl is-active --quiet h713-warp.service",
-                     "systemctl stop h713-warp.service h713-tv@*.service", "kernel unbind hdmi-rx",
+        self.ordered(ev, "systemctl is-active --quiet h713-warp.service", HOLD,
+                     "systemctl stop h713-tv@*.service", "systemctl stop h713-warp.service", "kernel unbind hdmi-rx",
                      "kernel restart /boot/mips/display.bin from parked", "kernel bind hdmi-rx", "kernel node video2",
                      "systemctl reset-failed h713-warp.service h713-tv@*.service",
                      "systemctl start h713-tv@video2.service", "systemctl start h713-warp.service")
@@ -363,6 +374,16 @@ class Success(Base):
                             and "/dev/video2" in e and "user.notice" in e for e in ev), ev)
         self.assertIn("picture path back", err)                          # a person at the console sees it too
         self.assertEqual(sorted(os.listdir(b.p("active"))), ["h713-tv@video2.service", "h713-warp.service"])
+        self.assertNotIn("systemctl stop --no-block h713-wall-hold.service", ev)     # the holder waits for h713-tv's picture
+
+    def test_a_holder_that_does_not_start_is_a_warning_and_the_picture_comes_back_all_the_same(self):
+        b = self.box()
+        b.put("hold-rc", "1")
+        rc, _, _ = b.run()
+        ev = b.events()
+        self.assertEqual(rc, 0, ev)
+        self.assertTrue(any("the wall is not held" in e and "user.warning" in e for e in ev), ev)
+        self.ordered(ev, HOLD, "systemctl stop h713-tv@*.service", "kernel unbind hdmi-rx", "systemctl start h713-tv@video2.service")
 
     def test_from_a_running_mips_the_same_sequence_and_another_node_number(self):
         b = self.box(state="running", node="video3")
@@ -460,6 +481,7 @@ class DriverError(Base):
         self.assertNotIn("kernel bind hdmi-rx", ev)
         self.assertIn("systemctl start h713-warp.service", ev)
         self.assertFalse([e for e in ev if e.startswith("systemctl start h713-tv@")], ev)   # no node, no h713-tv
+        self.ordered(ev, HOLD, "systemctl start h713-warp.service", "systemctl stop --no-block h713-wall-hold.service")  # the console now
 
     def test_a_write_that_works_but_leaves_the_mips_failed(self):
         b = self.box(outcome="failed")
@@ -492,6 +514,7 @@ class NoNode(Base):
         self.assertTrue(any("shows no video node within 1 s" in e and "user.err" in e for e in ev), ev)
         self.assertEqual(ev.count("kernel bind hdmi-rx"), 1, ev)             # bound once, not again on the exit
         self.assertIn("systemctl start h713-warp.service", ev)
+        self.assertIn("systemctl stop --no-block h713-wall-hold.service", ev)           # no picture to come: the console back
 
 
 class Abort(Base):
@@ -545,7 +568,7 @@ class Abort(Base):
         is unbound, the MIPS still runs, and bind it again."""
         b = self.box(state="running", hang=("unbind",), node_delay=0)
         proc = b.start()
-        b.wait_for("systemctl stop h713-warp.service h713-tv@*.service")
+        b.wait_for("systemctl stop h713-tv@*.service")
         time.sleep(0.3)                                                 # the unbind write now waits
         proc.send_signal(signal.SIGTERM)
         time.sleep(0.2)
@@ -581,7 +604,7 @@ class Abort(Base):
         b = self.box()
         b.put("stop-delay", "1")
         proc = b.start()
-        b.wait_for("systemctl stop h713-warp.service h713-tv@*.service")
+        b.wait_for("systemctl stop h713-tv@*.service")
         proc.send_signal(signal.SIGTERM)
         proc.communicate(timeout=10)
         ev = b.events()

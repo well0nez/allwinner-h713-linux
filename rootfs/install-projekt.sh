@@ -25,9 +25,11 @@
 #       + udev rule (starts the unit when an accelerometer appears)
 #   5e. h713-panel + page + unit (enabled; port 8080, password made at the first start)
 #   5g. h713-features + unit (enabled), /etc/h713/features from boards/$H713_BOARD/board.env
-#   5h. crust (H713_CRUST_BIN, our own build) as /lib/firmware/$H713_BOARD-crust.bin; with
+#   5h. crust (H713_CRUST_BIN, our own build) as /lib/firmware/$H713_BOARD-crust.bin, without
+#       H713_STANDBY=1 as the experimental choice behind /etc/modprobe.d/h713-arisc.conf firmware=vendor; with
 #       H713_STANDBY=1 the standby sleep.conf.d and h713-power + unit (enabled) + power.conf,
-#       and h713-mips-restart, which h713-power runs after a standby to start the parked MIPS
+#       and h713-mips-restart, which h713-sleep-post.service (h713-mode sleep-post) runs after a sleep to start the parked MIPS
+#       (h713-mode everywhere, the two sleep units with --standby)
 #   5i. h713-keys + unit (enabled) + keys.conf - the stock remote's keys (volume, mute, focus) -
 #       and h713-osd (cross-built) + unit (enabled) + osd.conf - the overlays over the picture
 #   5j. h713-cpufreq + unit (enabled) - schedutil's rate limit and the GPU's interrupt threads
@@ -70,6 +72,8 @@ H713_POWER_SRC=${H713_POWER_SRC:-$PROJECT_ROOT/userspace/h713-power}
 H713_KEYS_SRC=${H713_KEYS_SRC:-$PROJECT_ROOT/userspace/h713-keys}
 H713_OSD_SRC=${H713_OSD_SRC:-$PROJECT_ROOT/userspace/h713-osd}
 H713_OSD_BIN=${H713_OSD_BIN:-$H713_OSD_SRC/h713-osd.aarch64-linux-gnu}
+H713_SETTINGS_SRC=${H713_SETTINGS_SRC:-$PROJECT_ROOT/userspace/h713-settings}
+H713_SETTINGS_BIN=${H713_SETTINGS_BIN:-$H713_SETTINGS_SRC/h713-settings.aarch64-linux-gnu}
 H713_CPUFREQ_SRC=${H713_CPUFREQ_SRC:-$PROJECT_ROOT/userspace/h713-cpufreq}
 # crust, built by release/build-all.sh from crust-h713/ - a build product of ours, not a vendor file,
 # so it is not in FORBIDDEN_NAMES. The name is the board's: the rootfs can be built without a board,
@@ -202,7 +206,7 @@ check_sources() {
 	fi
 
 	local f
-	for f in h713-tv@.service 99-h713-tv.rules gamma-standard.bin; do
+	for f in h713-tv@.service 99-h713-tv.rules gamma-standard.bin h713-tv.tmpfiles; do
 		[[ -r "$H713_TV_SRC/$f" ]] || { warn "missing: $H713_TV_SRC/$f"; errors=1; }
 	done
 
@@ -218,8 +222,20 @@ check_sources() {
 		info "cross-build it:  make -C ${H713_OSD_SRC#"$PROJECT_ROOT"/} cross SYSROOT=..."
 		errors=1
 	fi
+	if [[ -x "$H713_SETTINGS_BIN" ]]; then
+		local skind; skind=$(file -b "$H713_SETTINGS_BIN" 2>/dev/null || echo '?')
+		case "$skind" in
+		*aarch64*|*ARM\ aarch64*) : ;;
+		'?') warn "file(1) is missing -- the architecture of h713-settings is unchecked" ;;
+		*) warn "h713-settings is NOT aarch64: $skind"; errors=1 ;;
+		esac
+	else
+		warn "h713-settings is missing: $H713_SETTINGS_BIN"
+		info "cross-build it:  make -C ${H713_SETTINGS_SRC#"$PROJECT_ROOT"/} cross SYSROOT=..."
+		errors=1
+	fi
 	for f in "$H713_OSD_SRC/h713-osd.service" "$H713_OSD_SRC/osd.conf" "$H713_OSD_SRC/README.md" \
-		 "$H713_KEYS_SRC/h713-keys.service" "$H713_KEYS_SRC/keys.conf" "$H713_KEYS_SRC/README.md"; do
+		 "$H713_KEYS_SRC/h713-keys.service" "$H713_KEYS_SRC/keys.conf" "$H713_KEYS_SRC/README.md" "$H713_KEYS_SRC/70-h713-remote.rules"; do
 		[[ -r "$f" ]] || { warn "missing: $f"; errors=1; }
 	done
 	[[ -x "$H713_KEYS_SRC/h713-keys" ]] || { warn "missing: $H713_KEYS_SRC/h713-keys"; errors=1; }
@@ -275,6 +291,8 @@ check_sources() {
 		{ warn "missing: h713-power, h713-power.service or power.conf in $H713_POWER_SRC"; errors=1; }
 	[[ -x "$H713_POWER_SRC/h713-mips-restart" ]] || \
 		{ warn "missing: $H713_POWER_SRC/h713-mips-restart (without it the picture stays off after a standby)"; errors=1; }
+	[[ -x "$H713_POWER_SRC/h713-mode" && -f "$H713_POWER_SRC/h713-sleep-pre.service" && -f "$H713_POWER_SRC/h713-sleep-post.service" ]] || \
+		{ warn "missing: h713-mode, h713-sleep-pre.service or h713-sleep-post.service in $H713_POWER_SRC"; errors=1; }
 	if [[ -x "$H713_AF_BIN" ]]; then
 		local afkind; afkind=$(file -b "$H713_AF_BIN" 2>/dev/null || echo aarch64)
 		case "$afkind" in
@@ -310,6 +328,7 @@ if ((DRY_RUN)); then
        h713-tv@.service   -> /etc/systemd/system/          0644
        99-h713-tv.rules   -> /etc/udev/rules.d/            0644
        gamma-standard.bin  -> /usr/local/share/h713-tv/    0644
+       h713-tv.tmpfiles    -> /etc/tmpfiles.d/h713-tv.conf 0644
        README.md           -> /usr/local/share/doc/h713-tv/
        (no systemctl enable: the unit has no [Install] section, it is started
         by the udev rule through SYSTEMD_WANTS)
@@ -367,13 +386,17 @@ if ((DRY_RUN)); then
        /etc/h713/features: $DRY_FEAT
     5h. crust and the standby
        ${H713_CRUST_BIN:-no crust image} -> /lib/firmware/${H713_BOARD:-<board>}-crust.bin
+       ARISC: $( [[ -n "$H713_CRUST_BIN" ]] && ! ((H713_STANDBY)) && echo "the vendor firmware by default - /etc/modprobe.d/h713-arisc.conf firmware=vendor, crust experimental" || echo "what the device tree names (no h713-arisc.conf)")
        standby: $( ((H713_STANDBY)) && echo "offered - sleep.conf.d mem/deep, h713-power enabled,
                 /usr/local/sbin/h713-mips-restart (the picture after a standby)" || echo "not offered - AllowSuspend=no (overlay)")
     5i. h713-keys, h713-osd
        h713-keys -> /usr/local/sbin/, h713-keys.service enabled, /etc/h713/keys.conf (if none)
+       70-h713-remote.rules -> /etc/udev/rules.d/ (the remote's OK and Menu as KEY_ENTER and KEY_COMPOSE)
        ${H713_OSD_BIN#"$PROJECT_ROOT"/}
            -> /usr/local/sbin/h713-osd, h713-osd.service enabled, /etc/h713/osd.conf (if none)
        README.md of both -> /usr/local/share/doc/h713-keys/, /usr/local/share/doc/h713-osd/
+       ${H713_SETTINGS_BIN#"$PROJECT_ROOT"/} -> /usr/local/bin/h713-settings (the settings page, started by the launcher's
+           entry launcher.d/50-settings.conf of the desktop profile), README.md -> /usr/local/share/doc/h713-settings/
     5j. h713-cpufreq
        h713-cpufreq -> /usr/local/sbin/, h713-cpufreq.service enabled (rate limit 20 ms, GPU
        interrupt threads SCHED_OTHER - the table in the script)
@@ -398,12 +421,14 @@ install -D -m 0755 "$H713_TV_BIN"                     "$TREE/usr/local/sbin/h713
 install -D -m 0644 "$H713_TV_SRC/h713-tv@.service"   "$TREE/etc/systemd/system/h713-tv@.service"
 install -D -m 0644 "$H713_TV_SRC/99-h713-tv.rules"   "$TREE/etc/udev/rules.d/99-h713-tv.rules"
 install -D -m 0644 "$H713_TV_SRC/gamma-standard.bin"  "$TREE/usr/local/share/h713-tv/gamma-standard.bin"
+# the directory "ctl mute" is kept in over a restart of h713-tv (not over a boot)
+install -D -m 0644 "$H713_TV_SRC/h713-tv.tmpfiles"    "$TREE/etc/tmpfiles.d/h713-tv.conf"
 [[ -r "$H713_TV_SRC/README.md" ]] && \
 	install -D -m 0644 "$H713_TV_SRC/README.md" "$TREE/usr/local/share/doc/h713-tv/README.md"
 # An old h713-tv.service (non-template) would be a doppelganger -- the same
 # move as in the Makefile target install-data.
 rm -f "$TREE/etc/systemd/system/h713-tv.service"
-info "/usr/local/sbin/h713-tv ($(stat -c %s "$TREE/usr/local/sbin/h713-tv") B), unit, udev rule, gamma-standard.bin"
+info "/usr/local/sbin/h713-tv ($(stat -c %s "$TREE/usr/local/sbin/h713-tv") B), unit, udev rule, gamma-standard.bin, tmpfiles"
 # No enable: h713-tv@.service deliberately has no [Install] section. The hdmirx
 # probe runs asynchronously (EDID/HPD over ten seconds), a start "at boot"
 # would be a race. The udev rule starts the instance as soon as /dev/videoN
@@ -565,6 +590,8 @@ import sys
 from importlib.machinery import SourceFileLoader
 m = SourceFileLoader("h713_keystone", sys.argv[1]).load_module()
 for name, default, _ in m.DEFAULTS:
+    if name == "turn_to_wall":
+        print("# degrees, -30..30: + when the RIGHT side of the picture is the higher one; the settings page writes it")
     print("%s = %s" % (name, default))
 PY
 	} > "$TREE/etc/h713/keystone.conf"
@@ -625,6 +652,17 @@ if [[ -n "$H713_CRUST_BIN" ]]; then
 	say "crust"
 	install -D -m 0644 "$H713_CRUST_BIN" "$TREE/lib/firmware/$H713_BOARD-crust.bin"
 	info "/lib/firmware/$H713_BOARD-crust.bin ($(stat -c %s "$H713_CRUST_BIN") B, sha256 $(sha256sum "$H713_CRUST_BIN" | cut -c1-16))"
+	# The owner's decision of 22.10.2026: an image without the standby runs the vendor ARISC firmware from the
+	# dump, and crust stays the experimental choice - with it the power supply hums in standby and when off
+	# (TODO 2.42). The device tree still names crust; this option goes over it (kernel 0267), and
+	# 'h713-arisc set crust' rewrites the line (docs/tools/h713-arisc.md). With --standby the image runs crust.
+	if ! ((H713_STANDBY)); then
+		install -d "$TREE/etc/modprobe.d"
+		printf '%s\n' "# Written by install-projekt.sh: the ARISC runs the vendor firmware from your dump (no standby, a power-off" \
+			"# ends in the power-on gate). crust, built with this image, is experimental: 'h713-arisc set crust'." \
+			"options sun50i_h713_arisc firmware=vendor" > "$TREE/etc/modprobe.d/h713-arisc.conf"
+		info "/etc/modprobe.d/h713-arisc.conf: firmware=vendor (crust experimental, h713-arisc set crust)"
+	fi
 fi
 if ((H713_STANDBY)); then
 	say "standby"
@@ -634,21 +672,30 @@ if ((H713_STANDBY)); then
 		"[Sleep]" "AllowSuspend=yes" "SuspendState=mem" "MemorySleepMode=deep" "AllowHibernation=no" \
 		"AllowSuspendThenHibernate=no" "AllowHybridSleep=no" > "$TREE/etc/systemd/sleep.conf.d/10-h713.conf"
 	info "sleep.conf.d: mem, deep only"
+	# Every way into the sleep ends the same way: the mode is remembered and ended before it, the picture path and
+	# the mode come back after it. Not on an image that cannot suspend: there is no sleep to wrap.
+	install -m 0644 "$H713_POWER_SRC/h713-sleep-pre.service" "$TREE/etc/systemd/system/h713-sleep-pre.service"
+	install -m 0644 "$H713_POWER_SRC/h713-sleep-post.service" "$TREE/etc/systemd/system/h713-sleep-post.service"
+	mkdir -p "$TREE/etc/systemd/system/sleep.target.wants" "$TREE/etc/systemd/system/suspend.target.wants"
+	ln -sfn ../h713-sleep-pre.service "$TREE/etc/systemd/system/sleep.target.wants/h713-sleep-pre.service"
+	ln -sfn ../h713-sleep-post.service "$TREE/etc/systemd/system/suspend.target.wants/h713-sleep-post.service"
+	info "h713-sleep-pre.service (sleep.target) and h713-sleep-post.service (suspend.target) enabled"
 fi
 # h713-power on every image (TODO 2.38): the power key's 15 s countdown over the picture. It offers the
 # standby only where the image allows suspend (the sleep.conf.d above) and crust is ready; elsewhere the
 # countdown ends in a power-off.
 install -m 0755 "$H713_POWER_SRC/h713-power" "$TREE/usr/local/sbin/h713-power"
-# The standby parks the display MIPS and the kernel does not start it again: h713-power runs
-# this after the standby when sun50i-h713-mips says parked (docs/tools/h713-power.md).
+# The standby parks the display MIPS and the kernel does not start it again: h713-mode sleep-post
+# (h713-sleep-post.service) runs this after every sleep when sun50i-h713-mips says parked (docs/tools/h713-power.md).
 install -m 0755 "$H713_POWER_SRC/h713-mips-restart" "$TREE/usr/local/sbin/h713-mips-restart"
+install -m 0755 "$H713_POWER_SRC/h713-mode" "$TREE/usr/local/sbin/h713-mode"
 install -m 0644 "$H713_POWER_SRC/h713-power.service" "$TREE/etc/systemd/system/h713-power.service"
 # h713-tv@.service names it as OnFailure: one MIPS reload per boot when h713-tv gave up (TODO 2.63)
 install -m 0644 "$H713_POWER_SRC/h713-tv-rescue.service" "$TREE/etc/systemd/system/h713-tv-rescue.service"
 ln -sfn ../h713-power.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-power.service"
 [[ -f "$TREE/etc/h713/power.conf" ]] || install -m 0644 "$H713_POWER_SRC/power.conf" "$TREE/etc/h713/power.conf"
 info "/usr/local/sbin/h713-power, h713-power.service enabled, /etc/h713/power.conf"
-info "/usr/local/sbin/h713-mips-restart (h713-power starts the parked MIPS with it after a standby)"
+info "/usr/local/sbin/h713-mips-restart and h713-mode (h713-sleep-post starts the parked MIPS with it after a sleep)"
 
 # --- 5i. h713-keys and h713-osd: the remote's keys, the overlays over the picture ------
 # h713-keys gives volume, mute and focus their meaning (Bluetooth and IR, kernel 0252-0254) and tells
@@ -656,6 +703,7 @@ info "/usr/local/sbin/h713-mips-restart (h713-power starts the parked MIPS with 
 say "h713-keys, h713-osd"
 install -m 0755 "$H713_KEYS_SRC/h713-keys" "$TREE/usr/local/sbin/h713-keys"
 install -m 0644 "$H713_KEYS_SRC/h713-keys.service" "$TREE/etc/systemd/system/h713-keys.service"
+install -D -m 0644 "$H713_KEYS_SRC/70-h713-remote.rules" "$TREE/etc/udev/rules.d/70-h713-remote.rules"   # OK and Menu to codes a client gets
 ln -sfn ../h713-keys.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-keys.service"
 [[ -f "$TREE/etc/h713/keys.conf" ]] || install -m 0644 "$H713_KEYS_SRC/keys.conf" "$TREE/etc/h713/keys.conf"
 install -D -m 0644 "$H713_KEYS_SRC/README.md" "$TREE/usr/local/share/doc/h713-keys/README.md"
@@ -665,6 +713,9 @@ ln -sfn ../h713-osd.service "$TREE/etc/systemd/system/multi-user.target.wants/h7
 [[ -f "$TREE/etc/h713/osd.conf" ]] || install -m 0644 "$H713_OSD_SRC/osd.conf" "$TREE/etc/h713/osd.conf"
 install -D -m 0644 "$H713_OSD_SRC/README.md" "$TREE/usr/local/share/doc/h713-osd/README.md"
 info "/usr/local/sbin/h713-keys and h713-osd, both units enabled, /etc/h713/keys.conf and osd.conf"
+install -m 0755 "$H713_SETTINGS_BIN" "$TREE/usr/local/bin/h713-settings"
+install -D -m 0644 "$H713_SETTINGS_SRC/README.md" "$TREE/usr/local/share/doc/h713-settings/README.md"
+info "/usr/local/bin/h713-settings (the settings page; the launcher entry is the desktop profile's)"
 
 # --- 5j. h713-cpufreq: the CPU clock under the warp's load ---------------------
 say "h713-cpufreq"

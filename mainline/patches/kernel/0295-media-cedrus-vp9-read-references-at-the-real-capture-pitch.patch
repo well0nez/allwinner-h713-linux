@@ -1,0 +1,107 @@
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Subject: [PATCH] media: cedrus: vp9: read references at the real capture pitch
+
+The VP9 engine does not use the programmed line stride for references. It
+reads each one at ALIGN(width, 8 << n), where n is LAST_SCALE1 [30:28].
+Jernej Skrabec's independent port names this field STRIDE_ALIGN. We
+hard-coded the vendor's n = 1 (16).
+
+That was right only while the capture pitch was ALIGN(width, 16).
+cedrus pads to 32 (0125). libva-v4l2-request 0020 now asks for 64,
+because Panfrost will not import a plane whose pitch is not 64-aligned.
+Measured 2026-10-02, VA-API against libvpx, per frame:
+
+  v10-odd-350x286.webm, pitch 352 (pre-0020)   30/30 identical
+  v10-odd-350x286.webm, pitch 384 (0020)       1/30, first bad = frame 1
+
+Frame 0 is intra and reads no reference. Every inter frame read its
+references at 352 while they were written at 384. The same disagreement
+broke the 352x288 segment of the vp9-rc resolution-change vector, which
+regressed the VA gate's reinit line. HEVC, on the same engine, honours the
+stride register and was bit-exact at both pitches (h10-656x480-unaligned,
+25/25).
+
+Pick n so that ALIGN(width, 8 << n) equals the capture buffer's
+bytesperline. If no n matches, warn and keep the old value.
+
+This also fixes a bug that predates 0020. A client that requests no pitch
+gets cedrus's ALIGN(width, 32), and at widths where that differs from
+ALIGN(width, 16) the engine was already misreading references. Stock
+GStreamer v4l2slvp9dec on a 330x240 stream, against libvpx, per frame:
+
+  before this patch   1/30 identical, first bad = frame 1
+  after this patch   30/30 identical
+
+All 13 VP9 vectors (v01-v13, including v13-resize) are bit-exact through
+VA-API after this patch.
+
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/kernel/0154-media-cedrus-vp9-read-references-at-the-real-capture-pitch.patch (0154-media-cedrus-vp9-read-references-at-the-real-capture-pitch.patch, commit 0afbd66)
+---
+--- a/drivers/staging/media/sunxi/cedrus/cedrus_vp9.c
++++ b/drivers/staging/media/sunxi/cedrus/cedrus_vp9.c
+@@ -58,8 +58,12 @@
+ #define VE_DEC_VP9_REF_SIZE(i)		(VE_ENGINE_DEC_H265 + 0x0c + 4 * (i))
+ #define VE_DEC_VP9_REF_SCALE0(i)	(VE_ENGINE_DEC_H265 + 0x18 + 8 * (i))
+ #define VE_DEC_VP9_REF_SCALE1(i)	(VE_ENGINE_DEC_H265 + 0x1c + 8 * (i))
+-/* log2(vendor frame alignment / 8); the vendor's alignment is 16. */
+-#define VE_DEC_VP9_LAST_SCALE1_ALIGN	(1 << 28)
++/*
++ * LAST_SCALE1 [30:28] is log2(frame alignment / 8): the engine reads every
++ * reference at a pitch of ALIGN(width, 8 << field), ignoring the programmed
++ * line stride. The vendor always uses 16 (field 1). See cedrus_vp9_align().
++ */
++#define VE_DEC_VP9_LAST_SCALE1_ALIGN(v)	((v) << 28)
+ 
+ #define VE_DEC_VP9_SEG_FEATURE		(VE_ENGINE_DEC_H265 + 0x5c)
+ #define VE_DEC_VP9_NEIGHBOR_ADDR	(VE_ENGINE_DEC_H265 + 0x60)
+@@ -626,6 +630,32 @@
+ 	return (fp & 0xffff) << 5 | (((fp >> 10) - 1) & 0x1f);
+ }
+ 
++/*
++ * The LAST_SCALE1 alignment field that makes the engine's reference pitch
++ * equal the capture buffer's real one.
++ *
++ * Hard-coding the vendor's 16 was only right while the pitch happened to be
++ * ALIGN(width, 16). cedrus pads to 32 (0125) and the VA driver now asks for
++ * 64 so the GPU can import the frame; at 350 wide that is 384, the engine
++ * read references at 352, and every inter frame came out wrong while intra
++ * frames, which read no reference, stayed bit-exact. At widths where
++ * ALIGN(w, 16) and ALIGN(w, 32) differ it was wrong before that, too.
++ */
++static u32 cedrus_vp9_align(struct cedrus_ctx *ctx, unsigned int width)
++{
++	unsigned int pitch = ctx->dst_fmt.bytesperline;
++	unsigned int v;
++
++	for (v = 1; v < 8; v++)
++		if (ALIGN(width, 8U << v) == pitch)
++			return VE_DEC_VP9_LAST_SCALE1_ALIGN(v);
++
++	dev_warn_ratelimited(ctx->dev->dev,
++			     "vp9: pitch %u is not ALIGN(%u, 2^n); references will be misread\n",
++			     pitch, width);
++	return VE_DEC_VP9_LAST_SCALE1_ALIGN(1);
++}
++
+ static int cedrus_vp9_setup(struct cedrus_ctx *ctx, struct cedrus_run *run)
+ {
+ 	struct cedrus_vp9_ctx *vp9 = ctx->codec.vp9.priv;
+@@ -783,7 +813,7 @@
+ 	/* references */
+ 	if (intra) {
+ 		cedrus_write(dev, VE_DEC_VP9_REF_SCALE1(0),
+-			     VE_DEC_VP9_LAST_SCALE1_ALIGN);
++			     cedrus_vp9_align(ctx, width));
+ 	} else {
+ 		const u64 ts[3] = { f->last_frame_ts, f->golden_frame_ts,
+ 				    f->alt_frame_ts };
+@@ -814,7 +844,7 @@
+ 				     cedrus_vp9_scale(rw, width));
+ 			scale1 = cedrus_vp9_scale(rh, height);
+ 			if (!i)
+-				scale1 |= VE_DEC_VP9_LAST_SCALE1_ALIGN;
++				scale1 |= cedrus_vp9_align(ctx, width);
+ 			/*
+ 			 * Golden's y scale is at [31:16], not [20:5] like the
+ 			 * other five fields. The vendor writes it there, and

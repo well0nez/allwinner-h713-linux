@@ -1,0 +1,201 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: soc: sunxi: a guard for the video engine's shared bus reset
+
+The H713's AV1 decoder is a separate core, driven by hantro, that runs
+from the video engine's module clock and behind the engine's bus: it
+needs the engine's bus reset (RST_BUS_VE) released. The line belongs to
+cedrus, which pulses it on its watchdog and, since 0298, whenever a job
+of another codec than the last one needs a clean engine. The AV1 driver
+borrows the engine through a runtime-PM device link, which keeps runtime
+PM from asserting the line while the core is powered - and says nothing
+about pulses.
+
+Measured on the HY310, 13.10.2026: a cedrus
+codec switch next to an AV1 stream pulses the line into an AV1 frame in
+flight; the core stalls with a transaction in the interconnect (hantro's
+watchdog: "frame processing timed out"), every later AV1 job times out,
+and about 15 s later the whole SoC stops without a kernel line, until
+the SoC watchdog resets it. Twice, out of three runs with switches.
+Without switches (same codec beside AV1, or AV1 alone), 110 runs and an
+hour with HDMI capture and the warp were bit-exact. Pulses between AV1
+frames did no harm either (20 switches, 11 AV1 runs exact): what
+kills is a pulse into a frame in flight.
+
+Both drivers keep the line in use for good reasons; what was missing is
+arbitration. This is it: a borrower holds the line while a frame is in
+flight, the owner pulses it only when nobody holds it, and nobody can
+take it during the pulse. Hold and release are callable from hard
+interrupt context (the AV1 frame ends in its interrupt); the pulse
+sleeps until the line is free, and gives up after 3 s - a holder ends
+its frame within its own 2 s watchdog, and an engine that never comes
+back would be worse than a stalled borrower. One video engine per SoC,
+so the state is global and no handle is passed around.
+
+Not cstenger's: found and measured on the HY310; his tree
+has no reset at a codec switch and never measured a pulse into an AV1
+frame.
+---
+--- a/drivers/soc/sunxi/Kconfig
++++ b/drivers/soc/sunxi/Kconfig
+@@ -20,6 +20,16 @@
+ 	  device is responsible on mapping the SRAM in the sunXi SoCs
+ 	  whether to the CPU/DMA, or to the devices.
+ 
++config SUNXI_VE_RESET_GUARD
++	bool
++	default ARCH_SUNXI
++	depends on ARM || ARM64
++	help
++	  Say y to arbitrate the video engine's bus reset line between the
++	  engine's driver (cedrus) and a core that borrows the engine and
++	  needs the line released while it works, such as the H713's AV1
++	  decoder (hantro).
++
+ source "drivers/soc/sunxi/cpu_comm/Kconfig"
+ 
+ config SUN50I_H713_ARISC
+--- a/drivers/soc/sunxi/Makefile
++++ b/drivers/soc/sunxi/Makefile
+@@ -1,6 +1,7 @@
+ # SPDX-License-Identifier: GPL-2.0-only
+ obj-$(CONFIG_SUNXI_MBUS) +=	sunxi_mbus.o
+ obj-$(CONFIG_SUNXI_SRAM) +=	sunxi_sram.o
++obj-$(CONFIG_SUNXI_VE_RESET_GUARD) += sunxi_ve_reset.o
+ obj-$(CONFIG_HY310_CPU_COMM) += cpu_comm/
+ obj-$(CONFIG_SUN50I_H713_ARISC) += sun50i-h713-arisc.o
+ obj-$(CONFIG_SUN50I_H713_TVCAP) += sun50i-h713-tvcap.o
+--- /dev/null
++++ b/drivers/soc/sunxi/sunxi_ve_reset.c
+@@ -0,0 +1,100 @@
++// SPDX-License-Identifier: GPL-2.0
++/*
++ * Allwinner video engine: a guard for its bus reset line.
++ *
++ * The H713's AV1 decoder is a separate core that runs from the video
++ * engine's module clock and sits behind the engine's bus: it needs the
++ * engine's bus reset (RST_BUS_VE) released. The line belongs to cedrus,
++ * which asserts it under runtime PM, on its watchdog, and when a job of
++ * another codec than the last one needs the engine started clean. The AV1
++ * driver borrows the engine through a runtime-PM device link, which keeps
++ * runtime PM from asserting the line while the core is powered - and says
++ * nothing about the pulses.
++ *
++ * A pulse on the line while an AV1 frame is in flight leaves the core
++ * stalled with a transaction in the interconnect; the next access to it
++ * stops the SoC, and only a SoC reset recovers either (measured on the
++ * HY310, 13.10.2026: a storm of cedrus codec switches next to an AV1
++ * stream timed the first AV1 frame out within 0.4 s and took the SoC down
++ * 15 s later, twice).
++ *
++ * So the line is arbitrated: a borrower holds it while a frame is in
++ * flight, the owner pulses it only when nobody holds it, and nobody can
++ * take it during the pulse. Hold and release are callable from hard
++ * interrupt context; the pulse sleeps until the line is free. There is one
++ * video engine per SoC, so the state is global.
++ */
++
++#include <linux/export.h>
++#include <linux/jiffies.h>
++#include <linux/printk.h>
++#include <linux/reset.h>
++#include <linux/sched.h>
++#include <linux/spinlock.h>
++#include <linux/wait.h>
++#include <linux/soc/sunxi/sunxi_ve_reset.h>
++
++static DEFINE_SPINLOCK(sunxi_ve_reset_lock);
++static unsigned int sunxi_ve_reset_holders;
++static DECLARE_WAIT_QUEUE_HEAD(sunxi_ve_reset_wq);
++
++/*
++ * A frame is in flight on a core that needs the line released. Waits for a
++ * pulse in progress to end (microseconds).
++ */
++void sunxi_ve_reset_hold(void)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&sunxi_ve_reset_lock, flags);
++	sunxi_ve_reset_holders++;
++	spin_unlock_irqrestore(&sunxi_ve_reset_lock, flags);
++}
++EXPORT_SYMBOL_GPL(sunxi_ve_reset_hold);
++
++void sunxi_ve_reset_release(void)
++{
++	unsigned long flags;
++
++	spin_lock_irqsave(&sunxi_ve_reset_lock, flags);
++	if (!WARN_ON_ONCE(!sunxi_ve_reset_holders))
++		sunxi_ve_reset_holders--;
++	spin_unlock_irqrestore(&sunxi_ve_reset_lock, flags);
++	wake_up_all(&sunxi_ve_reset_wq);
++}
++EXPORT_SYMBOL_GPL(sunxi_ve_reset_release);
++
++/*
++ * Pulse the line (assert, 10 us, deassert, as the CCU does it) with nobody
++ * holding it. A holder ends its frame within its own watchdog's 2 s; one
++ * that does not is given up on after 3 s and the pulse happens anyway,
++ * since the alternative is an engine that never comes back.
++ */
++int sunxi_ve_reset_pulse(struct reset_control *rstc)
++{
++	unsigned long flags;
++	int ret;
++
++	might_sleep();
++
++	for (;;) {
++		long left;
++
++		left = wait_event_timeout(sunxi_ve_reset_wq,
++					  !READ_ONCE(sunxi_ve_reset_holders),
++					  msecs_to_jiffies(3000));
++		spin_lock_irqsave(&sunxi_ve_reset_lock, flags);
++		if (!sunxi_ve_reset_holders)
++			break;
++		if (!left) {
++			pr_warn_ratelimited("sunxi-ve-reset: a frame holding the VE reset did not end in 3 s, pulsing anyway\n");
++			break;
++		}
++		spin_unlock_irqrestore(&sunxi_ve_reset_lock, flags);
++	}
++	ret = reset_control_reset(rstc);
++	spin_unlock_irqrestore(&sunxi_ve_reset_lock, flags);
++
++	return ret;
++}
++EXPORT_SYMBOL_GPL(sunxi_ve_reset_pulse);
+--- /dev/null
++++ b/include/linux/soc/sunxi/sunxi_ve_reset.h
+@@ -0,0 +1,29 @@
++/* SPDX-License-Identifier: GPL-2.0 */
++/*
++ * Allwinner video engine: the guard for its bus reset line, which the
++ * H713's AV1 decoder shares. See drivers/soc/sunxi/sunxi_ve_reset.c.
++ */
++
++#ifndef _SUNXI_VE_RESET_H_
++#define _SUNXI_VE_RESET_H_
++
++#include <linux/reset.h>
++
++#if IS_ENABLED(CONFIG_SUNXI_VE_RESET_GUARD)
++
++void sunxi_ve_reset_hold(void);
++void sunxi_ve_reset_release(void);
++int sunxi_ve_reset_pulse(struct reset_control *rstc);
++
++#else
++
++static inline void sunxi_ve_reset_hold(void) {}
++static inline void sunxi_ve_reset_release(void) {}
++static inline int sunxi_ve_reset_pulse(struct reset_control *rstc)
++{
++	return reset_control_reset(rstc);
++}
++
++#endif
++
++#endif /* _SUNXI_VE_RESET_H_ */

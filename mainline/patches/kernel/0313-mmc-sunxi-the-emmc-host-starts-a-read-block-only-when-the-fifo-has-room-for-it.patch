@@ -1,0 +1,95 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: mmc: sunxi: the eMMC host starts a read block only when the FIFO has room for it
+
+At HS200 and HS400 the eMMC host now uses the card read threshold
+(THLD 0x100: bit 0 on, bits 27:16 = block size) for reads, as the SDIO
+host already does for its fast timings. Without it the controller holds
+the card clock as soon as its 1 KiB FIFO is full - which can happen in
+the middle of a block when the DMA falls behind.
+
+Measured on the HY310 before this patch (15.10.2026, with the
+diagnostic patch 0311, which is not part of this series, and 0312):
+
+ - data CRC errors on eMMC reads come only while Kodi plays 4K video
+   (VE decoding, the GPU taking the frames, cage, display): 22-24 per
+   100 MiB for Kodi's own reads, 0.3-28.8 for a dd reader next to it;
+ - the same reader saw none in over 40 GB without that load, under CPU
+   memory load at 70 degrees C, next to the VE alone and next to the GPU
+   at 600 MHz;
+ - under the Kodi 4K load the FIFO was full in 2.9 % of 1.26 million
+   samples of STAS, without it never; most errors came with the FIFO at
+   190 or more of its 256 words;
+ - runtime PM made no difference (autosuspend against power/control=on).
+
+Measured with this patch (15.10.2026), nine Kodi 4K runs of the
+same arms and load (four with Kodi cold, five from its cache with a dd
+reader next to it):
+
+ - 30946 MiB read, no data CRC error at all, against 1899 on 19049 MiB in
+   nine runs without the threshold;
+ - the FIFO was full in 0.001 to 0.002 % of the samples instead of 2.9 %
+   (THLD reads 0x02000001 during reads);
+ - the dd reader next to Kodi got 133 to 137 MB/s instead of 45 to 128,
+   and 152 MB/s without any load, as before;
+ - h264 and hevc 1080p decode bit-exact from files read through the eMMC
+   (300 of 300 frames each), and a 128 MiB write reads back with the same
+   md5.
+
+0312 stays as the net for an error that still comes.
+---
+ drivers/mmc/host/sunxi-mmc.c | 37 +++++++++++++++++++++++++++++++++++++
+ 1 file changed, 37 insertions(+)
+
+--- a/drivers/mmc/host/sunxi-mmc.c
++++ b/drivers/mmc/host/sunxi-mmc.c
+@@ -1780,6 +1780,42 @@
+ 	writel(rval, host->reg_base + SDXC_REG_THLD);
+ }
+ 
++/*
++ * The eMMC host (not v5p3x) at HS200/HS400: start a block of a read only
++ * when the FIFO has room for all of it. Without the card read threshold
++ * the controller holds the card clock as soon as the FIFO is full, which
++ * can be in the middle of a block. Measured on the HY310
++ * (15.10.2026): while Kodi plays 4K video the DMA falls behind, the FIFO is
++ * full in 2.9 % of the samples (never without that load), and reads see
++ * data CRC errors only under that load, mostly with the FIFO nearly full -
++ * 19 to 742 a minute, against none in over 40 GB without it. With the
++ * threshold the same load read 30946 MiB without a single one, and the
++ * FIFO was full in 0.002 % of the samples instead of 2.9 %.
++ *
++ * Same register layout as the SDIO host above (THLD 0x100: bit 0 read
++ * threshold on, bits 27:16 the threshold in bytes); the threshold is the
++ * block size, 512 bytes, which fits twice into the 1 KiB FIFO. Writes and
++ * the slower timings leave it off, as before.
++ */
++static void sunxi_mmc_thld_ctl_emmc(struct sunxi_mmc_host *host,
++				    struct mmc_data *data)
++{
++	unsigned char timing = host->mmc->ios.timing;
++	u32 rval;
++
++	if (host->cfg->v5p3x || !host->cfg->supports_hs400)
++		return;
++
++	rval = readl(host->reg_base + SDXC_REG_THLD);
++	rval &= ~(SDXC_THLD_SIZE_MASK | SDXC_THLD_READ_EN);
++
++	if ((data->flags & MMC_DATA_READ) && data->blksz <= 512 &&
++	    (timing == MMC_TIMING_MMC_HS200 || timing == MMC_TIMING_MMC_HS400))
++		rval |= (data->blksz << 16) | SDXC_THLD_READ_EN;
++
++	writel(rval, host->reg_base + SDXC_REG_THLD);
++}
++
+ static void sunxi_mmc_request(struct mmc_host *mmc, struct mmc_request *mrq)
+ {
+ 	struct sunxi_mmc_host *host = mmc_priv(mmc);
+@@ -1888,6 +1924,7 @@
+ 
+ 	if (data) {
+ 		sunxi_mmc_thld_ctl_v5p3x(host, data);
++		sunxi_mmc_thld_ctl_emmc(host, data);
+ 		mmc_writel(host, REG_BLKSZ, data->blksz);
+ 		mmc_writel(host, REG_BCNTR, data->blksz * data->blocks);
+ 		sunxi_mmc_start_dma(host, data);

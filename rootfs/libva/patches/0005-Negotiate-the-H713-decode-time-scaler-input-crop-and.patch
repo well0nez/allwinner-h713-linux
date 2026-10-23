@@ -1,0 +1,168 @@
+From e57c6981cc60e85bd535740ea574b02efa0187f4 Mon Sep 17 00:00:00 2001
+From: Christopher Stenger <chris.h.stenger@gmail.com>
+Date: Sat, 3 Oct 2026 00:24:25 -0700
+Subject: [PATCH 5/6] Negotiate the H713 decode-time scaler, input crop and a
+ 64-byte pitch
+
+cedrus on the H713 (local kernel patches) can scale H.264/HEVC while it
+decodes, from an input crop of the coded frame, to any even CAPTURE size.
+V4L2_REQUEST_SCALE=WxH asks for that size, and V4L2_REQUEST_CROP=WxH gives
+the visible size, which only the client knows, set as the CAPTURE crop so
+the scaler reads picture and not encoder padding. Both are read at capture
+negotiation, not at init: the client cannot know them until it has seen
+the stream. The G_FMT that follows describes the surfaces, so exports
+report the real geometry and readback of a scaled surface is refused.
+
+NV12 also asks for ALIGN(width, 64) bytes per line. Panfrost (Bifrost)
+imports NV12 per plane as R8 + GR88 and needs 64-byte alignment there.
+cedrus otherwise gives ALIGN(width, 32), which is 864 for 852-wide video
+and fails the import.
+
+Byte-identical to the previous VA driver (libva-v4l2-request 0008/0010/
+0020) for H.264 and HEVC 1080p at 1280x720, 1280x720 with a 1920x1080 crop,
+and 852x480 (pitch 896).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+Origin: https://github.com/cstenger/allwinner-h713-mainline/blob/43b2cdd4aa1b161a281db8b10f02ce70085e2d42/patches/libva-v4l2_request/0005-Negotiate-the-H713-decode-time-scaler-input-crop-and.patch (0005-Negotiate-the-H713-decode-time-scaler-input-crop-and.patch, commit ae94ce3)
+---
+ src/context.c | 113 +++++++++++++++++++++++++++++++++++++++++++++++++-
+ 1 file changed, 112 insertions(+), 1 deletion(-)
+
+diff --git a/src/context.c b/src/context.c
+index 47c7d0b..24ae15a 100644
+--- a/src/context.c
++++ b/src/context.c
+@@ -14,6 +14,7 @@
+ #include <errno.h>
+ #include <fcntl.h>
+ #include <poll.h>
++#include <stdio.h>
+ #include <stdlib.h>
+ #include <string.h>
+ #include <sys/ioctl.h>
+@@ -51,6 +52,116 @@ static int set_format(struct v4l2r_context *ctx, enum v4l2_buf_type type,
+ 	return 0;
+ }
+ 
++/*
++ * H713 (local kernel patches): cedrus can scale H.264/HEVC while it decodes,
++ * from an input crop of the coded frame, to any even CAPTURE size. Two
++ * environment variables ask for it:
++ *
++ *   V4L2_REQUEST_SCALE=WxH  the CAPTURE size to produce. A size, not a ratio:
++ *                           the display takes one framebuffer geometry, and
++ *                           1088 coded rows and 1080 visible ones do not reach
++ *                           720 by the same factor; the kernel scales each
++ *                           axis independently.
++ *   V4L2_REQUEST_CROP=WxH   the stream's VISIBLE size, which only the client
++ *                           knows (VA-API allocates at the coded size and the
++ *                           stateless SPS controls carry no cropping fields).
++ *                           Set as the CAPTURE crop before the format, so the
++ *                           scaler reads picture and not encoder padding.
++ *
++ * Read here, at capture negotiation, not at init: the client cannot know the
++ * answer until it has seen the stream, long after vaInitialize(). The kernel
++ * clamps both, so the G_FMT that follows describes the surfaces; exports
++ * report that geometry, and readback of a scaled surface is refused (it is
++ * smaller than the coded size the client believes in). Malformed values are
++ * ignored with a message, never fatal.
++ */
++static bool parse_size_env(const char *name, uint32_t *width, uint32_t *height)
++{
++	const char *value = getenv(name);
++	unsigned int w, h;
++	char extra;
++
++	if (!value || !*value)
++		return false;
++
++	if (sscanf(value, "%ux%u%c", &w, &h, &extra) != 2 || !w || !h) {
++		v4l2r_log("ignoring %s=\"%s\": expected WxH\n", name, value);
++		return false;
++	}
++
++	*width = w;
++	*height = h;
++	return true;
++}
++
++static int set_capture_format(struct v4l2r_context *ctx,
++			      enum v4l2_buf_type type, uint32_t pixelformat)
++{
++	struct v4l2_format format = {
++		.type = type,
++	};
++	uint32_t width = ctx->picture_width, height = ctx->picture_height;
++	uint32_t crop_w, crop_h;
++	bool scaled;
++
++	if (parse_size_env("V4L2_REQUEST_CROP", &crop_w, &crop_h)) {
++		struct v4l2_selection selection = {
++			.type = type,
++			.target = V4L2_SEL_TGT_CROP,
++			.r = { .width = crop_w, .height = crop_h },
++		};
++
++		/* Best effort: without a crop the scaler still works, it just
++		 * reads the coded padding too. */
++		if (ioctl(ctx->video_fd, VIDIOC_S_SELECTION, &selection) < 0)
++			v4l2r_log("no CAPTURE crop support: scaling the full "
++				  "coded frame\n");
++		else
++			v4l2r_log("cropped the coded frame to %ux%u\n",
++				  selection.r.width, selection.r.height);
++	}
++
++	scaled = parse_size_env("V4L2_REQUEST_SCALE", &width, &height);
++
++	if (V4L2_TYPE_IS_MULTIPLANAR(type)) {
++		format.fmt.pix_mp.width = width;
++		format.fmt.pix_mp.height = height;
++		format.fmt.pix_mp.pixelformat = pixelformat;
++		format.fmt.pix_mp.num_planes = 1;
++	} else {
++		format.fmt.pix.width = width;
++		format.fmt.pix.height = height;
++		format.fmt.pix.pixelformat = pixelformat;
++	}
++
++	/*
++	 * Panfrost (Bifrost) imports NV12 one plane at a time, as R8 + GR88,
++	 * and needs those linear imports 64-byte aligned in pitch and offset;
++	 * cedrus otherwise gives ALIGN(width, 32). Ask for 64. A driver that
++	 * does not honour a larger bytesperline overwrites it, and G_FMT
++	 * describes the surfaces either way.
++	 */
++	if (pixelformat == V4L2_PIX_FMT_NV12) {
++		uint32_t pitch = (width + 63) & ~63u;
++
++		if (V4L2_TYPE_IS_MULTIPLANAR(type))
++			format.fmt.pix_mp.plane_fmt[0].bytesperline = pitch;
++		else
++			format.fmt.pix.bytesperline = pitch;
++	}
++
++	if (ioctl(ctx->video_fd, VIDIOC_S_FMT, &format) < 0)
++		return -errno;
++
++	if (scaled)
++		v4l2r_log("coded %ux%u, asked for %ux%u, got %ux%u\n",
++			  ctx->picture_width, ctx->picture_height, width, height,
++			  v4l2r_format_width(&format),
++			  v4l2r_format_height(&format));
++
++	return 0;
++}
++
+ static int query_buffer_capabilities(struct v4l2r_context *ctx,
+ 				     enum v4l2_buf_type type,
+ 				     uint32_t *capabilities)
+@@ -166,7 +277,7 @@ static int select_capture_format(struct v4l2r_context *ctx)
+ 	if (!best)
+ 		return -EINVAL;
+ 
+-	return set_format(ctx, type, best, 0);
++	return set_capture_format(ctx, type, best);
+ }
+ 
+ /* --- OUTPUT bitstream buffers with their media requests --- */

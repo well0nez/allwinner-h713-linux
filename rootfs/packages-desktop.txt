@@ -1,0 +1,22 @@
+# packages-desktop.txt - profile `desktop` (build-rootfs.sh --profile desktop), on top of packages.txt.
+#
+# Compositors, Kodi, a terminal and Firefox, on the mesa of rootfs/mesa (Wayland platform, glvnd). Not in the base image. Same format
+# as packages.txt. Everything here must install against the dummies in rootfs/equivs/, without libllvm* and
+# without mesa-libgallium.
+# Kodi decodes through VA-API (libva2 comes with kodi-bin): the driver (rootfs/libva) and the environment (rootfs/overlay-va)
+# are laid by build-rootfs.sh for this profile too; a unit that starts cage/Kodi takes the variables through the drop-in
+# /usr/local/share/h713/systemd/h713-media-env.conf.
+
+seatd                        # seat management for a compositor without logind sessions (seatd + cage)
+cage                         # single-window kiosk compositor: Kodi's host
+labwc                        # stacking compositor for the desktop and the browser modes: a Wayland client of h713-warp like cage, with menu and windows
+foot                         # terminal of the desktop: Wayland native, 0.8 MiB; pulls ncurses-term and libfcft
+fonts-noto-core              # on the HY310 since Kodi was installed there with apt (a Recommends): every test of Kodi, the desktop and the browser ran with it, so the image carries it (decision of 16.10.2026, VERGLEICH-END P-2)
+fonts-noto-mono              # the same reason
+fonts-roboto-unhinted        # the same reason
+fonts-dejavu-core            # the one font family the desktop, foot and Firefox need (already there through Kodi's dependencies, named here on purpose)
+firefox-esr                  # the browser: maximized in a labwc of its own for the launcher entry, in a window on the desktop; VA-API through rootfs/libva
+kodi                         # media centre; kodi-bin links libEGL/libGLESv2/libgbm
+glmark2-es2-wayland          # the GPU test: Renderer "Mali-G31 (Panfrost)" and a score
+fonts-quicksand              # the launcher's face (h713-osd, libh713osd text; SIL OFL 1.1, 0.4 MB); FreeType itself is linked into h713-osd
+polkitd                      # logind lets Kodi (the user h713-kodi, not root) suspend, power off and reboot only when polkit says yes: the rule rootfs/overlay-desktop/etc/polkit-1/rules.d/50-h713-kodi.rules
