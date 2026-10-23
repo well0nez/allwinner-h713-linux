@@ -38,6 +38,8 @@ mute and focus work as always. It closes by itself after 90 s without a key, and
 under an open launcher): a move, and OK before it starts a row, must be answered `ok` by h713-osd, else the launcher is closed and the
 grab let go, and nothing is started blind.
 
+![The launcher of an image built with --standby: the Standby entry set apart at the foot](../images/launcher/launcher-with-standby.png)
+
 **Nothing happens twice.** While the launcher is open h713-keys holds the remote's two devices with `EVIOCGRAB`, so Kodi (which
 reads them through cage and libinput) gets no key at all; closed, it lets go and everything is as it was. The press of Home
 that opens it still reaches Kodi first, so the Kodi keymap maps `homepage` and `browser_home` to nothing

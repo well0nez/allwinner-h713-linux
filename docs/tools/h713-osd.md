@@ -6,6 +6,10 @@ While muted, a small crossed-out speaker stays in the top right corner. At the e
 arrow of the pressed direction turns red. With a keystone the overlay is distorted like the picture, so it sits
 in the picture, not on the panel's straight edges.
 
+![The focus overlay while the motor runs](../images/osd/focus-up.png)
+
+![The input overlay: the HDMI input active](../images/osd/input-hdmi.png)
+
 `h713-keys` sends the events after each key of the remote; by hand:
 
 ```

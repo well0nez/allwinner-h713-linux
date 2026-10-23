@@ -1,160 +1,101 @@
-# The first hour with the device
+# The first hour with the projector
 
-You have installed the image ([FLASHING.md](../../FLASHING.md)) and the projector booted. This page is
-the walk-through: get in, get a picture, set it up the way you want it, and know where to look when
-something is off. Every command runs on the device unless it says otherwise.
+You have installed the image ([FLASHING.md](../../FLASHING.md)). This page is the walk-through: switch
+it on, get a picture, set it up, and know where to look when something is off. Commands run on the
+projector over SSH unless they say otherwise.
 
-## 1. Get in
+## 1. Switch it on
 
-Plug in power, press the power key - as with the stock firmware ([power-gate](../uboot/power-gate.md)).
-Give it a moment: the display firmware and the HDMI hot-plug sequence take about 18 s from the key press
-before the input is ready.
+Plug in power and press the power key: the projector waits in the dark until you do, as with the
+stock firmware. About 8 s later the launcher stands on the wall, a second later the HDMI input is
+ready ([the launcher](../guides/launcher.md)). The stock remote works from the first press over
+infrared; pair it over Bluetooth once with Left + Right for the air mouse
+([the remote](../guides/remote.md)).
+
+![The launcher after a start](../images/launcher/launcher.png)
+
+## 2. Get in
 
 ```bash
-ssh root@h713          # over the access point, or over the network if you set mode=sta
+ssh root@hy310          # the HY300PRO-G-EU is called hy300pro; over the access point or your network
 ```
 
-Key-only: the key you passed as `--ssh-key` during installation is the only way in over the
-network. If you skipped it, the serial console on the UART pads is your way back - it **logs in as root
-without a password**, by design and by necessity ([why, and how to turn it off](../services.md)).
+Key-only: the key you passed as `--ssh-key` during installation is the only way in over the network.
+Without it, the serial console on the UART pads logs in as root without a password
+([why, and how to turn it off](../services.md)).
 
-**Change the Wi-Fi password now**, before the device sits anywhere but on your desk. The shipped default
-is in this repository, which means everyone has it:
+**Change the Wi-Fi password now.** The shipped default (access point `h713`, password `magcubic`) is
+in this repository, so everyone has it:
 
 ```bash
-nano /etc/h713/wifi.env        # ssid, password, country, and mode=ap|sta|off
+nano /etc/h713/wifi.env        # ssid, password, country, mode=ap|sta|off
 systemctl restart h713-wifi
-h713-wifi status
 ```
 
-`country` is not a formality - it decides channels and transmit power. Set the country the device is
-actually in ([`h713-wifi`](../tools/h713-wifi.md)).
+`country` decides channels and transmit power; set the one the projector stands in
+([h713-wifi](../tools/h713-wifi.md)).
 
-## 2. Get a picture
+## 3. Get a picture
 
-Plug an HDMI source in. `h713-tv` runs as a service and switches by itself: signal → picture on the
-wall, no signal → Linux console.
-
-```bash
-h713-tv ctl status             # signal, mode, plane or console, audio
-h713-tv ctl list               # every picture control with its range
-h713-tv ctl zoom in 2          # the centre quarter on the whole panel; `off` is the baseline
-```
-
-If the wall stays dark, work down this list:
+Plug an HDMI source in and choose **HDMI input** in the launcher. Without a signal the wall says
+"No signal on HDMI"; with one the picture is there within a second. If it stays dark:
 
 | Check | Command | What it means |
 |---|---|---|
-| Is the service running? | `systemctl status 'h713-tv@*'` | udev starts one instance per capture device; the node number varies |
-| Does the receiver see a signal? | `h713-tv ctl status` | "no signal" is also what an unsupported mode looks like |
-| Is the source in a mode the firmware locks? | `h713-tv ctl status` | the verified list is in [STATUS.md](../../STATUS.md); a source outside the firmware's own mode table is refused by name, and `status` prints its size and rate |
-| Just plugged the cable in and it stays dark? | `h713-tv ctl replug` | fixed since 16.09.2026 (kernel `0136a`/`0136c`); on an older image this command brings the picture back ([known-issues](../known-issues.md)) |
+| Does the receiver see a signal? | `h713-tv ctl status` | "no signal" is also what a mode the display firmware does not lock looks like; a refused mode is named with its size and rate |
+| Is the source in a mode that locks? | | 1080p at 60, 50 and 24 Hz, 720p50, 576p50, 1366x768, 1024x768 and 4K30 are verified ([STATUS.md](../../STATUS.md)) |
 | Anything in the log? | `journalctl -u 'h713-tv@*' -b` | |
 
-Open `http://<the projector>:8080/` in a browser. Everything below can be done there, and the keystone can only be
-done comfortably there. There is no login. [The settings page](../guides/settings-page.md) is the walk-through.
+## 4. Make it look right
 
-## 3. Make it look right
+**Settings** in the launcher, area **Picture**: the vendor's picture modes, brightness, contrast,
+colour, tint, sharpness, gamma; **White balance**: the colour temperature and two sliders. A value you
+judge on the picture shrinks the page to one pill over the real picture
+([the settings page](../guides/settings.md)). Everything is kept for the next boot. The same, with the
+keystone as a drawing, is the web page at `http://<the projector>:8080/`
+([the settings as a web page](../guides/settings-page.md); the password is
+`h713-panel --show-password`).
 
-```bash
-h713-tv ctl preset cinema      # standard cinema vivid game computer hdr energy_saving custom
-h713-tv ctl set brightness 55  # single control, range from `ctl list`
-h713-tv ctl aspect proportional
-h713-tv ctl save               # remember all of it across reboots
-```
+## 5. Square it up and focus
 
-Presets come from the vendor's own picture tables, computed by [`h713-pq`](../tools/h713-pq.md), not
-invented by us. `save` writes your deviations to `/var/lib/h713-tv/`; `save off` forgets them again.
+**Keystone** in the settings: the corners by hand, the zoom, the projection mode, or the automatic
+after a move ([keystone](../guides/keystone.md)). The two focus keys on the remote move the focus in
+steps of 20, and the arrow turns red at the end of the travel; **Focus, Autofocus now** does the
+search with the camera on a board that has one ([autofocus](../guides/autofocus.md)).
 
-Sound follows the picture by default. `h713-tv ctl volume 60`, `ctl mute on`, and `ctl audio off` if you
-want the speaker quiet while the picture stays.
+## 6. Kodi, the desktop, the browser
 
-## 4. Focus
+The three other entries of the launcher. Kodi plays with hardware decoding up to 4K HEVC; the desktop
+is a terminal and a menu; the browser is Firefox. Home brings the launcher back over any of them, and a
+program that ends brings it back by itself ([h713-desktop](../tools/h713-desktop.md)).
 
-```bash
-h713-focus status              # watcher, edges, counter
-h713-focus up 20               # 20 microsteps, in chunks, checked each time
-h713-focus down 20
-```
+## 7. Switching off
 
-The motor has no position sensor, only a **range watcher**: the driver notices when the mechanism leaves
-the permitted range and stops. Small steps, look at the wall, repeat - that is the whole method. `h713-autofocus run` does the search by
-itself ([how](../tools/h713-autofocus.md)), taking the panel over for its chessboard and giving it back; it
-ended sharp against a wall on 02.10.2026, but that is one evening, so keep the manual method at hand. A board
-without a focus motor (the HY200 QZ713DF A1) answers both tools with "not present on this board" - `h713-features`
-says what your board has.
+A short press of the power key shows the 15 s countdown, a long press switches off at once. Off is the
+dark gate at 2.9 W; the key or either remote's power key starts the projector again. There is no
+standby in this release ([switching off and on](../guides/power.md)).
 
-## 5. The camera
+## 8. Keeping it up to date
 
-```bash
-h713-cam probe                 # find the node, list formats
-h713-cam grab /tmp/wall.png    # single frame
-```
+The root filesystem is an ordinary Debian 13: `apt update && apt upgrade` works once the projector can
+reach the internet (`mode=sta` in `wifi.env`). Everything this project ships - kernel, U-Boot, the
+`h713-*` tools - comes with a new image: install it over the old one with `h713-install`, which reuses
+your device's own files and carries `h713_gate` and `h713_boot` over. Check `fw_printenv h713_gate`
+afterwards and set it to `1` if a `0` came along (`TODO.md` 2.137). `/etc/h713/wifi.env` is the one
+file worth copying off before.
 
-Useful for looking at the wall from the device itself - for instance while focusing over SSH with the
-projector in another room.
-
-## 6. Turning it off, and on again
-
-The power key - on the projector or on the remote - starts a 15 s countdown in the middle of the picture:
-standby on the left, off on the right. Left and Right choose, OK or a second press carries the choice out,
-Back cancels ([h713-power](../tools/h713-power.md)). It starts on `default` in `/etc/h713/power.conf`
-(`poweroff` unless you change it); a long press always powers off.
-
-- **Off**, where crust takes it (the HY300PRO-G-EU and the HY310): about 0.3 W. The projector's key or the
-  remote's Power key wakes it into a fresh boot of about 30 s; a timer (RTC alarm) does not.
-- **Standby**, on images built with `--standby`: about 2.4 W. The remote's Power key, the projector's key or
-  an RTC alarm wakes it; the picture is back about 5 s later, with the mode and mute as they were.
-- Without crust, off is U-Boot's power-on gate: dark, about 4 W, waiting for the next press.
-
-`poweroff` over SSH does the same as off. `reboot` skips the gate and comes straight back up, which is why a
-remote reboot never leaves you with a device that needs a finger.
-
-The stock remote pairs over Bluetooth: hold Left+Right on it until the projector has it (`h713-remote-pair
-status` says so). It reconnects by itself at the first key press after a reboot or a wake; until the
-Bluetooth link is up, a few seconds, its keys arrive over IR, so Power and Home work from the first press
-(the air mouse only once Bluetooth is up). Measured on the HY300PRO-G-EU on 20.10.2026
-([doku/217](../../doku/217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md)) and on the HY310 on
-09.10.2026 (`doku/174`); the Bluetooth side is in [wifi.md](../subsystems/wifi.md#bluetooth).
-
-## 7. Keeping it up to date
-
-The root filesystem is an ordinary Debian 13 with sources configured but no package lists baked in, so
-`apt update && apt upgrade` works for Debian's own packages - over a network the device can reach, which
-by default it cannot: the shipped configuration is an access point, not a client. Set `mode=sta` in
-`/etc/h713/wifi.env` first.
-
-Everything *this project* ships - kernel, U-Boot, the `h713-*` tools, the firmware placed from your dump -
-is not packaged and does not come from apt. Updating those means writing a new image with the installer;
-your U-Boot settings (`h713_gate`, `h713_boot`) are carried over, your dump is reused, and
-`/etc/h713/wifi.env` is the one file worth copying off beforehand.
-
-## 8. When something is wrong
+## 9. When something is wrong
 
 ```bash
-journalctl -b            # this boot, everything
-journalctl -u 'h713-tv@*' -b
+journalctl -b
 dmesg | grep -iE 'h713|hy310|aic8800'
 ```
 
-For a bug report, the useful three are: the failing command with its output, `journalctl -b` around it,
-and the `.BUILD.txt` stamp of the image you installed (it names the patch series, the kernel tree and
-every component hash). Report it as an issue on this repository.
+For a bug report: the failing command with its output, `journalctl -b` around it, and the
+`.BUILD.txt` stamp of your image. The known problems of this release: [known issues](../known-issues.md).
 
-## 9. Know your way out
+## 10. Know your way out
 
-Two things are worth doing **once, now, while everything works**:
-
-```bash
-fw_printenv                    # your U-Boot environment, on the PC side of a rescue this matters
-```
-
-and keeping the dump you made during installation. It is the only copy of your device's own firmware.
-Recovery in one line: hold reset, plug in power, and the device is in FEL - the BROM cannot be
-overwritten, so a broken image is always repairable from the PC ([FLASHING.md](../../FLASHING.md)).
-
-## Where to go next
-
-- [ROADMAP.md](../../ROADMAP.md) - what does not work yet, honestly
-- [docs/known-issues.md](../known-issues.md) - what to expect and what to work around
-- [docs/subsystems/](../subsystems/) - how each part actually works
+Keep the dump you made during installation; it is the only copy of your device's own firmware.
+Recovery: hold reset, plug in power, and the device is in FEL. The BootROM cannot be overwritten, so a
+broken image is always repairable from the PC ([FLASHING.md](../../FLASHING.md)).

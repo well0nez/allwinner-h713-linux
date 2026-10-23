@@ -64,6 +64,15 @@ be held means no page: a page whose keys Kodi shares is worse than none.
 | OK | into the rows | switch: flip; choice: open its options; action: run it; corners: start; a slider judged on the picture: open its pill | take the option | next corner |
 | Back | close the page (exit 0: the launcher opens again) | back to the areas | cancel | done |
 
+The areas, rendered from the program on the host (1920x1080, the release's font):
+
+![White balance](../images/settings/white-balance.png)
+![Sound](../images/settings/sound.png)
+![Focus](../images/settings/focus.png)
+![Input](../images/settings/input.png)
+![Power](../images/settings/power.png)
+![Turn to wall as a pill over the picture](../images/settings/pill-turn-to-wall.png)
+
 **The pill** (a slider judged on the picture): the label, the track and the number over the real picture, the keys under it;
 Left/Right change the value, Up/Down go to the next such slider of the area (Brightness, Contrast, ...), OK or Back bring the
 opaque page back. Gamma and Colour temperature are sliders with **named stops**: the track has a dot at each stop, the pill names them under

@@ -34,10 +34,11 @@ thread cost as much CPU as the warp (11.10.2026): the kernel's own `rate_limit_u
 clock follow every burst, and - the larger part - schedutil asks for the **maximum** clock whenever a real-time
 task is runnable, and the GPU's interrupt handlers are real-time threads (SCHED_FIFO 50) that run four times a
 frame with the warp on: the clock swung 480 <-> 1296 MHz forty times a second whatever the rate limit.
-`h713-cpufreq.service` sets both once per boot - 20 ms, and the three `irq/*-panfrost` threads to SCHED_OTHER -
-after which the clock stays at 480 MHz under the warp (0.3-1.6 changes a second, `sugov:0` 0.1 %, 59.7 fps, no
-frame dropped; the table with all four combinations is in `userspace/h713-cpufreq/h713-cpufreq`). The kernel's
-own way would be `CONFIG_UCLAMP_TASK` with `sched_util_clamp_min_rt_default` (TODO 2.60). *Superseded 11.10.2026
+`h713-cpufreq.service` sets both once per boot - 20 ms, and `sched_util_clamp_min_rt_default = 0`, so that a real-time
+task asks for no minimum clock (the kernel has `CONFIG_UCLAMP_TASK`; without it the three `irq/*-panfrost` threads would
+go to SCHED_OTHER instead) - after which the clock stays at 480 MHz under the warp (0.3-1.6 changes a second, `sugov:0` 0.1 %, 59.7 fps, no
+frame dropped; the table with all four combinations is in [h713-cpufreq](tools/h713-cpufreq.md) - measured was the thread
+variant, the uclamp variant is the kernel's own way, TODO 2.60). *Superseded 11.10.2026
 (evening):* "`/etc/tmpfiles.d/h713-cpufreq.conf` sets 20 ms at boot" - it ran before the governor had its sysfs
 directory, so three boots in a row came up with 462 µs again.
 
@@ -75,7 +76,8 @@ and `STATUS.md`.
 
 Mali-G31, driven by the mainline Panfrost driver, with our own mesa (panfrost only) under `/usr/local`.
 Since `v0.95-beta` the keystone renders on it - `h713-warp` warps the HDMI picture into NV12 for the video
-plane, measured on the HY310 (`docs/guides/keystone.md`).
+plane, measured on the HY310 (`docs/guides/keystone.md`); since `v0.97-beta` Kodi, the desktop and the browser reach the
+wall through it as well. Clocks, import rules and measurements: [GPU](subsystems/gpu.md).
 
 ## Wi-Fi and Bluetooth
 
