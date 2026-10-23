@@ -692,8 +692,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       2.86 Kaltstart ohne Signal, Firefox-Caches über ein neues Abbild, "On start" mit der echten Fernbedienung; 2.91 N-2 (Power 3 s bei offenem
       Launcher -> Aus, nur mit Marco); 2.94 einmal mit "On start: HDMI input" ansehen. Nicht vor dem Release nötig; je eine Zeile Ergebnis hierher.
 - [ ] 2.142 **Heimnetz-Adressen und ein privater Begriff außerhalb des Journals** (Doku-Runde 23.10.2026, `arbeit/medien/doku-runde/LECKS.md` §5;
-      Marcos Entscheidung, Mythos hat Code nicht angefasst): `.githooks/pre-push` Z. 9 trägt den Mailserver-Begriff im Klartext in seiner Prüfregel -
-      die Begriffe gehören in die Liste außerhalb des Repos wie bei `sperr-scan.py` Regel 8, **vor dem Push entscheiden**; die U-Boot-Vorgaben
+      Marcos Entscheidung, Mythos hat Code nicht angefasst): ~~`.githooks/pre-push` Z. 9 (Mailserver-Begriff)~~ **kein Leck** (Korrektur Mythos/Aufsicht 23.10.2026: die Kennung ist der Hostname
+      von cstengers Server aus seiner übernommenen Historie, 22 Commits schon öffentlich, `doku/152` - bleibt in der Erlaubt-Liste); offen nur: die U-Boot-Vorgaben
       `serverip`/`nfsroot` 192.168.8.123 und .104 im Fork (`board/sunxi/hy310.env`) und damit in den Spiegel-Patches 0021/0023/0024/0025/0030/0033/0093
       und in `docs/uboot/environment.md`; `userspace/h713-pq/h713_pq/output.py` Z. 167/227 (Beispielbefehl); `userspace/h713-settings/tests/test_settings.py`
       Z. 307/1589 (Attrappe); acht Stellen in Messskripten und -protokollen unter `analyse/boot/`. Raus (Fork-Commit plus Spiegel, Platzhalter im Code;

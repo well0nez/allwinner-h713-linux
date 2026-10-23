@@ -106,7 +106,7 @@ HTTP Basic Auth, Passwort beim ersten Start (`/etc/h713/panel.env`, 0600), `--sh
   `~/.config/h713/sperrbegriffe` (**außerhalb des Repos**, 0600), Memory `git-identitaet-noreply`.
 - Ursache: die Adresse kam aus dem Sitzungskontext (Desktop gibt sie mir zur Erkennung mit). Nicht aus Memories.
 - Sonnet-Bericht `arbeit/mail-pruefung/BERICHT.md` (lokal; nennt die Adresse). Chris Stengers Gmail
-  (266 Commits) und `root@<geschwaerzt 23.10.2026: Mailserver-Adresse>` sind schon öffentlich - seine Sache bzw. Hostname.
+  (266 Commits) und `root@<geschwaerzt 23.10.2026: Hostname eines fremden Servers>` sind schon öffentlich - seine Sache bzw. Hostname.
 
 ### 2.10 Abschalt-Plopp (2.6 -> teils ✓, Rest 9.11)
 Gemessen mit dem ThinkPad-Mikro (`arbeit/edid-sweep-20261005/plopp/plopp1-4`): Plopp 1 beim Stream-Ende
