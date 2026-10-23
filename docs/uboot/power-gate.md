@@ -1,9 +1,10 @@
 # The power-on gate
 
-Plug the projector in and it waits: dark, red LED lit, until the power key on the projector is pressed - the gate polls
-that key alone (PL4), so the remote cannot start the box from here; it can only where crust holds the off state (below). U-Boot
-waits itself, 2.4-2.9 W (09.10.2026, `doku/181`) - below; that is what an image does since 22.10.2026, which runs the
-vendor's ARISC firmware and whose boot chain starts no crust ([arisc](../subsystems/arisc.md#crust-experimental)). Where
+Plug the projector in and it waits: dark, red LED lit, until the power key on the projector is pressed - or, since U-Boot
+`0102` (22.10.2026), the power key of either stock remote: the gate polls the key (PL4) and the IR receiver's pin (PL9) and
+decodes the remote's NEC frames itself ([below](#the-remote-in-the-gate)). U-Boot waits itself, 2.4-2.9 W (09.10.2026,
+`doku/181`, before the decoder) - that is what an image does since 22.10.2026, which runs the vendor's ARISC firmware and
+whose boot chain starts no crust ([arisc](../subsystems/arisc.md#crust-experimental)). Where
 the boot chain starts a crust that can power off (an image built with the standby), it waits in crust's off state
 instead, 0.3-0.6 W at the wall (FEL, HY300PRO-G-EU, `doku/191`), and the power supply hums there (TODO 2.42). That is how the device behaves with the stock firmware, and reproducing it is what this gate is
 for (measured 09.09.2026, `doku/103-plan-einschaltgate.md` §3 M5). Without it, our boot chain would start
@@ -44,6 +45,16 @@ Holding the key down through all of a cold boot (three seconds or more) skips th
 without touching the environment - a way in with no serial console and no saved `h713_gate=0`. the maintainer
 later judged it redundant for a user, since pressing the key at any point already starts the boot anyway,
 and left the code in rather than removing it (`doku/103-plan-einschaltgate.md` §5.1).
+
+## The remote in the gate
+
+Since U-Boot `0102` the gate loop also samples PL9, the IR receiver's input, and decodes NEC frames in software between its
+polls of the key: the power key of the stock remote (NEC address `0x02`, command `0x1d`) and of the HY300's stock remote
+(`0x00`, `0x14`) start the board exactly as the key does; every other code is ignored. No ARISC firmware is involved, so it
+works under the vendor's firmware, where crust's IR wake does not exist. Measured on 22.10.2026 over FEL on the
+HY300PRO-G-EU and on 22./23.10.2026 on the HY310's installed `v0.97-beta` image over the UART, both remotes (`doku/219` §3).
+Not measured: the gate's draw with the decoder polling (the 2.9 W above are from before it) and whether the supply stays
+silent with it. There is no environment switch for the decoder (`h713_gate_ir` was considered and not built).
 
 ## How a power-off gets here
 

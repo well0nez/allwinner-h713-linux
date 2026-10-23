@@ -27,8 +27,8 @@ doubled image. The only lever that works is making the firmware recompute.
 2. **Linux** binds `sun50i-h713-afbd`, which registers a KMS device (`card1`): one CRTC with `GAMMA_LUT`
    and `CTM`, one plane that scans out the HDMI capture ring, an `aspect` property for letter- and
    pillarboxing, and the two window properties the zoom is made of (below).
-3. **`h713-tv`** puts the capture ring on the plane, and the framebuffer console back when the signal
-   disappears.
+3. **`h713-tv`** puts the capture ring on the plane; when the signal disappears, `h713-osd`'s page "No signal on
+   HDMI" takes the wall (the console only on `h713-tv ctl off`, [h713-tv](../tools/h713-tv.md)).
 
 The panel timings live in the vendor tables, not in a device tree: `h713_project` selects the
 `ProjectID_0x*.TSE` group, and the artifacts come from the `hy310-boot` partition by name, so renumbering
@@ -36,9 +36,10 @@ partitions cannot break them.
 
 ## What the KMS device gives you
 
-Anything that can draw on DRM/KMS works - `modetest`, a compositor, mpv. The shipped image runs `h713-tv`
-instead of a desktop because the projector's job here is the HDMI input, but nothing prevents a
-compositor from taking `card1`.
+Anything that can draw on DRM/KMS works - `modetest`, a compositor, mpv. In the shipped image `h713-tv` is the one
+DRM master; Kodi, the desktop and the browser are Wayland clients of `h713-warp`, which draws their frames through
+the keystone and hands them to `h713-tv` for the video plane ([h713-warp](../tools/h713-warp.md),
+[h713-desktop](../tools/h713-desktop.md)), and `h713-osd` draws the overlays and pages on the primary plane (below).
 
 Gamma and white balance are ordinary CRTC properties, computed from the vendor picture tables by
 [`h713-pq`](../tools/h713-pq.md); they are not baked into the driver.
@@ -114,10 +115,11 @@ The AFBD block has two channels, and only one of them reads the capture ring. Th
 path described above and nothing about it changed. The **primary** plane scans an ordinary DRM framebuffer out
 of DRAM - normally the framebuffer console - and it takes an imported dma-buf as readily as its own. The
 framebuffer has to be the mode's size and sit at the CRTC's origin, which the simple-pipe helper enforces
-without any check of ours; there is no scaling and no positioning on this plane. That was where the keystone lived until 23.09.2026; since then the warped frame is NV12 on the **video** plane with
-`hdmi-ring` 0, because that is the channel the firmware's nine picture controls act on. That is where the keystone
-lives ([h713-warp](../tools/h713-warp.md)): the GPU reads the capture, draws the warped frame into a target
-buffer and `h713-tv` commits that buffer on the primary plane.
+without any check of ours; there is no scaling and no positioning on this plane. The keystone lived here until
+23.09.2026; since then the warped frame is NV12 on the **video** plane with `hdmi-ring` 0, because that is the
+channel the firmware's nine picture controls act on ([h713-warp](../tools/h713-warp.md): the GPU reads the capture,
+draws the warped frame into a target buffer, and `h713-tv` commits that buffer on the video plane). The measurements
+that follow were made on the primary plane, before the move, and are what showed that the GPU path works at all.
 
 **Measured on the HY310 on 22.09.2026** (working journal `keystone-20260922`, stages S3 and S4), before a
 line of the daemon existed: two `XRGB8888` dumb buffers of `card1`, handed to the render node through PRIME,
@@ -151,7 +153,10 @@ boot loader leaves at `0x06`, alpha from the blue byte), XRGB8888 opaque; at `zp
 before. The plane block needs the optional DT window `osd` (`0x0524c000`); without it an ARGB primary over the video is
 refused. Measured on the HY310: 59.3 frames a second with the overlay over the warped picture, no frame dropped; an overlay
 drawn with the warp's homography lies on the keystoned picture. The kernel console (fbcon) cannot be distorted and stays
-the plain emergency console; overlays and, later, a desktop draw pre-distorted on this channel (TODO 2.43-2.45).
+the plain emergency console; since 11.10.2026 `h713-osd` draws the overlays and the opaque pages (launcher, settings,
+"No signal") on this channel at `zpos` 2, pre-distorted with the warp's own matrix ([h713-osd](../tools/h713-osd.md),
+`libh713geom`). Kodi, the desktop and the browser do not use it: they are Wayland clients of `h713-warp` and go
+through the video plane.
 
 **What imports.** 52 dma-buf formats are offered, and the ring's `NV16` layout imports both ways: as a single
 external image, and as two planes, `R8` plus `GR88`. Both sampled a known grey and a saturated red back within
@@ -162,8 +167,9 @@ lowering table.
 ## Standby: what the display does around a sleep
 
 A standby to RAM ([standby.md](standby.md)) reaches the display chain at the scanout, at the clocks and at the
-firmware itself. Measured on the HY310 in R2 test images (09.10.2026) except where noted; a release image does
-not offer the standby yet.
+firmware itself. Measured on the HY310 in R2 test images (09.10.2026) except where noted. The release image runs the vendor
+ARISC firmware and offers no standby (the owner's decision of 22.10.2026, [arisc](arisc.md)); this section
+describes an image built with `--standby`, which runs crust.
 
 **The scanout stops first.** `afbd`'s suspend acts only for a standby to RAM; on s2idle the DRAM keeps running
 and the path stays as it is (kernel `0210`). It runs the DRM suspend helper, stops the video channel, switches

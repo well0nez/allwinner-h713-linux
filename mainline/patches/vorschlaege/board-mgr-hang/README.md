@@ -1,5 +1,8 @@
 # Warum `hy310-board-mgr` das Gerät aufhängt — Befund und Fix
 
+**Stand 23.10.2026:** erledigt - der Fix ist als Kernel-Patches `0143`/`0144` in der Serie (`docs/kernel-patches.md`,
+Abschnitt 9; `docs/subsystems/board-mgr.md`, "A generic bug found here first"). Der Rest dieser Seite ist der Befund.
+
 Unteragent, 11.09.2026. **Kein Board angefasst** (kein `ssh`, kein `scp`, kein UART, kein
 Stromzyklus). Geschrieben wurde nur in dieses Verzeichnis; `mainline/patches/kernel/`,
 `series` und die Referenzbäume unter `mainline/build/` sind unberührt. Gebaut wurde

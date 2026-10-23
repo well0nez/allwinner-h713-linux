@@ -145,8 +145,10 @@ controller and never reaches Linux (`doku/84`, static RE, K1-K3). The driver ins
 plane's own vsync as its clock: on every frame it reads the same flip-pointer pair the plane already
 reads, delivered by the display driver over a shared notifier instead of mapping the register a second
 time. Buffer *i* **is** slot *i* - `VIDIOC_REQBUFS` always hands back exactly three buffers, backed by
-custom `vb2_mem_ops` and mapped write-combined, and there is no copy anywhere in the path. `VIDIOC_EXPBUF`
-does not exist yet; nothing needs the ring as a dma-buf today.
+custom `vb2_mem_ops` and mapped write-combined, and there is no copy anywhere in the path. Since 22.09.2026
+(kernel `0136y`) `VIDIOC_EXPBUF` hands a slot's plane out as a dma-buf - a one-entry scatterlist over
+`dma_map_resource`, since the ring is a no-map reservation with no pages behind it - which is how the keystone
+warp reads the capture on the GPU ([h713-warp](../tools/h713-warp.md)).
 
 ## Standby, and the restart of the display firmware
 

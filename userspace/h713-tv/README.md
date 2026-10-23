@@ -1,4 +1,4 @@
-# `h713-tv` - the HDMI picture on the video plane, the console on signal loss, control from userspace
+# `h713-tv` - the HDMI picture on the video plane, the page without a signal on signal loss, control from userspace
 
 Package **F** out of [doku/78-nachtplan-hdmi-switch.md](../../doku/78-nachtplan-hdmi-switch.md), appendix A.4.
 A small program plus a systemd unit: while a signal is present on the HDMI input, the projector shows the
@@ -16,6 +16,11 @@ lock for non-panel resolutions and the test switch `H713_TV_SKALIERTEST` are gon
 (1024x768 with 4:3 bars, 1440x900, 1280x1024 stretched); the firmware's table does not know the 120 Hz
 variants and 1600x900 -> console.
 The acceptance procedure is in [doku/nachtlog/F-korrektur.md](../../doku/nachtlog/F-korrektur.md).
+
+**This is the developer's record of the program, written as it grew (September and October 2026); what the program
+does today, measured, is [docs/tools/h713-tv.md](../../docs/tools/h713-tv.md).** Where a sentence here says "the
+console" on signal loss, the image since 17.10.2026 shows h713-osd's page "No signal on HDMI" instead (6h); the
+volume follows the DSP's stock curve since `v0.96-beta`, not the codec's steps (6b records the decision of 08.09.).
 ---
 
 ## 1. What the program does - and what it explicitly does not
@@ -78,7 +83,8 @@ installed in the board root (`gst-launch-1.0`, `libgstvideo4linux2.so`, `libgstk
 only `modetest` is missing). The reasons are about substance:
 
 1. **A GStreamer chain would have to copy every frame.** 0094 hands out the three ring slots as
-   `VB2_MEMORY_MMAP` and has **no** `VIDIOC_EXPBUF` (doku/88 §4 and §8 item 2). Without a dma-buf `kmssink`
+   `VB2_MEMORY_MMAP` and had **no** `VIDIOC_EXPBUF` (doku/88 §4 and §8 item 2; since kernel `0136y` it has one, which
+   `h713-warp` uses - the reasons below stood before it). Without a dma-buf `kmssink`
    imports nothing but copies into a dumb buffer of its own: 4 MiB per frame, 60 times a second, about
    250 MB/s - for data the plane can fetch by itself. The assignment says explicitly: no copying.
 2. **The plane cannot be driven properly that way at all.** Running from the capture ring hangs on the plane
@@ -136,8 +142,8 @@ This line cost an hour in the night of 07.09., which is why it is here:
 The stimulus of choice is a gamma jump at the player:
 
 ```bash
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:0.25:0.25'  # stimulus
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:1:1'        # back
+ssh user@laptop 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:0.25:0.25'  # stimulus
+ssh user@laptop 'DISPLAY=:0 xrandr --output HDMI-2 --gamma 1:1:1'        # back
 ```
 
 The order of magnitude, so that one knows what a hit is: the same stimulus changed **38.74 %** of the pixels
@@ -157,7 +163,7 @@ content.
 
 **Dependencies:** `libdrm-dev` (KMS) and, since package E, `libasound2-dev` (the ALSA control API for the
 audio, Debian package `libasound2-dev`; at run time `libasound2`, which is there anyway). Both belong into
-the board root - `ssh root@192.168.8.141 apt install libasound2-dev` - because the cross-build takes headers
+the board root - `ssh root@hy310 apt install libasound2-dev` - because the cross-build takes headers
 and linker names from there as well. The Makefile asks `pkg-config --cflags --libs libdrm alsa` (native) and
 links `-ldrm -lasound` (cross).
 
@@ -167,7 +173,7 @@ way:
 ```bash
 # from the workstation (the main session does this):
 cp userspace/h713-tv/main.c userspace/h713-tv/color.c userspace/h713-tv/color.h userspace/h713-tv/gamma.c userspace/h713-tv/gamma.h userspace/h713-tv/Makefile /srv/h713-rootfs/root/h713-tv/
-ssh root@192.168.8.141 'make -C /root/h713-tv'
+ssh root@hy310 'make -C /root/h713-tv'
 ```
 
 **Cross on the workstation**, against the board root as the sysroot (reading only):
@@ -189,11 +195,11 @@ sudo make -C userspace/h713-tv install-cross DESTDIR=/srv/h713-rootfs
 # puts down: /usr/local/sbin/h713-tv   (arm64, from `make cross`)
 #            /etc/systemd/system/h713-tv@.service   (template; the old h713-tv.service is removed)
 #            /etc/udev/rules.d/99-h713-tv.rules
-ssh root@192.168.8.141 'systemctl daemon-reload; udevadm control --reload'
+ssh root@hy310 'systemctl daemon-reload; udevadm control --reload'
 ```
 
 `/srv/h713-rootfs` belongs to root, hence the `sudo`. Without `sudo` it works through the board, which
-writes its own NFS root as root anyway - three `scp` to `root@192.168.8.141`, see
+writes its own NFS root as root anyway - three `scp` to `root@hy310`, see
 [F-startklar.md](../../doku/nachtlog/F-startklar.md) §5 step 0.
 
 Built on the board itself the target is still `make install`.
@@ -840,8 +846,9 @@ What the lines rest on. HDCP 2.2 is a state machine inside the display firmware;
 carries the messages and the session. The firmware clears one bit of the receiver when a source starts an
 exchange (AKE_Init) and sets it when the last message of a successful exchange has been handled - that bit
 is `authenticated`. HDCP 1.4 is a hardware block whose pass arrives as an interrupt the firmware clears at
-once, so a 1.4 pass leaves nothing to read; today no 1.4 key is loaded anyway (`key-1.4: not loaded`,
-doku/112), and a source that insists on 1.4 gets no picture. The `firmware:` line is the newest line of the
+once, so a 1.4 pass leaves nothing to read; until 05.10.2026 no 1.4 key was loaded (`key-1.4: not loaded`,
+doku/112) and a source that insisted on 1.4 got no picture; since then the boot loader puts the device's own key set into
+the sink and the line reads `key-1.4: loaded` ([docs/subsystems/hdcp.md](../../docs/subsystems/hdcp.md)). The `firmware:` line is the newest line of the
 firmware's log ring that mentions HDCP, read in place through cpu_comm; the firmware logs its 2.2 success
 (the `HDCP Process cost tick` line, written when the source's SKE_Send_Eks message is handled - the firmware
 never prints the function name, doku/187) and its failures at its error level, so they show at the default level, while a 1.4 pass is an INFO line
@@ -928,6 +935,6 @@ fail.
   the test build, what was wrong about the 3 s constant
 * [doku/nachtlog/F-startklar.md](../../doku/nachtlog/F-startklar.md) - the test build and the corrected
   assumptions of the early 07.09.; §2.2, §2.4 and §5 are superseded by `F-korrektur.md`
-* `analyse/kms/hdmi_plane_test.c` - the same by hand, for a single attempt
-* `legacy/userspace/hy310-hdmird/` - the predecessor out of the legacy world (read, not ported: its job, the
-  firmware init, is done by the drivers 0091/0092/0094 now)
+* `analyse/kms/hdmi_plane_test.c` - the same by hand, for a single attempt (no longer in the tree)
+* `legacy/userspace/hy310-hdmird/` - the predecessor out of the legacy world, no longer in the tree (read, not ported:
+  its job, the firmware init, is done by the drivers 0091/0092/0094 now)

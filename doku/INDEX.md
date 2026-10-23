@@ -17,17 +17,17 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `ROADMAP.md` | `doku/134`, `doku/211`, `doku/213`, `doku/215`, `doku/218` |
 | `STATUS.md` | `doku/114`, `doku/121`, `doku/134`, `doku/152`, `doku/157`, `doku/165`, `doku/174`, `doku/180`, `doku/181`, `doku/184`, `doku/200`, `doku/201`, `doku/203`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/217`, `doku/218`, `doku/219`, `doku/60`, `doku/94` |
 | `boards/README.md` | `doku/121` |
-| `boards/hy200-qz713df-a1/README.md` | `doku/136`, `doku/182`, `doku/184`, `doku/185` |
+| `boards/hy200-qz713df-a1/README.md` | `doku/136`, `doku/182`, `doku/184`, `doku/185`, `doku/219` |
 | `boards/hy300-t08/README.md` | `doku/121` |
-| `boards/hy310/README.md` | `doku/10`, `doku/121` |
+| `boards/hy310/README.md` | `doku/10`, `doku/121`, `doku/219` |
 | `docs/architecture.md` | `doku/103`, `doku/163`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/177`, `doku/181`, `doku/192`, `doku/193`, `doku/211`, `doku/82`, `doku/83`, `doku/96` |
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
-| `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/188`, `doku/190`, `doku/70`, `doku/72`, `doku/94` |
-| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/210`, `doku/212`, `doku/213`, `doku/80` |
+| `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/185`, `doku/188`, `doku/190`, `doku/213`, `doku/218`, `doku/70`, `doku/72`, `doku/94` |
+| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/200`, `doku/210`, `doku/212`, `doku/213`, `doku/80` |
 | `docs/known-issues.md` | `doku/147`, `doku/156`, `doku/180`, `doku/200`, `doku/201`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215`, `doku/218`, `doku/219`, `doku/60` |
 | `docs/services.md` | `doku/107`, `doku/170`, `doku/213` |
-| `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/181`, `doku/184`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
+| `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/181`, `doku/184`, `doku/219`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/206`, `doku/nachtlog/S21-re-audif-zugang` |
 | `docs/subsystems/board-mgr.md` | `doku/00`, `doku/171`, `doku/60` |
 | `docs/subsystems/cpu-comm.md` | `doku/165`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/182`, `doku/203`, `doku/206`, `doku/210`, `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/85`, `doku/96` |
@@ -39,10 +39,10 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/hdmi-in.md` | `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/175`, `doku/176`, `doku/197`, `doku/198`, `doku/200`, `doku/206`, `doku/207`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/133`, `doku/138`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/179`, `doku/182`, `doku/184`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
-| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181`, `doku/184`, `doku/185`, `doku/188`, `doku/190`, `doku/203`, `doku/213` |
+| `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181`, `doku/184`, `doku/185`, `doku/188`, `doku/190`, `doku/203`, `doku/213`, `doku/219` |
 | `docs/subsystems/video.md` | `doku/212`, `doku/62`, `doku/64`, `doku/76`, `doku/78` |
 | `docs/subsystems/wifi.md` | `doku/134`, `doku/193`, `doku/195`, `doku/60` |
-| `docs/tools/h713-arisc.md` | `doku/181` |
+| `docs/tools/h713-arisc.md` | `doku/181`, `doku/219` |
 | `docs/tools/h713-autofocus.md` | `doku/134` |
 | `docs/tools/h713-cam.md` | `doku/61`, `doku/94` |
 | `docs/tools/h713-desktop.md` | `doku/212`, `doku/213` |
@@ -54,7 +54,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-mips-restart.md` | `doku/172`, `doku/173`, `doku/174`, `doku/177` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
-| `docs/tools/h713-osd.md` | `doku/212`, `doku/213`, `doku/214` |
+| `docs/tools/h713-osd.md` | `doku/212`, `doku/213`, `doku/214`, `doku/219` |
 | `docs/tools/h713-power.md` | `doku/165`, `doku/167`, `doku/172`, `doku/174`, `doku/188`, `doku/190`, `doku/212` |
 | `docs/tools/h713-pq.md` | `doku/81`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation` |
 | `docs/tools/h713-probe.md` | `doku/120` |
@@ -65,7 +65,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/uboot/README.md` | `doku/10`, `doku/109`, `doku/163`, `doku/170`, `doku/30` |
 | `docs/uboot/commands.md` | `doku/108`, `doku/67`, `doku/70`, `doku/98` |
 | `docs/uboot/environment.md` | `doku/105`, `doku/109`, `doku/30`, `doku/nachtlog/S41-r1-installer`, `doku/nachtlog/S48-fel-aus-uboot` |
-| `docs/uboot/power-gate.md` | `doku/103`, `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/174`, `doku/179`, `doku/181`, `doku/188`, `doku/190`, `doku/191` |
+| `docs/uboot/power-gate.md` | `doku/103`, `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/174`, `doku/179`, `doku/181`, `doku/188`, `doku/190`, `doku/191`, `doku/219` |
 | `docs/usage/first-hour.md` | `doku/174`, `doku/217` |
 | `installer/h713/RENAMES.md` | `doku/121` |
 | `installer/h713/__init__.py` | `doku/121` |
@@ -133,7 +133,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `rootfs/packages-media.txt` | `doku/107` |
 | `rootfs/packages.txt` | `doku/107`, `doku/108` |
 | `rootfs/tests/h713-wifi-check.sh` | `doku/60` |
-| `userspace/README.md` | `doku/50`, `doku/77` |
+| `userspace/README.md` | `doku/134`, `doku/50`, `doku/77` |
 | `userspace/h713-cam/README.md` | `doku/94` |
 | `userspace/h713-focus/_entwurf-agent/README-agent.md` | `doku/113`, `doku/60` |
 | `userspace/h713-focus/_entwurf-agent/h713_focus/geraet.py` | `doku/60` |
@@ -148,7 +148,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `userspace/h713-warp/capture.c` | `doku/86` |
 | `userspace/h713-warp/main.c` | `doku/200` |
 | `userspace/h713-warp/wayland.c` | `doku/211` |
-| `userspace/libh713osd/README.md` | `doku/192` |
+| `userspace/libh713osd/README.md` | `doku/192`, `doku/193` |
 
 ## 2 Alle Eintraege
 
@@ -192,7 +192,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`131-nacht-20260923.md`](131-nacht-20260923.md) | Analyse | 2026-09-23 | 131 - Nacht 22./23.09.2026: Tearing gemessen und gelöst, Farben unter dem Warp, Autofokus-Kante | - |
 | [`132-plan-fable-pakete-20260926.md`](132-plan-fable-pakete-20260926.md) | Plan | 2026-09-26 | Plan 132 - Fable-Pakete ohne Geraet (26.09.2026) | - |
 | [`133-handoff-20260927.md`](133-handoff-20260927.md) | Handoff | 2026-09-27 | Handoff 27.09.2026, 01:30 - Stand der Fable-Welle, Geraet, main | 1 |
-| [`134-verifikationsplan-20261002.md`](134-verifikationsplan-20261002.md) | Plan | 2026-10-02 | Plan 134 - Verifikation der Fable-Welle am Geraet (02.10.2026) | 8 |
+| [`134-verifikationsplan-20261002.md`](134-verifikationsplan-20261002.md) | Plan | 2026-10-02 | Plan 134 - Verifikation der Fable-Welle am Geraet (02.10.2026) | 9 |
 | [`135-handoff-20261002.md`](135-handoff-20261002.md) | Handoff | 2026-10-02 | Handoff 135 - Verifikation der Fable-Welle am Geraet (02./03.10.2026, Stand 00:15) | - |
 | [`136-handoff-hy300pro-g-eu-20261003.md`](136-handoff-hy300pro-g-eu-20261003.md) | Handoff | 2026-10-03 | 136 - Handoff HY300PRO-G-EU (Marcos eigener HY300 Pro), Stand 03.10.2026 ~01:30 | 2 |
 | [`137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md`](137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md) | Handoff | 2026-10-03 | 137 – Handoff: HY300PRO-G-EU, Bildfehler durch falsche LVDS-Farbtiefe | - |
@@ -243,7 +243,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`](182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md) | Analyse | 2026-10-10 | 182 - HY300PRO-G-EU: crust läuft, und der schwarze MIPS-Reload ist das Panel - es braucht einen Stromzyklus (09./10.10.2026, 21:00-02:00) | 4 |
 | [`183-handoff-20261010-nachts.md`](183-handoff-20261010-nachts.md) | Handoff | 2026-10-10 | 183 - Handoff 10.10.2026 nachts: Stand und Plan (HY300-Tests mit geucrust2 stehen an) | - |
 | [`184-hy300pro-g-eu-geucrust2-testreihe-20261010.md`](184-hy300pro-g-eu-geucrust2-testreihe-20261010.md) | Analyse | 2026-10-10 | 184 - HY300PRO-G-EU mit geucrust2: alles, was am HY310 bestätigt ist, bis auf die Standby-Leistung (10.10.2026, 01:00-02:30) | 7 |
-| [`185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md`](185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md) | Analyse | 2026-10-10 | 185 - HY300PRO-G-EU: Lüfter und Lampe im Standby aus - PB5 gehört dem Board-Manager (10.10.2026, 02:30-02:50) | 3 |
+| [`185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md`](185-hy300pro-g-eu-luefter-im-standby-pb5-20261010.md) | Analyse | 2026-10-10 | 185 - HY300PRO-G-EU: Lüfter und Lampe im Standby aus - PB5 gehört dem Board-Manager (10.10.2026, 02:30-02:50) | 4 |
 | [`186-handoff-20261010-frueh.md`](186-handoff-20261010-frueh.md) | Handoff | 2026-10-10 | 186 - Handoff 10.10.2026 früh: der HY300PRO-G-EU auf dem Stand des HY310, alles in `main`, nächste Schritte | - |
 | [`187-offline-re-a-b-c-ausgewertet-20261010.md`](187-offline-re-a-b-c-ausgewertet-20261010.md) | Analyse | 2026-10-10 | 187 - Offline-RE A, B, C ausgewertet: Stock-"Aus" über PL6, TVCAP bleibt im Standby an, die SKE-Zeile ist die cost-tick-Zeile (10.10.2026) | 2 |
 | [`188-aus-ueber-crust-0-3-watt-20261010.md`](188-aus-ueber-crust-0-3-watt-20261010.md) | Analyse | 2026-10-10 | 188 - "Aus" über crust: die Schienen aus (PL6), 0,3 W wie Stock, Timer, Fernbedienung und Taste wecken (10.10.2026) | 5 |
@@ -251,7 +251,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`190-aus-ueber-crust-am-hy310-20261010.md`](190-aus-ueber-crust-am-hy310-20261010.md) | Analyse | 2026-10-10 | 190 - "Aus" über crust am HY310 gemessen: Selbstwecken, Power-Taste und IR-Fernbedienung (10.10.2026) | 4 |
 | [`191-kaltstart-gate-ueber-crust-20261010.md`](191-kaltstart-gate-ueber-crust-20261010.md) | Analyse | 2026-10-10 | 191 - Kaltstart-Gate über crust: nach dem Einstecken wartet crust statt U-Boot, 0,3-0,6 W, die Fernbedienung weckt (10.10.2026) | 1 |
 | [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 4 |
-| [`193-einblendungen-tasten-und-h713-osd-20261011.md`](193-einblendungen-tasten-und-h713-osd-20261011.md) | Analyse | 2026-10-11 | 193 - Einblendungen über dem Bild: die Tasten per IR und Bluetooth, h713-osd vorverzerrt über dem Warp (11.10.2026) | 3 |
+| [`193-einblendungen-tasten-und-h713-osd-20261011.md`](193-einblendungen-tasten-und-h713-osd-20261011.md) | Analyse | 2026-10-11 | 193 - Einblendungen über dem Bild: die Tasten per IR und Bluetooth, h713-osd vorverzerrt über dem Warp (11.10.2026) | 4 |
 | [`194-handoff-20261011-frueh.md`](194-handoff-20261011-frueh.md) | Handoff | 2026-10-11 | 194 - Handoff 11.10.2026 früh: Fernbedienung und Einblendungen sind in `main` (nicht gepusht); als Nächstes dieselben Prüfstufen am HY300PRO-G-EU | - |
 | [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 3 |
 | [`196-nachtarbeit-kleinkram-und-warp-20261011.md`](196-nachtarbeit-kleinkram-und-warp-20261011.md) | Analyse | 2026-10-11 | 196 - Nachtarbeit 11.10.2026: Kleinkram (B) und der Warp mit dem CPU-Regler (A) | - |
@@ -259,7 +259,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`198-ringpuffer-und-edid-panel-zuerst-20261011.md`](198-ringpuffer-und-edid-panel-zuerst-20261011.md) | Analyse | 2026-10-11 | 198 - Der Dreier-Ring der Aufnahme, und warum die EDID jetzt das Panel zuerst nennt (11.10.2026, mittags) | 3 |
 | [`199-panel-kopplung-swpll-20261011.md`](199-panel-kopplung-swpll-20261011.md) | Analyse | 2026-10-11 | 199 - Die Panel-Kopplung der Firmware läuft: Frequenz ja, Phase zufällig (11.10.2026, nachmittags) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
-| [`200-ringplatz-aus-dem-schreibindex-20261011.md`](200-ringplatz-aus-dem-schreibindex-20261011.md) | Analyse | 2026-10-11 | 200 - Der Ringplatz kommt aus dem Schreibindex der Aufnahme, nicht aus dem Firmware-Zeiger (11.10.2026, nachmittags) | 6 |
+| [`200-ringplatz-aus-dem-schreibindex-20261011.md`](200-ringplatz-aus-dem-schreibindex-20261011.md) | Analyse | 2026-10-11 | 200 - Der Ringplatz kommt aus dem Schreibindex der Aufnahme, nicht aus dem Firmware-Zeiger (11.10.2026, nachmittags) | 7 |
 | [`201-warp-zeichnen-gpu-regler-20261011.md`](201-warp-zeichnen-gpu-regler-20261011.md) | Analyse | 2026-10-11 | 201 - Der Warp: GPU-Zeit gedrittelt, CPU-Takt ruhig, kein Bild Latenz mehr (11.10.2026, abends) | 4 |
 | [`202-ausschalten-kernel-abend-warmstart-20261012.md`](202-ausschalten-kernel-abend-warmstart-20261012.md) | Analyse | 2026-10-12 | 202 - Ausschalt-Einblendung, Abendkernel (UCLAMP, BT-Flusssteuerung), Maus, und zwei dunkle Starts (11./12.10.2026, nachts) | - |
 | [`203-standby-und-warmstart-behoben-20261012.md`](203-standby-und-warmstart-behoben-20261012.md) | Analyse | 2026-10-12 | 203 - Standby und Warmstart am G-EU behoben: afbd liest die Aufnahme nicht zu früh, die Sperren wie die Firmware (12.10.2026) | 3 |
@@ -272,13 +272,13 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md`](210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md) | Analyse | 2026-10-13 | 210 - Entflechtung des Subtrees: cstengers Dateien ohne Lizenz sind aus dem Baum, was sie ersetzt (13.10.2026) | 6 |
 | [`211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md`](211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md) | Protokoll | 2026-10-15 | 211 - Das Nebenprojekt Medien: Dekoder, VA-API-Treiber, mesa, Kodi und der Wayland-Server im Warp; die Messungen am HY310 (13. bis 15.10.2026) | 7 |
 | [`212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md`](212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md) | Protokoll | 2026-10-16 | 212 - Das Nebenprojekt Medien, zweiter Teil: Launcher, Einstellungsseite, Desktop und Browser, Kodi als Nutzer, die VE mit 600 MHz, der VA-Treiber `0015` bis `0017`, der Endbau (15. und 16.10.2026) | 14 |
-| [`213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md`](213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md) | Protokoll | 2026-10-16 | 213 - Das Nebenprojekt Medien, dritter Teil: die Bildweiche, die Bedienung beim Start, die RTC am 24-MHz-Quarz (Patch `0320`), Fokus und Bluetooth, das Licht des HY310 (16. und 17.10.2026) | 12 |
+| [`213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md`](213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md) | Protokoll | 2026-10-16 | 213 - Das Nebenprojekt Medien, dritter Teil: die Bildweiche, die Bedienung beim Start, die RTC am 24-MHz-Quarz (Patch `0320`), Fokus und Bluetooth, das Licht des HY310 (16. und 17.10.2026) | 13 |
 | [`214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md`](214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md) | Protokoll | 2026-10-17 | 214 - Das Nebenprojekt Medien: Bluetooth nach dem Neustart, der Launcher beim Start, der Warp übernimmt das Signal sofort (17.10.2026) | 5 |
 | [`215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md`](215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md) | Protokoll | 2026-10-17 | 215 - Das Nebenprojekt Medien: das Bedienmodell - Rückwege, Pause unter Seiten, HDMI als Modus, Start ohne geraden Ring, EDID ohne Deep Colour, Seite ohne Signal (17.10.2026) | 3 |
 | [`216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`](216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md) | Protokoll | 2026-10-20 | 216 Lizenzen: die offenen Teile von TODO 7.20 (a, b, c, d, e, g) - Protokoll | 1 |
 | [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 2 |
-| [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | 4 |
-| [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | 4 |
+| [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | 5 |
+| [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | 11 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |

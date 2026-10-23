@@ -311,6 +311,9 @@ that means unbinding it around the restart.
 
 ## Parking the MIPS for the standby
 
+The release image offers no standby ([standby](standby.md)); this and the next two sections describe an image
+built with `--standby`.
+
 The MIPS cannot go through a DRAM self-refresh - left running, the box stops shortly after the wake
 (`doku/165` §2) - and the vendor parks it before every standby (`doku/171` §2). So `cpu_comm` parks
 it in `suspend_late`, **for suspend to RAM only, never s2idle** (`0208`, `0210`). The owner of the

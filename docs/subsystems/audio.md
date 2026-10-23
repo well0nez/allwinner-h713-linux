@@ -2,7 +2,8 @@
 
 Sound from an HDMI source reaches the projector's speaker without a vendor daemon in the way: a small
 on-chip DSP that the vendor stack used to drive from userspace is now brought up and fed straight from
-the kernel. A standby switches the DSP's power off; the last sections say how it is rebuilt.
+the kernel. A standby - which only an image built with `--standby` offers; the release runs the vendor ARISC firmware
+without one - switches the DSP's power off; the last sections say how it is rebuilt.
 
 ## The path
 

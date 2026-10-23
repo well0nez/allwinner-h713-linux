@@ -1,7 +1,7 @@
 # Board manager: fan and temperature
 
 `hy310-board-mgr` reports the fan speed through Linux `hwmon`; on the HY310 it also owns the fan's power
-rail, PB5, across a standby (below). The fan itself is a plain 3-wire on/off load - red +V, black GND,
+rail, PB5, across a standby (below; a standby exists only in an image built with `--standby`). The fan itself is a plain 3-wire on/off load - red +V, black GND,
 yellow tachometer - established on the bench (patch `0030`): there is no PWM on this board, so `fan1_input`
 is all there is, no speed control.
 

@@ -11,7 +11,7 @@ firmware exists here; everything below comes from what he posted.
 | Status | **partial** - in test by its owner, no green run |
 | Verified by | nobody |
 | Profile | `installer/h713/profiles/hy300_pro.py` |
-| Image | **TEST images** for its owner only (`--test-image`): `hy300-pro-test9` (25.09.) is the last; `test10` follows after the v0.96-beta release. No release image until a green report |
+| Image | **TEST images** for its owner only (`--test-image`): `hy300-pro-test9` (25.09.) is the last full one; `test10` from `main` is still to build (`TODO.md` 4.1). On 22.10.2026 he got a retrofit set, `test11` (`h713-ir-addon`): the IR pin applied again after the vendor ARISC firmware's start (kernel `0328`) and his remote's keymap (`0329`), checked on the HY300PRO-G-EU first; his report is outstanding (`TODO.md` 2.134). No release image until a green report |
 | Kernel DTB | `sun50i-h713-hy300-pro` (patch 0161): `sun50i-h713-hy310.dts` included under this board's own name (0181), plus the lamp's PWM words (0166a), no pwm-backlight (0161a), its display firmware's elog addresses (0161b) and its own focus motor tables (0182) |
 | U-Boot base | `hy300_pro_defconfig` (his DRAM block at 636 MHz, U-Boot tree `sun50i-h713-hy300-pro`) |
 | DRAM | DDR3 (type 3), **636 MHz**, 1 GiB - the 24 boot0 words of his probe run of 2026-09-14 (`uboot.config`) |
@@ -55,7 +55,7 @@ manager's fan0 without a PWM, in every boot of his since test3. A second fault s
 U-Boot ran **project 0x30** ("panel 1920x1080 dual-port", `ProjectID_0x0030.TSE`, the boot logo refused)
 where test8 ran 0x34 - the environment's `h713_project` was the image default, not his board's.
 
-## What test10 must contain
+## What test10 must contain (`TODO.md` 4.1, still to build)
 
 - kernel **0168** (the words by address) and **0182** (his motor tables);
 - U-Boot `2de0cc8` - LVDS 8 bit for project 0x34; his own LogoRegData record says 8 bit (`05800000 =

@@ -106,7 +106,7 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 Rows of hardware the board does not have (`h713-features status`: camera, accelerometer, focus motor) are hidden, not
 greyed out. So are Gamma and Colour temperature where `ctl get gamma` says `is not available` (a board whose curves h713-tv could not read; the two go
 together), and the White balance and Colour rows where `ctl wb` says `[not available: ...]` (another display firmware, or no
-`/dev/mem`): the area then shows one line, "Not available". There are nine areas since 18.10.2026; the left column keeps the pitch
+`/dev/mem`): the area then shows one line, "Not available". There were nine areas from 18.10.2026 and eight since 20.10.2026 (Colour left out); the left column keeps the pitch
 of the rows (94 design pixels) and the key hint at the foot stands under the note, so that the last area's pill stays clear of it.
 Picture has nine rows with Gamma: above eight rows the pitch of the rows is 82 design pixels (73 at ten, the page's limit) and the lit pill a little lower,
 so that the last row still clears the note; a page of up to eight rows is drawn exactly as before (a test compares nine areas, 234 states, picture for picture with the

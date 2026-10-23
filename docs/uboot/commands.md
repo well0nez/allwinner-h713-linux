@@ -158,7 +158,7 @@ fields patched of which 12 are guarded by the record mask.
 ## h713_i2c - bit-banged I2C bus scan (diagnostic)
 
 Scans TWI1's pins (PH2/PH3 by default) by bit-banging rather than bringing up a real I2C driver for a
-one-off probe. On this device, `0x18` (the STK8BA58 accelerometer) is the only address that answers -
+one-off probe. On this device, `0x18` (the accelerometer - an SC7A20, as the kernel's tree and `h713-keystone` read it) is the only address that answers -
 proof the bus itself works, not that anything else is missing (`doku/70-sackgassen.md`; the DLPC3435 at
 `0x1b` never answers on the live panel boot, on this device or cstenger's).
 

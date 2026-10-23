@@ -1,7 +1,7 @@
 # h713-focus - drive the focus motor by hand
 
 One script, `h713-focus`, Python 3, without dependencies. A replacement for
-`legacy/tools/focus` (63 lines of `sh`) with the same subcommands - only that it
+the first `focus` shell script (63 lines of `sh`, no longer in the tree) with the same subcommands - only that it
 looks before and after every move instead of writing blind.
 
 ```
@@ -28,21 +28,21 @@ all ("not present on this board", `h713-features`) - `130` Ctrl-C.
 
 ## First: the module
 
-Since patch **0157** the node `motor_ctr` is active and since **0156** `homing`
-is **off** by default - the driver is loaded at boot (`=m`, over modalias), sets
-up the pads, exposes sysfs and moves nothing while doing so. So normally there
-is nothing to do; `h713-focus status` says whether it is there.
+Since patch **0157** the node `motor_ctr` is active - the driver is loaded at boot (`=m`, over
+modalias), sets up the pads and exposes sysfs - and since **0165** (23.09.2026) `homing` is **on**
+again, as in stock: if the mechanism stands outside its travel when the module loads, the driver
+walks it back into range (up to 100 msteps upwards first, then down, reading the gate at every
+step) and says so in the kernel log; inside its travel it moves nothing. Between 0156 (12.09.) and
+0165 homing was off, because only the lower edge of the gate had been measured; on 23.09. the upper
+edge was measured too (`0164`). So normally there is nothing to do; `h713-focus status` says whether
+it is there.
 
 If it is missing (blacklisted, or a kernel without 0157):
 
 ```bash
-modprobe hy310_focus_motor
+modprobe hy310_focus_motor          # homing=0 keeps a bench still
 ```
 
-On a kernel **before 0156** `homing=0` is mandatory with it: otherwise the
-homing sequence runs at load time, and it drives up to 100 msteps **upwards** -
-towards the mechanical stop. Whether there is a watcher edge there at all is
-unchecked; only the lower one has been measured. That is exactly why
 `h713-focus` does **not** load the driver itself.
 
 ## What PH14 is - and what it is not

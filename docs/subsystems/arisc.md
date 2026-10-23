@@ -23,6 +23,12 @@ instead and says so (`firmware_from=device tree, the vendor image missing`, kern
 the next boot on the owner's `h713-arisc.bin` runs instead of crust [...]; `set crust` goes back" (decision 1.1b
 of 10.10.2026: crust as the default).
 
+**The IR pin.** The vendor's firmware writes the pin configuration word `PL_CFG1` at its start and switches PL9, the IR
+receiver's input, away from its function - the remote was deaf under it (HY310, 22.10.2026, `doku/219`). Since kernel
+`0328` the arisc driver starts the firmware only after `sunxi-cir` has probed, and the receiver applies its pin again once
+the firmware is up (its pin states, on a bus notifier), so both stock remotes work under the vendor's firmware
+([remote](remote.md)). crust never touches the pin.
+
 Two firmwares can run here, and the board's device tree names which (`firmware-name`). On the HY310 and the
 HY200 QZ713DF A1 (HY300PRO-G-EU, since kernel `0246`, measured 10.10.2026 in `doku/184`) it names **crust**, our own,
 built with the image ("crust and the contract page" below) - which runs only where the module option does not

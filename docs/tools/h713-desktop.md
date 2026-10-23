@@ -55,7 +55,7 @@ closed. Why a compositor and not cage alone, which would pass the buffers throug
 of Home that opens the launcher reaches the client like any other, and Firefox would go to its home page under the
 launcher; the remote's focus keys are `KEY_F4`/`KEY_F5` and F5 reloads a page. Only a compositor can bind those keys to
 nothing, which `labwc-browser/rc.xml` does. The price is a second GPU
-pass over the window; the control arm with cage is `laeufe/box/h2.sh h4 cage` of the package.
+pass over the window; a control arm with cage was measured (`doku/212` §3, below).
 The profile is `/var/lib/h713-desktop/firefox` (shared with the desktop's Firefox window), its `user.js` sets the few things that matter here: the VA-API blocklist
 off (`media.hardware-video-decoding.force-enabled`), fewer content processes (the box has 1 GiB), no first-run pages, no
 update checks, **a TV interface's size** (`layout.css.devPixelsPerPx` 2.0, a string: at 1920x1080 the page is laid out as for 960x540 CSS pixels, a 16 px text is a 32 px letter; the

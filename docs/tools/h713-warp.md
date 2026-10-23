@@ -202,7 +202,7 @@ Every one of these leaves a picture on the wall; that is the rule.
 |---|---|
 | all eight values 0 | the render node is never opened, `h713-tv` stays on the ring - no latency, no memory, the shipped behaviour bit for bit |
 | no GPU, no mesa, a missing EGL extension | `ctl on` is refused by name (`ctl status` says which piece), the ring stays |
-| no signal | nothing to warp; the daemon idles and `h713-tv`'s own console handback covers the wall |
+| no signal | nothing to warp; the daemon idles and `h713-tv` puts h713-osd's page "No signal on HDMI" on the wall (the console on an image without h713-osd) |
 | no `h713-tv` | nothing is claimed; the daemon retries once a second |
 | five failed renders in a row, or a lost EGL context | released back to bypass, once in the journal; the want link says `none` first, so `h713-tv` puts its ring up at once, and `ring` again after the next drawn frame |
 | the GPU does not take `h713-tv`'s buffers after a claim | the same: `none`, the claim given back, the straight ring at once |
@@ -216,7 +216,7 @@ Every one of these leaves a picture on the wall; that is the rule.
 **Modes whose ring the GPU cannot import stay without keystone - by decision (12.10.2026).** The display
 firmware lays the capture ring out with a line pitch of the ring's width rounded up to 16 bytes, and sets it
 again at every rebuild of its capture chain (`VIncap_ConfigDownScaler`; overwriting the INCAP rowbyte from our
-side changes nothing, measured 12.10.2026 in `arbeit/wurzeln-20261012`); panfrost imports a linear dma-buf
+side changes nothing, measured 12.10.2026, `doku/206`); panfrost imports a linear dma-buf
 as a 2D texture only with a pitch that is a multiple of 64. Rings whose width is not a multiple of 64 are
 therefore refused at the import: 800x600 (pitch 800), 720x576 and 720x480 (720), 1280x1024 (912, the
 firmware scales it to 900 wide). In those modes the warp stays in bypass, `ctl status` says so (`R8 + GR88
@@ -244,7 +244,7 @@ behind that block, re-apps AP2j). Measured against the RGB path on the HY310, sa
 GPU governor settles at 432 instead of 600 MHz, the die cools instead of warming, the bytes per frame halve
 (10.4 MB instead of 20.7), the warp's CPU rises by about three points for the second pass. NV16 on that plane
 shows with every other chroma line dropped, so NV12 loses nothing. Without a signal `h713-tv` releases the
-warp and shows the console; the warp waits on the capture node's source-change event and is back about 0.2 s after the signal (17.10.2026, HY310: signal 9.53 s, claim 9.74 s, `doku/214` §3; until then it asked once a second and came up to a second late, with h713-tv's straight ring on the wall in between); a node that answers poll with an error falls back to once a second. Since the want link (above) `h713-tv` also says `note claim` once the signal stands, and keeps the straight ring off the plane until the claim's first frame (HY310, 17.10.2026, the source's DPMS off and on: the claim 0.08 s
+warp and shows the page "No signal on HDMI" ([h713-tv](h713-tv.md)); the warp waits on the capture node's source-change event and is back about 0.2 s after the signal (17.10.2026, HY310: signal 9.53 s, claim 9.74 s, `doku/214` §3; until then it asked once a second and came up to a second late, with h713-tv's straight ring on the wall in between); a node that answers poll with an error falls back to once a second. Since the want link (above) `h713-tv` also says `note claim` once the signal stands, and keeps the straight ring off the plane until the claim's first frame (HY310, 17.10.2026, the source's DPMS off and on: the claim 0.08 s
 after h713-tv's signal line, the warped picture 0.20-0.22 s after it on the camera, 3 of 3 without a straight or tinted frame). While
 the ring is wanted the render node stays open between two claims (no signal, `ctl off`): a claim on `note claim` then costs the
 capture and the claim, not the EGL start - 0.08 s instead of 0.28 s after `ctl auto`. The warp costs about 0.6 GB/s of memory
@@ -274,7 +274,10 @@ and clamp), docs/tools/h713-tv.md.
 
 ## What a frame costs (measured 11.10.2026, HY300PRO-G-EU, 720p)
 
-`h713-warp ctl trace 30 gpu` says it for any device. CPU time of the warp's thread per frame at a fixed 1296 MHz:
+`h713-warp ctl trace 30 gpu` says it for any device. The GPU clock names in this section are the kernel's of 11.10.2026,
+before `0268`/`0269` corrected the clock model on 12.10.2026 - each ran at half its name (696 MHz = 348 real); since then
+the table is 150/200/300/600 MHz real ([video](../subsystems/video.md)). CPU time of the warp's thread per frame at a
+fixed 1296 MHz:
 dequeue 20 µs, **drawing 470-600 µs** (luma pass 220-290, chroma pass 230-270, the border's two ring draws about 60
 of that), the fence 180-200 µs (the `glFlush` that submits the GPU jobs, and the sync file), the round trip to
 `h713-tv` 60 µs - about 0.8 ms; at 480 MHz 2.7 times that. The drawing is two passes (luma at full size, chroma at
@@ -288,9 +291,9 @@ GPU governor now parks at 288-432 MHz with the warp on, where it sat at 600-696 
 not the border's arithmetic as such but *any* arithmetic after the texture fetch in the picture shaders: a bare
 fetch 1.65 ms, one constant `mix` after it 2.2 ms, the border's dozen operations 6.0 ms - the one-core Mali-G31
 hides no texture latency behind ALU work. So the picture passes are a bare fetch and the border is its own small
-blended draw. A compute dispatch instead of the two passes was tried on the device (`bau/gles31-probe.c`): it works
+blended draw. A compute dispatch instead of the two passes was tried on the device (a probe program, not in the tree): it works
 (GLES 3.1, imageStore into the imported buffer), costs Mesa 357 µs of CPU against 130 for a fragment pass and the
-GPU 2.1 ms against 1.6 for a copy - no. One pass per frame was tried and measured (branch `versuch/warp-einpass`): the NV12 buffer
+GPU 2.1 ms against 1.6 for a copy - no. One pass per frame was tried and measured (a trial branch, not published; `doku/201`): the NV12 buffer
 as one R8 image of width × 1.5 height, the chroma rows a fragment per byte with the pair centre through the inverse
 map (host test T1e: equal to the two passes within 2 LSB). It saved 14 % of the warp's CPU, but the chroma then had
 twice the fragments, the GPU ran at its top clock 66-87 % of the time instead of 21-25 %, and about one frame a second

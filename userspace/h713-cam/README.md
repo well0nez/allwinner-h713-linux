@@ -52,5 +52,5 @@ Merged on 12.09.2026 out of `analyse/beamer-cam/{camprobe,camset,camgrab}.py`.
 The originals stay there as evidence of the measurement. New against those three:
 the device search, `controls`, names instead of IDs only, PNG.
 
-What the camera should **do** (autofocus like stock, only with a test image - see
-`h713-focus/README.md`) is a task of its own after the release.
+What the camera **does** for the picture - the stock autofocus with a chessboard as the test image - is
+`h713-autofocus` (`../h713-autofocus/`, on the projector since 22.09.2026).

@@ -1,5 +1,9 @@
 # crypto-ce — ein Messlauf am Deskriptorformat der H713-Crypto-Engine
 
+**Stand 23.10.2026:** erledigt - Gerätebaum und Messmodul sind als Kernel-Patches `0148` - `0150` in der Serie
+(`docs/kernel-patches.md`, Abschnitt 10); die Messung bestand am 11.09.2026, HDCP 1.4 läuft seit dem 05.10.2026
+(`docs/subsystems/crypto-engine.md`, `docs/subsystems/hdcp.md`). Der Rest dieser Seite ist der Stand des Vorschlags.
+
 **Vorschlag, noch nicht in der Serie.** Vier Patchdateien plus Bauprotokoll. Zusammenführen macht Marco;
 `mainline/patches/kernel/series` ist unangetastet.
 

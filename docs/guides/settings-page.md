@@ -1,9 +1,10 @@
-# The settings page
+# The settings as a web page
 
-The projector serves its own settings page. It is how the picture is squared up, the zoom set, the focus
-moved and the sound turned down without a shell, and it is the only way to do any of that from the sofa: the
-stock remote pairs over Bluetooth, but nothing in the image acts on its keys yet except Power. Everything on it is one command this project already has; the page starts that
-command and shows you the first `ok` or `error` line it answers.
+The projector has two settings surfaces. The page on the wall, driven by the remote, is the everyday one
+([the settings guide](settings.md)). This one is the web page `h713-panel` serves for a phone or a PC browser:
+it carries more - the keystone as a drawing with corners you drag, the colour sliders, the warp switch - and
+it is the way without the remote. Everything on it is one command this project already has; the page starts
+that command and shows you the first `ok` or `error` line it answers.
 
 ## Getting to it
 
@@ -36,7 +37,7 @@ Not every board has a camera, an accelerometer and a focus motor (the HY300PRO-G
 only). What the board lacks has no controls: the page asks `h713-features` once when it loads, hides the
 buttons that would only answer "not present on this board", and says in one line what is missing.
 
-Below it, three groups: **Projection**, **Picture**, **Sound**. On a phone they are three tabs; from 900 px
+Below it, four groups: **Projection**, **Picture**, **Colour**, **Sound**. On a phone they are tabs; from 900 px
 of width on they stand side by side and the tab buttons disappear.
 
 ## Projection
@@ -148,6 +149,14 @@ Since 23.09.2026 these controls reach the warped picture too: the warp draws NV1
 that is the channel the firmware runs its picture controls on. On the older RGB path they did nothing while
 the warp was drawing.
 
+## Colour
+
+The white balance as two sliders, Warm - Cool and Green - Magenta (each only ever lowers a gain, so white never clips),
+and, in the Picture group, the colour temperature (Auto, Warm, Normal, Cool - the panel's own measured curves) and the
+gamma level (1.8 to 2.4); **Save picture settings** keeps them. The six colour axes (hue and saturation per primary) are
+not offered since 20.10.2026: the display firmware's colour manager has no visible effect on the HY310, measured with the
+camera ([h713-tv](../tools/h713-tv.md)). What each control does, measured: [h713-panel](../tools/h713-panel.md).
+
 ## Sound
 
 Volume 0 to 100, mute on/off, and the audio policy: `auto` follows the picture, `on` forces it, `off` keeps the speaker quiet while the picture stays.
@@ -162,7 +171,7 @@ Volume 0 to 100, mute on/off, and the audio policy: `auto` follows the picture, 
   `h713-keystone status`. The `brief` is not cosmetic - the full status asks the firmware over sysfs and
   costs about 55 ms, long enough to hold a warp frame, which is how a tearing report was traced on
   23.09.2026.
-- **No authentication, no upload, no shell.** The verb table is the whole surface: a verb that is not in it,
+- **One password, no upload, no shell.** The verb table is the whole surface: a verb that is not in it,
   or an argument outside its range, is refused before a tool is started.
 - **The page decides nothing.** If a tool is missing or refuses, the page repeats that tool's own sentence
   and changes nothing.

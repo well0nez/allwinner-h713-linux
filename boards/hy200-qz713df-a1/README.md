@@ -10,12 +10,12 @@ firmware is a **variant** under `variants/<stock build>/`.
 |---|---|---|
 | Sold as | HY300 Pro, box label **HY300PRO-G-EU** (the maintainer's own unit, October 2026) | "HY300 Pro+" (2025, DDR3) |
 | Stock | Android 11 of 2025-05-06 | Android 11 of 2025-09-22 |
-| State | **in test, the maintainer's own**: profile-only; a TEST image of ours booted on it (doku/136); the TEST image `geucrust2` (crust, standby) passed what the HY310 passed, except the standby power (doku/184, 10.10.2026) | **profile, testable**: profile-only; nobody has run our firmware on a unit with this firmware |
-| Image | TEST only: `release/build-all.sh --board hy200-qz713df-a1 --variant projector05061226 --test-image --version vX.Y` | TEST only, the same with `--variant projector09220931` |
+| State | **verified** (11.10.2026, the maintainer's own unit; `VERIFIED_BY` in `variants/projector05061226/variant.env`): a release image since `v0.97-beta`, installed on 22.10.2026 (doku/219); before that the TEST images of doku/136 and `geucrust2` (crust, standby; doku/184) | **profile, testable**: profile-only; nobody has run our firmware on a unit with this firmware |
+| Image | `h713-hy200-qz713df-a1-projector05061226-<version>-media-desktop-*` (`release/build-all.sh --board hy200-qz713df-a1 --variant projector05061226 --profile media,desktop --version vX.Y`) | TEST only: `release/build-all.sh --board hy200-qz713df-a1 --variant projector09220931 --test-image --version vX.Y` |
 | DRAM clock | 792 MHz (its own boot0) | 624 MHz (its boot0; cstenger's bench clock) |
 | eMMC | 15 273 600 sectors (its own GPT) | 15 269 888 sectors (the image's GPT; no unit read) |
 | display.bin | 1 256 216 B `16c74a28...` = the HY310's revision | 1 255 696 B `4380f1b3...` = the `HY200 QZ713DF_A1` row of `h713_mips_fw_revs[]` |
-| Measured | SC7A20 accelerometer at 0x18; no camera; fan tacho PH13 at 5520-5610 rpm (doku/136); crust (board id 3), display MIPS restart with the panel's supply cycled (PF6, PH16), standby woken by RTC, key and IR, HDCP 1.4 pair, HDCP 2.2, sound after a standby (doku/182, doku/184); off draws 2.4 W against 0.3 W with stock (TODO 2.32); lamp and fan off in standby since kernel 0249 (PB5 to the board manager, doku/185) | nothing |
+| Measured | SC7A20 accelerometer at 0x18; no camera; fan tacho PH13 at 5520-5610 rpm (doku/136); crust (board id 3), display MIPS restart with the panel's supply cycled (PF6, PH16), standby woken by RTC, key and IR, HDCP 1.4 pair, HDCP 2.2, sound after a standby (doku/182, doku/184); off draws 2.4 W against 0.3 W with stock (TODO 2.32); lamp and fan off in standby since kernel 0249 (PB5 to the board manager, doku/185); `v0.97-beta` with the vendor ARISC firmware: the acceptance 25 of 25, the power-off into the gate silent, the key and both remotes starting the board from the gate (U-Boot 0102), the IR pin under the vendor firmware (kernel 0328), 22.10.2026 (doku/219) | nothing |
 | Installer profile | `hy200_qz713df_a1/projector05061226` | `hy200_qz713df_a1/projector09220931` |
 
 Board level, the same for both: kernel DTB `sun50i-h713-hy200-qz713df-a1` (patch 0181), U-Boot base
@@ -86,7 +86,7 @@ from the environment's `h713_project`, else from `panel_config.ini`, never from 
 
 ## Moving it forward
 
-An owner builds the TEST image of their variant, keeps their full dump as the way back, installs it
-with `--test-image`, and reports. A green run makes **that variant** `verified` (its `variant.env`:
-`STATUS=verified`, `VERIFIED_BY` with name, unit and date); the other variant stays where it is,
-because its DRAM clock, eMMC and display firmware are not the ones that were tested.
+For `projector05061226` that happened on 11.10.2026. An owner of a 2025-09 unit builds the TEST image of that
+variant, keeps their full dump as the way back, installs it with `--test-image`, and reports. A green run makes
+**that variant** `verified` (its `variant.env`: `STATUS=verified`, `VERIFIED_BY` with name, unit and date); until then
+it stays where it is, because its DRAM clock, eMMC and display firmware are not the ones that were tested.

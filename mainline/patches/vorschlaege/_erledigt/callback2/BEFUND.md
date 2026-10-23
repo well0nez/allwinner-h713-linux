@@ -1,5 +1,7 @@
 # Callback-Anmeldung, zweiter Anlauf — Befund
 
+*Adressen des Heimnetzes am 23.10.2026 durch Platzhalter ersetzt (`hy310`, `laptop`, `<the socket>`).*
+
 Unteragent, 07.09.2026, ~11:00–11:30. **Kein Board angefasst** (kein `ssh`, kein `sonoff_ctl`,
 kein `scp`, nichts nach `tftp/`, kein `tio`, kein `/dev/ttyACM0`). Kein `git commit`/`push`, kein
 `sudo`, **nicht** in `mainline/patches/kernel/` geschrieben, `doku/78-nachtplan-hdmi-switch.md`
@@ -347,14 +349,14 @@ Bring-up in einem einzigen Kaltstart gemessen, und ein Ausgang pro Nacht kann ni
 # Voraussetzung: Kernel mit 0100, E hat durchgeprobt, /dev/video1 NICHT geoeffnet,
 # kein hdmi_seq.py.  Board-Sperre halten.
 
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
+ssh root@hy310 'cat /sys/kernel/debug/cpu_comm/watch'
 #  erwartet:  handlers 0
 #             spinlock2 owner=2 refcnt=0 thread=0x000000ff frei
 #  Steht hier schon "BELEGT", ist Lock 2 seit dem Boot verklemmt -> das allein
 #  ist der Befund, alles Weitere waere sinnlos.  Nachtlog, STOPP.
 
 # --- A) 20 Anmeldungen/Abmeldungen, dazwischen je ein RPC, der antworten MUSS ---
-ssh root@192.168.8.141 'for i in $(seq 20); do
+ssh root@hy310 'for i in $(seq 20); do
     echo MipsHalCallback_SignalChange > /sys/kernel/debug/cpu_comm/watch || echo "REG $i: $?"
     echo "Thal_Vp_SetBacklightLevel 100" > /sys/kernel/debug/cpu_comm/call
     cat /sys/kernel/debug/cpu_comm/call
@@ -362,7 +364,7 @@ ssh root@192.168.8.141 'for i in $(seq 20); do
     echo "Thal_Vp_SetBacklightLevel 100" > /sys/kernel/debug/cpu_comm/call
     cat /sys/kernel/debug/cpu_comm/call
   done; cat /sys/kernel/debug/cpu_comm/watch'
-ssh root@192.168.8.141 'dmesg | grep -E "no RETURN|ACK timeout|SpinUnLock\(2\)|spinLock\(2|Routinen-Spinlock"'
+ssh root@hy310 'dmesg | grep -E "no RETURN|ACK timeout|SpinUnLock\(2\)|spinLock\(2|Routinen-Spinlock"'
 ```
 
 **Auswertung — und jede Zeile davon kann eintreten:**
@@ -394,12 +396,12 @@ mit „nicht die Anmeldung".
 ```bash
 # 0. Kaltstart, kein prep-Skript, kein hdmi_seq.py
 ss -ulnp | grep -w :69 || { echo "TFTP laeuft nicht -- STOPP"; exit 1; }
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
-ssh root@192.168.8.141 'cut -d" " -f1 /proc/uptime'
+sonoff_ctl restart --host <the socket>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@hy310 uptime && break; sleep 4; done
+ssh root@hy310 'cut -d" " -f1 /proc/uptime'
 
 # 1. Die Probe ist unberuehrt geblieben
-ssh root@192.168.8.141 'ls -l /dev/video1; dmesg | grep -E "sun50i-h713-hdmirx" | tail -20; \
+ssh root@hy310 'ls -l /dev/video1; dmesg | grep -E "sun50i-h713-hdmirx" | tail -20; \
   cat /sys/kernel/debug/cpu_comm/watch'
 #  BESTANDEN, wenn zugleich:
 #   * "Init-Sequenz vollstaendig (22 Aufrufe)" und /dev/video1 da,
@@ -409,18 +411,18 @@ ssh root@192.168.8.141 'ls -l /dev/video1; dmesg | grep -E "sun50i-h713-hdmirx" 
 #  "handlers 2" hier waere ein Widerspruch zum Patch -> Nachtlog, STOPP.
 
 # 2. Erst das Oeffnen meldet an
-ssh root@192.168.8.141 'exec 3</dev/video1; cat /sys/kernel/debug/cpu_comm/watch; exec 3<&-; \
+ssh root@hy310 'exec 3</dev/video1; cat /sys/kernel/debug/cpu_comm/watch; exec 3<&-; \
   sleep 1; cat /sys/kernel/debug/cpu_comm/watch'
 #  erwartet: bei offenem Knoten "handlers 2" und zweimal "rt cpu=0 owner=0",
 #            nach dem Schliessen wieder "handlers 0" und zweimal "rt none".
 #  "rt none" bei offenem Knoten -> Anmeldung nicht angekommen. STOPP.
 
 # 3. Der Callback kommt an  (elog wie in CALLBACK-luecke.md §8 Schritt 2 scharfstellen)
-ssh root@192.168.8.141 'nohup /root/hdmirx_test -d /dev/video1 --events > /root/ev.log 2>&1 & echo $!'
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch > /tmp/w.vor'
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --off';  sleep 6
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 6
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch; echo ---; \
+ssh root@hy310 'nohup /root/hdmirx_test -d /dev/video1 --events > /root/ev.log 2>&1 & echo $!'
+ssh root@hy310 'cat /sys/kernel/debug/cpu_comm/watch > /tmp/w.vor'
+ssh user@laptop 'DISPLAY=:0 xrandr --output HDMI-2 --off';  sleep 6
+ssh user@laptop 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 6
+ssh root@hy310 'cat /sys/kernel/debug/cpu_comm/watch; echo ---; \
   dmesg | grep -E "RX-CALL.*comp_id=0x(3e7fbc46|38d780e2)" | tail -5; echo ---; \
   grep -E "CallbackOfSignalChange|NotifySignalChange" /root/elog_tail.out | tail -6; echo ---; \
   grep -c SOURCE_CHANGE /root/ev.log'

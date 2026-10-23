@@ -154,7 +154,9 @@ concrete lead so far for the owner's dim picture (AP3r 1.4, AP3p 1.7, AP3t 2.5).
 
 `--source tse` is therefore offered and **off by default**: it is a behaviour change nobody has seen on a
 projector yet, and the synthetic curve is what every release so far shipped. It stays off until a device
-test says otherwise. What is checked without a device: the transform reproduces the raw TSE curve at the
+test says otherwise. *Superseded 19.10.2026:* `h713-tv` takes no LUT from this tool any more; it asks for the
+board's raw curves (`gamma --export-slots`, below) and computes the curve itself, so the board's own measured
+curves are what every image since `v0.97-beta` shows ([docs/tools/h713-tv.md](../../docs/tools/h713-tv.md)). What is checked without a device: the transform reproduces the raw TSE curve at the
 neutral level 2.2 over all 414 gamma banks of both boards, off by at most the one count the vendor's own
 cast loses (AP3t 2.4).
 
@@ -274,8 +276,8 @@ python3 tests/test_h713_pq.py            # 64 tests
 The tests read the **real** vendor files at run time and skip themselves cleanly when the tvconfig directory
 is missing. `tests/legacy_ref.cpp` is the comparison harness: it builds against
 `legacy/userspace/hy310-pqd/src/pqgamma.cpp` and writes the same DE2 bank; the test `TestAgainstLegacy`
-compares them byte by byte for the exponents 1.0/1.8/2.0/2.1/2.2/2.4 (if the legacy tree or `g++` is missing,
-it is skipped). The legacy calculator and `h713-pq` are bit-identical.
+compares them byte by byte for the exponents 1.0/1.8/2.0/2.1/2.2/2.4 (the legacy tree is no longer in the
+repository, so that test skips; it passed while the tree was there). The legacy calculator and `h713-pq` are bit-identical.
 
 The saturation tests check the **measured** points from the K5 acceptance (f) directly (`0/50/59/60/100` ->
 `0x00/0x40/0x4B/0x4C/0x80`), no longer an intermediate computation. Where the correction changed an expected
@@ -287,7 +289,7 @@ value, the reason stands in the test itself.
 the way stock uses it:
 
 ```
-ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetSaturation 60'
+ssh root@hy310 'python3 /root/pq_probe.py rpc SetSaturation 60'
 ```
 
 Writing the gain byte into the register by hand (as `analyse/hdmi-seq/pq_saturation.py` does) bypasses the PQ

@@ -44,20 +44,22 @@ row of the database (AP3d section 3).
 Sources: AP3 section 3 (which control goes where, `tables/pq-controls.csv`), AP3d sections 5 and 6,
 AP3f 1.5, AP3p 1.3 and 1.5, AP3r section 3.
 
-## Controls the vendor has and we do not
+**The colour manager has no visible effect on the HY310** (20.10.2026: fourteen states measured with the camera, the
+registers `0x05140300..440` written and read back, the picture unchanged; [h713-tv](../tools/h713-tv.md), "White
+balance and colour management"). The settings page does not offer it; `h713-tv ctl set cm_*` stays. The white
+balance works and is set through `h713-tv` (`ctl wb`), which writes the firmware's own block, not through
+`pq_colortemp.ini`.
 
-Five, all with an RPC id we already carry, all one argument word (AP3 D2). They are "not yet", not
-"impossible"; the kernel side is one V4L2 control each in `0101`.
+## Controls that came later
 
-| Control | RPC | id |
-|---|---|---|
-| video range | `THal_Vp_SetVideoRange` | `9817a1c1` |
-| backlight level | `Thal_Vp_SetBacklightLevel` | `51ad877e` |
-| dynamic backlight | `THal_Vp_SetBacklightWorkMode` | `4d80db0e` |
-| low latency | `THal_Vp_SetLowLatencyMode` | `c201c220` |
-| test pattern | `THal_Vp_EnableScreenCover` | `0152f134` |
-
-Their `Get` routines answer zero for everything, so they would stay write-only like the other nine.
+Five vendor controls were once missing here, all with an RPC id the driver already carried, all one argument
+word (AP3 D2). Four of them are V4L2 controls since kernel `0136l` - `0136q` and `0101a`: video range
+(`THal_Vp_SetVideoRange`, `9817a1c1`), backlight level (`Thal_Vp_SetBacklightLevel`, `51ad877e`), dynamic
+backlight (`THal_Vp_SetBacklightWorkMode`, `4d80db0e`) and low latency (`THal_Vp_SetLowLatencyMode`,
+`c201c220`); [hdmi-in](hdmi-in.md) says what each does on this board - the two backlight calls do not reach
+the HY310's lamp. The fifth, the test pattern (`THal_Vp_EnableScreenCover`, `0152f134`), is not wired up;
+`h713-autofocus` draws its chessboard on the framebuffer instead. Their `Get` routines answer zero for
+everything, so they stay write-only like the other nine.
 
 ## From a preset to a register
 
@@ -101,6 +103,12 @@ That device test has now been run on the HY310 and it says nothing either way: t
 working journal `dev20-20260922`; the swap recipe is in the tool doc). Expected there - all
 three end points are 4092, so only the shape differs - and no evidence for the default. The board that
 would show it is the HY300 Pro, whose end points are not equal; until one is on a wall, tse stays off.
+
+*Superseded 19.10.2026:* the curve on the CRTC no longer comes from `h713-pq`'s LUT at all. `h713-tv` asks `h713-pq`
+for the board's raw curves (`gamma --export-slots`) and computes the gamma level and the colour temperature itself,
+the way the display firmware's library does - so the board's own measured curves, with the white balance in their end
+points, are the default on every board, and the settings page offers level and colour temperature
+([h713-tv](../tools/h713-tv.md), "Gamma and colour temperature"). `--source tse` stays for inspection.
 
 `display.md` covers how that LUT and the CTM matrix reach the CRTC as ordinary KMS properties; a
 white-balance gain lands on the CTM diagonal, but the KMS property has no offset term - harmless here only
