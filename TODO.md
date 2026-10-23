@@ -699,10 +699,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Z. 307/1589 (Attrappe); acht Stellen in Messskripten und -protokollen unter `analyse/boot/`. Raus (Fork-Commit plus Spiegel, Platzhalter im Code;
       die Protokolle als Belege eher lassen) oder lassen - die Adressen zeigen auf ein Heimnetz, nicht auf einen Menschen.
 
-- [ ] 2.143 **Kernel `0277` ist die abgelehnte Fassung des cedrus-H.264-Fixes** (Mythos 23.10.2026, `arbeit/upstream-kandidaten-20261023/MYTHOS-PRUEFUNG.md` Nebenfund 1):
+- [x] 2.143 (erledigt 23.10.2026, main 50da65f5: 0277 ist jetzt Upstream 10358ea986c3, dazu 0277a (Fehlerweiterleitung für 0322); am G-EU gemessen: Matrix bitgleich, Schadsätze 10/10, Wirkung mit unseren Clips nicht auslösbar - `arbeit/kernel-upstream-20261023/BERICHT.md`) **Kernel `0277` ist die abgelehnte Fassung des cedrus-H.264-Fixes** (Mythos 23.10.2026, `arbeit/upstream-kandidaten-20261023/MYTHOS-PRUEFUNG.md` Nebenfund 1):
       Pengpeng Hous v2 "reject invalid active H.264 ref indices"; linux-media nahm im März 2026 die Fassung, die ungültige Einträge überspringt.
       Unser Kernel lehnt damit Ströme ab, die Mainline dekodiert. Durch die Upstream-Fassung ersetzen, dann die H.264-Schadsätze (9.3c) und die Matrix nachmessen.
-- [ ] 2.144 **Backport des V4L2-Core-Fixes zu CVE-2026-68206** (HEVC-Zählwerte in `std_validate_compound`, ~13 Zeilen) in die Kernel-Serie - fehlt in
+- [x] 2.144 (erledigt 23.10.2026, main 50da65f5: 0330 = Upstream afbe4bc252d9; ob 0316 damit entfällt, bleibt bei 2.146 (Umbau von 0309/0316 vor dem Einreichen)) **Backport des V4L2-Core-Fixes zu CVE-2026-68206** (HEVC-Zählwerte in `std_validate_compound`, ~13 Zeilen) in die Kernel-Serie - fehlt in
       6.18.38 (Mythos 23.10.2026, Nebenfund 2); danach prüfen, ob `0316` damit entfällt (Upstream will die Prüfung im Core, nicht im Treiber).
 - [ ] 2.145 Klein: fünf Patchtexte sagen "not yet tested", obwohl später gemessen (`0136w`, `0072`, `0074`, `0076`, `0077`; Mythos 23.10.2026) - Texte
       nachziehen (mit dem Beleg), spätestens bevor einer davon upstream geht.
