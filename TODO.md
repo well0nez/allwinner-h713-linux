@@ -6,7 +6,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 1 Release — in dieser Reihenfolge
 
-- [ ] 1.0 **Stand 23.10.2026 mittags: (0) bis (5) erledigt (Doku-Runde gemergt 40f960eb), 2.142 entschieden; offen (5b), (6).** **medien -> main: der Weg** (Plan der Aufsicht, Marco 21.10.2026: "find ich gut"; **nichts pushen, nicht zum jetzigen
+- [ ] 1.0 **Stand 23.10.2026 mittags: (0) bis (5) erledigt (Doku-Runde gemergt 40f960eb), 2.142 entschieden; (5b) erledigt 23.10.2026 13:50: finaler Bau aus `43417440` (`arbeit/medien/R-rel4/`; der erste Versuch R-rel3 aus b3993458 scheiterte an der Abbild-Abnahme "README says where the source is", behoben in 43417440), HY310 und G-EU installiert, kurz geprüft (FIT/aic8800 = Bau, WLAN, PL9, Tastentabellen, Gate 1, CanSuspend no, README/SOURCES im Abbild); offen nur (6) Push mit Marcos Ja, dabei der Tag `v0.97-beta` auf `43417440` (2.128).** **medien -> main: der Weg** (Plan der Aufsicht, Marco 21.10.2026: "find ich gut"; **nichts pushen, nicht zum jetzigen
       Zeitpunkt**): **(0) zuerst, am Abend des 21.10. mit Marco (tagsüber nichts autonom): Hörtest T5c (2.42,
       `standby-summen/TESTABLAUF-T5c.md`), danach entscheidet Marco, ob der Standby ausgeliefert wird** **- entschieden 21.10.2026 abends: so nicht releasen, erst crust mit Standby ohne Summen** (Mythos-Analyse
       `standby-summen/mythos-analyse/`, Messung mit einem Mikrofon am Netzteil; 2.42)
