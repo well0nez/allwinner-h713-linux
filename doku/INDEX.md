@@ -35,16 +35,19 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/192`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
 | `docs/subsystems/focus-motor.md` | `doku/94` |
+| `docs/subsystems/gpu.md` | `doku/201` |
 | `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175`, `doku/180`, `doku/184`, `doku/187` |
 | `docs/subsystems/hdmi-in.md` | `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/175`, `doku/176`, `doku/197`, `doku/198`, `doku/200`, `doku/206`, `doku/207`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
 | `docs/subsystems/mips.md` | `doku/108`, `doku/121`, `doku/133`, `doku/138`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/179`, `doku/182`, `doku/184`, `doku/40`, `doku/63`, `doku/96`, `doku/98` |
 | `docs/subsystems/pq.md` | `doku/113`, `doku/81`, `doku/85`, `doku/87` |
+| `docs/subsystems/remote.md` | `doku/219` |
 | `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181`, `doku/184`, `doku/185`, `doku/188`, `doku/190`, `doku/203`, `doku/213`, `doku/219` |
 | `docs/subsystems/video.md` | `doku/212`, `doku/62`, `doku/64`, `doku/76`, `doku/78` |
 | `docs/subsystems/wifi.md` | `doku/134`, `doku/193`, `doku/195`, `doku/60` |
 | `docs/tools/h713-arisc.md` | `doku/181`, `doku/219` |
 | `docs/tools/h713-autofocus.md` | `doku/134` |
 | `docs/tools/h713-cam.md` | `doku/61`, `doku/94` |
+| `docs/tools/h713-cpufreq.md` | `doku/196`, `doku/201` |
 | `docs/tools/h713-desktop.md` | `doku/212`, `doku/213` |
 | `docs/tools/h713-extract.md` | `doku/108`, `doku/121`, `doku/nachtlog/S42-r2-extract` |
 | `docs/tools/h713-fel.md` | `doku/20`, `doku/nachtlog/S48-fel-aus-uboot` |
@@ -58,6 +61,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-power.md` | `doku/165`, `doku/167`, `doku/172`, `doku/174`, `doku/188`, `doku/190`, `doku/212` |
 | `docs/tools/h713-pq.md` | `doku/81`, `doku/nachtlog/G-korrektur-saettigung`, `doku/nachtlog/K5-board-verifikation` |
 | `docs/tools/h713-probe.md` | `doku/120` |
+| `docs/tools/h713-remote-pair.md` | `doku/174`, `doku/217` |
 | `docs/tools/h713-settings.md` | `doku/212`, `doku/213` |
 | `docs/tools/h713-tv.md` | `doku/101`, `doku/172`, `doku/174`, `doku/177`, `doku/78`, `doku/86`, `doku/88`, `doku/99` |
 | `docs/tools/h713-warp.md` | `doku/197`, `doku/200`, `doku/201`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215` |
@@ -231,7 +235,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`171-standby-fehler-b-display-takte-20261009.md`](171-standby-fehler-b-display-takte-20261009.md) | Analyse | 2026-10-09 | 171 - Standby-Fehler B: DMA-Master verlieren den DRAM, weil die Display-Pipeline durch den Self-Refresh läuft; Behebung gemessen (09.10.2026, 04:30) | 7 |
 | [`172-bild-nach-dem-standby-tv-top-20261009.md`](172-bild-nach-dem-standby-tv-top-20261009.md) | Analyse | 2026-10-09 | 172 - Bild nach dem Standby: der MIPS-Neustart aus dem Park hängte die SoC, weil der Schlaf die TV-Top-Wörter löscht; Behebung gemessen (09.10.2026, 09:47) | 14 |
 | [`173-durchsicht-r2-c1-ton-nach-standby-20261009.md`](173-durchsicht-r2-c1-ton-nach-standby-20261009.md) | Analyse | 2026-10-09 | 173 - Durchsicht des Standby-Codes, C1 im TVCAP-Abschalten eingegrenzt, Ton nach dem Standby abgesichert; r2test3 (09.10.2026, 14:30) | 11 |
-| [`174-mit-marco-am-geraet-ton-nach-standby-20261009.md`](174-mit-marco-am-geraet-ton-nach-standby-20261009.md) | Analyse | 2026-10-09 | 174 - Gerätetests mit Marco: Taste, Fernbedienung, lange Schläfe; der Ton kommt nach dem Standby zurück (09.10.2026, 15:30) | 13 |
+| [`174-mit-marco-am-geraet-ton-nach-standby-20261009.md`](174-mit-marco-am-geraet-ton-nach-standby-20261009.md) | Analyse | 2026-10-09 | 174 - Gerätetests mit Marco: Taste, Fernbedienung, lange Schläfe; der Ton kommt nach dem Standby zurück (09.10.2026, 15:30) | 14 |
 | [`175-hdcp14-nach-standby-und-haertungspaket-20261009.md`](175-hdcp14-nach-standby-und-haertungspaket-20261009.md) | Analyse | 2026-10-09 | 175 - HDCP 1.4 übersteht den Standby; was vom HDCP-Härtungspaket bleibt (09.10.2026, 17:40) | 2 |
 | [`176-nachtrag-mips-neustart-und-resume-haenger-20261008.md`](176-nachtrag-mips-neustart-und-resume-haenger-20261008.md) | Analyse | 2026-10-08 | 176 - Nachtrag 08.10. abends: MIPS-Neustart am HY310 (V2, V3, V8) und die Suche nach dem Resume-Hänger (L-B, L-A, L-C) (08.10.2026, 16:00-21:40; geschrieben 09.10.2026) | 4 |
 | [`177-r2-abgenommen-und-in-main-20261009.md`](177-r2-abgenommen-und-in-main-20261009.md) | Analyse | 2026-10-09 | 177 - R2 abgenommen und in `main`: Abnahmereihe V4 auf r2test4, Ton nach dem Standby, Aufräumen (09.10.2026, 16:45) | 5 |
@@ -253,13 +257,13 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`193-einblendungen-tasten-und-h713-osd-20261011.md`](193-einblendungen-tasten-und-h713-osd-20261011.md) | Analyse | 2026-10-11 | 193 - Einblendungen über dem Bild: die Tasten per IR und Bluetooth, h713-osd vorverzerrt über dem Warp (11.10.2026) | 4 |
 | [`194-handoff-20261011-frueh.md`](194-handoff-20261011-frueh.md) | Handoff | 2026-10-11 | 194 - Handoff 11.10.2026 früh: Fernbedienung und Einblendungen sind in `main` (nicht gepusht); als Nächstes dieselben Prüfstufen am HY300PRO-G-EU | - |
 | [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 3 |
-| [`196-nachtarbeit-kleinkram-und-warp-20261011.md`](196-nachtarbeit-kleinkram-und-warp-20261011.md) | Analyse | 2026-10-11 | 196 - Nachtarbeit 11.10.2026: Kleinkram (B) und der Warp mit dem CPU-Regler (A) | - |
+| [`196-nachtarbeit-kleinkram-und-warp-20261011.md`](196-nachtarbeit-kleinkram-und-warp-20261011.md) | Analyse | 2026-10-11 | 196 - Nachtarbeit 11.10.2026: Kleinkram (B) und der Warp mit dem CPU-Regler (A) | 1 |
 | [`197-fehlende-bilder-beim-verkleinern-20261011.md`](197-fehlende-bilder-beim-verkleinern-20261011.md) | Analyse | 2026-10-11 | 197 - Fehlende Bilder bei 1080p60 am 720p-Panel: was es nicht ist (11.10.2026, vormittags/mittags) | 4 |
 | [`198-ringpuffer-und-edid-panel-zuerst-20261011.md`](198-ringpuffer-und-edid-panel-zuerst-20261011.md) | Analyse | 2026-10-11 | 198 - Der Dreier-Ring der Aufnahme, und warum die EDID jetzt das Panel zuerst nennt (11.10.2026, mittags) | 3 |
 | [`199-panel-kopplung-swpll-20261011.md`](199-panel-kopplung-swpll-20261011.md) | Analyse | 2026-10-11 | 199 - Die Panel-Kopplung der Firmware läuft: Frequenz ja, Phase zufällig (11.10.2026, nachmittags) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
 | [`200-ringplatz-aus-dem-schreibindex-20261011.md`](200-ringplatz-aus-dem-schreibindex-20261011.md) | Analyse | 2026-10-11 | 200 - Der Ringplatz kommt aus dem Schreibindex der Aufnahme, nicht aus dem Firmware-Zeiger (11.10.2026, nachmittags) | 7 |
-| [`201-warp-zeichnen-gpu-regler-20261011.md`](201-warp-zeichnen-gpu-regler-20261011.md) | Analyse | 2026-10-11 | 201 - Der Warp: GPU-Zeit gedrittelt, CPU-Takt ruhig, kein Bild Latenz mehr (11.10.2026, abends) | 4 |
+| [`201-warp-zeichnen-gpu-regler-20261011.md`](201-warp-zeichnen-gpu-regler-20261011.md) | Analyse | 2026-10-11 | 201 - Der Warp: GPU-Zeit gedrittelt, CPU-Takt ruhig, kein Bild Latenz mehr (11.10.2026, abends) | 6 |
 | [`202-ausschalten-kernel-abend-warmstart-20261012.md`](202-ausschalten-kernel-abend-warmstart-20261012.md) | Analyse | 2026-10-12 | 202 - Ausschalt-Einblendung, Abendkernel (UCLAMP, BT-Flusssteuerung), Maus, und zwei dunkle Starts (11./12.10.2026, nachts) | - |
 | [`203-standby-und-warmstart-behoben-20261012.md`](203-standby-und-warmstart-behoben-20261012.md) | Analyse | 2026-10-12 | 203 - Standby und Warmstart am G-EU behoben: afbd liest die Aufnahme nicht zu früh, die Sperren wie die Firmware (12.10.2026) | 3 |
 | [`204-uclamp-gemessen-aus-ueber-crust-20261012.md`](204-uclamp-gemessen-aus-ueber-crust-20261012.md) | Analyse | 2026-10-12 | 204 - UCLAMP gemessen, 0257 und IR-Wecken aus dem Aus bestätigt (12.10.2026, vormittags) | - |
@@ -275,9 +279,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md`](214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md) | Protokoll | 2026-10-17 | 214 - Das Nebenprojekt Medien: Bluetooth nach dem Neustart, der Launcher beim Start, der Warp übernimmt das Signal sofort (17.10.2026) | 5 |
 | [`215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md`](215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md) | Protokoll | 2026-10-17 | 215 - Das Nebenprojekt Medien: das Bedienmodell - Rückwege, Pause unter Seiten, HDMI als Modus, Start ohne geraden Ring, EDID ohne Deep Colour, Seite ohne Signal (17.10.2026) | 3 |
 | [`216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`](216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md) | Protokoll | 2026-10-20 | 216 Lizenzen: die offenen Teile von TODO 7.20 (a, b, c, d, e, g) - Protokoll | 1 |
-| [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 1 |
+| [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 2 |
 | [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | 5 |
-| [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | 11 |
+| [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | 12 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -434,7 +438,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-56 von 278 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+55 von 278 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `104-plan-standby-stufe2.md` (ueberholt)
@@ -477,7 +481,6 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `186-handoff-20261010-frueh.md`
 * `189-handoff-20261010-abends.md`
 * `194-handoff-20261011-frueh.md`
-* `196-nachtarbeit-kleinkram-und-warp-20261011.md` (ueberholt)
 * `199-panel-kopplung-swpll-20261011.md`
 * `202-ausschalten-kernel-abend-warmstart-20261012.md`
 * `204-uclamp-gemessen-aus-ueber-crust-20261012.md`

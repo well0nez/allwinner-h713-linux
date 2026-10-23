@@ -132,18 +132,19 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **10.10. mittags:** alter G-EU-Worktree gelöscht (vorher geprüft: Commit in `main`, Arbeitsbaum sauber, Submodul-Köpfe im
         Haupt-Klon, Kernelbaum nur um `0249` anders); die sechs lokalen Zweige `integration/r2-main`, `versuch/{crust-release,
         geu-crust,hdcp-haertung,r2-standby,standby-gate}` gelöscht. In `repo-neu` gibt es nur noch `main`
-- [ ] 1.7a **Vor jedem Push: Identitäts- und Leck-Prüfung** (vor dem nächsten Release macht sie Mythos zusammen mit der Doku, 1.0 (5); Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
+- [x] 1.7a (erledigt 23.10.2026, Doku-Runde: Identitäts- und Leckprüfung über `main` seit `origin/main` (780 Commits: Autor, Committer, Trailer, Nachricht), jede Datei im Baum (`sperr-scan` Regel 8, Tor grün), die `From:`-Zeilen der Spiegel und die Fork-Köpfe (U-Boot `daa35622b0bf`, TF-A `287dca2fe892`, sunxi-tools `269dfa22`, crust `54e4a08ab9f3`); Ergebnis und Reste in `arbeit/medien/doku-runde/LECKS.md`. Offen bleibt nur die Wiederholung gegen den frischen Klon nach dem Push (1.6)) **Vor jedem Push: Identitäts- und Leck-Prüfung** (vor dem nächsten Release macht sie Mythos zusammen mit der Doku, 1.0 (5); Marco 10.10.: "das wäre beinahe in die hose gegangen" - 23 Commits und
       Spiegel-Patches trugen die private Adresse, ein Kernel-Patch einen Firmennamen, bemerkt kurz vor dem Push). Über **alles, was
       rausgeht**, nicht nur den neuen Teil: `main` und jeder Fork-Kopf (U-Boot, TF-A, crust) samt Submodul-Commits; je Commit Autor,
       Committer, `Co-Authored-By`/`Signed-off-by`, Nachricht; je Datei der Inhalt, auch `From:`-Zeilen der Spiegel-Patches
       (`uboot-h713/`, `tfa-h713/`, `crust-h713/`) und `mainline/patches/`. Gegen: private Adresse, Arbeitgeber-/Firmenname, Klarname
       (die Liste außerhalb des Repos, `sperr-scan.py` Regel 8), dazu Seriennummern/MACs. Nach dem Push gegen einen **frischen Klon**
       wiederholen (Gedächtnis "Identität in veröffentlichten Repos"). Erst dann gilt der Push als fertig
-- [ ] 1.8 `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel - darin die Fernbedienung und die Einblendungen (`h713-keys`,
+- [x] 1.8 (erledigt 23.10.2026, Doku-Runde: `RELEASES.md` hat den Abschnitt v0.97-beta (Entwurf, der Tag folgt dem Bau aus `main`), den Baustempel des HY310 und die Dateitabelle mit dem Submodul-Archiv; der Satz zur Fernbedienung ist aus `wifi.md` raus, die Einblendungen stehen in den Guides) `RELEASES.md`: neuer Abschnitt; Release-Tag; Baustempel - darin die Fernbedienung und die Einblendungen (`h713-keys`,
       `h713-osd`, `doku/193`/`195`) statt "nothing acts on the remote's keys yet except Power" (7.18)
 - [x] 1.9 ~~`docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto~~ **entfällt** (Marco 19.10.2026: es kommt kein Foto, der Besitzer von Issue #1 wartet auf das nächste Testabbild, 4.1; zum Testen hat Marco selbst einen HY300 Pro = HY300PRO-G-EU). Die Zeile "The HY300 Pro of issue #1" zieht die Doku-Runde (Schritt 5) nach dem G-EU-Stand nach (heute: "test10 follows after v0.96-beta" ist überholt).
 
 - [ ] 1.10 (**23.10.2026: a) und b) sind als Kernel `0322`-`0325` mit dem Merge in `main`, Messung 2.110; offen c) bis h)**) **Vor dem Release: was cstengers Zweig `h713-letterbox` uns zeigt** (Abgleich 19.10.2026, Bericht
+      **Doku-Runde 23.10.2026:** h) erledigt - Vermerk bei 2.84 (b), Nachtrag in `doku/128a` §5 Punkt 5 (40 Werkzeugdateien mit SPDX GPL-2.0). c) bis g) bleiben offen.
       `arbeit/cstenger-letterbox-20261019/BERICHT.md`; Marco: "das sollten wir vor Release auschecken"; seine Kernel- und
       libva-Patches GPL, Werkzeuge ohne Lizenzkopf nur als Methode). Jeweils erst messen, dann entscheiden:
       a) **H.264 ohne Wartegrenze** (sein `0156`): `cedrus_skip_bits()` pollt `VLD_BUSY` endlos - eine hängende VE hängt die
@@ -279,6 +280,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       gestauchten Bildecken schärfer (Mehrfachabtastung beim Vorverzerren); die Einblendungen am G-EU (720p) am Gerät ansehen
       (**11.10. erledigt**, `doku/195`: Lage und Größe passen, Marco)
 - [ ] 2.54 **Knopf im Panel: "Fernbedienung neu koppeln"** (Marco 11.10.: "kein Fehler, als TODO hinterlegen, Button ins Panel
+      **Doku-Runde 23.10.2026:** Stand in der Doku: `h713-remote-pair watch` koppelt seit dem 20.10. eine Fernbedienung im Pairing-Modus auch über einen alten Bund (`docs/tools/h713-remote-pair.md`); der Knopf fehlt weiter, und der Hinweis `h713-osd ctl pair` hat im Abbild keinen Sender - so steht es jetzt dort.
       re-pair remote - das reicht"; `doku/195` §4): `h713-remote-pair watch` koppelt nur, wenn gar keine Fernbedienung bekannt ist,
       und löscht einen Bund mit Absicht nie (eine schlafende Fernbedienung soll ihn behalten). Ist er veraltet - die Fernbedienung
       merkt sich nur eine Box, an einer anderen gekoppelt -, scheitert jedes Verbinden. Der Knopf in `h713-panel` ruft
@@ -325,6 +327,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       A5 über die Register. Vorher Sicherung `/root/sicherung-takt-geu/` und den Rückweg (`/boot/h713-kernel.fit.alt`, `/lib/modules/6.18.38.alt`) bereitstellen.
       Bestanden: Eintrag nach 10. Nicht bestanden oder Hitze: nur den OPP-Satz ändern (`0269`), `0268`/`0270` bleiben.
 - [ ] 2.73 **`pcm.codec` in `rootfs/overlay/etc/asound.conf` zeigt auf eine Karte, die es nicht gibt** (14.10.2026, HY310,
+      **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       `arbeit/medien/D-ton/BERICHT.md` D5): `card "H713AudioCodec"`, die Karte heißt `Codec` (ALSA nimmt das letzte Wort von
       "H713 Audio Codec"); `aplay -D codec` → `Cannot get card index for H713AudioCodec`. Im Repo benutzt den Namen niemand. Korrektur
       `card "Codec"`, dann am HY310 `aplay -D codec` mit `DAC Source` = APB hören (danach zurück auf I2S); am G-EU die Kartenkennung lesen.
@@ -381,6 +384,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       mpv 1080p60 im Desktop mit 60,0 Bildern/s dekodiert, Firefox ESR 153.5, Standby 3 von 3 im Browser). Am G-EU: die Wechsel, ein Standby je Modus und der Speicher mit einem Video-Tab
       (HY310: Firefox 970 MiB RSS, MemAvailable 329-354 MiB von 924).
 - [x] 2.84 (erledigt 20.10.2026 (geu3, Ergebnis je Buchstabe unten) und 22.10.2026 (v0.97-beta: Abnahme -K 25 bestanden, 0 nicht, 5 nicht gemessen; Marcos Augen); Reste 2.141) **G-EU-Testabbild aus `medien`: was den HY300PRO-G-EU anders trifft als den HY310** (Sammelzeile, `doku/213`; Abbild `--board hy200-qz713df-a1
+      **Doku-Runde 23.10.2026 (1.10 h):** (b) "die Firmware treibt dort die PWM" widerspricht `doku/136` Z. 52 (am G-EU programmiert niemand PWM5, alle acht Kanäle 0) und cstenger; gemessen ist nur, dass die Firmware die sechs Worte annimmt und das Bild ohne sie dunkel bleibt (`0166`/`0168`) - wie die Lampe hell wird, ist offen (2.99).
       --variant projector05061226 --test-image --standby --profile media,desktop`; vorher `/etc/h713`, Bluetooth-Bund und Hostschlüssel sichern; der G-EU läuft
       heute `main`, alles ab `0252` kommt neu). Bestanden, wenn jeder Punkt die genannte Messung besteht: (a) **Panel 1280x720 @ 59,71 Hz** - `h713-warp ctl status`
       nennt 1280x720 (der Server rät 1920x1080, wenn der afbd-Connector beim Start noch nicht geprüft ist, und lehnt dann Puffer über 1280 ab); Kodi, Desktop,
@@ -464,6 +468,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       0,2 s einer Seitenübergabe bricht sie ab (handover_until); K1 (getöntes Bild an der Kante NV16 -> NV12) nur noch am Dienstschalter `warp ctl on` -
       Marcos Augentest entscheidet.
 - [ ] 2.99 **Flackern vorher/nachher** (Marco 17.10.; **22.10.: Marco und der Tester sehen weiter Flackern während der Ausgabe, nicht
+      **Doku-Runde 23.10.2026:** als Hypothese in `docs/known-issues.md` (das Flackern unter Last; nicht als Befund).
       vollständig geklärt** - so in die Doku): mit Mythos' Licht-Detektor und Marcos Auge Launcher offen, Kodi im Hintergrund, Wechsel -
       rend5 gegen rend6; Hypothese: unsichtbare Arbeit (Warp unter Seiten, Programme dahinter) war eine Lastquelle für die Lichtkopplung.
 - [ ] 2.100 **Weißabgleich und Farbmanagement (bm-wb2): Marcos Wandtest mit diesem Code** (Auflage C aus Mythos' Prüfung, `arbeit/medien/bm-wb2/`):
@@ -553,26 +558,31 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       der HY350-Wand (Logitech am PC/ThinkPad, feste Belichtung) oder den HY350 vor der Kamera des HY310 - Marco schaltet ein und stellt die Kamera.
       Wirkt Gelb-Farbton 100 / Sättigung 0 unter Stock? Ja -> Unterschied in unserem Bildweg suchen; nein -> Block auf dem H713 tot, 2.120.
 - [ ] 2.120 (UI-Teil erledigt 20.10.2026, medien-colour-aus, Mythos go: Settings ohne Bereich Colour, Panel ohne Grundfarben-Karte, Doku-Sätze; offen: Journal, HY350 aufräumen) **Settings/Panel: Hue und Saturation (Colour) ausblenden, bis 2.119 steht**; `ctl set cm_*` bleibt; Doku-Satz in docs/tools/h713-tv.md
+      **Doku-Runde 23.10.2026:** die Doku-Sätze stehen (`h713-tv.md`, `pq.md`, `h713-settings.md`, `h713-panel.md`, die Guides); offen bleiben der Journal-Eintrag cm-diagnose (nicht Mythos' Messung) und das Aufräumen am HY350.
       und docs/subsystems/pq.md ("am HY310 keine sichtbare Wirkung, cm-diagnose 20.10.2026"). Journal-Eintrag cm-diagnose. Aufräumen am HY350
       (Marco): /data/local/tmp/cam350, v350.sh, regread350.sh, /data/local/tmp/k350/ (42 MB), /sdcard/Download/testbild120.mp4.
 - [ ] 2.121 **G-EU: Browser-Start 7,2-7,3 s statt 5,6 s (HY310)** (20.10.2026, Aufsicht, Messreihe geu3): je drei Starts nach 40-s-Sitzungen,
+      **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       "launcher: Browser" -> "has its picture" 7,20/7,27/7,33 s; Unit mit ExecStartPre 0,25 s, Firefox bis zum ersten Bild ~7,0 s; WLAN-Energiesparen
       aus: 7,20 s (nicht die Ursache); erster Start nach Boot 10,7 s, erster nach Installation 14,1 s. Ursache messen (Firefox-Profil, CPU-Takt beim Start,
       eMMC-Lesen, Faktor 1.333 gegen 2.0). **Befund 20.10.2026** (`arbeit/medien/ff-start/BERICHT.md`, Sonnet, von der Aufsicht gelesen, Box nachgeprüft wie vorgefunden): mit derselben Messdefinition wie am HY310 (Unit -> Fenster) 6,90 s (n=29); 0,3 s der 7,2 s sind Messweg (Launcher, 0,5-s-Takt von h713-keys), 1,3 s sitzen in der letzten Stufe (erster Inhaltsprozess -> Fenster): WebRender-Faden "Renderer" 1,58 s CPU auf einem Kern; mit Software-WebRender (Diagnose) 5,46 s. Kein Einfluss: CPU-/GPU-Takt, eMMC (warm), Netz, Faktor, WLAN-Stromsparen. Offen: HY310-Gegenlauf mit dem heutigen Abbild (`ff-start/skripte/ffs.py`). **Es gibt keine Grenze** (Marco 20.10.2026: braucht der Browser am HY300 länger, ist das so) - nur verstehen, wo die Zeit bleibt; Nebenprojekt.
 - [x] 2.122 (erledigt 20.10.2026, Mythos go `arbeit/medien/R-geu2/MYTHOS-PRUEFUNG.md`, gemergt; Rest: beim nächsten HY310-Abbild einmal `disk_sektoren` und Stück C gegen das vorige vergleichen - die Gleichheit ist aus dem Code geschlossen, nicht gemessen; `h713-firefox-scale` schreibt `user.js` bei jedem Start neu, md5-Vergleiche gegen Sicherungen weichen darum ab) **Die drei Commits von `medien-geu2` nach `medien`** (95aee92 Firefox-Faktor nach der Panelbreite, ddd7329 bl31-Schritt nennt die Variante,
       385d6ba h713-mkimage --board schneidet für die eMMC des Boards): das G-EU-Abbild geu3 lief damit (20.10.2026); Mythos prüft, dann Merge.
 - [ ] 2.123 Klein (G-EU 20.10.2026): bei jedem Kodi-Start 5x `sun4i-codec ... ASoC error (-16)` auf dem Codec (Kodis Geräte-Abtastung, EBUSY);
+      **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       ohne hörbare Folge - prüfen, ob Kodi den Codec überhaupt listen muss (ALSA-Hinweis "codec" ausblenden?) oder die Zeilen bleiben dürfen.
 - [x] 2.124 (erledigt 20.10.2026 am G-EU, `arbeit/medien/launcher-rand/`, Mythos go mit Auflagen A/B, eingebaut 9c7b53b: Kodi -> HDMI vorher 3/3 bzw. 5/5 mit Stumm-Zeichen Konsole, nachher 0/7 und 0/3 schwarz 84-117 ms; dazu Launcher-Schließen mit bleibendem Zeichen 5/5 -> 0/14; HY310 nicht gemessen) Klein (wach-wand §9, Mythos 20.10.2026): **Wechsel Kodi -> HDMI ohne Trapez zeigt 0,15-0,17 s Konsole** ("console back with the
       warp's release", dann der Ring; G-EU 2x gesehen) - derselbe Mechanismus wie die Seite in wach-wand Commit 2, über die Freigabe des
       Client-Claims; die Wand bis zum Commit des Rings halten. Test fällt heute, besteht danach.
 - [ ] 2.125 Klein (**Marco 22.10.2026: für jetzt egal, nicht vor dem Release (nicht generell); bis dahin bekannter Fehler in der Doku**; wach-wand §5.1/§9, Mythos 20.10.2026): **schlägt h713-tvs Commit beim Weg hinaus fehl, bleibt die CRTC ohne Ebene und kein
+      **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       h713-tv startet mehr** (`no CRTC drives a mode`, bis jemand fbcon entblankt). Beim Start den Kernel-Zustand wiederherstellen
       (console_restore(), dann noch einmal suchen) - Wiederherstellung, kein Netz (Mythos).
       Dazu (kodi-93 §6, Mythos 20.10.): ein zweiter Absturz von h713-tv im selben Boot bekommt keine Rettung (Einmal-Marke `/run/h713-tv-rescued`,
       ein Zähler ohne Zeit) und h713-tv endet mit "no CRTC drives a mode" - Vorschlag (i) ExecCondition "letzte Rettung länger als 5 min her",
       (ii) der Start stellt bei "no CRTC" die Konsole selbst her.
 - [ ] 2.126 **G-EU: Strich in den ersten zwei Panelspalten, sobald die Videoebene aus ist** (Marco 20.10.2026, Fotos in `arbeit/medien/launcher-rand/`):
+      **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       bei offenem Launcher, unter Seiten und unter der Konsole, nicht im HDMI-Bild. Gemessen (launcher-rand §13): die RGB-Ebene liegt 2 Bildpunkte
       rechts vom Bildanfang (0x051C01A8 = 50 + X, Bildanfang 0x051C0180 = 48; X = 0x0528008C steht auf 0, nicht negativ stellbar; 01A8 nur lesbar),
       die Spalten 48-49 zeigen Ebene 0 = die stille Videoquelle (grün/alt). Stock hält 01A8 == 0180 (Mythos). Wege: (1) Selektor so, dass Ebene 0
@@ -600,7 +610,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       10 Adressen maskiert (doku/134/135/140 mit Schwärzungsvermerk, aic8800 0008/0010 im Commit-Text, vier Boot-Mitschnitte). **Offen für Marco vor
       dem nächsten Push (Mythos C) - Marco 22.10.2026: für jetzt egal (nicht generell) - Achtung, nach dem Push geht es nicht mehr:** die Adresse der Fernbedienung steht noch in vier **unveröffentlichten** Commits (doku 134/135/140); vor dem
       Push ließe sich das lokal herausschreiben (replace-text nur auf dem unveröffentlichten Bereich, ohne Force-Push), danach nicht mehr.
-- [ ] 2.128 **Lizenzen: Auflagen fürs Release aus Mythos' Prüfung des Lizenz-Abschlusses** (20.10.2026, arbeit/lizenz-abschluss-20261020/MYTHOS-PRUEFUNG.md):
+- [x] 2.128 (erledigt 23.10.2026, Doku-Runde: der Absatz "Source code" im Abbild-README verspricht keine Archive für das ganze Abbild mehr: das Repo mit Submodulen als Archiv neben dem Abbild (`allwinner-h713-linux-vX.Y-with-submodules.tar`, der Name ist ein Vorschlag), der Tag auf dem Baukommit, Linux, aic8800, crust und libva als Patches, Konfiguration und Pins; `RELEASES.md`, `PROVENANCE.md` und `rootfs/README.md` sagen dasselbe. Das Archiv selbst entsteht beim Release (1.6); R1 unten bleibt als Beleg) **Lizenzen: Auflagen fürs Release aus Mythos' Prüfung des Lizenz-Abschlusses** (20.10.2026, arbeit/lizenz-abschluss-20261020/MYTHOS-PRUEFUNG.md):
       **Entscheidung Marco 21.10.2026 - R1 klein statt groß:** keine Debian-, Mesa- oder libva-Archive (Debians Quellen liegen dauerhaft bei
       Debian, snapshot.debian.org; MIT/BSD verlangen keine Quellen). Beim Release: die Forks pushen, crust eingeschlossen (das Repo fehlt noch, 1.6);
       eine Datei auf der Release-Seite = Repo mit Submodulen als Archiv (GitHubs "Source code" enthält keine Submodule); den Absatz "Source code"
@@ -625,6 +635,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       offen: Sichtprüfung mit Marcos Fernbedienung (`maus-ok/PRUEFPAKET.md`, dazu `/proc/bus/input/devices` vorher und `top` auf h713-power
       bei bewegtem Zeiger - über ~2 % den Mausknoten erst mit dem Countdown öffnen). Die Wecken-Lücke ist Bluetooth (2.130b).
 - [ ] 2.134 **HY300 (Pro) des Testers (Issue #1, sehr altes Modell): IR-Fernbedienung funktioniert noch nicht** (Marco 22.10.2026). Für die
+      **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta); `boards/hy300-pro/README.md` nennt test11.
       Doku als bekannter Fehler; zur Klärung braucht es von ihm, was der IR-Empfänger bekommt (Skript aus der Gabelung vom 21.10.: Signal kommt
       nicht / anderer Code / Regel greift nicht). **22.10.2026:** Nachrüstsatz test11 (`arbeit/medien/test11-ir-nachruest/`: PL9 nach dem ARISC-Start zurück, Tastentabelle der originalen HY300-Fernbedienung) gebaut, am G-EU geprüft und für den Tester hochgeladen; seine Rückmeldung steht aus.
 - [ ] 2.135 Klein (arisc-default, Mythos 22.10.2026): unter der Hersteller-ARISC meldet ein Dienst "status brief timed out" nach ~17 s -
@@ -632,6 +643,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.136 Klein: **libva-Tar nicht reproduzierbar über verschiedene Baupfade** (Release-Bau 22.10.2026: gleicher Commit, Tar 7c0fdc55 in
       `R-rel/repo-hy310`, 237ec304 in `R-rel/repo-geu`; mesa gleich). Vermutlich Pfade im Ergebnis (`-ffile-prefix-map` in `build-libva.sh`); prüfen.
 - [ ] 2.137 **Installer: `--keep-env` übernahm `h713_gate=0` aus der Sicherung im Abzug, nicht den Wert vom Gerät** (G-EU 22.10.2026: auf
+      **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       dem Gerät stand 1, "carried over from the old one: h713_gate=0 (image: 1)"; `install-dump/uboot-env.bin` vom 20.10. trug 0). Am HY310 23.10.2026 genauso. Der Installer
       soll die Umgebung vom Gerät lesen, wie er es für Secure Storage tut, oder den Unterschied laut melden. Danach `fw_setenv h713_gate 1` von Hand.
 - [x] 2.139 (**behoben 22.10.2026, medien f711ffc9**: Kernel 0328 setzt PL9 nach dem ARISC-Bind zurück, 0329 Tabelle der originalen HY300-
@@ -656,6 +668,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       lässt sie stehen, crust hält sie so. Strom, unabhängig vom Summen; vor dem Schlaf abschalten und nach dem Wecken zurück (Verstärker-Plopp
       und WLAN-Wiederkehr dabei prüfen).
 - [ ] 2.132 **G-EU: Knarzen aus den Lautsprechern beim Einschalten nach dem Aus** (Marco 21.10.2026 beim Hörtest, Kaltstart nach
+      **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       dem Aus über crust und Wecken per Fernbedienung). Nicht untersucht; erst den Zeitpunkt im Boot finden (Codec/DSP-Initialisierung, Mute vor
       dem ersten Ton?).
 - [ ] 2.130a Klein, nach der Sichtprüfung von 2.130: **Pfeiltasten im Mausmodus** - schicken Hoch/Runter dort KEY_UP/KEY_DOWN oder nur
@@ -665,6 +678,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.130c Klein: **Journalrauschen** - h713-keys setzt EVIOCSREP auf jeden Knoten der Fernbedienung, auch auf den Mausknoten (kein EV_REP,
       ENOSYS -> eine Warnzeile je Öffnung); EVIOCSREP nur bei EV_REP (Mythos 21.10.2026).
 - [ ] 2.131 (**Marco 22.10.2026: für jetzt egal, nicht vor dem Release (nicht generell); bis dahin bekannter Fehler**) **G-EU: schwarzer Block unten im Launcher bei jedem zweiten Zug, nur ab und zu** (Marco 20.10.2026, Foto
+      **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       `arbeit/medien/launcher-rand/foto-box-schatten.webp`, 18:06 und 21:01 bei Zügen über die uhid-Fernbedienung, nicht bei Marcos eigenem Aufruf).
       Der Block sitzt dort, wo die Einblendung (Lautstärke-Pille) erscheint, rechts neben "Standby". Gemessen 21:06/21:08 UTC
       (`launcher-rand/laeufe/box-210559`, `pille-210831`): der Launcher wechselt je Zug zwischen zwei Puffern (fb 49/50), beide nach jedem Zug
@@ -677,6 +691,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Neustart von h713-tv bei laufendem Kodi, (3) Kodi starten, während h713-tv steht, (4) VA und ALSA als Nutzer; 2.83 Speicher mit einem Video-Tab;
       2.86 Kaltstart ohne Signal, Firefox-Caches über ein neues Abbild, "On start" mit der echten Fernbedienung; 2.91 N-2 (Power 3 s bei offenem
       Launcher -> Aus, nur mit Marco); 2.94 einmal mit "On start: HDMI input" ansehen. Nicht vor dem Release nötig; je eine Zeile Ergebnis hierher.
+- [ ] 2.142 **Heimnetz-Adressen und ein privater Begriff außerhalb des Journals** (Doku-Runde 23.10.2026, `arbeit/medien/doku-runde/LECKS.md` §5;
+      Marcos Entscheidung, Mythos hat Code nicht angefasst): `.githooks/pre-push` Z. 9 trägt den Mailserver-Begriff im Klartext in seiner Prüfregel -
+      die Begriffe gehören in die Liste außerhalb des Repos wie bei `sperr-scan.py` Regel 8, **vor dem Push entscheiden**; die U-Boot-Vorgaben
+      `serverip`/`nfsroot` 192.168.8.123 und .104 im Fork (`board/sunxi/hy310.env`) und damit in den Spiegel-Patches 0021/0023/0024/0025/0030/0033/0093
+      und in `docs/uboot/environment.md`; `userspace/h713-pq/h713_pq/output.py` Z. 167/227 (Beispielbefehl); `userspace/h713-settings/tests/test_settings.py`
+      Z. 307/1589 (Attrappe); acht Stellen in Messskripten und -protokollen unter `analyse/boot/`. Raus (Fork-Commit plus Spiegel, Platzhalter im Code;
+      die Protokolle als Belege eher lassen) oder lassen - die Adressen zeigen auf ein Heimnetz, nicht auf einen Menschen.
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -743,7 +764,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       braucht den veröffentlichten Fork (1.6)
       - 12.10. geprüft: `build-all.sh` sucht schon in `mainline/external/crust` (Z. 181), es fehlt nur das Submodul; `well0nez/crust`
         gibt es auf GitHub noch nicht. Vorschlag: vorbereiten, Commit erst mit dem Push 1.6 - **Entscheidung Marco offen**
-- [ ] 5.16 **Reste der Doku-Runde 09.10.** (`2f7875f`, Entwürfe und Notizen in `arbeit/doku-r2-20261009/*/NOTIZEN.md`):
+- [x] 5.16 (erledigt 23.10.2026, Doku-Runde: `docs/uboot/README.md` nennt 0096-0102 als mit v0.97-beta veröffentlicht, das R_WDOG-Netz steht in `standby.md`, Drehzahl und ARISC-Größe waren seit dem 11.10. gleich; die Commit-Texte 0231/0240/0243 bleiben (kein Serienumbau) und sind in `mips.md`, `hdmi-in.md`, `audio.md` richtiggestellt; der msp-Abbruchfall gehört zu 5.14) **Reste der Doku-Runde 09.10.** (`2f7875f`, Entwürfe und Notizen in `arbeit/doku-r2-20261009/*/NOTIZEN.md`):
       Commit-Texte beim nächsten Serienumbau - `0231` nennt V10 "three times in a row" (nicht belegt, `doku/176` §1), `0240`
       sagt "not yet measured" (gemessen, `doku/173`), `0243` sagt "until a reboot" (siehe 3.3); Lüfterdrehzahl 4860
       (`hardware.md`, `board-mgr.md`) / 4770 (`known-issues.md`) / ~4800 (`0222`) vereinheitlichen; Größe des
@@ -819,7 +840,7 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       - 12.10. nachts: MemPalace und Graphify ausgebaut (8.2) - es bleiben `referenz/` und das Journal
 - [ ] 7.16 Testskripte veröffentlichen — Auswahl, was ohne unseren Tisch läuft (aus `61`)
 - [ ] 7.17 Fotos: Standbilder der projizierten Bilder (ROADMAP „Pictures")
-- [ ] 7.19 **Doku-Runde: die Neuerungen auf beiden Geräten** (geht in Mythos' kompletter Doku-Runde auf, 1.0 (5); Marco 10.10.): seit R2 kamen dazu - HY310: dunkles Gate nach
+- [x] 7.19 (erledigt 23.10.2026, Doku-Runde: in der Doku-Runde aufgegangen - README, docs/README, STATUS, ROADMAP, known-issues, boards/README, RELEASES-Entwurf und jede weitere Seite (`arbeit/medien/doku-runde/BERICHT.md`)) **Doku-Runde: die Neuerungen auf beiden Geräten** (geht in Mythos' kompletter Doku-Runde auf, 1.0 (5); Marco 10.10.): seit R2 kamen dazu - HY310: dunkles Gate nach
       missglücktem Standby (0245), HDCP-Härtung, Leistung; HY300PRO-G-EU: crust, Standby, Panel-Zyklus, PB5 (0246-0249,
       `doku/182`/`184`/`185`). Nachziehen: README (Board-Liste: G-EU-Status), `docs/README.md`, `STATUS.md`, `ROADMAP.md`,
       `docs/known-issues.md` durchsehen, `boards/README.md`, `RELEASES.md`-Entwurf für 1.8; die Subsystem-Seiten sind schon
@@ -904,6 +925,7 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 - [ ] 9.3f **Kodi im Leerlauf** (Marco entscheidet: Kodi-Patch oder Skin): 10 % eines Kerns statt unter 5 % (Kodis Hauptthread 8,1 %, cage 2,4 %, CEC-Suche 1,2 %; `doku/211` §8).
       Debians Kodi hat kein Estouchy. Null CEC wäre nur ohne den CEC-Bus (Kodi-Patch). Dazu: stumm über Kodi und Standby nur teils (9.0b).
 - [x] 9.3g (erledigt 23.10.2026: `medien` als Ganzes in `main`, Merge 4b771442 - `CONFIG_SUN50I_IOMMU=y`, `0294`, `0297` sind drin; die Zeile in `docs/known-issues.md` prüft die Doku-Runde 1.0 (5)) **medien nach `main`: IOMMU und die Reste der ersten Übergabe**. Mit dem Merge des Zweigs `medien` kommt `CONFIG_SUN50I_IOMMU=y` mit `0294` (Capture bidirektional) und `0297`
+      **Doku-Runde 23.10.2026:** die IOMMU-Zeile in `docs/known-issues.md` ist weg - die Dekoder hinter der IOMMU sind seit dem 13.10. gemessen (`docs/subsystems/video.md`).
       (Kommentar) nach `main`; wird er nicht als Ganzes übernommen, müssen diese drei mindestens einzeln hinüber (`0294` ohne `0271`-`0293` anwendbar: nicht geprüft). Danach
       `docs/known-issues.md` (Zeile "Hardware video decode, IOMMU") gegen den Release-Kernel prüfen.
 - [ ] 9.3h **`CONFIG_USER_NS` für Firefox** (`doku/212` §3): `about:support` meldet `hasUserNamespaces` false, die Inhalts-Sandbox von Firefox läuft nur auf Seccomp (Stufe 6)

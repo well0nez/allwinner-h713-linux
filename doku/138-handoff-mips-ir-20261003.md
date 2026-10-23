@@ -73,7 +73,7 @@ LIRC umgeht Pinmux/Abtastung nicht.
 
 ## Zugriffe und Rueckweg
 
-SSH `ssh hy300pro`, zuletzt192.168.8.246, root/SSH-Key. UART-Bruecke
+SSH `ssh hy300pro`, zuletzt *geschwärzt am 23.10.2026: Heimnetz-Adresse*, root/SSH-Key. UART-Bruecke
 `nc <geschwaerzt 23.10.2026: Heimnetz-Adresse> 2000`, nur ein Client; Mitschnitt ausschliesslich lesend.
 Keine Passwoerter/Keymaterial in diesem Handoff. WLAN-Zugang nicht abdrucken.
 

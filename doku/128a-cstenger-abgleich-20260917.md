@@ -144,6 +144,8 @@ davon berührt Cedrus. Seine 49/49 und 53 Messungen sind deshalb eine starke Vor
 5. **Keine LICENSE-Datei in seinem Repo** (geprüft). Die Kernelpatches sind als Kernel-Derivat GPL-2.0, wie bisher; seine
    Werkzeuge (`cedrus-scaler-api-test.c`, `cedrus-control-test.c`, `cedrus-scaler-check.py`, `gen-scaler-coef.py`,
    `cedrus-compose-probe.c`) bleiben wie die MIPS-Werkzeuge in `re/cstenger-tools/`, nicht im Repo.
+   *Nachtrag 23.10.2026 (Doku-Runde, TODO 1.10 h): im Abgleich vom 19.10.2026 trugen 40 seiner Werkzeugdateien einen
+   SPDX-Kopf GPL-2.0; der Satz oben beschreibt den Stand vom 17.09.2026.*
 6. **`0112` ist ohne Player relevant**: der DPB-Index kommt ungeprüft aus dem Userspace, jeder mit Zugriff auf `/dev/video0`
    erreicht den Out-of-bounds-Lesezugriff. Bei uns lädt cedrus (§3: DT `okay`, Modul in der Defconfig), `/dev/video*` gehört root bzw. der Gruppe `video`,
    und die Shell ist SSH key-only - Exposition gering, aber der Fix ist upstream-acked und kostet nichts.
