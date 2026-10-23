@@ -74,7 +74,7 @@ LIRC umgeht Pinmux/Abtastung nicht.
 ## Zugriffe und Rueckweg
 
 SSH `ssh hy300pro`, zuletzt192.168.8.246, root/SSH-Key. UART-Bruecke
-`nc 192.168.8.180 2000`, nur ein Client; Mitschnitt ausschliesslich lesend.
+`nc <geschwaerzt 23.10.2026: Heimnetz-Adresse> 2000`, nur ein Client; Mitschnitt ausschliesslich lesend.
 Keine Passwoerter/Keymaterial in diesem Handoff. WLAN-Zugang nicht abdrucken.
 
 Geraetebackup /root/mipsreload-20261003:
@@ -161,7 +161,7 @@ R7normalelogLevel1: NutzerSchwarz, alle90Stockregistervor/nachidentisch, TSE/PQF
 
 ## 03.10.2026 — MIPS-Reload HART GEPARKT (Nutzerauftrag)
 Keine weiteren Reloads, Builds oder Liveversuche fuer MIPS-Reload ohne neuen Auftrag.
-Letzter INFO-Versuch R8 endete mit -110/NOT ready, Capture war bereits vorher nicht gebunden; kein gueltiger Vergleich zum bisherigen ready/Schwarz-Fehler. Original display_cfg.xml nach physischem Neustart wiederhergestellt, SHA256 b3e6e8f60d6f96ff458046af655f4b51e8e36ffc70f5107b0fef91badeca192a. Aktuelle SSH-Pruefung bestaetigt Originalhash und laufendes Linux (192.168.8.246). Nutzer meldet nach erneutem eigenem Reboot weiterhin SCHWARZ: Wiederherstellung des Bildes NICHT bestaetigt. Keine weiteren Geraeteschreibzugriffe nach diesem Auftrag.
+Letzter INFO-Versuch R8 endete mit -110/NOT ready, Capture war bereits vorher nicht gebunden; kein gueltiger Vergleich zum bisherigen ready/Schwarz-Fehler. Original display_cfg.xml nach physischem Neustart wiederhergestellt, SHA256 b3e6e8f60d6f96ff458046af655f4b51e8e36ffc70f5107b0fef91badeca192a. Aktuelle SSH-Pruefung bestaetigt Originalhash und laufendes Linux (*geschwärzt am 23.10.2026: Heimnetz-Adresse*). Nutzer meldet nach erneutem eigenem Reboot weiterhin SCHWARZ: Wiederherstellung des Bildes NICHT bestaetigt. Keine weiteren Geraeteschreibzugriffe nach diesem Auftrag.
 Belege: diagnostic-run/elog-info-rollback.log, elog-info-failed-status.log, R8-elog-info-reload.log, elog-info-boot.json/txt. INFO-After leer und daher nicht als Ursachenbeweis verwenden. Fruehere Aussagen zur regelmaessig funktionierenden Reboot-Recovery gelten nicht fuer den jetzigen Zustand.
 
 ## Aktueller WLAN/BT-Abschluss (03.10.)

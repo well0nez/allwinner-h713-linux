@@ -8,7 +8,7 @@ Diese Untersuchung fand am **HY310 / HY260_QZ713_V3.1** statt, nicht am HY300PRO
 
 ## Abschlusszustand und Zugriff
 
-SSH: `ssh hy310`, zuletzt 192.168.8.132, root/Keyauth. UART: `nc 192.168.8.180 2000`, Orange-Pi-ser2net, nur ein Client, ausschließlich lesend. UART ist derzeit dem HY310 zugeordnet. Keine Zugangsdaten in der Doku.
+SSH: `ssh hy310`, zuletzt *geschwärzt am 23.10.2026: Heimnetz-Adresse*, root/Keyauth. UART: `nc <geschwaerzt 23.10.2026: Heimnetz-Adresse> 2000`, Orange-Pi-ser2net, nur ein Client, ausschließlich lesend. UART ist derzeit dem HY310 zugeordnet. Keine Zugangsdaten in der Doku.
 
 Beim Parken wurden die Originale mit dem begrenzten Rückrollwerkzeug wiederhergestellt und rückgelesen; normaler Reboot ausgelöst. Abschließende Bootprüfung siehe Abschlussnachtrag unten. Temporäre Clock-Hold-/Trace-Firmware ist kein zulässiger Dauerstand und kein Standby-Fix.
 

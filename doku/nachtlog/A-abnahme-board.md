@@ -7,7 +7,7 @@
 | 21:58 | `KERNEL_CONFIG=netboot build/build.sh kernel` → `h713-kernel-netboot.fit` (7 831 804 B), Baum `linux-6.18.38-162ea031fab0…` |
 | 22:01 | Sperre gesetzt, TFTP geprüft (`[::]:69` lauscht), FIT gesichert nach `tftp/h713-kernel-netboot.fit.bak-20260906-vorA` |
 | 22:01 | Module: `make modules_install INSTALL_MOD_PATH=build/modroot.neu` (25 Module), Board-Sicherung `/lib/modules/6.18.38.bak-20260906-vorA`, dann per `tar` über SSH ins NFS-Root, `depmod -a` |
-| 22:02 | neue FIT nach `tftp/`, `sonoff_ctl restart --host 192.168.8.179` |
+| 22:02 | neue FIT nach `tftp/`, `sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>` |
 | 22:03 | Board erreichbar (43 s), `/proc/uptime` 24,77 s = echter Kaltstart |
 
 Das Löschen des alten Modulverzeichnisses schlug fehl (`Directory not empty`) - NFS-Silly-Rename, weil die

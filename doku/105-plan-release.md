@@ -72,7 +72,7 @@ GPT-Header und p1-p4 (`hy310-backup-<datum>.tar`). Namen sind die Schnittstelle 
 h713_boot=emmc                      # emmc | net ; "net" erzwingt Netboot
 h713_gate=1                         # Bereitschaft (nur mit Gate-Build wirksam)
 bootfile=h713-kernel-netboot.fit
-serverip=192.168.8.104
+serverip=<geschwaerzt 23.10.2026: Heimnetz-Adresse>
 nfsroot=/srv/h713-rootfs
 bootargs_base=console=ttyS0,115200 earlycon rootwait clk_ignore_unused pd_ignore_unused cma=128M
 boot_emmc=if ext4load mmc 1:5 0x60000000 h713-kernel.fit; then setenv bootargs "${bootargs_base} root=PARTLABEL=hy310-rootfs rw"; bootm 0x60000000; fi
@@ -152,9 +152,9 @@ Netboot bleibt als Entwicklungsweg erhalten; Rückweg zum Stock bleibt immer dok
 - **R2 gestartet (10.09. 00:25):** Agentenpaket `analyse/release/arbeit/r2-extract/` (`AUFTRAG.md`), Bericht S42. Testfälle: HY310
   `re/vendor/HY310/update.img` (`update_rooted.img` ist dasselbe Image mit Root, kein zweites Gerät - Marco), **L018**
   `/opt/Projekte/Beamer/L018/update.img` (zweites H713-Gerät, ohne Referenzwerte), Roh-Dump `re/device-dumps/emmc-first-300mb.bin`.
-- **v4 geflasht (10.09. 00:55, über UART aus der Claude-Sitzung):** tftpboot von `192.168.8.123`, CRC `56a6a77f`, `mmc write`, Rücklesen,
+- **v4 geflasht (10.09. 00:55, über UART aus der Claude-Sitzung):** tftpboot von `<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, CRC `56a6a77f`, `mmc write`, Rücklesen,
   `cmp.b` 886.137 gleich; `reset` → v4 (`gfe1e801fa015`) kam mit der Vorgabe-Env (`h713_gate=1`, `serverip=.104`) → `h713_gate=0`,
-  `serverip=192.168.8.123`, `saveenv`; Netboot über den v4-Rückfall `boot_net`. Aus Linux bestätigt (Installer-Precheck 0.2): proper byteidentisch,
+  `serverip=<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, `saveenv`; Netboot über den v4-Rückfall `boot_net`. Aus Linux bestätigt (Installer-Precheck 0.2): proper byteidentisch,
   **gültige Env am Release-Ort `0x93d80000`** (75 Variablen), der alte Block bei `0x65d80000` liegt als Rest. GUT-Stand
   `tftp/uboot-proper.GUT-gate-v4-20260910.bin`, Vorgänger gesichert. **S41 §2.3 beantwortet:** Stock-GPT hat 26 Einträge à 128 Byte, Tabelle
   LBA 2-8, primäre Seite gültig → keine Kollision mit der SPL, `--gpt-primary auto` schreibt normal. Root belegt 3,0 GiB (`du -sx`).

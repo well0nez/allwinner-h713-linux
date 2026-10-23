@@ -163,21 +163,21 @@ ss -ulnp | grep -w :69                       # TFTP muss lauschen; sonst STOPP +
 echo "$(date +%F_%T) hauptsitzung B" > /tmp/claude-1000/h713-board.lock
 
 # Positivkontrolle am Zuspieler VOR dem Lauf (Memory: messung-instrument-erst-pruefen)
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'    # erwartet: disconnected
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'    # erwartet: disconnected
 
 # ---- 1. Kaltstart ------------------------------------------------------------
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
 
 # ---- 2. Der Treiber, OHNE Prep-Schritt 1 ------------------------------------
 # Falls das Modul nicht schon per Modalias geladen wurde:
-ssh root@192.168.8.141 'modprobe sun50i-h713-arisc; lsmod | grep -c sun50i_h713_arisc'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'modprobe sun50i-h713-arisc; lsmod | grep -c sun50i_h713_arisc'
 
-ssh root@192.168.8.141 'dmesg | grep -i "h713-arisc"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -i "h713-arisc"'
 #   ERWARTET:  h713-arisc ...: ARISC-Startup-Notify quittiert: projector-tv303-android11-v1.3-3-g293ff69
 #   NICHT ok:  "... nicht gesehen (-110)" oder "... fehlerhaft (-71)"
 
-ssh root@192.168.8.141 'cat /sys/kernel/debug/h713-arisc/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/h713-arisc/status'
 #   ERWARTET (die ersten fünf Zeilen):
 #     startup_notify: acked
 #     firmware_version: projector-tv303-android11-...
@@ -186,29 +186,29 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/h713-arisc/status'
 #     edid_firmware: hy310-edid.bin loaded
 
 # ---- 3. Rest des Prep (Schritt 1 und das alte Modul herausgeschnitten) -------
-ssh root@192.168.8.141 "sed -e '/arisc_load.py/d' \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> "sed -e '/arisc_load.py/d' \
     -e 's#; insmod /root/hy310-arisc-hdmi.ko 2>/dev/null##' \
     /root/prep_after_boot.sh > /root/prep_ohne_arisc.sh && sh /root/prep_ohne_arisc.sh"
 
 # ---- 4. SetSource wie in Abschnitt 1 des Nachtplans --------------------------
-ssh root@192.168.8.141 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it \
      --only setsource --source 3 --portmap stock --gap 500 --pre-source-wait 1 --listen-after 3'
 
 # ---- 5. Die EDID-/HPD-Folge AUS DEM KERNEL ----------------------------------
-ssh root@192.168.8.141 'time sh -c "echo edid > /sys/kernel/debug/h713-arisc/cmd"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'time sh -c "echo edid > /sys/kernel/debug/h713-arisc/cmd"'
 #   dauert ~11-13 s (10 s davon ist der HPD-low-Teil des Protokolls)
 #   Rueckgabe 0 = alle elf Schritte quittiert. Ein Fehlercode nennt den Schritt im dmesg.
 
 # ---- 6. Abnahme -------------------------------------------------------------
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status'
 #   ERWARTET: connected      (Zeit ab Schritt 5 <= 60 s)
-ssh user@192.168.8.162 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'strings /sys/class/drm/card0-HDMI-A-2/edid | head'
 #   ERWARTET: SGD SX8
-ssh root@192.168.8.141 'cat /sys/kernel/debug/h713-arisc/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/h713-arisc/status'
 #   ERWARTET jetzt zusaetzlich: edid_module: ready
 #                               edid_status: ff f8 01 01 ...
 #                               last_command: ...
-ssh root@192.168.8.141 'dmesg | grep -i "h713-arisc"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -i "h713-arisc"'
 #   ERWARTET: "EDID uebernommen, Status ff f8 01 01 ..",
 #             "EDID zurueckgelesen (n B): ..",
 #             "EDID/HPD-Sequenz auf Port 0 abgeschlossen"

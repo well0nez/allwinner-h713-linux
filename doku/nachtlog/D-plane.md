@@ -149,28 +149,28 @@ Punkt 1), Netboot-FIT gebaut und ausgerollt, Modul auf dem Board. Sperre halten.
 ```bash
 # --- 0. Werkzeug bauen (einmalig; Board-Root hat gcc-14 + libdrm-Header) -----
 cp /opt/Projekte/h713/analyse/kms/hdmi_plane_test.c /srv/h713-rootfs/root/
-ssh root@192.168.8.141 'gcc -O2 -Wall -o /root/hdmi_plane_test /root/hdmi_plane_test.c \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'gcc -O2 -Wall -o /root/hdmi_plane_test /root/hdmi_plane_test.c \
     $(pkg-config --cflags --libs libdrm)'
 
 # --- 1. Kaltstart -----------------------------------------------------------
 ss -ulnp | grep -w :69                                   # TFTP muss lauschen, sonst STOPP
-sonoff_ctl restart --host 192.168.8.179                  # ~40 s bis SSH
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>                  # ~40 s bis SSH
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
 
 # --- 2. Prep, SetSource, EDID  (Nachtplan Abschnitt 1, woertlich) -----------
-ssh root@192.168.8.141 'bash /root/prep_after_boot.sh'
-ssh root@192.168.8.141 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'bash /root/prep_after_boot.sh'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
      --source 3 --portmap stock --gap 500 --pre-source-wait 1 --listen-after 3'
-ssh root@192.168.8.141 'bash /root/arisc_edid_init.sh'   # ~30 s, enthaelt HPD down 10 s
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'bash /root/arisc_edid_init.sh'   # ~30 s, enthaelt HPD down 10 s
 sleep 6                                                   # Signal-Lock; INCAP 0x06940104 zaehlt 60/s
 
 # --- 3. AB HIER OHNE viddec_descriptor.py UND OHNE afbd_source0.py ----------
-ssh root@192.168.8.141 'dmesg | grep -i afbd'            # erwartet: "adopting 1920x1080, stride 7680"
-ssh root@192.168.8.141 'python3 /root/dump_state.py D_vor'
-ssh root@192.168.8.141 'timeout 60 /root/hdmi_plane_test -t 45' &   # haelt das Bild 45 s
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -i afbd'            # erwartet: "adopting 1920x1080, stride 7680"
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py D_vor'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'timeout 60 /root/hdmi_plane_test -t 45' &   # haelt das Bild 45 s
 sleep 8
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot D-plane-ring
-ssh root@192.168.8.141 'python3 /root/dump_state.py D_an'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py D_an'
 wait
 ```
 
@@ -192,11 +192,11 @@ wait
 **Robustheit (Marcos Anforderung aus doku/76 §11.7):**
 
 ```bash
-ssh root@192.168.8.141 'timeout 120 /root/hdmi_plane_test -t 110' &
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'timeout 120 /root/hdmi_plane_test -t 110' &
 sleep 10
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --off'; sleep 6
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --off'; sleep 6
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot D-quelle-aus
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 10
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 10
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot D-quelle-an
 wait
 ```
@@ -207,7 +207,7 @@ Erwartet: Bild kommt von selbst zurück, gleiche Qualität wie vorher.
 `messung-instrument-erst-pruefen`):
 
 ```bash
-ssh root@192.168.8.141 'timeout 40 /root/hdmi_plane_test --pattern -t 30' &
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'timeout 40 /root/hdmi_plane_test --pattern -t 30' &
 sleep 8
 python3 /opt/Projekte/h713/analyse/hdmi-seq/wandcheck.py shot D-farbbalken
 wait
@@ -219,7 +219,7 @@ Capture-Seite. Keine Balken ⇒ der Fehler liegt in der Plane.
 **Sättigung** (Paket G rechnet die Bytes, `hy310-pq saturation HDMI1 <modus>`):
 
 ```bash
-ssh root@192.168.8.141 'timeout 40 /root/hdmi_plane_test -s 92 -t 30'    # 0x5C = vivid
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'timeout 40 /root/hdmi_plane_test -s 92 -t 30'    # 0x5C = vivid
 ```
 
 **Wenn etwas schiefgeht - was welche Meldung bedeutet:**

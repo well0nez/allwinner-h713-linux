@@ -79,4 +79,4 @@ Probe mit -517 hängen und der ganze MIPS-Treiber ungebunden). Mit Modul, Gerät
   bleibt PB5 (Lüfter-Schiene) auf diesem Board noch an.
 - Auf dem HY300 noch offen: HDCP-1.4-Paar mit Quelle, HDCP 2.2, Ton über HDMI, Standby.
 - Die Box läuft `geucrust1` + Schnell-Deploy (Kernel mit PF6, Gerätebaum mit Panel-Pins, Modul), WLAN `.245`,
-  UART-ESP `192.168.8.105` (2000 schreiben, 2001 lesen).
+  UART-ESP `<geschwaerzt 23.10.2026: Heimnetz-Adresse>` (2000 schreiben, 2001 lesen).

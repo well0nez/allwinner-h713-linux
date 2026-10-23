@@ -18,7 +18,7 @@ im Codec, §4.1 unten). Belege: [`S16`](S16-hdmi-audio.md) 17:55-20:45, [`S25`](
 | Unit `hy310-tv@.service`, `99-hy310-tv.rules` | unverändert |
 
 Neue Abhängigkeit: **libasound** (ALSA-Control-API, kein PCM). Debian-Paket `libasound2-dev` gehört ins Board-Root
-(`ssh root@192.168.8.141 apt install libasound2-dev`) - auch der Querbau nimmt Header und Linkernamen von dort; heute
+(`ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> apt install libasound2-dev`) - auch der Querbau nimmt Header und Linkernamen von dort; heute
 liegt dort nur `libasound.so.2` (Laufzeit), kein Header.
 
 ## 2. Der Automat
@@ -114,9 +114,9 @@ Beide sind **willkommen, nicht Pflicht**.
 
 ```sh
 # 0) Abhängigkeit + Bau (Board-Root ist dasselbe wie der Sysroot des Querbaus)
-ssh root@192.168.8.141 'apt install -y libasound2-dev'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'apt install -y libasound2-dev'
 make -C userspace/hy310-tv cross && sudo make -C userspace/hy310-tv install-cross DESTDIR=/srv/h713-rootfs
-ssh root@192.168.8.141 'systemctl daemon-reload; systemctl restart hy310-tv@video1; journalctl -u hy310-tv@video1 -n 20'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'systemctl daemon-reload; systemctl restart hy310-tv@video1; journalctl -u hy310-tv@video1 -n 20'
 #    erwartet: "ton  hy310hdmi (card N) + H713 Audio Codec (card M), Ereignisse, Lautstaerke 100 (0,0 dB),
 #               HDMI-Abgleich 0,00 dB, Stummschalter Line Out Playback Switch, folgt dem Bild"
 # 1) Ton folgt dem Bild: Quelle 48 kHz Dauerton -> Mikro 1 kHz >= 70 dB (S16-Messkette)

@@ -296,7 +296,7 @@ cp mainline/build/out/h713-kernel-netboot.fit tftp/
 
 **Zu prüfen, in dieser Reihenfolge:**
 
-1. **Kaltstart mit dem neuen Kernel** (`sonoff_ctl restart --host 192.168.8.179`), vorher `ss -ulnp | grep -w :69`.
+1. **Kaltstart mit dem neuen Kernel** (`sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>`), vorher `ss -ulnp | grep -w :69`.
    Erwartung: Board kommt hoch, SSH nach ~40 s.
 2. **Konsole auf der Wand wie heute.** *Das ist der kritische Punkt dieses Pakets.* Wenn kein Bild kommt:
    `dmesg | grep -i afbd` ansehen. Zwei mögliche Meldungen:

@@ -166,7 +166,7 @@ Der Netboot-Weg bleibt der Entwicklungsweg und darf durch v3 nicht schlechter we
    `/etc/hy310/tvconfig/` (PQ-Daten), `/usr/local/sbin/h713-tv`. Das heutige NFS-Root (2,9 GiB, Entwicklungswerkzeug) bleibt als
    getrennter Baum bestehen, solange es gebraucht wird.
 3. **Die Umgebung kennt beide Wege.** `h713_boot=emmc|net` schaltet um, `boot_net` bleibt der Rückfall, wenn `boot_emmc` scheitert.
-   Die Vorgabe im Abbild führt noch `serverip=192.168.8.104` - das ist der **vorige** Rechner; richtig ist **192.168.8.123**.
+   Die Vorgabe im Abbild führt noch `serverip=<geschwaerzt 23.10.2026: Heimnetz-Adresse>` - das ist der **vorige** Rechner; richtig ist ***geschwärzt am 23.10.2026: Heimnetz-Adresse***.
    Das gehört mit `0024` korrigiert, sonst muss es jedes Gerät per `saveenv` nachziehen.
 
 **Option für später, nicht Teil dieses Plans:** die Artefakte per TFTP laden statt von der Partition. Das wäre für die Entwicklung
@@ -198,7 +198,7 @@ Die Reihenfolge ist so gewählt, dass der einzige riskante Schritt so spät wie 
 | 2 | proper an **LBA 2048** schreiben, alten bei 4828160 stehen lassen | `mmc read` + `crc32` gegen den Host-Wert, `cmp.b` |
 | 3 | SPL bei **LBA 16** tauschen | **das Risiko** - danach entscheidet sich, ob das Gerät noch selbst bootet |
 | 4 | Reset, Prompt fangen | Banner der neuen Version, `Loading Environment from MMC` |
-| 5 | Umgebung neu setzen (`h713_gate=0`, `serverip=192.168.8.123`, `h713_project`, `h713_mips_dev`) | `printenv`, dann `saveenv` und Byte-Scan bei `0x700000` |
+| 5 | Umgebung neu setzen (`h713_gate=0`, `serverip=<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, `h713_project`, `h713_mips_dev`) | `printenv`, dann `saveenv` und Byte-Scan bei `0x700000` |
 | 6 | GPT nach §2.2 schreiben, `FirstUsableLBA=16384` | `lsblk`, Rücklesung des Schreibers |
 | 7 | `mkfs` auf beide, Artefakte nach `hy310-boot/mips` | byteweiser Vergleich |
 | 8 | Rootfs nach `hy310-rootfs`, FIT nach `hy310-boot` | Kaltstart ohne Host |
@@ -295,7 +295,7 @@ breit und meldet alles Verdächtige; die Bewertung kommt mit dem ersten fremden 
   Gerät war ohne Netz. **Behoben mit `net.ifnames=0` in `bootargs_base`**, U-Boot-Commit `0025`. Ein MAC-abhängiger Name taugt
   nicht für ein Release; das Gerät hat genau einen Adapter, also sind die klassischen Namen richtig.
 - **Das Gerät hat eine neue Adresse.** Mit dem Hostnamen `hy310` statt `h713-arm64` vergibt der DHCP-Server
-  **192.168.8.143** statt `.141`. Wer nach dem Umbau `.141` anspricht, findet nichts.
+  ***geschwärzt am 23.10.2026: Heimnetz-Adresse*** statt `.141`. Wer nach dem Umbau `.141` anspricht, findet nichts.
 - **Das Release-Abbild hat bewusst keinen SSH-Schlüssel** (`107` §3). Nach dem Umzug vom Netboot war das Gerät deshalb nur über
   die serielle Konsole erreichbar. Der Installer hat dafür bereits `--authorized-key` - die Option war beim Umbau nur nicht
   benutzt worden. **Beim scharfen Lauf mitgeben.**
@@ -361,4 +361,4 @@ gestartet (der Installer verweigert den Dienst auf dem laufenden Zielsystem), da
    der Installer ausdrücklich, dass das Gerät nur über die serielle Konsole erreichbar sein wird.
 
 **Nebenbefund:** das Gerät bekommt eine **andere DHCP-Adresse**, weil der Hostname jetzt `hy310` statt `h713-arm64` ist
-(zuletzt `192.168.8.143`). Für Skripte, die die alte Adresse fest verdrahten, ist das eine Stolperstelle.
+(zuletzt `<geschwaerzt 23.10.2026: Heimnetz-Adresse>`). Für Skripte, die die alte Adresse fest verdrahten, ist das eine Stolperstelle.

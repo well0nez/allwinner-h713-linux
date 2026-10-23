@@ -3,7 +3,7 @@
 Stand 05.09.2026. Diese Datei beantwortet die offene Frage aus
 [69-handoff-20260905.md](69-handoff-20260905.md), Abschnitt „Woran ich zuletzt
 saß": *braucht der ARM den `tvtop`-Treiber überhaupt, oder macht der MIPS die
-HDMI-RX-Seite allein?* Alles hier ist am laufenden Board (`root@192.168.8.141`,
+HDMI-RX-Seite allein?* Alles hier ist am laufenden Board (`root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`,
 MIPS läuft, `0x0306101c = 1`) oder statisch am Stock-`display.bin`
 (md5 `0d2191ca`) belegt.
 

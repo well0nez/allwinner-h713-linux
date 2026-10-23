@@ -80,7 +80,7 @@ Und im CCU-Treiber (Patch 0001) trägt **kein einziger Display-Takt**
 
 ```
 console=ttyS0,115200 earlycon root=/dev/nfs rw
-nfsroot=192.168.8.104:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait
+nfsroot=<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait
 ```
 
 Kein `clk_ignore_unused`, kein `pd_ignore_unused`, kein `cma=128M`.
@@ -146,7 +146,7 @@ Nur die `bootargs` in der U-Boot-Env, kein Neubau, kein Flashen:
 
 ```
 setenv bootargs 'console=ttyS0,115200 earlycon root=/dev/nfs rw
-  nfsroot=192.168.8.104:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait
+  nfsroot=<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait
   clk_ignore_unused pd_ignore_unused cma=128M'
 saveenv
 ```
@@ -236,7 +236,7 @@ die Blöcke unter Linux gegatet sind.
 - **`sshd` startet doch.** Das Gerät ist im Zustand mit Vblank-Timeouts über
   SSH erreichbar. Es hängt nicht, es kriecht: `fb0` wird nach rund 33 s
   Timeouts doch registriert, danach läuft systemd durch.
-- **Die Adresse ist `192.168.8.142`, nicht `.141`.** `CONFIG_NET_RANDOM_ETHADDR`
+- **Die Adresse ist `<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, nicht `.141`.** `CONFIG_NET_RANDOM_ETHADDR`
   gibt bei jedem Start eine neue MAC, also eine neue DHCP-Adresse. Der
   Eintrag `hy310` in `~/.ssh/config` zeigt auf die alte.
 

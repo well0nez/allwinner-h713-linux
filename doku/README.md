@@ -1,8 +1,8 @@
-# Das Arbeitsjournal - und warum es hier liegt
+# Das Arbeitsjournal (das Entwickler-Logbuch) - und warum es hier liegt
 
 **Das ist nicht die Dokumentation. Die steht in [`../docs/`](../docs/) und ist auf Englisch.**
 
-Hier liegen 207 datierte Einträge aus der Arbeit an diesem Projekt, auf Deutsch, in der
+Hier liegen 277 datierte Einträge (169 nummerierte, 108 im Nachtlog) aus der Arbeit an diesem Projekt, auf Deutsch, in der
 Reihenfolge, in der sie entstanden sind. Sie sind der **Beleg** für die Dokumentation:
 `PROVENANCE.md` verspricht, dass keine Aussage in der englischen Dokumentation etwas
 behauptet, was nicht hier mit Datum und Messung steht. Dieses Versprechen ist der Grund,
@@ -11,7 +11,7 @@ dass das Journal überhaupt veröffentlicht wird.
 ## Wie man es liest
 
 * **Fang nicht hier an.** Wer das Gerät benutzen, bauen oder verstehen will, liest
-  `../docs/` - 4 700 Zeilen, aktuell gehalten, auf Vollständigkeit geschrieben.
+  `../docs/` - rund 9 000 Zeilen mit den Wurzelseiten, aktuell gehalten, auf Vollständigkeit geschrieben.
 * **Komm hierher, wenn du einer Aussage nicht glaubst.** [`INDEX.md`](INDEX.md) §1 dreht die
   Zitate um: zu jedem Dokument in `docs/` steht dort, auf welchen Einträgen es ruht.
 * **Erwarte keinen aktuellen Stand.** Ein Eintrag sagt, was an einem Tag gemessen wurde.
@@ -33,6 +33,12 @@ vollständig, weil sie erklären, warum unser eigener Code so aussieht; die Hand
 fremde Geräte sind entfernt. Analyse am eigenen Gerät ist von §§ 69d/69e UrhG gedeckt, die
 Verbreitung von Umgehungsmitteln von § 95a UrhG nicht.
 
+Ein zweites Mal redigiert wurde am 23.10.2026, vor der Veröffentlichung von v0.97-beta, und nur Privates:
+Adressen im Heimnetz, lokale Pfade, die auf Personen zeigen, die Adresse eines Mailservers. Jede Stelle trägt
+den Marker *geschwärzt am 23.10.2026: <was>* (in Codeblöcken `<geschwaerzt 23.10.2026: was>`); der Befund
+daneben ist unverändert, Vornamen bleiben. Dieses Journal ist das Logbuch der Entwicklung, kein Handbuch: es
+sagt, was an einem Tag gemessen wurde, und was heute gilt, steht in `../docs/`.
+
 ## Was für Einträge es gibt
 
 | Art | was es ist |
@@ -48,7 +54,7 @@ Nummern. `INDEX.md` §2 listet alle mit Art, Datum und Titel. Dass `128` und `12
 existieren, ist eine alte Kollision, die bewusst so stehen bleibt, weil anderswo darauf
 verwiesen wird.
 
-**122 der 207 Einträge zitiert niemand** (`INDEX.md` §3). Das ist in Ordnung - ein Journal
+**56 der nummerierten Einträge zitiert niemand** (`INDEX.md` §3; die Nachtlog-Seiten zählen nicht mit). Das ist in Ordnung - ein Journal
 darf Material tragen, aus dem nie eine Doku wurde.
 
 ## Pflege

@@ -1,7 +1,7 @@
 # Paket H - Gamma und CTM im KMS
 
-Agent: Paket H (offline auf Paket A). **Kein Board angefasst** - kein `ssh root@192.168.8.141`, kein
-`ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts nach
+Agent: Paket H (offline auf Paket A). **Kein Board angefasst** - kein `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein
+`ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts nach
 `tftp/`, kein `sudo`, kein `git commit`, kein Aufruf von `build/build.sh`, keine Änderung an
 `mainline/patches/kernel/series`. INCAP (`0x0694xxxx`) nicht gelesen und nicht geschrieben, Descriptor nicht
 angefasst.
@@ -153,12 +153,12 @@ cp mainline/build/out/h713-kernel-netboot.fit tftp/
 ### 1. Kaltstart und Testprogramm bauen
 
 ```bash
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
 
-scp /opt/Projekte/h713/analyse/kms/gamma_test.c root@192.168.8.141:/root/
-ssh root@192.168.8.141 'gcc -O2 -Wall -o /root/gamma_test /root/gamma_test.c -I/usr/include/libdrm -ldrm -lm && ls -l /root/gamma_test'
-ssh root@192.168.8.141 'dmesg | grep -iE "afbd|gamma" | tail -5'
+scp /opt/Projekte/h713/analyse/kms/gamma_test.c root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/root/
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'gcc -O2 -Wall -o /root/gamma_test /root/gamma_test.c -I/usr/include/libdrm -ldrm -lm && ls -l /root/gamma_test'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -iE "afbd|gamma" | tail -5'
 ```
 
 **Erwartet:** `adopting 1920x1080, …` wie bisher und **keine** Zeile
@@ -168,7 +168,7 @@ zusammen (altes DTB) - dann Punkt 0 wiederholen, nicht weitermessen.
 ### 2. Eigenschaften prüfen (ersetzt `modetest`, das es hier nicht gibt)
 
 ```bash
-ssh root@192.168.8.141 '/root/gamma_test identitaet --sekunden 0'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> '/root/gamma_test identitaet --sekunden 0'
 ```
 
 **Erwartet, wörtlich:**
@@ -191,12 +191,12 @@ python3 analyse/hdmi-seq/wandcheck.py shot H-vorher
 ```
 
 ```bash
-ssh root@192.168.8.141 'setsid nohup /root/gamma_test invertiert --sekunden 90 >/root/gamma_test.log 2>&1 </dev/null & echo gestartet'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'setsid nohup /root/gamma_test invertiert --sekunden 90 >/root/gamma_test.log 2>&1 </dev/null & echo gestartet'
 ```
 
 ```bash
 sleep 5
-ssh root@192.168.8.141 'cat /root/gamma_test.log'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /root/gamma_test.log'
 python3 analyse/hdmi-seq/wandcheck.py shot H-invertiert
 ```
 
@@ -212,13 +212,13 @@ python3 analyse/hdmi-seq/wandcheck.py diff H-vorher H-nachher
 Falls es früher zurück soll (Prozessname exakt, **nicht** `-f`, sonst trifft das Muster die eigene Shell):
 
 ```bash
-ssh root@192.168.8.141 'pkill -TERM -x gamma_test; sleep 2; /root/gamma_test aus --sekunden 0'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'pkill -TERM -x gamma_test; sleep 2; /root/gamma_test aus --sekunden 0'
 ```
 
 ### 4. Optional im selben Slot: CTM sichtbar machen
 
 ```bash
-ssh root@192.168.8.141 'setsid nohup /root/gamma_test ctm 1.0 0.4 0.4 --sekunden 60 >/root/gamma_ctm.log 2>&1 </dev/null & echo gestartet'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'setsid nohup /root/gamma_test ctm 1.0 0.4 0.4 --sekunden 60 >/root/gamma_ctm.log 2>&1 </dev/null & echo gestartet'
 sleep 5; python3 analyse/hdmi-seq/wandcheck.py shot H-ctm-rot
 ```
 Erwartung: sichtbarer Rotstich (Grün und Blau auf 40 %). Das prüft nur, **dass** die Schnittstelle wirkt -
@@ -228,8 +228,8 @@ nicht, dass sie mit Stock übereinstimmt (in den Stock-Daten ist der Weißabglei
 
 ```bash
 userspace/hy310-pq/hy310-pq gamma 2.2 --lut /tmp/gamma-2.2.bin
-scp /tmp/gamma-2.2.bin root@192.168.8.141:/root/
-ssh root@192.168.8.141 'setsid nohup /root/gamma_test datei /root/gamma-2.2.bin --sekunden 60 >/root/gamma_datei.log 2>&1 </dev/null & echo gestartet'
+scp /tmp/gamma-2.2.bin root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/root/
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'setsid nohup /root/gamma_test datei /root/gamma-2.2.bin --sekunden 60 >/root/gamma_datei.log 2>&1 </dev/null & echo gestartet'
 sleep 5; python3 analyse/hdmi-seq/wandcheck.py shot H-gamma22
 ```
 Erwartung: das Bild wird **dunkler** (2.2 auf ein Signal, das schon gammakorrigiert ist, drückt die Mitteltöne),

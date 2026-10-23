@@ -280,19 +280,19 @@ Probe jetzt **ohne** eingehenden CALL abläuft - das ist die eigentliche Aussage
 zugleich ihre Falsifizierbarkeit.
 
 **Voraussetzungen:** Kernel mit der integrierten Serie inkl. der neuen `0092`/`0094`, Zuspieler
-`192.168.8.162` wach auf 1080p60, Board-Sperre halten.
+`<geschwaerzt 23.10.2026: Heimnetz-Adresse>` wach auf 1080p60, Board-Sperre halten.
 
 ```bash
 # --- 0. Kaltstart, danach KEIN prep-Skript und KEIN hdmi_seq.py ---------------
 #     (hdmi_seq.py legt die Deskriptoren aus dem Userspace an und verdeckt genau das,
 #      was hier geprueft wird)
 ss -ulnp | grep -w :69 || { echo "TFTP laeuft nicht -- STOPP, Nachtlog, nicht reparieren"; exit 1; }
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
-ssh root@192.168.8.141 'cut -d" " -f1 /proc/uptime'          # < 60 = echter Kaltstart
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cut -d" " -f1 /proc/uptime'          # < 60 = echter Kaltstart
 
 # --- 1. ZIEL 1: E probt durch -------------------------------------------------
-ssh root@192.168.8.141 'ls -l /dev/video1; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'ls -l /dev/video1; \
   dmesg | grep -E "sun50i-h713-hdmirx|hdmi-rx" | tail -20'
 #  BESTANDEN, wenn ALLE drei zugleich:
 #    * /dev/video1 existiert,
@@ -303,7 +303,7 @@ ssh root@192.168.8.141 'ls -l /dev/video1; \
 #    -> weiter bei Schritt 2, der sagt, ob es noch am Callback liegt.
 
 # --- 2. Die Kernaussage der Korrektur: waehrend der Probe kam KEIN CALL --------
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch'
 #  erwartet, direkt nach dem Boot und vor jedem Signalreiz:
 #    rx_calls  0                 <-- DAS ist der Punkt
 #    unmatched 0 last 0x00000000
@@ -326,7 +326,7 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
 #   * "(foreign)" hinter owner -> Kaltstart war nicht sauber, Schritt 0 wiederholen.
 
 # --- 3. ZIEL 2: der Callback kommt an ----------------------------------------
-ssh root@192.168.8.141 'python3 - <<EOF
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 - <<EOF
 import mmap,os,struct
 fd=os.open("/dev/mem",os.O_RDWR|os.O_SYNC)
 m=mmap.mmap(fd,0x1000,mmap.MAP_SHARED,mmap.PROT_READ|mmap.PROT_WRITE,offset=0x4B48B000)
@@ -336,13 +336,13 @@ w32(0x4B48BD9C,(r32(0x4B48BD9C)&0xffffff00)|5)
 w32(0x4B48BE98,(r32(0x4B48BE98)&0xffffff00)|0)
 print("level=%08x tabelle=%08x" % (r32(0x4B48BD9C), r32(0x4B48BE98)))
 EOF'
-ssh root@192.168.8.141 '[ -f /root/elog_tail.pid ] && kill $(cat /root/elog_tail.pid) 2>/dev/null; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> '[ -f /root/elog_tail.pid ] && kill $(cat /root/elog_tail.pid) 2>/dev/null; \
   nohup taskset -c 2 python3 /root/elog_tail.py --hb 200 > /root/elog_tail.out 2>&1 & echo $! > /root/elog_tail.pid'
 sleep 2
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch > /tmp/watch.vor'
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --off';  sleep 6
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 6
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch; echo ---; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch > /tmp/watch.vor'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --off';  sleep 6
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 6
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch; echo ---; \
   cat /sys/kernel/debug/cpu_comm/watch > /tmp/watch.nach; diff /tmp/watch.vor /tmp/watch.nach; echo ---; \
   dmesg | grep -E "RX-CALL.*comp_id=0x(3e7fbc46|38d780e2)" | tail -5; echo ---; \
   grep -E "CallbackOfSignalChange|NotifySignalChange" /root/elog_tail.out | tail -6'
@@ -356,16 +356,16 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch; echo ---; \
 
 # --- 4. Nachbetrachtung: welcher der beiden -EBUSY-Waechter war es am 07.09.? --
 #     (nur fuer die Akten; nicht Teil der Abnahme)
-ssh root@192.168.8.141 'dmesg | grep -E "HostHDMIMAP: Hotplug-Zaehler|Msgbox user1 Port 0 wird nicht geleert"'
-ssh root@192.168.8.141 'cat /sys/kernel/debug/h713-arisc/status | grep -E "portmap|hpd_counter|last_command"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -E "HostHDMIMAP: Hotplug-Zaehler|Msgbox user1 Port 0 wird nicht geleert"'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/h713-arisc/status | grep -E "portmap|hpd_counter|last_command"'
 #  Nach einer erfolgreichen Sequenz muss "portmap: 0,1,2" dastehen. "16,32,48" heisst
 #  eindeutig: HostHDMIMAP hat in diesem Boot nie geschrieben (siehe Nachtlog §5).
 
 # --- 5. Zweiter Reiz: HotPlug ueber die ARISC (der andere Callback) -----------
-ssh root@192.168.8.141 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; \
   sleep 1; python3 arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'
 sleep 3
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch'
 #  erwartet: die Zeile 0x38d780e2 hat zugelegt -- der Zustellweg lebt als Ganzes,
 #  nicht nur fuer SignalChange.
 ```

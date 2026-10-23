@@ -23,7 +23,7 @@ Hang, Versuche direkt in der echten Linie zu machen - dafür gibt es jetzt Regel
 | Repo | `/opt/Projekte/h713/repo-neu`, `main @ f1315e7`, **103 Commits vor `origin/main`, nichts gepusht**, Working Tree sauber, Tore grün |
 | Forks | U-Boot `h713-hy310 @ 4913742a9a1` (Spiegel `uboot-h713/` 95 Patches, Baum 3387c2bb9b00) · TF-A `sun50i-h713 @ 824eb0bd` (Spiegel `tfa-h713/` 7 Patches, Baum 67cf7997a540). Beide **nur lokal**, TF-A hat noch kein GitHub-Remote |
 | Image | `installer/out/h713-hy310-v0.96-beta-{a-bootkette,b-system,c-gptkopie}.img` + Tabelle/sha256/README, Bau 20:36 aus `819a09a`. **Nicht drin:** Kernel 0184, Warp-Fixes `ec93ae1`/`bf3b72c`, EDID-Beschnitt `c33df12`, Panel-Auth `2903dfb` - alles danach. Nächster Bau nötig |
-| HY310 | läuft v0.96-beta (installiert 20:47) **plus Schnell-Deploy**: Kernel-FIT mit 0183+0184 (`/boot/h713-kernel.fit`, Sicherung `/root/sicherung-vor-0184/`), `h713-warp` mit beiden Fixes, `h713-tv` mit EDID-Beschnitt, `h713-panel` mit Auth. `/etc/h713` aus der Sicherung zurück (wifi.env, warp.conf, keystone.conf, tvconfig, tv.conf, features). U-Boot-Block = Installer-Stand (`bbeda477`). IP heute `192.168.8.131` (DHCP; Hostschlüssel neu seit Reinstall, in known_hosts für .131 und .132). ThinkPad hängt am HDMI (1080p60). Sonoff an, Journal persistent |
+| HY310 | läuft v0.96-beta (installiert 20:47) **plus Schnell-Deploy**: Kernel-FIT mit 0183+0184 (`/boot/h713-kernel.fit`, Sicherung `/root/sicherung-vor-0184/`), `h713-warp` mit beiden Fixes, `h713-tv` mit EDID-Beschnitt, `h713-panel` mit Auth. `/etc/h713` aus der Sicherung zurück (wifi.env, warp.conf, keystone.conf, tvconfig, tv.conf, features). U-Boot-Block = Installer-Stand (`bbeda477`). IP heute `<geschwaerzt 23.10.2026: Heimnetz-Adresse>` (DHCP; Hostschlüssel neu seit Reinstall, in known_hosts für .131 und .132). ThinkPad hängt am HDMI (1080p60). Sonoff an, Journal persistent |
 | MemPalace | 129 096 Drawers, nur H713; Hooks nur für `/opt/Projekte/h713` (`~/.local/bin/mempalace-hook`); MCP in neuen Sitzungen da |
 | Graphify | Graph 7 874 Knoten, benannt, Post-Commit-Hook baut nach; `graphify-out/` ignoriert |
 | Tore | `sperr-scan.py` (jetzt Regel 8: lokale Sperrbegriffe `~/.config/h713/sperrbegriffe`), `doku-index.py --pruefen` (nur getrackte Dateien), `installer/tests/run.sh` 412 Tests, `h713-panel` 33 Tests, `.githooks/pre-commit` + `pre-push` (`core.hooksPath=.githooks`) |
@@ -106,7 +106,7 @@ HTTP Basic Auth, Passwort beim ersten Start (`/etc/h713/panel.env`, 0600), `--sh
   `~/.config/h713/sperrbegriffe` (**außerhalb des Repos**, 0600), Memory `git-identitaet-noreply`.
 - Ursache: die Adresse kam aus dem Sitzungskontext (Desktop gibt sie mir zur Erkennung mit). Nicht aus Memories.
 - Sonnet-Bericht `arbeit/mail-pruefung/BERICHT.md` (lokal; nennt die Adresse). Chris Stengers Gmail
-  (266 Commits) und `root@v63907.datalix.de` sind schon öffentlich - seine Sache bzw. Hostname.
+  (266 Commits) und `root@<geschwaerzt 23.10.2026: Mailserver-Adresse>` sind schon öffentlich - seine Sache bzw. Hostname.
 
 ### 2.10 Abschalt-Plopp (2.6 -> teils ✓, Rest 9.11)
 Gemessen mit dem ThinkPad-Mikro (`arbeit/edid-sweep-20261005/plopp/plopp1-4`): Plopp 1 beim Stream-Ende

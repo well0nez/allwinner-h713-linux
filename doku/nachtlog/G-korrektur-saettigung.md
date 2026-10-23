@@ -158,7 +158,7 @@ backlight          100       -               -                                  
 dynamic_backlight  0         -               -                                             RPC (Paket I)         MIPS-PQ-Aufruf, kein Register in unserem Pfad
 
 Belegter Schreibpfad Saettigung (wird NICHT von hier geschrieben):
-  ssh root@192.168.8.141 'python3 /root/pq_saturation.py standard'
+  ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_saturation.py standard'
   -> Register 0x05140508, Gain-Feld [23:16] = 0x4C
 Belegter Schreibpfad Gamma: DE2-LUT, Paket H (Kernel, GAMMA_LUT).
   LUT erzeugen: hy310-pq gamma 2.2 --lut gamma.bin
@@ -196,7 +196,7 @@ Der Schritt Benutzerwert -> RPC-Argument ist NICHT gemessen; hy310-pq reicht den
   Benutzerwert durch, weil beide Skalen 0..100 sind. Siehe doku/81 Abschnitt 3.2.
 
 Schreibpfad Saettigung -- ueber den RPC, wie Stock (wird NICHT von hier geschrieben):
-  ssh root@192.168.8.141 'python3 /root/pq_probe.py rpc SetSaturation 50'
+  ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_probe.py rpc SetSaturation 50'
   Kontrolle danach: 0x05001238 [15:0] = 50  und
                     0x05140508 [23:16] = 0x40 = floor(50 x 1,28)   (Wort 0x14400000)
   Das Gain-Byte selbst ins Register zu schreiben umgeht den PQ-Block und ist NICHT der Weg der Firmware.

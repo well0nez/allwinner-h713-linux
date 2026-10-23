@@ -53,7 +53,7 @@ D-Abnahme heute früh durchgerutscht.
 ## Reproduktion (kopierbar)
 
 ```bash
-ssh root@192.168.8.141 'python3 /root/afbd_source0.py off; sleep 1; busybox devmem 0x05600044'   # 0x780
-ssh root@192.168.8.141 'cd /root && setsid sh -c "nohup ./hdmi_plane_test -t 15 >/root/x.out 2>&1 &"; sleep 4; busybox devmem 0x05600044'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/afbd_source0.py off; sleep 1; busybox devmem 0x05600044'   # 0x780
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cd /root && setsid sh -c "nohup ./hdmi_plane_test -t 15 >/root/x.out 2>&1 &"; sleep 4; busybox devmem 0x05600044'
 #   FEHLER, wenn 0x780 -- erwartet waere 0xF00
 ```

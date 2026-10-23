@@ -110,21 +110,21 @@ Belegt werden soll: Bit 31 = 1 heißt „ICSC rechnet" (Capture liefert YUV), Bi
 (Capture liefert die RGB-artigen Ebenen aus doku/76 §12.2).
 
 ```bash
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
-ssh root@192.168.8.141 'bash /root/prep_after_boot.sh'
-ssh root@192.168.8.141 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'bash /root/prep_after_boot.sh'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
      --source 3 --portmap stock --gap 500 --pre-source-wait 1 --listen-after 3'
-ssh root@192.168.8.141 'bash /root/arisc_edid_init.sh'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'bash /root/arisc_edid_init.sh'
 sleep 6
 # --- VORHER: ICSC laut Modell im Zustand "Matrix aus" (0x0b) ---
-ssh root@192.168.8.141 'python3 /root/dump_state.py b1_vor'
-ssh root@192.168.8.141 'python3 /root/chroma_stat.py'        # Erwartung: Cb/Cr NICHT um 128 (RGB-artig)
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py b1_vor'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/chroma_stat.py'        # Erwartung: Cb/Cr NICHT um 128 (RGB-artig)
 # --- Descriptor GENAU EINMAL ---
-ssh root@192.168.8.141 'python3 /root/viddec_descriptor.py set'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/viddec_descriptor.py set'
 sleep 2
-ssh root@192.168.8.141 'python3 /root/dump_state.py b1_nach'
-ssh root@192.168.8.141 'python3 /root/chroma_stat.py'        # Erwartung: Cb/Cr um 128 (YUV)
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py b1_nach'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/chroma_stat.py'        # Erwartung: Cb/Cr um 128 (YUV)
 ```
 
 Auswertung: `grep -E '^0x0694(0824|084c|0400|0928|0968)' b1_vor.txt b1_nach.txt`.
@@ -140,17 +140,17 @@ Belegt werden soll: ob `SetSource` auf eine andere Quelle und zurück die Gruppe
 ```bash
 # Lauf 1: guter Zustand herstellen (Sequenz aus Nachtplan Abschnitt 1, Descriptor EINMAL)
 # ... bis einschliesslich: python3 /root/afbd_source0.py on ; wandcheck.py shot b2_bild1
-ssh root@192.168.8.141 'python3 /root/dump_state.py b2_gut'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py b2_gut'
 # Quellenwechsel: weg von HDMI und zurueck (KEIN Descriptor-Schreiben dazwischen!)
-ssh root@192.168.8.141 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
      --source 1 --portmap stock --gap 500 --listen-after 3'      # 1 = VideoDec
 sleep 3
-ssh root@192.168.8.141 'python3 /root/dump_state.py b2_src1'
-ssh root@192.168.8.141 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py b2_src1'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'taskset -c 1 python3 /root/hdmi_seq.py run --phase 4 --i-mean-it --only setsource \
      --source 3 --portmap stock --gap 500 --listen-after 3'      # zurueck auf HDMI-1
 sleep 5
-ssh root@192.168.8.141 'python3 /root/dump_state.py b2_zurueck'
-ssh root@192.168.8.141 'python3 /root/elog_tail.py | tail -80'   # laeuft "V_INCAP" erneut?
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py b2_zurueck'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/elog_tail.py | tail -80'   # laeuft "V_INCAP" erneut?
 python3 analyse/hdmi-seq/wandcheck.py shot b2_bild2
 ```
 
@@ -174,13 +174,13 @@ Der Lauf beantwortet zugleich, ob die 0x84C-Änderung aus doku/76 §12.4 wirklic
 
 ```bash
 # Kaltstart + Prep + SetSource + EDID wie in Nachtplan Abschnitt 1, dann:
-ssh root@192.168.8.141 'python3 /root/dump_state.py b3_vor'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py b3_vor'
 # viddec_descriptor.py hat KEINEN Formatschalter (Zeile 30: d[16] = 0). Fuer diesen Lauf einmalig
 # eine Kopie mit d[16] = 6 aufs Board legen -- die Originaldatei NICHT aendern:
 #   sed 's/    d\[16\] = 0  /    d[16] = 6  /' /root/viddec_descriptor.py > /root/viddec_descriptor_fmt6.py
-ssh root@192.168.8.141 'python3 /root/viddec_descriptor_fmt6.py set'   # GENAU EINMAL, Wort 16 = 6
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/viddec_descriptor_fmt6.py set'   # GENAU EINMAL, Wort 16 = 6
 sleep 3
-ssh root@192.168.8.141 'python3 /root/dump_state.py b3_nach'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/dump_state.py b3_nach'
 ```
 
 Erwartung (Modell): `0x0694084C` `0x04000c00 → 0x0C000C00`, `0x06940824` `0x0000000b → 0x8000000b`.

@@ -5,8 +5,8 @@
 > Korrektur, Begründung und Vorher/Nachher: [`G-korrektur-saettigung.md`](G-korrektur-saettigung.md).
 > Alles Übrige dieses Logs - Datenlage, `tvin`-Frage, Gamma-LUT - gilt unverändert.
 
-Agent: Paket G (offline, komplett). **Kein Board angefasst** - kein `ssh root@192.168.8.141`, kein
-`ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `/dev/ttyACM0`, kein `sudo`,
+Agent: Paket G (offline, komplett). **Kein Board angefasst** - kein `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein
+`ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `/dev/ttyACM0`, kein `sudo`,
 kein `git commit`, kein `build.sh`, keine Änderung an `mainline/patches/kernel/series`.
 Vendor-Binärdaten wurden nur **gelesen**, nichts davon liegt in `userspace/`.
 
@@ -79,7 +79,7 @@ backlight          100       -               -                                  
 dynamic_backlight  0         -               -                                             RPC (Paket I)         MIPS-PQ-Aufruf, kein Register in unserem Pfad
 
 Belegter Schreibpfad Saettigung (wird NICHT von hier geschrieben):
-  ssh root@192.168.8.141 'python3 /root/pq_saturation.py vivid'
+  ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 /root/pq_saturation.py vivid'
   -> Register 0x05140508, Gain-Feld [23:16] = 0x5C
 Belegter Schreibpfad Gamma: DE2-LUT, Paket H (Kernel, GAMMA_LUT).
   LUT erzeugen: hy310-pq gamma 2.2 --lut gamma.bin

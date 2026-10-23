@@ -45,9 +45,9 @@ noch nicht auf dem Geraet des Issue-#1-Melders.
 
 - Verpackung: HY300PRO-G-EU. Vom Nutzer abgelesene Platine: **HY200 QZ713DF A1**.
 - Eigenes Stock-Android 11; Projekt 0x34, Panel 1280x720, VESA, ColorDepth 8.
-- SSH: Alias `hy300pro`, derzeit `192.168.8.246`, root, vorhandener SSH-Key.
+- SSH: Alias `hy300pro`, derzeit `<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, root, vorhandener SSH-Key.
   Adresse ist DHCP. Keine Passwoerter oder WLAN-Zugangsdaten in diesem Handoff.
-- UART: `nc 192.168.8.180 2000`, Orange-Pi-ser2net, aktuell **HY300**, nicht HY310.
+- UART: `nc <geschwaerzt 23.10.2026: Heimnetz-Adresse> 2000`, Orange-Pi-ser2net, aktuell **HY300**, nicht HY310.
   Nur ein Client; eigener Capture blockiert sonst den Nutzer. Kein UART-Client
   wurde fuer die Gamma-/LVDS-Tests gestartet.
 - Vollstaendiger Dump und Extraktion: geschlossener Bereich

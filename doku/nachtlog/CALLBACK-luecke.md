@@ -293,19 +293,19 @@ belegt - einmal aus `cpu_comm/watch` (Zustellung), einmal aus dem elog (Firmware
 wird geprüft, dass die Zähler **nicht** von beliebigem IPC-Verkehr wandern.
 
 **Voraussetzungen:** Kernel mit der integrierten Serie inkl. der neuen `0092`/`0094`, Zuspieler
-`192.168.8.162` wach auf 1080p60, Board-Sperre halten.
+`<geschwaerzt 23.10.2026: Heimnetz-Adresse>` wach auf 1080p60, Board-Sperre halten.
 
 ```bash
 # --- 0. Kaltstart, danach KEIN prep-Skript und KEIN hdmi_seq.py ---------------
 #     (hdmi_seq.py wuerde die Deskriptoren aus dem Userspace anlegen und damit
 #      genau das verdecken, was hier geprueft wird)
 ss -ulnp | grep -w :69 || { echo "TFTP laeuft nicht -- STOPP, Nachtlog, nicht reparieren"; exit 1; }
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
-ssh root@192.168.8.141 'cut -d" " -f1 /proc/uptime'          # < 60 = echter Kaltstart
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cut -d" " -f1 /proc/uptime'          # < 60 = echter Kaltstart
 
 # --- 1. Instrument zuerst: kann es einen Positivbefund ueberhaupt zeigen? -----
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch'
 #  erwartet:
 #    rx_calls  <N0>
 #    unmatched <M0> last 0x........
@@ -324,7 +324,7 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
 #  nicht sauber, Schritt 0 wiederholen.
 
 # --- 2. MIPS-elog auf Stufe 5 und pruefen, dass ES etwas zeigen kann ----------
-ssh root@192.168.8.141 'python3 - <<EOF
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 - <<EOF
 import mmap,os,struct
 fd=os.open("/dev/mem",os.O_RDWR|os.O_SYNC)
 m=mmap.mmap(fd,0x1000,mmap.MAP_SHARED,mmap.PROT_READ|mmap.PROT_WRITE,offset=0x4B48B000)
@@ -334,17 +334,17 @@ w32(0x4B48BD9C,(r32(0x4B48BD9C)&0xffffff00)|5)
 w32(0x4B48BE98,(r32(0x4B48BE98)&0xffffff00)|0)
 print("level=%08x tabelle=%08x" % (r32(0x4B48BD9C), r32(0x4B48BE98)))
 EOF'
-ssh root@192.168.8.141 '[ -f /root/elog_tail.pid ] && kill $(cat /root/elog_tail.pid) 2>/dev/null; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> '[ -f /root/elog_tail.pid ] && kill $(cat /root/elog_tail.pid) 2>/dev/null; \
   nohup taskset -c 2 python3 /root/elog_tail.py --hb 200 > /root/elog_tail.out 2>&1 & echo $! > /root/elog_tail.pid'
 sleep 2
 
 # --- 3. FALSIFIZIERBARKEIT: ein RPC, der KEINEN Callback ausloesen darf -------
 #     harmloser, unveraenderter Aufruf (dieselbe Positivkontrolle wie in K4)
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch > /tmp/watch.vor; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch > /tmp/watch.vor; \
   echo "Thal_Vp_SetBacklightLevel 100" > /sys/kernel/debug/cpu_comm/call; \
   cat /sys/kernel/debug/cpu_comm/call; sleep 2; \
   cat /sys/kernel/debug/cpu_comm/watch > /tmp/watch.nach; diff /tmp/watch.vor /tmp/watch.nach'
-ssh root@192.168.8.141 'tail -20 /root/elog_tail.out'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'tail -20 /root/elog_tail.out'
 #  ZWEI Bedingungen, beide noetig:
 #   a) der elog zeigt Zeilen zu diesem RPC  -> das Instrument "elog" lebt (K4-Regel);
 #      zeigt er nichts, hat die Firmware den Level ueberschrieben -> Schritt 2 wiederholen,
@@ -356,11 +356,11 @@ ssh root@192.168.8.141 'tail -20 /root/elog_tail.out'
 #      Kriterium wertlos -> Nachtlog, STOPP.
 
 # --- 4. Der eigentliche Reiz: Signalverlust und Rueckkehr ---------------------
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch > /tmp/watch.vor; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch > /tmp/watch.vor; \
   cat /sys/kernel/debug/sun50i-h713-hdmirx/status > /tmp/status.vor'
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --off';  sleep 6
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 6
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch; echo ---; \
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --off';  sleep 6
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --auto'; sleep 6
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch; echo ---; \
   cat /sys/kernel/debug/cpu_comm/watch > /tmp/watch.nach; diff /tmp/watch.vor /tmp/watch.nach; echo ---; \
   grep -E "SignalChange|HotPlug" /sys/kernel/debug/sun50i-h713-hdmirx/status; echo ---; \
   dmesg | grep -c "RX-CALL.*comp_id=0x3e7fbc46"; echo ---; \
@@ -388,10 +388,10 @@ ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch; echo ---; \
 #         -> keine Aussage ueber den Zustellweg. Erst Schritt 2/3 wiederholen.
 
 # --- 6. Zweiter Reiz: HotPlug ueber die ARISC (der andere Callback) -----------
-ssh root@192.168.8.141 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; \
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cd /root; python3 arisc_hdmi.py --no-probe raw --sub-cmd 0x0211 --arg1 0 --arg2 2 --settle 0.6; \
   sleep 1; python3 arisc_hdmi.py --no-probe hotplug --port 0 --value 1 --settle 1.0'
 sleep 3
-ssh root@192.168.8.141 'cat /sys/kernel/debug/cpu_comm/watch'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/cpu_comm/watch'
 #  erwartet: die Zeile 0x38d780e2 hat zugelegt. Damit ist belegt, dass es kein
 #  Sonderweg fuer SignalChange ist, sondern der Zustellweg als Ganzes lebt.
 ```

@@ -374,7 +374,7 @@ Alles wortweise 32 Bit lesen (Alignment-Regel, doku/69). Adressen ARM-phys:
 Vor/nach einem Auflösungswechsel (oder einem ARISC-HotPlug wie in CALLBACK-luecke §8 Schritt 6):
 
 ```bash
-ssh root@192.168.8.141 'python3 - <<EOF
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'python3 - <<EOF
 import mmap, os, struct
 fd = os.open("/dev/mem", os.O_RDONLY | os.O_SYNC)
 m  = mmap.mmap(fd, 0x1000, mmap.MAP_SHARED, mmap.PROT_READ, offset=0x4E301000)

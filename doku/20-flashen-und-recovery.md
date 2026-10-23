@@ -169,18 +169,18 @@ ist das Board nicht verloren.
 ## Weg 4 - per TFTP am U-Boot-Prompt, ohne Stick (seit 09.09.2026 der schnellste Weg)
 
 Nur U-Boot proper (ab LBA `0x49ac00`); die SPL bleibt. Datei nach `/opt/Projekte/h713/tftp/`, am Prompt (Server **immer explizit**, weil
-`dhcp` `serverip` auf den Router setzt). Dieser Rechner (Mini-IT11) ist **192.168.8.123**; `.104` in älteren Doku-Stellen war der vorige Rechner.
+`dhcp` `serverip` auf den Router setzt). Dieser Rechner (Mini-IT11) ist ***geschwärzt am 23.10.2026: Heimnetz-Adresse***; `.104` in älteren Doku-Stellen war der vorige Rechner.
 Aus der Claude-Sitzung skriptbar: `sudo python3 tools/uart-uboot.py run -t 45 -c …` - Marcos `tio` muss dabei geschlossen sein.
 
 ```
-tftpboot 0x50000000 192.168.8.123:uboot-proper-gate-v4.bin
+tftpboot 0x50000000 <geschwaerzt 23.10.2026: Heimnetz-Adresse>:uboot-proper-gate-v4.bin
 crc32 0x50000000 0xd8579                 # gegen den Host-Wert (python zlib.crc32) vergleichen: 56a6a77f
 mmc dev 1
 mmc write 0x50000000 0x49ac00 0x6c3       # Sektoren = ceil(Bytes/512), hier 886137 B
 mmc read 0x52000000 0x49ac00 0x6c3
 cmp.b 0x50000000 0x52000000 0xd8579       # "Total of 886137 byte(s) were the same"
 reset
-setenv h713_gate 0; setenv serverip 192.168.8.123; saveenv   # Dev-Gerät: Gate aus, Netboot-Rückfall auf diesen Rechner (die alte Env liest v4 nicht mehr)
+setenv h713_gate 0; setenv serverip <geschwaerzt 23.10.2026: Heimnetz-Adresse>; saveenv   # Dev-Gerät: Gate aus, Netboot-Rückfall auf diesen Rechner (die alte Env liest v4 nicht mehr)
 ```
 
 Skriptbar mit `tools/uart-uboot.py run -c …` über den ESP32-S2-UART; Konsole des Neustarts mit `tools/uart-reset-catch.py` (fängt den

@@ -13,9 +13,9 @@ doku/143 - mit den Korrekturen aus Abschnitt 2 hier.
 
 | | |
 |---|---|
-| HY310, 192.168.8.132 | v0.96-beta, Kernel 6.18.38, 0 failed, 5 Dienste aktiv, hci0 UP, Proper md5 872251fd72c89fe06f17c71dc0f274d7, kein BL32. HDMI-Kabel und UART-Bruecke haengen hier. |
-| HY300PRO-G-EU, 192.168.8.198 | Stock-Android mit Magisk-Root, Root ueber `/debug_ramdisk/su -c`, FEL per `adb reboot efex`. Env GEPATCHT: bootdelay=5, loglevel=8, debug_mode=8. |
-| ThinkPad, 192.168.8.164 | Quelle. ssh ohne Hostname, nur per IP; fuer xrandr `DISPLAY=:0` und `XAUTHORITY=/home/user/.Xauthority` setzen, sonst liefert es nichts. |
+| HY310, *geschwärzt am 23.10.2026: Heimnetz-Adresse* | v0.96-beta, Kernel 6.18.38, 0 failed, 5 Dienste aktiv, hci0 UP, Proper md5 872251fd72c89fe06f17c71dc0f274d7, kein BL32. HDMI-Kabel und UART-Bruecke haengen hier. |
+| HY300PRO-G-EU, *geschwärzt am 23.10.2026: Heimnetz-Adresse* | Stock-Android mit Magisk-Root, Root ueber `/debug_ramdisk/su -c`, FEL per `adb reboot efex`. Env GEPATCHT: bootdelay=5, loglevel=8, debug_mode=8. |
+| ThinkPad, *geschwärzt am 23.10.2026: Heimnetz-Adresse* | Quelle. ssh ohne Hostname, nur per IP; fuer xrandr `DISPLAY=:0` und `XAUTHORITY=<geschwaerzt 23.10.2026: lokaler Pfad>` setzen, sonst liefert es nichts. |
 
 Rueckweg fuer die HY300-Env: `umbau/work/FB-HDCP14h/env/env_a-original.bin` (md5
 5cd0ea9703d76d2399dd040722c59e5c, CRC ok) per adb pushen und mit dd auf
@@ -120,7 +120,7 @@ Ziel: die Folge auf dem HY310 so weit fahren, dass eine Quelle den Schutz anford
    unser DTS schon reserviert (0x6c100000+0x1000000 ist ein Kandidat, vorher pruefen, wofuer
    er da ist). Dann bleibt nur 1 MiB nachzutragen.
 5. Booten, und erst dann vom ThinkPad aus den Schutz anfordern:
-   `DISPLAY=:0 XAUTHORITY=/home/user/.Xauthority xrandr --output HDMI-2 --set "Content
+   `DISPLAY=:0 XAUTHORITY=<geschwaerzt 23.10.2026: lokaler Pfad> xrandr --output HDMI-2 --set "Content
    Protection" Desired`, danach Bksv ueber DDC lesen (20 Einsen = gueltig) und auf "Enabled"
    warten. Gegenprobe unter Stock am HY300: geht, zweimal gemessen.
 
@@ -185,7 +185,7 @@ Key-Ladder-Pseudo-TA). Es fehlt uns also kein Init; der Unterschied steckt im Ta
 alle a0 0x0) und anschließendem `boot` meldete die Quelle:
 
 ```
-ThinkPad 192.168.8.164, HDMI-2 → Beamer:  Content Protection: Enabled
+ThinkPad <geschwaerzt 23.10.2026: Heimnetz-Adresse>, HDMI-2 → Beamer:  Content Protection: Enabled
 ```
 
 i915 setzt diese Eigenschaft erst nach bestandener Link-Authentisierung; im `dmesg` stehen nur

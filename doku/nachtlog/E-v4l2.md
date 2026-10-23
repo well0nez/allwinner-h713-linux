@@ -1,7 +1,7 @@
 # Paket E - V4L2-Treiber `sun50i-h713-hdmirx` (offline: Gerüst + Probe-Sequenz)
 
-**Agent:** Unteragent E (offline). **Kein Board angefasst:** kein `ssh root@192.168.8.141`, kein
-`ssh user@192.168.8.162`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts nach
+**Agent:** Unteragent E (offline). **Kein Board angefasst:** kein `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein
+`ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, kein `sonoff_ctl`, kein `wandcheck.py`, kein `tio`, kein `scp`, nichts nach
 `tftp/`. Kein `sudo`, kein `git commit`/`push`. **`patches/kernel/series` nicht angefasst**,
 `build/build.sh` nicht aufgerufen. **Kein INCAP-Register geschrieben - und auch keines gelesen**
 (siehe §5). Uhrzeiten vom Arbeitsrechner (`date '+%H:%M'`), 06./07.09.2026.
@@ -227,18 +227,18 @@ jetzt der Kernel.
 ss -ulnp | grep -w :69 || { echo "TFTP laeuft nicht -- STOPP, Nachtlog, nicht reparieren"; exit 1; }
 
 # --- 1. Kaltstart, KEIN prep_after_boot.sh ----------------------------------
-sonoff_ctl restart --host 192.168.8.179
-for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@192.168.8.141 uptime && break; sleep 4; done
+sonoff_ctl restart --host <geschwaerzt 23.10.2026: Heimnetz-Adresse>
+for i in $(seq 30); do ssh -o BatchMode=yes -o ConnectTimeout=3 root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> uptime && break; sleep 4; done
 
 # --- 2. Kam der Treiber hoch? ------------------------------------------------
-ssh root@192.168.8.141 'dmesg | grep -E "h713-arisc|cpu_comm|hdmirx" | tail -30'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'dmesg | grep -E "h713-arisc|cpu_comm|hdmirx" | tail -30'
 # erwartet u.a.:  sun50i-h713-hdmirx ...: Init-Sequenz vollstaendig (22 Aufrufe)
 #                 sun50i-h713-hdmirx ...: EDID/HPD-Sequenz auf Port 0 abgeschlossen
 #                 sun50i-h713-hdmirx ...: /dev/video0, Slot-Quelle: flip-pointer sampling timer
-ssh root@192.168.8.141 'ls -l /dev/video*'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'ls -l /dev/video*'
 
 # --- 3. Zuspieler haengt am EDID? -------------------------------------------
-ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status; DISPLAY=:0 xrandr | grep -A1 "^HDMI-2"'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/class/drm/card0-HDMI-A-2/status; DISPLAY=:0 xrandr | grep -A1 "^HDMI-2"'
 # erwartet: connected, 1920x1080 60,00
 ```
 
@@ -247,7 +247,7 @@ ssh user@192.168.8.162 'cat /sys/class/drm/card0-HDMI-A-2/status; DISPLAY=:0 xra
 Auf dem Board sind beide Werkzeuge nicht installiert. Der Treiber bringt deshalb eine Statusseite mit:
 
 ```bash
-ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status'
 ```
 
 Erwartet bei stehendem Signal:
@@ -283,11 +283,11 @@ nichts außer sich selbst. Es liegt gebaut bereit; neu bauen geht mit
 `podman exec h713-build bash -lc '/work/analyse/v4l2/build.sh'`.
 
 ```bash
-scp /opt/Projekte/h713/analyse/v4l2/hdmirx_test root@192.168.8.141:/root/
-ssh root@192.168.8.141 'chmod +x /root/hdmirx_test'
+scp /opt/Projekte/h713/analyse/v4l2/hdmirx_test root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/root/
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'chmod +x /root/hdmirx_test'
 
 # 60 Bilder NV16 holen und wegschreiben (2 x 2073600 Byte je Bild)
-ssh root@192.168.8.141 '/root/hdmirx_test /dev/video0 60 /root/hdmi60.nv16m; echo rc=$?'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> '/root/hdmirx_test /dev/video0 60 /root/hdmi60.nv16m; echo rc=$?'
 ```
 
 Erwartete Ausgabe (gekürzt):
@@ -312,8 +312,8 @@ rc=0
 Sichtprüfung reicht ein Bild:
 
 ```bash
-ssh root@192.168.8.141 '/root/hdmirx_test /dev/video0 1 /root/hdmi1.nv16m'
-scp root@192.168.8.141:/root/hdmi1.nv16m /opt/Projekte/h713/re/captures/weltneuheit/ours-20260907-nacht/E/
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> '/root/hdmirx_test /dev/video0 1 /root/hdmi1.nv16m'
+scp root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/root/hdmi1.nv16m /opt/Projekte/h713/re/captures/weltneuheit/ours-20260907-nacht/E/
 # Rekonstruktion am Arbeitsrechner, NV16M = Ebene Y (1920x1080) + Ebene CbCr (1920x1080):
 #   ffmpeg -f rawvideo -pix_fmt nv16 -s 1920x1080 -i hdmi1.nv16m -frames:v 1 rekon.png
 # und das Bild ANSEHEN (Read), nicht nur die Kennzahlen.
@@ -326,11 +326,11 @@ zweiten Terminal die Quelle wackeln lassen:
 
 ```bash
 # Terminal A -- laeuft ~30 s
-ssh root@192.168.8.141 '/root/hdmirx_test /dev/video0 1800' &
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> '/root/hdmirx_test /dev/video0 1800' &
 
 # Terminal B, nach ein paar Sekunden
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --off'; sleep 8
-ssh user@192.168.8.162 'DISPLAY=:0 xrandr --output HDMI-2 --auto'
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --off'; sleep 8
+ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'DISPLAY=:0 xrandr --output HDMI-2 --auto'
 ```
 
 Erwartet: mindestens **zwei** `SOURCE_CHANGE #…`-Zeilen (aus und wieder an) und in der Schlusszeile
@@ -346,7 +346,7 @@ mit der Messung in K4, nicht ein Fehler des Treibers.
 Nach einem Lauf:
 
 ```bash
-ssh root@192.168.8.141 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | grep ^frames'
+ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse> 'cat /sys/kernel/debug/sun50i-h713-hdmirx/status | grep ^frames'
 ```
 
 `skipped` sollte klein sein. Ist es groß, hat der 120-Hz-Abtasttakt nicht gereicht - das ist der

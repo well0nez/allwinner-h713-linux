@@ -221,7 +221,7 @@ Tabelle) mit dem Projektwerkzeug `tools/uart-fixargs.py` (setzt die saubere Zeil
 **UART-Mitschnitt des bereinigten Boots (11:29):** U-Boot meldet vor der Freigabe des MIPS
 `H713 MIPS: SMM heap prepared (base 0x4e32d000, 1236 pages, slot 0x4e304d00)` - die Zeile des Patches -
 und danach die gewohnte `readiness probe shared memory prepared`. Kernel-Cmdline:
-`console=ttyS0,115200 earlycon root=/dev/nfs rw nfsroot=192.168.8.104:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait clk_ignore_unused pd_ignore_unused cma=128M`.
+`console=ttyS0,115200 earlycon root=/dev/nfs rw nfsroot=<geschwaerzt 23.10.2026: Heimnetz-Adresse>:/srv/h713-rootfs,vers=3,tcp ip=dhcp rootwait clk_ignore_unused pd_ignore_unused cma=128M`.
 Mitschnitt: `re/captures/boot-clkignore.log` (vom Werkzeug geschrieben).
 
 ## Endzustand (07.09.2026, 11:35)

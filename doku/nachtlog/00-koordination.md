@@ -5,8 +5,8 @@ Board erreichbar (`uptime` 31 min, Kaltstart 21:08), keine Board-Sperre vorhande
 
 ## Vereinbarungen für die Nacht
 
-1. **Board-Agent ist ausschließlich die Hauptsitzung.** Kein Unteragent fasst `ssh root@192.168.8.141`,
-   `sonoff_ctl`, `ssh user@192.168.8.162`, `wandcheck.py`, `/dev/ttyACM0` oder `sudo` an. Board-Bedarf wird im
+1. **Board-Agent ist ausschließlich die Hauptsitzung.** Kein Unteragent fasst `ssh root@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`,
+   `sonoff_ctl`, `ssh user@<geschwaerzt 23.10.2026: Heimnetz-Adresse>`, `wandcheck.py`, `/dev/ttyACM0` oder `sudo` an. Board-Bedarf wird im
    eigenen Teillog unter „Board-Anfrage" notiert.
 2. **Teillogs statt gemeinsamer Datei.** Jeder Agent schreibt ausschließlich
    `doku/nachtlog/<paket>.md` (z. B. `A-patches.md`). Die Hauptsitzung führt sie in
