@@ -1,5 +1,5 @@
 # Generated -- do not edit.
 # git format-patch -q --no-signature -o tfa-h713 347d1c164138..287dca2fe in mainline/external/arm-trusted-firmware (12.10.2026)
 base   347d1c1641384d891716e7528992158228b5fd07  (ARM Trusted Firmware-A, branch master)
-head   287dca2fe892e9a911dbcdffc071e5995fac1a99  (well0nez/arm-trusted-firmware, branch sun50i-h713 plus 0007-0032 - not published yet)
+head   287dca2fe892e9a911dbcdffc071e5995fac1a99  (well0nez/arm-trusted-firmware, branch sun50i-h713 with 0007-0032, published 23.10.2026)
 count  32
