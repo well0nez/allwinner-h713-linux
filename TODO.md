@@ -699,6 +699,18 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Z. 307/1589 (Attrappe); acht Stellen in Messskripten und -protokollen unter `analyse/boot/`. Raus (Fork-Commit plus Spiegel, Platzhalter im Code;
       die Protokolle als Belege eher lassen) oder lassen - die Adressen zeigen auf ein Heimnetz, nicht auf einen Menschen.
 
+- [ ] 2.143 **Kernel `0277` ist die abgelehnte Fassung des cedrus-H.264-Fixes** (Mythos 23.10.2026, `arbeit/upstream-kandidaten-20261023/MYTHOS-PRUEFUNG.md` Nebenfund 1):
+      Pengpeng Hous v2 "reject invalid active H.264 ref indices"; linux-media nahm im März 2026 die Fassung, die ungültige Einträge überspringt.
+      Unser Kernel lehnt damit Ströme ab, die Mainline dekodiert. Durch die Upstream-Fassung ersetzen, dann die H.264-Schadsätze (9.3c) und die Matrix nachmessen.
+- [ ] 2.144 **Backport des V4L2-Core-Fixes zu CVE-2026-68206** (HEVC-Zählwerte in `std_validate_compound`, ~13 Zeilen) in die Kernel-Serie - fehlt in
+      6.18.38 (Mythos 23.10.2026, Nebenfund 2); danach prüfen, ob `0316` damit entfällt (Upstream will die Prüfung im Core, nicht im Treiber).
+- [ ] 2.145 Klein: fünf Patchtexte sagen "not yet tested", obwohl später gemessen (`0136w`, `0072`, `0074`, `0076`, `0077`; Mythos 23.10.2026) - Texte
+      nachziehen (mit dem Beleg), spätestens bevor einer davon upstream geht.
+- [ ] 2.146 **Upstream-Einreichungen** (Marco 23.10.2026 gefragt; Liste `arbeit/upstream-kandidaten-20261023/KANDIDATEN.md`, Bewertung `MYTHOS-PRUEFUNG.md`):
+      einreichen: U-Boot `0022`, Kernel `0136w`, `0127`, U-Boot `0027`, libva `0017`/`0016`; erst umbauen: cedrus `0309`/`0316` (Upstream überspringt statt
+      abzulehnen), U-Boot `0071` (Autor "Claude", RFC), IDMA-Serie (nur H713 gemessen). Vorher Marco: eigene Durchsicht, Signed-off-by, erreichbare
+      Mailadresse, `Assisted-by` statt `Co-Authored-By`, Texte ohne `doku/`-Verweise, lore selbst durchsuchen. Nichts geht ohne Marcos Ja je Patch raus.
+
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
