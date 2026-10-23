@@ -6,7 +6,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 1 Release — in dieser Reihenfolge
 
-- [ ] 1.0 **medien -> main: der Weg** (Plan der Aufsicht, Marco 21.10.2026: "find ich gut"; **nichts pushen, nicht zum jetzigen
+- [ ] 1.0 **Stand 23.10.2026: (0) bis (4) erledigt, offen (5), (5b), (6).** **medien -> main: der Weg** (Plan der Aufsicht, Marco 21.10.2026: "find ich gut"; **nichts pushen, nicht zum jetzigen
       Zeitpunkt**): **(0) zuerst, am Abend des 21.10. mit Marco (tagsüber nichts autonom): Hörtest T5c (2.42,
       `standby-summen/TESTABLAUF-T5c.md`), danach entscheidet Marco, ob der Standby ausgeliefert wird** **- entschieden 21.10.2026 abends: so nicht releasen, erst crust mit Standby ohne Summen** (Mythos-Analyse
       `standby-summen/mythos-analyse/`, Messung mit einem Mikrofon am Netzteil; 2.42)
@@ -34,7 +34,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (4) Merge medien -> main (369 Commits am 21.10., TODO.md-Konflikte von Hand) - **erledigt 23.10.2026** (Marco: "lokal, nichts pushen"; Zweig `versuch/merge-medien` in `arbeit/merge-medien-20261023/`, Konflikte nur in TODO.md: der alte Reihenfolge-Block vom 17.10. bleibt als überholt stehen, `main` brachte den README-Disclaimer, 1.9, 1.10, 2.73 und 7.20 mit); (5) **Mythos, in einem Auftrag: die Doku komplett
       neu erzeugen** (Marco 17.10.: ganz in Mythos' Hand - README, docs/, STATUS, ROADMAP, known-issues, RELEASES-Entwurf, Release-Seite aus
       Fremdensicht; 7.19 und 5.16 gehen darin auf) **und die Identitäts- und Leck-Prüfung 1.7a** über alles, was rausgeht (Marco 21.10.);
-      die Aufsicht schreibt den Auftrag, Marco startet Mythos, die Aufsicht prüft und merged; **Marcos Vorgaben 22.10.2026 dafür:
+      die Aufsicht schreibt den Auftrag, Marco startet Mythos, die Aufsicht prüft und merged; (5b) **danach ein letzter Release-Bau von vorn aus `main`** (neu 23.10.2026 bei der Durchsicht: die Doku-Runde ändert mit 2.128 den Absatz "Source code" in `rootfs/overlay/usr/local/share/doc/h713-linux/README`, also das Abbild, und der Tag soll auf den Baukommit zeigen, 2.128), installieren an beiden Boxen und nur prüfen, was sich geändert hat (Marco 22.10.: kein Volltest); **Marcos Vorgaben 22.10.2026 dafür:
       `arbeit/medien/doku-runde/VORGABEN-MARCO.md`** (alles neu, Bilder der Menüs/Einblendungen, Anleitungen gemischt mit Präsentation, klarer
       Disclaimer "KI-generiert und experimentell", bekannte Probleme: ARISC/Standby, IR am HY300 des Testers, Flackern); (6) Push nur mit Marcos Ja.
 
@@ -61,7 +61,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
    1.7a gegen einen frischen Klon.
 10. **1.8** RELEASES.md, Tag, Release-Text.
 
-- [ ] 1.1a **Release-Neubau** mit allem seit dem v0.96-Bau vom 05.10. (Baustand `be4f8e1`; der alte Hash `819a09a` ist seit dem
+- [x] 1.1a (erledigt 22.10.2026 durch 1.0 (1): Release-Bau v0.97-beta von vorn, `arbeit/medien/R-rel/`, Neubau mit ir-fix + gate-ir `R-rel2/` aus medien 8da300c2, an beiden Boxen installiert und gemessen; der letzte Bau vor dem Tag ist 1.0 (5b)) **Release-Neubau** mit allem seit dem v0.96-Bau vom 05.10. (Baustand `be4f8e1`; der alte Hash `819a09a` ist seit dem
       Identitäts-Rewrite unerreichbar): Kernel 0184/0185 und pwm-sun8i (`5e4475a`), Warp (Zoom, Moduswechsel,
       Stale-Schwelle, Import), EDID-Beschnitt, Panel (Auth, Zoom-Schieber), h713-tv (Aspect zoom), Installer-Texte, die neu
       erzeugte Kernel-Serie; vorher die zwei Patches aus `arbeit/hdcp-wait-env-20261007/patches/` (6.6: U-Boot in den Fork,
@@ -90,12 +90,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       tvconfig): der Installer soll die Nutzer-Einstellungen wie die 44 Herstellerdateien zurücklesen und
       übernehmen — oder `build-all.sh --wifi-env` ist Pflicht. Bis dahin: Sicherung vorher (`/root/pre-v096`)
       - 12.10. aus 5.18: dazu einen vom Nutzer geänderten Hostnamen (`/etc/hostname`) mitnehmen
-- [ ] 1.3 **WLAN-Timeouts verifizieren** (`82cb57e`): im Abbild drin, 5 Boots je ~9 s bis Finished — der Hängefall
+- [x] 1.3 (erledigt: `TimeoutStopSec=10` steckt in `h713-wifi.service` im Abbild v0.97-beta; WLAN-Check nach den Installationen am 22./23.10.2026 an beiden Boxen bestanden) **WLAN-Timeouts verifizieren** (`82cb57e`): im Abbild drin, 5 Boots je ~9 s bis Finished — der Hängefall
       (Funk absichtlich verklemmen) ist noch nicht provoziert
       - **12.10. provoziert** (G-EU, ein `install`-Hänger in modprobe.d, `arbeit/remote-reihe-20261012/` H): `timeout 30` greift, aber
         systemd wartete danach 90 s auf den hängenden Rest der cgroup - Boot fertig nach 2 min 15 s, ssh ab 127 s. Mit `TimeoutStopSec=10`
         (`c809c23`, in `main`): ssh ab 46 s, fertig nach 54 s. Ins Abbild mit 1.1a
-- [ ] 1.6 Forks pushen (Stand 09.10. 20:xx, nach der HDCP-Härtung `doku/180`): U-Boot `h713-hy310` +11 (Kopf `7b1ea388da0d`, lokal
+- [ ] 1.6 Forks pushen (**Stand 23.10.2026:** U-Boot `h713-hy310` Kopf `daa35622b0bf` (0096-0102, 13 vor origin, Spiegel `uboot-h713/` 102 Patches), TF-A `sun50i-h713` `287dca2fe892` (27 vor origin), sunxi-tools `269dfa22` unverändert, crust `h713` `54e4a08ab9f3` (88 Patches, das GitHub-Repo fehlt noch); ältere Stände darunter. Stand 09.10. 20:xx, nach der HDCP-Härtung `doku/180`): U-Boot `h713-hy310` +11 (Kopf `7b1ea388da0d`, lokal
       Zweig `versuch/hdcp-haertung-uboot`: 0096 crust-Ablage, 0097 Gate-Zeile, 0098-0100 HDCP), TF-A `sun50i-h713` +25 (Kopf
       `5a7806892`, lokal `versuch/hdcp-haertung-tfa`: 0007-0027 Standby, 0028-0030 HDCP und Kommentar), sunxi-tools gleich;
       **neu: crust** - der Fork liegt noch nicht auf GitHub (Repo anlegen, Zweig mit 81 Patches auf `499a362`, Kopf `c5b536f` seit 10.10. (G-EU-Konfig), davor `ecf2ddc`,
@@ -121,7 +121,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `versuch/crust-release-tfa` (TF-A), `versuch/aus-pl6` (Repo) gelöscht, alle enthalten. Es bleibt nur crust
         `versuch/dram-exit-delays` (`3206083`, Versuch vom 08.10., nicht gebraucht - Fehler B waren die Anzeige-Takte, `doku/171`).
         Der crust-Klon `arbeit/crust-20261007/crust` steht auf `h713`
-- [ ] 1.7 `main` pushen (06.10. +113, 09.10. 19:00 +199; aktuell `git rev-list --count origin/main..main`)
+- [ ] 1.7 `main` pushen (**23.10.2026: `main` 4b771442 nach dem Merge von `medien`, 778 Commits vor `origin/main`**; 06.10. +113, 09.10. 19:00 +199; aktuell `git rev-list --count origin/main..main`)
       - **10.10. (Marco): veröffentlicht wird nur `main`.** Die lokalen Zweige `versuch/*` und `integration/*` (alle in `main`
         enthalten, ohne Upstream) bleiben lokal und kommen weg, sobald der alte G-EU-Worktree weg ist (`versuch/geu-crust` ist dort
         ausgecheckt). In den Forks nur die Zweige, auf die `main`s Submodul-Zeiger zeigen (U-Boot `h713-hy310`, TF-A `sun50i-h713`,
@@ -143,7 +143,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `h713-osd`, `doku/193`/`195`) statt "nothing acts on the remote's keys yet except Power" (7.18)
 - [x] 1.9 ~~`docs/known-issues.md` Zeile „HY300 Pro dunkel" nach test10-Foto~~ **entfällt** (Marco 19.10.2026: es kommt kein Foto, der Besitzer von Issue #1 wartet auf das nächste Testabbild, 4.1; zum Testen hat Marco selbst einen HY300 Pro = HY300PRO-G-EU). Die Zeile "The HY300 Pro of issue #1" zieht die Doku-Runde (Schritt 5) nach dem G-EU-Stand nach (heute: "test10 follows after v0.96-beta" ist überholt).
 
-- [ ] 1.10 **Vor dem Release: was cstengers Zweig `h713-letterbox` uns zeigt** (Abgleich 19.10.2026, Bericht
+- [ ] 1.10 (**23.10.2026: a) und b) sind als Kernel `0322`-`0325` mit dem Merge in `main`, Messung 2.110; offen c) bis h)**) **Vor dem Release: was cstengers Zweig `h713-letterbox` uns zeigt** (Abgleich 19.10.2026, Bericht
       `arbeit/cstenger-letterbox-20261019/BERICHT.md`; Marco: "das sollten wir vor Release auschecken"; seine Kernel- und
       libva-Patches GPL, Werkzeuge ohne Lizenzkopf nur als Methode). Jeweils erst messen, dann entscheiden:
       a) **H.264 ohne Wartegrenze** (sein `0156`): `cedrus_skip_bits()` pollt `VLD_BUSY` endlos - eine hängende VE hängt die
@@ -166,8 +166,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
          `doku/128a` §5.5 per Nachtrag: 40 seiner Werkzeugdateien tragen SPDX GPL-2.0.
       Nach dem Release, wenn gewollt: VP9 über den Polyphasen-Scaler (`0167`, 9.3d), Spiegeln in Hardware statt im Warp
       (`0166`), HDMI-Ton über DSP-Route 0x8f (Bluetooth), AV1-Punkte mit 9.3b, A/V-Versatz ohne Kamera (`av-sync-probe` als Methode).
-## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
-
       **Stand 19.10.2026 abends** (tiefe Prüfung je Patch seit `a861df2`, Berichte `arbeit/cstenger-letterbox-20261019/tief-kernel/`,
       `tief-userspace/`, Messung `mess/`): a) und b) Kernel als `0322` (seine 0156), `0323` (0157), `0324` (0159), `0325` (Kommentare) auf
       `versuch/cstenger-kernel`; am HY310 gemessen (Kontrollarm e8c68904): keine Verschlechterung (Matrix 20/20 bitgenau, Schadsätze hevc8,
@@ -181,6 +179,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Für später vorgemerkt: libva `0018`-`0020` (AV1, be0712d) und Kernel `0160` mit 9.3b, `0162`/`0167` (VP9-Skalierer) mit 9.3d.
       Wissen: der 32-kHz-Takt der RTC ist 24 MHz/750 = 32 000 Hz, `0320` meldet 32 768 - die Uhrzeit ist gemessen richtig (doku/213 §5),
       betroffen wären nur Verbraucher, die aus dem Nennwert Zeiten rechnen.
+## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
+
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
       (1024×768, 1280×1024, 576p) werden mit Warp breitgezogen, ohne Warp pillarboxt die Firmware.
       Fix: Letter-/Pillarbox im Quad aus dem Capture-Format (h713-warp), noch nicht gemessen
@@ -205,7 +205,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Aufwachen geht die Ebene im Bypass auf **volle** Ringplätze (3 Läufe, `ebene-wach.py`), der erste Warp-Puffer ist beim Flip
         gefenct (afbd nutzt `drm_atomic_helper_commit`). Offen: Inhalt des ersten Warp-Puffers (nicht über `/dev/mem` lesbar), die
         Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
-- [ ] 2.42 **Netzteil summt/fiept im Standby (2,4 W) und im Aus über crust (0,3 W), im Gate (2,9 W) nicht** (Marco 09./10.10., HY310;
+- [ ] 2.42 (**Stand 22.10.2026: das Release läuft ohne Standby mit der Hersteller-ARISC, Aus = Gate, still (1.0 (0), `doku/218`); das Summen betrifft nur noch crust, das experimentell im Abbild bleibt**) **Netzteil summt/fiept im Standby (2,4 W) und im Aus über crust (0,3 W), im Gate (2,9 W) nicht** (Marco 09./10.10., HY310;
       Marco 20.10.: "das spricht dafür, dass wir irgendwas falsch machen"; Stock ist bei denselben 0,3 W still). Hypothesen und Testplan:
       `arbeit/medien/standby-summen/` (Mythos 20.10.2026, HYPOTHESEN.md mit Nachtrag H0a-e, TESTPLAN.md). **Hörtest 21.10.2026 abends am G-EU (Marco): T5c lief nicht wie gedacht** - im ersten B-Standby `slow_gestoppt=ja`
       nach 124 Wartungen (2 % auf LOSC, Uhr +0,99 s; Verdacht: Takt oder Tick-Zähler folgen der Quelle 1 nicht), abgebrochen nach Protokoll,
@@ -246,7 +246,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 11.10.: vorbereitet - Zeichnen (`libh713osd`) und Ausgabe (`h713-osd` + Kanal in `h713-tv`) sind getrennt, die Matrix eine
         Bibliothek (`libh713geom`); `docs/architecture.md` "The display stack". Der Desktop selbst steht aus
 
-- [ ] 2.65 **Frage (Marco 12.10.): weckt IR auch aus dem Aus über crust, wie aus dem Standby?** Am HY310 bestanden (`doku/190`: Taste,
+- [x] 2.65 (erledigt 22./23.10.2026, Marcos eigentliche Frage: U-Boot `0102` (gate-ir) - im Gate startet die Power-Taste beider Fernbedienungen die Box, am G-EU per FEL und nach der Installation, am HY310 nach der Installation, UART `gate: remote power key (NEC 0014)` bzw. `(NEC 021d)`; `arbeit/medien/gate-ir/`) **Frage (Marco 12.10.): weckt IR auch aus dem Aus über crust, wie aus dem Standby?** Am HY310 bestanden (`doku/190`: Taste,
       IR, Selbstwecken), am G-EU "Taste oder Fernbedienung weckt" (`doku/188`). Mit dem Kernel aus `main` 234282c am G-EU nachmessen,
       je einmal: Standby -> IR-Power; Aus über crust -> IR-Power; dabei 2.40 (`0257`) im Log des Starts danach ansehen (Info statt
       Warnung). Braucht Marco vor Ort (IR)
@@ -306,7 +306,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         h713-logs-Pfaden), die Beamer-Begriffe zurück (Sonnet-Agent, `arbeit/panel-wording-20261012/`), die Off..High-Reihen zeigen den
         echten Wert (der Server suchte unter den Kurznamen). Marco am Gerät: "passt". Offen: `docs/guides/settings-page.md` und
         `docs/tools/h713-panel.md` auf die neue Seite (7.19); die Ecken zeigen ihr Maximum nicht mehr, der Chip "picture" fehlt
-- [ ] 2.66 **Nach dem Standby zweimal 0 Bilder/s gezeigt, obwohl h713-tv "plane on" meldet** (12.10., G-EU, 20 Standbys per RTC,
+- [ ] 2.66 (seit 22.10.2026 nur für das crust-Experiment: das Release bietet keinen Standby) **Nach dem Standby zweimal 0 Bilder/s gezeigt, obwohl h713-tv "plane on" meldet** (12.10., G-EU, 20 Standbys per RTC,
       Quelle ThinkPad, `arbeit/remote-reihe-20261012/` C): `anzeige.py` 4 s, ~10 s nach ssh, in st6 und st18 0,00 Wechsel/s, die anderen
       18 bei 59,6-59,8; der jeweils nächste Standby wieder normal. Ungeklärt, ob zu früh gemessen (Skript- und Journalzeit gingen über die
       Suspend-Zeit nicht sauber auf) oder ein echter Stillstand. Nächster Schritt: nach jedem Aufwachen 30 s `anzeige.py` mit Zeitstempel
@@ -314,11 +314,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - Marco 12.10.: vielleicht hat der ThinkPad wieder nichts gesendet (wie die Stillstände mit `rustdesk --server`, `referenz/geraete.md`)
         - nicht sicher; **den Test nach dem Release wiederholen**, dann mit einer zweiten Quelle (Fire TV) als Gegenprobe
 
-- [ ] 2.70 **Watt im Standby am HY300PRO-G-EU** (aus 1.4, 12.10.): mit crust, Lüfter aus (PB5 beim Board-Manager) - mit dem
+- [x] 2.70 (erledigt 22.10.2026, Marco am Wattmeter: Release-Standby 2,0 W, Standby ohne DRAM-Self-Refresh 2,4 W, beide fiepen, `doku/218`; der Standby kommt nicht ins Release) **Watt im Standby am HY300PRO-G-EU** (aus 1.4, 12.10.): mit crust, Lüfter aus (PB5 beim Board-Manager) - mit dem
       Messgerät an der Steckdose; am HY310 zum Vergleich der Wert aus `doku/188`
 - [ ] 2.71 **`h713-bt-reset` am HY300PRO-G-EU** (aus 1.4, 12.10.): dort nie probiert; ein Warmstart mit und ohne den Reset vorab,
       `hci0` UP RUNNING beim 1. Versuch zählen (wie 2.49 am HY310)
-- [ ] 2.72 **GPU-Takt (0268-0270) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (13.10.2026, `arbeit/medien/A-takt/BERICHT.md`: A1 halbiert, A2 150/200/300/600 MHz
+- [ ] 2.72 (Stand 23.10.2026: der G-EU läuft seit geu3/v0.97-beta mit `0268`-`0270`, Abnahme und Kodi 4K ohne Auffälligkeit, Zonen höchstens 72,9 C (2.78); A1-A5 selbst nicht gemessen) **GPU-Takt (0268-0270) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (13.10.2026, `arbeit/medien/A-takt/BERICHT.md`: A1 halbiert, A2 150/200/300/600 MHz
       exakt, A3 2,49 ms bei 600, A4 45 min GPU-Zone max 55 C), am G-EU nicht gemessen und nicht eingebaut. Dasselbe Skript `arbeit/medien/A-takt/takt.sh` mit `H=root@<G-EU-Adresse aus referenz/geraete.md>`
       (Pfade prüfen: `hwmon` des Lüfters, `thermal_zone`-Reihenfolge, Warp-PID). Tests: A1 vorher (Soll 0,5 +-0,05, sonst anderes CCU-Verhalten), A2 nachher (599/299/199/150 +-2 %),
       A3 (`h713-warp ctl trace`; **720p-Panel**, Zeit je Bild anders als am HY310), A4 verkürzt auf 15 min (GPU-Zone < 85 C, dmesg leer; anderes Gehäuse und Lüfter),
@@ -328,7 +328,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `arbeit/medien/D-ton/BERICHT.md` D5): `card "H713AudioCodec"`, die Karte heißt `Codec` (ALSA nimmt das letzte Wort von
       "H713 Audio Codec"); `aplay -D codec` → `Cannot get card index for H713AudioCodec`. Im Repo benutzt den Namen niemand. Korrektur
       `card "Codec"`, dann am HY310 `aplay -D codec` mit `DAC Source` = APB hören (danach zurück auf I2S); am G-EU die Kartenkennung lesen.
-- [ ] 2.74 **afbd-Index als Feld [2:0] (Patch `0314`) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/211` §11: 25 Standbys
+- [x] 2.74 (erledigt 20.10.2026 am G-EU: 10 von 10 RTC-Standbys aus HDMI mit Bild danach, 2.84 (d); seit 22.10. ohne Standby im Release, die Ursachenfragen am HY310 unten gelten nur für crust) **afbd-Index als Feld [2:0] (Patch `0314`) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/211` §11: 25 Standbys
       per RTC, in allen Bilder im Warp (297-299 in 5 s); die Bits oberhalb von `INCAP +0xa0c` [2:0] waren nach 9 der 25 gesetzt, in allen 9 kamen
       Bilder, Warp 59,40/s wie im sauberen Zustand, `ctl check 900` 0 Abweichungen). Der Fehler (`0255` verglich das ganze Wort mit `< 3`, die Firmware
       maskiert mit `andi 0x7`) steckt in `main` ohne `0314` und trifft den G-EU genauso: nach manchen Standbys liefert die Erfassung dem Warp kein Bild
@@ -349,24 +349,24 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       300/300. Im Abbild öffnet niemand BSD-PTYs (openssh, agetty, Kodi, cage, PipeWire nehmen `/dev/ptmx`). Nachmessen am G-EU: `ls /sys/class/tty | wc -l`
       (Soll um 75), ssh, getty auf ttyS0 und WLAN gehen.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** `# CONFIG_LEGACY_PTYS is not set` im Bau-.config, 0 Geräte /dev/pty[p-z]*.
-- [ ] 2.77 **Kodi unter cage am Wayland-Server des Warp am HY300PRO-G-EU** - am HY310 gemessen (15.10.2026, `doku/211` §10: Menü und Video 57-58 Bilder/s, cage
+- [x] 2.77 (erledigt 20.10.2026 am G-EU, 2.84 (a)/(e)/(i)/(l): Kodi-Wechsel mit Bild (Marcos Auge), Kodi HEVC 2160p 2 x 15 min, Kodi als `h713-kodi`, 5 Standbys aus Kodi; HDMI-Ton im Client-Fall nicht gemessen, 2.141) **Kodi unter cage am Wayland-Server des Warp am HY300PRO-G-EU** - am HY310 gemessen (15.10.2026, `doku/211` §10: Menü und Video 57-58 Bilder/s, cage
       0 ns GPU-Zeit, `ctl check 900` 0 Abweichungen, Konsole nach dem Ende im Textmodus). Am G-EU nie gelaufen (anderes Panel, kein Fokusmotor, keine Kamera). Nachmessen:
       Profil `desktop` (oder Schnell-Deploy von `h713-warp`, `h713-tv`, Kodi-Einheit, Keymap), `systemctl start h713-kodi`, Menü 60 s, Video 1080p60, Beenden,
       `ctl check 300`, ein Standby mit Kodi; dazu der HDMI-Ton im Client-Fall mit einer Quelle, die Ton sendet (nicht gemessen). Wartet, bis der G-EU wieder am Strom hängt.
-- [ ] 2.78 **VE bei 600 MHz (Patch `0315`) und `0316`-`0319` am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15./16.10.2026, `doku/212` §5: mpv H.264 2160p 30,0 statt 26,6 VE-Bilder/s,
+- [x] 2.78 (erledigt 20.10.2026 am G-EU, Ergebnis unten; die Stunde nicht gemessen (2 x 15 min), 2.141) **VE bei 600 MHz (Patch `0315`) und `0316`-`0319` am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15./16.10.2026, `doku/212` §5: mpv H.264 2160p 30,0 statt 26,6 VE-Bilder/s,
       33 von 33 Clips bitgenau, 55 min 112 von 112, Kodi HEVC 2160p eine Stunde 29,75/s ohne Ereignis, Zonen höchstens 68,4/70,6 C). `0315` lässt cedrus mit 600 MHz laufen, solange der
       AV1-Knoten aus ist (`0310`); `0293` hatte den Takt nur für den AV1-Kern auf 432 MHz gesenkt. Der G-EU hat dasselbe dtsi und dasselbe Defconfig, also denselben Takt. Nachmessen:
       Kernel mit `0315`-`0319` auf den G-EU (Schnell-Deploy: FIT + `sunxi-cedrus.ko`, die anderen .ko müssen byte-gleich sein), die Zeile `module clock 600000000 Hz` im `dmesg`, der
       VE-Takt unter Last aus der CCU (`PLL_VE` +0x058, VE +0x690, nur lesend), 33 Clips bitgenau und eine Stunde 4K-HEVC-Dekodieren mit Temperatur und Treiberzeilen (Timeouts,
       IOMMU-Faults). Bestanden, wenn alles bitgenau ist, 0 Timeouts/Faults und keine Zone über 85 C.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** `module clock 600000000 Hz`, PLL_VE/VE 600 MHz unter Last; B1 33 von 33 bitgenau, 0 Treiberzeilen; Tempo H.264 2160p 31,6, HEVC8 2160p 60,9, HEVC10 2160p 54,3 Bilder/s; Kodi HEVC 2160p 2 x 15 min (60-s-Fassung) 29,76/29,73, 0 Timeouts/Faults, Zonen max 72,9 C (77,7 C mit dd daneben). Offen: die Stunde.
-- [ ] 2.79 **Launcher, Moduswechsel und Standby aus Kodi am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/212` §1: zehn Wechsel HDMI -> Kodi -> HDMI mit 4,16-4,24 s und
+- [x] 2.79 (erledigt 20.10. und 22.10.2026 am G-EU: Wechsel und Standbys aus Kodi 2.84 (i)/(l), IR-Weg mit beiden echten Fernbedienungen 22.10. (Kernel `0328`/`0329`, Home per IR); (c) entfällt (keine Kamera), (d) entfällt (kein Standby im Release); (a) und (e) nicht einzeln gemessen, 2.141) **Launcher, Moduswechsel und Standby aus Kodi am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15.10.2026, `doku/212` §1: zehn Wechsel HDMI -> Kodi -> HDMI mit 4,16-4,24 s und
       0,39-0,44 s, Taste mal Zustand ohne Doppelwirkung, Auswahl 52,7 ms über HDMI und 81,8 ms über Kodi bis `osd show`, 35 von 35 Standbys aus allen Wegen mit Modus und Bild zurück). Am G-EU:
       dieselben vier Messungen mit einer uhid-Fernbedienung (Kennung `1d5a:c081`), das Panel mit 59,71 Hz gegenhalten; zusätzlich, was am HY310 nicht ging: (a) ob die echte
       Bluetooth-Fernbedienung die Scancodes `0xc0041`/`0xc0040` schickt und `70-h713-remote.rules` sie auf `KEY_ENTER`/`KEY_COMPOSE` stellt, (b) der IR-Weg `0x20b`/`0x21e` mit der echten
       IR-Fernbedienung, (c) der Flip des Launchers (Kamera), (d) ein Standby mit Weckabbruch (`pm_test`) für das Netz in `h713-power`, (e) dass die Regel nach einem Neustart greift
       (`keycode.py get ir 20b` gleich 28 ohne `udevadm trigger`).
-- [ ] 2.80 **Kodi als Nutzer `h713-kodi`, `source = auto` und die polkit-Regel am HY300PRO-G-EU nachmessen** - am HY310 gemessen (16.10.2026, `doku/212` §4). Am G-EU (720p-Panel, 59,71 Hz):
+- [x] 2.80 (erledigt 20.10.2026 am G-EU: Kodi und cage als `h713-kodi`, 2.84 (i); seit 22.10. sperrt das Release den Standby (`AllowSuspend=no`, `CanSuspend` "no" am HY310 23.10.2026 gelesen), (5) entfällt damit; (2)-(4) nicht einzeln gemessen, 2.141) **Kodi als Nutzer `h713-kodi`, `source = auto` und die polkit-Regel am HY300PRO-G-EU nachmessen** - am HY310 gemessen (16.10.2026, `doku/212` §4). Am G-EU (720p-Panel, 59,71 Hz):
       (1) `systemd-sysusers` mit `h713-kodi.conf`, Einheit und `h713-warp -g video`, danach `ps`: cage und Kodi als `h713-kodi`; (2) `tv.conf` mit `source = auto`,
       `systemctl restart h713-tv@<N>` bei laufendem Kodi - Kodi muss in wenigen Sekunden wieder präsentiert werden (HY310: 1,7-2,0 s); (3) Kodi starten, während h713-tv steht;
       (4) VA-Dekodieren (H.264, HEVC) und ALSA stumm öffnen als Nutzer; (5) Kodis Power-Menü: `polkitd` (5 Pakete) und die Regel `50-h713-kodi.rules`, Kodi neu starten, `System.CanSuspend`
@@ -377,10 +377,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.82 **Einstellungsseite (`h713-settings`) am HY300PRO-G-EU nachmessen** - am HY310 bestanden (15./16.10.2026, `doku/212` §2: jede Zeile gesetzt und zurück, Warmstart 14 von 15 Feldern gleich,
       Taste bis Änderung 66,2 ms im Mittel bei Gate 120 ms, 26 Zellen ohne Doppelwirkung, HDMI-Check 300 mit 0 Abweichungen). Am G-EU gleiche vier Kerne, derselbe Faktor wird erwartet;
       zu messen S1 bis S5 und die Zeit mit dem Keystone des Geräts (das Vorverzerren der Seite hängt an ihm).
-- [ ] 2.83 **Desktop- und Browser-Modus am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15.10.2026, `doku/212` §3: Wechsel zehn Mal mit 1,0-1,2 s zum ersten Client-Bild und 2,5-2,7 s zurück,
+- [x] 2.83 (erledigt 20.10.2026 am G-EU: drei Runden Kodi -> Desktop -> Browser -> HDMI mit Marcos Auge, Browser-Start 7,2 s (2.121); Speicher mit Video-Tab nicht gemessen, 2.141) **Desktop- und Browser-Modus am HY300PRO-G-EU nachmessen** - am HY310 gemessen (15.10.2026, `doku/212` §3: Wechsel zehn Mal mit 1,0-1,2 s zum ersten Client-Bild und 2,5-2,7 s zurück,
       mpv 1080p60 im Desktop mit 60,0 Bildern/s dekodiert, Firefox ESR 153.5, Standby 3 von 3 im Browser). Am G-EU: die Wechsel, ein Standby je Modus und der Speicher mit einem Video-Tab
       (HY310: Firefox 970 MiB RSS, MemAvailable 329-354 MiB von 924).
-- [ ] 2.84 **G-EU-Testabbild aus `medien`: was den HY300PRO-G-EU anders trifft als den HY310** (Sammelzeile, `doku/213`; Abbild `--board hy200-qz713df-a1
+- [x] 2.84 (erledigt 20.10.2026 (geu3, Ergebnis je Buchstabe unten) und 22.10.2026 (v0.97-beta: Abnahme -K 25 bestanden, 0 nicht, 5 nicht gemessen; Marcos Augen); Reste 2.141) **G-EU-Testabbild aus `medien`: was den HY300PRO-G-EU anders trifft als den HY310** (Sammelzeile, `doku/213`; Abbild `--board hy200-qz713df-a1
       --variant projector05061226 --test-image --standby --profile media,desktop`; vorher `/etc/h713`, Bluetooth-Bund und Hostschlüssel sichern; der G-EU läuft
       heute `main`, alles ab `0252` kommt neu). Bestanden, wenn jeder Punkt die genannte Messung besteht: (a) **Panel 1280x720 @ 59,71 Hz** - `h713-warp ctl status`
       nennt 1280x720 (der Server rät 1920x1080, wenn der afbd-Connector beim Start noch nicht geprüft ist, und lehnt dann Puffer über 1280 ab); Kodi, Desktop,
@@ -398,24 +398,24 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       und Tasten ohne IR-Interrupts, sonst 2.90; (l) Standby mit PB5 (Lampe und Lüfter aus seit `0249`): fünf Standbys aus HDMI und Kodi, Bild und Modus zurück;
       (m) 1080p60-Quelle auf dem 720p-Panel: 60 s Ring 59,7 Bilder/s, `check 300` 0 Abweichungen.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** (a) Panel-Puffer 1280x720, Ring 59,7/s, Firefox-Faktor 1.333 in `user.js` nach dem ersten Start (Dateiinhalt, nicht das Seitenbild); Bilder und Startseite: **Marcos Auge 20.10.2026 21:14-21:18 UTC, drei Runden Kodi -> Desktop -> Browser -> HDMI über den Launcher: nichts aufgefallen** (Journal ohne Fehler; panfrost-Shrinker meldet Speicherdruck). (b) Lampe: **`backlight_level` 50/100 ohne sichtbare Wirkung** (Marco 20.10.2026 21:11/21:13 UTC, zweimal je 10 s auf 50, die Firmware nimmt beide Werte an - wie 2.11 am HY310); **kein Lichtflackern** bei den Wechseln (Marco: ruhiger als der HY310); an nach Boot/Standby: Auge offen. (c) abnahme -K: rw 11/11, ps 7/7 (mit Mess-Trapez; bei Identität ist der Warp im Bypass, soll_sw dafür angepasst). (d) **10 von 10 RTC-Standbys aus HDMI** mit Ring danach. (e) **bestanden** (60-s-Clip, siehe 2.78). (f) **bestanden** (2.75). (g) Rate 1,0000 über 90 s, 16 x wake rtc; **IR 20.10.2026 21:30/21:31 UTC (Marco)**: Home per IR öffnet den Launcher (21:30:23,34, Bluetooth erst 0,3 s später), Power per IR weckt aus dem Standby (`standby 2: wake ir (0x9b)` nach 8,6 s, Bildweg 4,9 s). (h) Wechselrunden oben ohne Auffälligkeit (Marco); `ctl mute on` über einen Standby: **gehalten** (h713-tv 21:31:22 "kept from the run before", danach `ctl mute off` zurück). (i) Kodi als h713-kodi, Launcher beim Start; Browser-Start 7,2-7,3 s (HY310 5,6 s; die "unter 7 s" oben waren unser Messkriterium, keine Grenze - Marco 20.10.2026, 2.121). (j) **bestanden**: default -> hy310hdmi (Karte 1), Ton und Kodi-Pieper am ThinkPad-Mikro ~+35-50 dB über Grund, pcm0p RUNNING (kodi.bin). (k) nach dem Neustart 21:23 `Connected: no` (die Fernbedienung schläft), nach Marcos erstem Tastendruck 21:30:23 verbunden, h713-keys hört auf das BT-Gerät. (l) 5 aus HDMI + 5 aus Kodi mit Modus zurück; Augen 20.10.2026 21:19-21:26 UTC (Marco): **Aus über die Power-Taste** (`power.conf short = poweroff`, 15-s-Countdown) - Lampe und Lüfter aus, ein gestellter RTC-Wecker weckt aus dem Aus nicht (gewollt: nur Taste/Fernbedienung, docs/tools/h713-power.md); **Standby** (`systemctl suspend`, RTC 60 s) - `wake rtc` nach 59,8 s, Bildweg nach 6,5 s, HDMI-Bild zurück (Marco). (m) check 900: 0, check 300: 0 (ein erster Lauf 1 Bild bei Bild 1).
-- [ ] 2.85 **Bildweiche (seatd ohne VT, Primärebene je Commit, Übergabe auf einem Claim, Stumm über den Neustart, Seite ohne Signal) am HY300PRO-G-EU nachmessen** - am HY310
+- [x] 2.85 (erledigt 20.10.2026 am G-EU, 2.84 (h): Wechsel ohne Auffälligkeit (Marco), `ctl mute on` über einen Standby gehalten) **Bildweiche (seatd ohne VT, Primärebene je Commit, Übergabe auf einem Claim, Stumm über den Neustart, Seite ohne Signal) am HY300PRO-G-EU nachmessen** - am HY310
       bestanden (16.10.2026, `doku/213` §1: 30 von 30 Wechseln mit Bild, 0 Blitze in 24 Übergaben, Stumm in 5 von 5 Standbys gehalten, 74 von 75 Zellen). Am G-EU: dieselbe
       display.bin-Revision, aber 720p-Übergabe und ein anderes Fenster; `abnahme.sh -n 1 -t wechsel` mit Marcos Blick statt der Kamera, `ctl mute on` über einen Standby,
       Home ohne HDMI-Signal.
-- [ ] 2.86 **Start-Launcher, "Starting X...", Firefox-Start, Kodis Ende und Schriftgröße am HY300PRO-G-EU nachmessen** - am HY310 bestanden (16.10.2026, `doku/213` §4:
+- [x] 2.86 (erledigt 20.10.2026 am G-EU, 2.84 (i): Launcher beim Start, Browser 7,2 s; Kaltstart ohne Signal, Firefox-Caches über ein neues Abbild und "On start" mit der echten Fernbedienung nicht einzeln gemessen, 2.141) **Start-Launcher, "Starting X...", Firefox-Start, Kodis Ende und Schriftgröße am HY300PRO-G-EU nachmessen** - am HY310 bestanden (16.10.2026, `doku/213` §4:
       Launcher 10,6-10,9 s nach dem Boot in vier Warmstarts; Firefox 5,6 s statt 8,3 s mit dem `ExecStopPost`, die erste Sitzung nach einer Installation muss einmal
       etwa 35 s laufen; Kodis Ende 3,1/2,8 s -> 1,9/2,3 s mit `services.wsdiscovery = false`; Faktor 2,0, foot 24 pt, labwc 20 pt). Am G-EU dazu: ein Kaltstart mit
       Start-Launcher, ein Start ohne Signal (Quelle abziehen), ob die Firefox-Caches von einem Abbild aufs nächste gelten, "On start" über die Einstellungsseite mit
       der echten Fernbedienung, die Schriftgröße am 720p-Panel (siehe 2.84 a).
-- [ ] 2.87 **RTC am 24-MHz-Quarz (`0320`) am HY300PRO-G-EU nachmessen** - am HY310 gemessen (16.10.2026, `doku/213` §5): vorher 1,357 s je RTC-Sekunde am RC, der
+- [x] 2.87 (erledigt 20.10.2026 am G-EU, Ergebnis unten; die Zeile in `referenz/geraete.md` ist 23.10.2026 überholt) **RTC am 24-MHz-Quarz (`0320`) am HY300PRO-G-EU nachmessen** - am HY310 gemessen (16.10.2026, `doku/213` §5): vorher 1,357 s je RTC-Sekunde am RC, der
       11-Minuten-Abgleich des Kernels verschluckte Wecker unter 174 s; mit `0320` Rate 1,000, zwei RTC-Standbys `wake rtc`, IR unberührt. Am G-EU (derselbe RTC-Block,
       kein 32-kHz-Quarz im Baum): `since_epoch` gegen `date` über 90 s (nur lesend) vor und nach dem Kernel, `hwclock` gegen `date`, zwei RTC-Standbys mit dem
       Wecker-Schritt der Abnahme, die IR-Fernbedienung. Dazu `referenz`-Zeile "RTC-Sekunde = 1,071 s" überholen.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** RTC-Rate 1,0000 über 90 s, RTC gegen date +1 s, 16 RTC-Standbys alle `wake rtc`. IR-Taste: Home und Wecken aus dem Standby per IR (Marco 20.10.2026 21:30/21:31 UTC, siehe 2.84 g).
-- [ ] 2.88 **Fokus-Randbild und `h713-remote-pair` am HY300PRO-G-EU** - am HY310 gemessen (16.10.2026, `doku/213` §6). Der G-EU hat keinen Fokusmotor (`features =
+- [x] 2.88 (erledigt 20.10.2026 am G-EU: nach dem ersten Tastendruck verbunden, h713-keys hört auf das Bluetooth-Gerät, 2.84 (k); Neukoppeln 2.92) **Fokus-Randbild und `h713-remote-pair` am HY300PRO-G-EU** - am HY310 gemessen (16.10.2026, `doku/213` §6). Der G-EU hat keinen Fokusmotor (`features =
       accelerometer`): der Randbild-Teil entfällt; Fernbedienung: nach dem Boot verbunden (sie ist dort gekoppelt), Tasten ohne IR-Interrupts; der BT-Fix (2.90) erst
       nach seiner Messung.
-- [ ] 2.89 **Das Endabbild aus `medien` auf dem HY310 installieren und am installierten Abbild abnehmen** (Auflage A1 der Prüfung vor `main`): das Abbild von a70bd6f
+- [x] 2.89 (erledigt 22.10.2026 und 23.10.2026: v0.97-beta am HY310 installiert und abgenommen, 1.0 (2) (Kamera-Eichung 2.138, Marcos Auge für diese Punkte), Neuinstallation mit R-rel2 23.10.2026) **Das Endabbild aus `medien` auf dem HY310 installieren und am installierten Abbild abnehmen** (Auflage A1 der Prüfung vor `main`): das Abbild von a70bd6f
       (oder jünger) über FEL installieren, `/etc/h713`, Bund, Hostschlüssel und Kodis Einstellungen zurückspielen; dann `abnahme.sh` ganz am installierten Stand, dazu:
       die Systemnutzer entstehen beim ersten Start (`ps`: Kodi als `h713-kodi`), der Launcher öffnet beim Start, die erste Firefox-Sitzung einmal 35 s laufen lassen,
       die Fernbedienung verbindet oder fällt auf IR zurück. Bisher ist nur rend3 (693e9ec) gebootet; alles seit dem 16.10. mittags lief als Einzel-Deploy (`doku/213` §7).
@@ -425,7 +425,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (btmon: Anzeige, Verbindung, Trennungsgrund), Mikrofon-Taste (`pairing request over IR ... pairing afresh`, `Connected: yes`), drei Warmstarts je Taste über
       Bluetooth (IR-Interrupts unverändert), zwei Minuten Leerlauf, Fokusrichtung über Bluetooth gegen IR. Besteht es: mergen und das Abbild neu bauen; dazu die
       Installationsanleitung (LINKS+RECHTS allein geht mit vorhandenem Bund nicht; erst `h713-remote-pair forget`).
-- [ ] 2.91 **userspace-fix Runde 2 (N-1 Launcher nach h713-osd-Neustart, N-2 langer Power-Druck bei offener Seite) am HY300PRO-G-EU nachmessen** - am HY310 bestanden
+- [x] 2.91 (N-1 erledigt 20.10.2026 am G-EU; N-2 (langer Power-Druck) nicht gemacht, 2.141) **userspace-fix Runde 2 (N-1 Launcher nach h713-osd-Neustart, N-2 langer Power-Druck bei offener Seite) am HY300PRO-G-EU nachmessen** - am HY310 bestanden
       (16.10.2026, `doku/212` §4 Umfeld; N-2 im Trockenlauf mit einer `systemctl`-Attrappe). Am G-EU: Launcher öffnen, `systemctl restart h713-osd`, eine Taste ->
       Journal `launcher closed: h713-osd says error the launcher is not open`, Grab frei, OK startet nichts; Power 3 s bei offenem Launcher -> `long press: power-off`
       (schaltet die Box aus: nur mit Marco am Gerät), kurz -> `short press: countdown`. `h713-keys`, `h713-power`, `h713-settings` zusammen ausspielen.
@@ -439,11 +439,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.93 **Grün beim Initialisieren** (Marco 17.10.2026 am HY310, nach `doku/214` §3): beim Start ist kurz etwas Grünes zu sehen. Nicht
       untersucht: Zeitpunkt, Ebene (Video oder Primär), ob es ein ungefüllter NV12-Puffer der Warp-Übernahme ist (Nullen = Grün).
       Erst mit der Kamera der Box bzw. den Ebenenregistern je Vsync den Zeitpunkt messen, dann die Wurzel.
-- [ ] 2.94 **Startfixe vom 17.10. am HY300PRO-G-EU nachmessen** (`doku/214` §2-3, c89234f, 8d22136, 47a29d9): Launcher beim Start vor dem
+- [x] 2.94 (erledigt 20.10.2026 am G-EU, Ergebnis unten; "On start HDMI" einmal ansehen, 2.141) **Startfixe vom 17.10. am HY300PRO-G-EU nachmessen** (`doku/214` §2-3, c89234f, 8d22136, 47a29d9): Launcher beim Start vor dem
       HDMI-Bild (Journal: `launcher open` vor `plane 38 on`), Warp-Claim innerhalb 0,3 s nach `signal`, keine Zeile `drawn again` von
       h713-osd während des Starts; dazu einmal mit `On start: HDMI input` ansehen (der gerade Ring für ~0,14 s, `doku/214` §4).
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** Launcher open 10,7 s vor dem Signal 14,2 s; mit Trapez: Signal -> Claim 0,09 s, erstes Bild 7 ms nach dem Claim, keine "drawn again". Offen: einmal mit On start HDMI ansehen.
-- [ ] 2.95 **Bedienmodell am HY300PRO-G-EU nachmessen** (`doku/215`): Rückwege und On start, Pause unter Seiten (dort Warp im Bypass: der NV16-Ring
+- [x] 2.95 (erledigt 20.10.2026 am G-EU, Ergebnis unten; Wand/Auge: Marcos Wechselrunden 20.10. und 22.10.2026 ohne Auffälligkeit) **Bedienmodell am HY300PRO-G-EU nachmessen** (`doku/215`): Rückwege und On start, Pause unter Seiten (dort Warp im Bypass: der NV16-Ring
       geht unter der Seite aus und an = die getönte Kante, nachmessen), P3 mit `want none` (kein Warten, Ring sofort), EDID ohne Deep Colour (720p-EDID),
       No-signal-Seite (720p). Je Paket die Zelle aus abnahme.sh, Kamera dort keine: Marcos Auge.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** Rückwege 11/11, Pause unter Seiten 7/7 (Software, -K); On start launcher/hdmi/kodi/last-kodi bestanden, last-hdmi als Nachmessung von Hand nach dem Werkzeugfehler (Warmstart) bestanden; P3 want none = Identität (h713-tv zeigt den Ring selbst). Wand/Auge offen.
@@ -466,8 +466,6 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.99 **Flackern vorher/nachher** (Marco 17.10.; **22.10.: Marco und der Tester sehen weiter Flackern während der Ausgabe, nicht
       vollständig geklärt** - so in die Doku): mit Mythos' Licht-Detektor und Marcos Auge Launcher offen, Kodi im Hintergrund, Wechsel -
       rend5 gegen rend6; Hypothese: unsichtbare Arbeit (Warp unter Seiten, Programme dahinter) war eine Lastquelle für die Lichtkopplung.
-## 3 Geparkt — mit Wiedereinstiegsbedingung
-
 - [ ] 2.100 **Weißabgleich und Farbmanagement (bm-wb2): Marcos Wandtest mit diesem Code** (Auflage C aus Mythos' Prüfung, `arbeit/medien/bm-wb2/`):
       Settings > White balance (Warm - Cool, Green - Magenta), Colour (Gelb Hue/Saturation), ein Bildmoduswechsel mit gesetztem Schritt, Reset. Der
       Augentest vom 18.10. lief mit der Probe, nicht mit diesem Code; gleiche Register heißt gleiches Bild ist der Schluss, nicht die Messung.
@@ -511,7 +509,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [x] 2.109 **IIO-Puffer am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): Kernel mit 5d32cbc, `h713-keystone read`/`once --apply`-Zeiten,
       Journal ohne sysfs-Rückfall, `watch` nach einer Bewegung; ohne Beschleunigungssensor dort (falls keiner): Einheit übersprungen, nichts geändert.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** sc7a20 als iio:device2, keystone-auto "a reading every ~0.66 s through the IIO buffer", 0 sysfs-Zeilen; read 0,51-0,60 s, once --apply 0,65-0,74 s. Kippen: **Marco 20.10.2026: selbst getestet, das Trapez folgt** (vor dem Boot 21:23 UTC; das Journal ist flüchtig, kein Protokollbeleg; heute steht `after_move = off`, Marcos Vorgabe).
-- [ ] 2.110 **cstenger-Kernel 0322-0325: Wirkung vor `main` messen** (Mythos 19.10.: go für medien; Messung am HY310 19.10. ohne Fehlerbild im
+- [ ] 2.110 (**seit 23.10.2026 mit dem Merge in `main`** - beide Boxen laufen damit; offen bleibt die Messung unten) **cstenger-Kernel 0322-0325: Wirkung vor `main` messen** (Mythos 19.10.: go für medien; Messung am HY310 19.10. ohne Fehlerbild im
       Kontrollarm, `arbeit/cstenger-letterbox-20261019/mess/BERICHT.md`): 9.3c (a)/(b) und der Dauerlauf-Block aus mess/BERICHT §7 mit dem Kernel
       aus dem Merge (IIO + 0322-0325); 0323 (64 CAPTURE-Puffer) bei 4K gegen den CMA beobachten (9.3d c). G-EU: dieselbe Matrix nachmessen.
 - [ ] 2.111 **Mit Marcos Auge, aus klein-298:** (Ring: Marco wählte 19.10. Variante (b), gebaut in countdown-b, medien-Merge 19.10.; ob die Worte nach dem Countdown einblenden statt springen sollen, ~20 Zeilen, entscheidet sein Auge) der Countdown-Ring über der Seite "No signal on HDMI" lag über Symbol und Worten - Mockup (a) wie
@@ -615,7 +613,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       ein Release-Schritt, der sie neben das Abbild legt, und ein Tor davor; zwei Sätze im README; sunxi-fel in SOURCES. R2 die Probeabbilder der
       Lizenzarbeit tragen noch "Written offer" - nur fürs Gerät, nie weitergeben. Vor dem Release build-all von vorn (build-rootfs.sh/build-all.sh mit
       Änderungen beider Seiten nie zusammen gebaut). Randnotiz: build-all.sh liest AIC_REV aus dem jüngsten aic8800-Ordner statt aus versions.env.
-      Offen am Gerät: das neu gebaute aic8800_fdrv.ko (nur der Baumname ändert sich) mit dem nächsten G-EU-/HY310-Abbild laden und WLAN prüfen.
+      Offen am Gerät: das neu gebaute aic8800_fdrv.ko (nur der Baumname ändert sich) mit dem nächsten G-EU-/HY310-Abbild laden und WLAN prüfen - **erledigt 22./23.10.2026** (beide Boxen, `aic8800_fdrv` gleich dem Bau, WLAN verbunden).
 - [ ] 2.129 **Im Aus über crust verliert die HDMI-Quelle das Signal nicht** (Marco 20.10.2026 am G-EU, beim Summtest): unser Aus hält den Eingang
       für die Quelle sichtbar (HPD high? 5-V-Erkennung, EDID-Speicher versorgt?); Stock vermutlich nicht. Messen: HPD-Pegel und EDID-Antwort im
       Aus, Verhalten der Quelle (geht sie in Standby?); dann im Aus HPD low ziehen wie Stock (Ort: hdmirx-suspend/crust POWEROFF).
@@ -628,13 +626,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       bei bewegtem Zeiger - über ~2 % den Mausknoten erst mit dem Countdown öffnen). Die Wecken-Lücke ist Bluetooth (2.130b).
 - [ ] 2.134 **HY300 (Pro) des Testers (Issue #1, sehr altes Modell): IR-Fernbedienung funktioniert noch nicht** (Marco 22.10.2026). Für die
       Doku als bekannter Fehler; zur Klärung braucht es von ihm, was der IR-Empfänger bekommt (Skript aus der Gabelung vom 21.10.: Signal kommt
-      nicht / anderer Code / Regel greift nicht).
+      nicht / anderer Code / Regel greift nicht). **22.10.2026:** Nachrüstsatz test11 (`arbeit/medien/test11-ir-nachruest/`: PL9 nach dem ARISC-Start zurück, Tastentabelle der originalen HY300-Fernbedienung) gebaut, am G-EU geprüft und für den Tester hochgeladen; seine Rückmeldung steht aus.
 - [ ] 2.135 Klein (arisc-default, Mythos 22.10.2026): unter der Hersteller-ARISC meldet ein Dienst "status brief timed out" nach ~17 s -
       Ursache finden (Abfrage an die Firmware, die das Herstellerbild nicht beantwortet?); Belege `arbeit/medien/arisc-default/laeufe/`.
 - [ ] 2.136 Klein: **libva-Tar nicht reproduzierbar über verschiedene Baupfade** (Release-Bau 22.10.2026: gleicher Commit, Tar 7c0fdc55 in
       `R-rel/repo-hy310`, 237ec304 in `R-rel/repo-geu`; mesa gleich). Vermutlich Pfade im Ergebnis (`-ffile-prefix-map` in `build-libva.sh`); prüfen.
 - [ ] 2.137 **Installer: `--keep-env` übernahm `h713_gate=0` aus der Sicherung im Abzug, nicht den Wert vom Gerät** (G-EU 22.10.2026: auf
-      dem Gerät stand 1, "carried over from the old one: h713_gate=0 (image: 1)"; `install-dump/uboot-env.bin` vom 20.10. trug 0). Der Installer
+      dem Gerät stand 1, "carried over from the old one: h713_gate=0 (image: 1)"; `install-dump/uboot-env.bin` vom 20.10. trug 0). Am HY310 23.10.2026 genauso. Der Installer
       soll die Umgebung vom Gerät lesen, wie er es für Secure Storage tut, oder den Unterschied laut melden. Danach `fw_setenv h713_gate 1` von Hand.
 - [x] 2.139 (**behoben 22.10.2026, medien f711ffc9**: Kernel 0328 setzt PL9 nach dem ARISC-Bind zurück, 0329 Tabelle der originalen HY300-
       Fernbedienung NEC 0x00; am G-EU mit Marco alle Tasten der originalen erkannt, Tabelle für beide gelesen; Mythos go. HY310 und Kaltstart mit
@@ -673,6 +671,15 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       ohne Loch (Alpha 255 im ganzen Panel), auch nach einer Pille über dem offenen Launcher; Marco sah in beiden Läufen keinen Block.
       Nicht nachgestellt. Offen: Auslöser finden (Pille kurz vor/beim Öffnen? Aufnahme dichter als 1,5 s nach dem Zug); ist der Puffer sauber,
       liegt der Block im Anzeigeweg (osd-loch-Klasse, 2.106/2.107). Fängt ihn `aufnahme.py` nicht, Foto bei der nächsten Sichtung.
+- [ ] 2.141 **Reste der G-EU-Nachmessungen** (Sammlung bei der Durchsicht 23.10.2026; die Punkte 2.77-2.95 sind abgehakt, weil ihr Kern am G-EU bestanden hat):
+      2.77 HDMI-Ton im Client-Fall mit einer Quelle, die Ton sendet; 2.78 eine Stunde 4K-HEVC (gemessen 2 x 15 min); 2.79 (a) Bluetooth-Scancodes
+      `0xc0041`/`0xc0040` -> `KEY_ENTER`/`KEY_COMPOSE`, (e) die Regel nach einem Neustart ohne `udevadm trigger`; 2.80 (2) `source = auto` mit
+      Neustart von h713-tv bei laufendem Kodi, (3) Kodi starten, während h713-tv steht, (4) VA und ALSA als Nutzer; 2.83 Speicher mit einem Video-Tab;
+      2.86 Kaltstart ohne Signal, Firefox-Caches über ein neues Abbild, "On start" mit der echten Fernbedienung; 2.91 N-2 (Power 3 s bei offenem
+      Launcher -> Aus, nur mit Marco); 2.94 einmal mit "On start: HDMI input" ansehen. Nicht vor dem Release nötig; je eine Zeile Ergebnis hierher.
+
+## 3 Geparkt — mit Wiedereinstiegsbedingung
+
 - [ ] 2.59 **Panel-Pixeltakt näher an 60 Hz** (11.10. abends, Marcos Frage nach dem Rest von 0,3 Sprüngen/s): das Panel läuft mit
       59,71 Hz (1360×760 bei 61,71 MHz aus U-Boot, PLL 24 MHz × N / 14, N = 36), eine 60,00-Hz-Quelle verliert damit ein Bild in 200
       (`doku/200` §4); Stock nennt `pclk 62000000` (= 59,98 Hz). Prüfen, ob die Panel-PLL einen anderen Teiler kennt (`h713_mips.c`,
@@ -694,7 +701,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 
 ## 5 Installer und Werkzeuge
 
-- [ ] 5.14 **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
+- [ ] 5.14 (seit 22.10.2026 nur crust-Experiment: das Release läuft ohne Standby) **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
       Zeitüberschreitung öffnet die Aufrufe), CC-3..CC-6, U2 (abgebrochener Standby zählt als verweigert), U3..U6 (hdcp-key-Reste,
       Sperre, kein Zeitlimit für den Neustart), TFA-R2-1/2 (Zeitgutschrift ab Überlauf, R_WDOG-Meldung), CR-3 (50 ms ohne WFI-
       Prüfung), CR-4 (MIPS_DROP zählt Aux-Abweisungen), B2/B4 (Standby-Abbild nur per Text erkennbar, spätere sleep-Drop-ins), KM-3/4
@@ -818,7 +825,7 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       `docs/known-issues.md` durchsehen, `boards/README.md`, `RELEASES.md`-Entwurf für 1.8; die Subsystem-Seiten sind schon
       nachgezogen (`e78eacd`, `4767f6f`). Vor 1.1a
 
-- [ ] 7.20 **Lizenzen in `main` bereinigen** (Marco 13.10.2026 abends: jede Lizenz übernommener Treiber und Codestücke
+- [ ] 7.20 (**Stand 23.10.2026: a) bis e) und g) erledigt** - Merge `versuch/lizenz-abschluss` a9b9a1f5, Mythos go, `doku/216`; offen nur f), die Historie, Entscheidung Marco, und die Release-Auflagen 2.128) **Lizenzen in `main` bereinigen** (Marco 13.10.2026 abends: jede Lizenz übernommener Treiber und Codestücke
       beachten, Unzulässiges umschreiben; cstenger antwortet nicht, eine Lizenz von ihm ist nicht zu erwarten). Nebenstrang,
       **nicht** Teil des Nebenprojekts `medien`. Prüfung `arbeit/lizenzen-20261013/BERICHT.md` (medien: nichts umzuschreiben),
       Plan `arbeit/lizenz-entflechtung-20261013/PLAN.md`. Merge nach `main` und Push nur mit Marcos Ja. **Ruht** (Marco 13.10.: Nebenstrang, erst auf sein Wort weiter). Stand 14.10.:
@@ -849,12 +856,12 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
 
 ## 9 Spät / groß (aus `61` §8 und ROADMAP)
 
-- [ ] 9.0 **Nach dem Release (Marco 09.10.): schneller ans Bild nach dem Standby.** Vom Wecken bis zum Bild ~11 s, davon
+- [ ] 9.0 (seit 22.10.2026 nur für das crust-Experiment: das Release bietet keinen Standby) **Nach dem Release (Marco 09.10.): schneller ans Bild nach dem Standby.** Vom Wecken bis zum Bild ~11 s, davon
       ~4-5 s, weil h713-tv nach dem MIPS-Neustart den HPD 300 ms auf low zieht und die Quelle (Laptop) neu synchronisiert
       (`doku/174` §1). Bei unveränderter EDID den Replug sparen; vorher messen, ob die Quelle ohne ihn wieder sendet
       - 20.10.2026 (wach-wand §9, G-EU): nach jedem Wecken 1-5 s Seite "No signal": h713-tv publiziert beim Start die EDID ohne Deep Colour
         neu (HPD 300 ms), kurz nachdem die Probe des Empfängers die Quelle synchronisieren ließ - Wurzel hier (kein zweiter Puls), kein Netz (Mythos)
-- [ ] 9.0b **Stumm über den Standby** (Marco 11.10.: optional, nach dem Release): h713-tv startet nach jedem Standby neu und
+- [ ] 9.0b (seit 22.10.2026 nur crust-Experiment) **Stumm über den Standby** (Marco 11.10.: optional, nach dem Release): h713-tv startet nach jedem Standby neu und
       vergisst die Stummschaltung; speichern wie die Lautstärke - das Stumm-Zeichen kommt dann von selbst mit (h713-osd fragt
       h713-tv beim Neuverbinden)
 
@@ -896,7 +903,7 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       Kamera oder Zeitlupe).
 - [ ] 9.3f **Kodi im Leerlauf** (Marco entscheidet: Kodi-Patch oder Skin): 10 % eines Kerns statt unter 5 % (Kodis Hauptthread 8,1 %, cage 2,4 %, CEC-Suche 1,2 %; `doku/211` §8).
       Debians Kodi hat kein Estouchy. Null CEC wäre nur ohne den CEC-Bus (Kodi-Patch). Dazu: stumm über Kodi und Standby nur teils (9.0b).
-- [ ] 9.3g **medien nach `main`: IOMMU und die Reste der ersten Übergabe**. Mit dem Merge des Zweigs `medien` kommt `CONFIG_SUN50I_IOMMU=y` mit `0294` (Capture bidirektional) und `0297`
+- [x] 9.3g (erledigt 23.10.2026: `medien` als Ganzes in `main`, Merge 4b771442 - `CONFIG_SUN50I_IOMMU=y`, `0294`, `0297` sind drin; die Zeile in `docs/known-issues.md` prüft die Doku-Runde 1.0 (5)) **medien nach `main`: IOMMU und die Reste der ersten Übergabe**. Mit dem Merge des Zweigs `medien` kommt `CONFIG_SUN50I_IOMMU=y` mit `0294` (Capture bidirektional) und `0297`
       (Kommentar) nach `main`; wird er nicht als Ganzes übernommen, müssen diese drei mindestens einzeln hinüber (`0294` ohne `0271`-`0293` anwendbar: nicht geprüft). Danach
       `docs/known-issues.md` (Zeile "Hardware video decode, IOMMU") gegen den Release-Kernel prüfen.
 - [ ] 9.3h **`CONFIG_USER_NS` für Firefox** (`doku/212` §3): `about:support` meldet `hasUserNamespaces` false, die Inhalts-Sandbox von Firefox läuft nur auf Seccomp (Stufe 6)
