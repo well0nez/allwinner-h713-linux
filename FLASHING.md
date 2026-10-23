@@ -23,7 +23,8 @@ until you have a dump of what was there before.
 - An image: from a release tag if there is one for your version, otherwise built yourself with
   `release/build-all.sh` ([BUILDING.md](BUILDING.md); the first time also
   [docs/build-container.md](docs/build-container.md)). Building takes about 20 minutes and needs no device.
-  A release image is for the HY310 alone. For another H713 projector, the Boards table in
+  A release image exists for the HY310 and for the HY300PRO-G-EU (board `hy200-qz713df-a1`, firmware variant
+  `projector05061226`; its files carry that name). For another H713 projector, the Boards table in
   [README.md](README.md#boards) says what exists - a TEST image built for its owner, or the read-only probe -
   and the installer refuses a release image on a board it does not hold a verified profile for.
 - Your public SSH key. Without it the installed system has **no** SSH access, only the serial console:
@@ -37,14 +38,14 @@ table.
 
 ```bash
 git clone https://github.com/well0nez/allwinner-h713-linux.git
-mkdir ~/hy310-v0.96-beta && cd ~/hy310-v0.96-beta
-#   download every file of the v0.96-beta release into this folder, then:
+mkdir ~/hy310-v0.97-beta && cd ~/hy310-v0.97-beta
+#   download every file of the v0.97-beta release into this folder, then:
 zstd -d *.img.zst                            # optional, see below - the installer does it too
-sha256sum -c h713-hy310-v0.96-beta.sha256    # lists the unpacked .img parts, so unpack first
+sha256sum -c h713-hy310-v0.97-beta-media-desktop.sha256    # lists the unpacked .img parts, so unpack first
 chmod +x sunxi-fel
 ```
 
-The folder then holds the three `.img` parts, `h713-hy310-v0.96-beta.tabelle.json`, `u-boot-installer.bin`
+The folder then holds the three `.img` parts, `h713-hy310-v0.97-beta-media-desktop.tabelle.json`, `u-boot-installer.bin`
 (the U-Boot that exposes the eMMC over USB) and `sunxi-fel` (the FEL tool, built with the H713 trap door -
 the stock `sunxi-fel` from your distribution does **not** work here). `sunxi-fel` needs `libusb-1.0` on your
 PC; on Debian and Ubuntu that is `apt install libusb-1.0-0`.
@@ -57,7 +58,7 @@ If you built the image yourself with `release/build-all.sh`, the same files are 
 ```bash
 # 1. put the device into FEL: hold the reset button, then plug in power
 # 2. run the installer (it loads U-Boot over USB - nothing is written yet)
-sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.96-beta \
+sudo allwinner-h713-linux/installer/h713-install install ~/hy310-v0.97-beta \
     --ssh-key ~/.ssh/id_ed25519.pub \
     --full --dump ~/hy310-dump
 # 3. it dumps, extracts your device's own files, copies them into the image, writes it, verifies
@@ -70,7 +71,7 @@ the `zstd` binary on an older Python. `--uboot` and `--sunxi-fel` override that 
 elsewhere. Run from inside the release folder, even the folder can be left out:
 
 ```bash
-cd ~/hy310-v0.96-beta && sudo ~/allwinner-h713-linux/installer/h713-install install
+cd ~/hy310-v0.97-beta && sudo ~/allwinner-h713-linux/installer/h713-install install
 ```
 
 finds the table in the directory it is run from (or beside the tool itself) and asks for the two things
@@ -194,15 +195,17 @@ h713-install 0.1 (draft, doku/110)   (Linux)
 
 ## After the first boot
 
-Plug in power, then press the power key - the same as with the stock firmware. Until you press it the
-device waits at about 4 W with a red LED. Reproducing that behaviour took work
-([docs/uboot/power-gate.md](docs/uboot/power-gate.md)); if you would rather have the device boot the
-moment it gets power, `fw_setenv h713_gate 0` gives you that.
+Plug in power, then press the power key on the projector or the Power key of the stock remote - the same as with the
+stock firmware. Until you press it the device waits at 2.9 W with a red LED, silent ([docs/uboot/power-gate.md](docs/uboot/power-gate.md));
+if you would rather have the device boot the moment it gets power, `fw_setenv h713_gate 0` gives you that. **Check the gate
+after a reinstall:** `fw_printenv h713_gate` - the installer took a `0` out of the dump's old environment instead of the
+device's on both of our boards (`TODO.md` 2.137); `fw_setenv h713_gate 1` puts it back. The first thing on the wall is the
+launcher ([the first hour](docs/usage/first-hour.md)).
 
 Then, over the network:
 
 ```bash
-ssh root@h713           # key-only; the Wi-Fi access point is up by default
+ssh root@hy310          # key-only; `hy300pro` on the HY300PRO-G-EU; the Wi-Fi access point is up by default
 h713-tv ctl status      # HDMI input service
 ```
 
@@ -275,7 +278,7 @@ is the way back, and once Android is gone it is the only thing that names the bo
 |---|---|
 | Ask what a device, a dump or a firmware image is | `h713-install identify [FILE]` - writes nothing |
 | Only make a dump, write nothing | `h713-install dump --full -o ~/hy310-dump` |
-| Reinstall, keeping your U-Boot settings | (default: `h713_gate` and `h713_boot` are carried over) |
+| Reinstall, keeping your U-Boot settings | (default: `h713_gate` and `h713_boot` are carried over - from the dump directory's old environment where one lies there, so check `h713_gate` afterwards, `TODO.md` 2.137) |
 | Reinstall, discarding them | `--fresh-env` |
 | Reuse an extraction you already have | `--vendor <dir from h713-extract>` |
 | Reinstall over this system, no dump needed | (default: the vendor files come off the device itself) |

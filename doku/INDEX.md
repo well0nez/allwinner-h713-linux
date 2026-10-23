@@ -10,13 +10,12 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 | Dokument | ruht auf |
 |---|---|
-| `BUILDING.md` | `doku/116`, `doku/121`, `doku/212`, `doku/50` |
+| `BUILDING.md` | `doku/116`, `doku/121`, `doku/212`, `doku/219`, `doku/50` |
 | `FLASHING.md` | `doku/109`, `doku/110` |
 | `PROVENANCE.md` | `doku/116`, `doku/210`, `doku/213` |
-| `README.md` | `doku/88` |
-| `RELEASES.md` | `doku/134`, `doku/142`, `doku/211`, `doku/213` |
-| `ROADMAP.md` | `doku/104`, `doku/134`, `doku/70`, `doku/71` |
-| `STATUS.md` | `doku/00`, `doku/104`, `doku/114`, `doku/121`, `doku/124`, `doku/125`, `doku/134`, `doku/136`, `doku/137`, `doku/139`, `doku/142`, `doku/181`, `doku/193`, `doku/195`, `doku/211`, `doku/212`, `doku/213`, `doku/61` |
+| `RELEASES.md` | `doku/107`, `doku/193`, `doku/210`, `doku/211`, `doku/212`, `doku/216`, `doku/218`, `doku/219` |
+| `ROADMAP.md` | `doku/134`, `doku/211`, `doku/213`, `doku/215`, `doku/218` |
+| `STATUS.md` | `doku/114`, `doku/121`, `doku/134`, `doku/152`, `doku/157`, `doku/165`, `doku/174`, `doku/180`, `doku/181`, `doku/184`, `doku/200`, `doku/201`, `doku/203`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/217`, `doku/218`, `doku/219`, `doku/60`, `doku/94` |
 | `boards/README.md` | `doku/121` |
 | `boards/hy200-qz713df-a1/README.md` | `doku/136`, `doku/182`, `doku/184`, `doku/185` |
 | `boards/hy300-t08/README.md` | `doku/121` |
@@ -26,7 +25,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/188`, `doku/190`, `doku/70`, `doku/72`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/210`, `doku/212`, `doku/213`, `doku/80` |
-| `docs/known-issues.md` | `doku/116`, `doku/134`, `doku/152`, `doku/174`, `doku/179`, `doku/181`, `doku/184`, `doku/191`, `doku/193`, `doku/197`, `doku/198`, `doku/199`, `doku/200`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/60`, `doku/61` |
+| `docs/known-issues.md` | `doku/147`, `doku/156`, `doku/180`, `doku/200`, `doku/201`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215`, `doku/218`, `doku/219`, `doku/60` |
 | `docs/services.md` | `doku/107`, `doku/170`, `doku/213` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/181`, `doku/184`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/206`, `doku/nachtlog/S21-re-audif-zugang` |
@@ -155,17 +154,17 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 | Eintrag | Art | Datum | Titel | zitiert von |
 |---|---|---|---|---|
-| [`00-STATUS.md`](00-STATUS.md) | Analyse |  | H713-Projekt - Status | 5 |
+| [`00-STATUS.md`](00-STATUS.md) | Analyse |  | H713-Projekt - Status | 4 |
 | [`01-arbeitsbereich.md`](01-arbeitsbereich.md) | Analyse |  | H713 / HY260 - Arbeitsbereich | - |
 | [`10-hardware.md`](10-hardware.md) | Analyse |  | Hardware | 3 |
 | [`100-plan-hdmi-audio.md`](100-plan-hdmi-audio.md) | Plan |  | Plan: HDMI-Audio - vom Zuspieler über den HDMI-Eingang zum Lautsprecher | 1 |
 | [`101-plan-audio-treiber.md`](101-plan-audio-treiber.md) | Plan |  | 101 - Plan: HDMI-Audio als Treiber (Kernel + Codec + hy310-tv) | 4 |
 | [`102-plan-audio-mischung.md`](102-plan-audio-mischung.md) | Plan |  | Plan 102 - Gerätetöne mit HDMI-Ton mischen (Audio-Bridge + Mischgraph) | 3 |
 | [`103-plan-einschaltgate.md`](103-plan-einschaltgate.md) | Plan |  | Plan 103 - Einschalt-Gate: Netz an = Bereitschaft, Taste = Start | 3 |
-| [`104-plan-standby-stufe2.md`](104-plan-standby-stufe2.md) | Plan |  | Plan 104 - Einschalt-Gate Stufe 2: Stock-Standby über die ARISC | 2 |
+| [`104-plan-standby-stufe2.md`](104-plan-standby-stufe2.md) | Plan |  | Plan 104 - Einschalt-Gate Stufe 2: Stock-Standby über die ARISC | - |
 | [`105-plan-release.md`](105-plan-release.md) | Plan |  | Plan 105 - Release: den HY310-Stand für andere nutzbar machen | 2 |
 | [`106-handoff-20260910.md`](106-handoff-20260910.md) | Handoff | 2026-09-10 | Handoff 10.09.2026 - Stand, Todos, teuer bezahltes Wissen | - |
-| [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 7 |
+| [`107-plan-rootfs.md`](107-plan-rootfs.md) | Plan |  | Plan 107 - das Rootfs für v0.1 | 8 |
 | [`108-plan-vendordaten.md`](108-plan-vendordaten.md) | Plan |  | Plan 108 - die Vendor-Artefakte vom Stock-Layout lösen | 5 |
 | [`109-plan-layout-v3.md`](109-plan-layout-v3.md) | Plan |  | Plan 109 - Layout v3: die Boot-Kette an den Anfang | 16 |
 | [`110-plan-installationsweg.md`](110-plan-installationsweg.md) | Plan |  | Plan 110 - der Installationsweg für Nutzer | 6 |
@@ -174,7 +173,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`113-plan-pq-laufzeit-und-speichern.md`](113-plan-pq-laufzeit-und-speichern.md) | Plan |  | Plan 113 - Bildwerte zur Laufzeit rechnen und dauerhaft merken | 2 |
 | [`114-plan-crypto-engine.md`](114-plan-crypto-engine.md) | Plan |  | Plan 114 - Crypto Engine (H713): Entscheidung, Befundabgleich mit cstenger, und der eine Grund sie anzufassen | 2 |
 | [`115-handoff-20260912.md`](115-handoff-20260912.md) | Handoff | 2026-09-12 | Handoff 12.09.2026 - Abbild v0.9 läuft auf dem Gerät | - |
-| [`116-plan-release-repo.md`](116-plan-release-repo.md) | Plan |  | Plan 116 - Vom Arbeitsverzeichnis zum Repo, vom Repo zum Release v0.1 | 13 |
+| [`116-plan-release-repo.md`](116-plan-release-repo.md) | Plan |  | Plan 116 - Vom Arbeitsverzeichnis zum Repo, vom Repo zum Release v0.1 | 12 |
 | [`117-plan-p5-doku.md`](117-plan-p5-doku.md) | Plan |  | Plan 117 - P5: die englische Dokumentation des Repos | - |
 | [`118-handoff-20260913.md`](118-handoff-20260913.md) | Handoff | 2026-09-13 | Handoff 13.09.2026 - nach dem Release v0.5-beta | 1 |
 | [`119-plan-fremdgeraete-und-installer-fixes.md`](119-plan-fremdgeraete-und-installer-fixes.md) | Plan |  | Plan 119 - Fremde Geräte (HY300 Pro) und die Installer-Fehler aus Issue #1 | - |
@@ -182,8 +181,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`121-plan-werkzeug-umbau.md`](121-plan-werkzeug-umbau.md) | Plan |  | Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards | 51 |
 | [`122-handoff-werkzeug-umbau.md`](122-handoff-werkzeug-umbau.md) | Handoff |  | 122 - Handoff Werkzeug-Umbau (abgeschlossen 15.09.2026 mit Release v0.6-beta) | - |
 | [`123-handoff-20260915.md`](123-handoff-20260915.md) | Handoff | 2026-09-15 | 123 - Handoff 15.09.2026 (Werkzeug-Umbau abgeschlossen, Stufe 5 fremde Boards, Testabbild HY300 Pro) | - |
-| [`124-cstenger-abgleich-20260915.md`](124-cstenger-abgleich-20260915.md) | Abgleich | 2026-09-15 | 124 - Abgleich mit cstengers Zweig `h713-display-video-path` (sein Stand 12.09.2026) | 1 |
-| [`125-plan-bootzeit.md`](125-plan-bootzeit.md) | Plan |  | 125 - Bootzeit bis zum Logo, und USB ohne `usb start` | 1 |
+| [`124-cstenger-abgleich-20260915.md`](124-cstenger-abgleich-20260915.md) | Abgleich | 2026-09-15 | 124 - Abgleich mit cstengers Zweig `h713-display-video-path` (sein Stand 12.09.2026) | - |
+| [`125-plan-bootzeit.md`](125-plan-bootzeit.md) | Plan |  | 125 - Bootzeit bis zum Logo, und USB ohne `usb start` | - |
 | [`126-hy300-pro-analyse.md`](126-hy300-pro-analyse.md) | Analyse |  | 126 - HY300 Pro: vom ersten Bild zum Testabbild test4 (16./17.09.2026) | 1 |
 | [`127-handoff-20260917.md`](127-handoff-20260917.md) | Handoff | 2026-09-17 | 127 - Handoff 17.09.2026, morgens | - |
 | [`128-handoff-20260921.md`](128-handoff-20260921.md) | Handoff | 2026-09-21 | Handoff 21.09.2026, spaet - Stand der Repos, die Tests des Tages, T3 als Todo | 3 |
@@ -193,20 +192,20 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`131-nacht-20260923.md`](131-nacht-20260923.md) | Analyse | 2026-09-23 | 131 - Nacht 22./23.09.2026: Tearing gemessen und gelöst, Farben unter dem Warp, Autofokus-Kante | - |
 | [`132-plan-fable-pakete-20260926.md`](132-plan-fable-pakete-20260926.md) | Plan | 2026-09-26 | Plan 132 - Fable-Pakete ohne Geraet (26.09.2026) | - |
 | [`133-handoff-20260927.md`](133-handoff-20260927.md) | Handoff | 2026-09-27 | Handoff 27.09.2026, 01:30 - Stand der Fable-Welle, Geraet, main | 1 |
-| [`134-verifikationsplan-20261002.md`](134-verifikationsplan-20261002.md) | Plan | 2026-10-02 | Plan 134 - Verifikation der Fable-Welle am Geraet (02.10.2026) | 10 |
+| [`134-verifikationsplan-20261002.md`](134-verifikationsplan-20261002.md) | Plan | 2026-10-02 | Plan 134 - Verifikation der Fable-Welle am Geraet (02.10.2026) | 8 |
 | [`135-handoff-20261002.md`](135-handoff-20261002.md) | Handoff | 2026-10-02 | Handoff 135 - Verifikation der Fable-Welle am Geraet (02./03.10.2026, Stand 00:15) | - |
-| [`136-handoff-hy300pro-g-eu-20261003.md`](136-handoff-hy300pro-g-eu-20261003.md) | Handoff | 2026-10-03 | 136 - Handoff HY300PRO-G-EU (Marcos eigener HY300 Pro), Stand 03.10.2026 ~01:30 | 3 |
-| [`137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md`](137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md) | Handoff | 2026-10-03 | 137 – Handoff: HY300PRO-G-EU, Bildfehler durch falsche LVDS-Farbtiefe | 1 |
+| [`136-handoff-hy300pro-g-eu-20261003.md`](136-handoff-hy300pro-g-eu-20261003.md) | Handoff | 2026-10-03 | 136 - Handoff HY300PRO-G-EU (Marcos eigener HY300 Pro), Stand 03.10.2026 ~01:30 | 2 |
+| [`137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md`](137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md) | Handoff | 2026-10-03 | 137 – Handoff: HY300PRO-G-EU, Bildfehler durch falsche LVDS-Farbtiefe | - |
 | [`138-handoff-mips-ir-20261003.md`](138-handoff-mips-ir-20261003.md) | Handoff | 2026-10-03 | Handoff: MIPS-Reload und IR am HY300PRO-G-EU | 2 |
-| [`139-handoff-standby-geparkt-20261003.md`](139-handoff-standby-geparkt-20261003.md) | Handoff | 2026-10-03 | Standby C2 — geparkt, 03.10.2026 | 1 |
+| [`139-handoff-standby-geparkt-20261003.md`](139-handoff-standby-geparkt-20261003.md) | Handoff | 2026-10-03 | Standby C2 — geparkt, 03.10.2026 | - |
 | [`140-handoff-20261003.md`](140-handoff-20261003.md) | Handoff | 2026-10-03 | Handoff 140 - Fernbedienung/WLAN-BT am HY310 integriert, IR geparkt (03.10.2026 abends) | - |
 | [`141-plan-integration-release-20261003.md`](141-plan-integration-release-20261003.md) | Plan | 2026-10-03 | Plan 141 - Fable-Welle nach main, Kleinkram, Boards, dann Release (03.10.2026) | - |
-| [`142-grosstest-protokoll-v096.md`](142-grosstest-protokoll-v096.md) | Protokoll |  | 142 - Grosstest-Protokoll fuer den Release-Kandidaten (doku/141 Stufe 4 + 5), Entwurf 04.10.2026 00:20 | 2 |
+| [`142-grosstest-protokoll-v096.md`](142-grosstest-protokoll-v096.md) | Protokoll |  | 142 - Grosstest-Protokoll fuer den Release-Kandidaten (doku/141 Stufe 4 + 5), Entwurf 04.10.2026 00:20 | - |
 | [`143-handoff-gesamt-20261004.md`](143-handoff-gesamt-20261004.md) | Handoff | 2026-10-04 | 143 - Gesamt-Handoff, Stand 04.10.2026 04:40 (Fable-Welle -> Release v0.96-beta) | - |
 | [`144-offene-punkte-20261004.md`](144-offene-punkte-20261004.md) | Analyse | 2026-10-04 | 144 - Alle offenen Punkte, Stand 04.10.2026 12:15 (fable-main 36 Commits, vor Stufe 4) | - |
 | [`145-hdcp14-kette-uboot-bis-userspace.md`](145-hdcp14-kette-uboot-bis-userspace.md) | Analyse |  | 145 - HDCP 1.4: die ganze Kette von U-Boot bis Userspace, und wie wir sie nachbauen | 1 |
 | [`146-handoff-hdcp14-und-plan.md`](146-handoff-hdcp14-und-plan.md) | Handoff |  | 146 - Handoff HDCP 1.4 und Plan, Stand 05.10.2026 00:3x | - |
-| [`147-hdcp14-statusbericht-20261005.md`](147-hdcp14-statusbericht-20261005.md) | Analyse | 2026-10-05 | 147 — HDCP 1.4: Statusbericht nach der Nacht 04./05.10.2026 | 1 |
+| [`147-hdcp14-statusbericht-20261005.md`](147-hdcp14-statusbericht-20261005.md) | Analyse | 2026-10-05 | 147 — HDCP 1.4: Statusbericht nach der Nacht 04./05.10.2026 | 2 |
 | [`148-plan-hdcp14-produktionsreife.md`](148-plan-hdcp14-produktionsreife.md) | Plan |  | 148 — Plan: HDCP-1.4-Bootkette produktionsreif (Stand 05.10.2026, 08:xx) | 3 |
 | [`149-plan-aufraeumen-und-referenz.md`](149-plan-aufraeumen-und-referenz.md) | Plan |  | 149 — Plan: Aufräumen, und eine Referenz, auf der eine Wissensdatenbank stehen kann | - |
 | [`150-handoff-20261005.md`](150-handoff-20261005.md) | Handoff | 2026-10-05 | 150 — Handoff 05.10.2026, ~15:30: HDCP 1.4 produktionsreif, Repo bereinigt, lokal aufgeräumt — und alle Todos | - |
@@ -215,8 +214,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`153-sel1-payload-aus-der-linie-20261006.md`](153-sel1-payload-aus-der-linie-20261006.md) | Analyse | 2026-10-06 | 153 - Der S-EL1-Testpayload verlässt die TF-A-Linie (06.10.2026) | - |
 | [`154-handoff-20261006-vormittag.md`](154-handoff-20261006-vormittag.md) | Handoff | 2026-10-06 | 154 - Handoff 06.10.2026, Vormittag (06:00-10:45) - Aufräumen, Regeln, Verknüpfungen | - |
 | [`155-zoom-aspect-und-schieber-20261006.md`](155-zoom-aspect-und-schieber-20261006.md) | Analyse | 2026-10-06 | 155 - Zoom: der Aspect "zoom" legt den Bildweg lahm, der Schieber kippte das Bild (06.10.2026) | - |
-| [`156-bluetooth-warmstart-abgefangen-20261006.md`](156-bluetooth-warmstart-abgefangen-20261006.md) | Analyse | 2026-10-06 | 156 - Bluetooth nach warmem Reboot: abgefangen, Ursache vertagt (06.10.2026) | - |
-| [`157-geometrie-modi-und-ecken-20261006.md`](157-geometrie-modi-und-ecken-20261006.md) | Analyse | 2026-10-06 | 157 - Geometrie: die Projektionsmodi, die Kalibrierkarten und das Trapez beim Moduswechsel (06.10.2026) | - |
+| [`156-bluetooth-warmstart-abgefangen-20261006.md`](156-bluetooth-warmstart-abgefangen-20261006.md) | Analyse | 2026-10-06 | 156 - Bluetooth nach warmem Reboot: abgefangen, Ursache vertagt (06.10.2026) | 1 |
+| [`157-geometrie-modi-und-ecken-20261006.md`](157-geometrie-modi-und-ecken-20261006.md) | Analyse | 2026-10-06 | 157 - Geometrie: die Projektionsmodi, die Kalibrierkarten und das Trapez beim Moduswechsel (06.10.2026) | 1 |
 | [`158-ap-latenz-nicht-nachvollziehbar-20261006.md`](158-ap-latenz-nicht-nachvollziehbar-20261006.md) | Analyse | 2026-10-06 | 158 - AP-Latenzspitzen: mit dem heutigen Abbild nicht nachvollziehbar (06.10.2026) | - |
 | [`159-presets-und-merken-20261006.md`](159-presets-und-merken-20261006.md) | Analyse | 2026-10-06 | 159 - Presets computer/game/hdr und das Merken über den Neustart (06.10.2026) | - |
 | [`160-hdcp-haertung-aufgeraeumt-20261007.md`](160-hdcp-haertung-aufgeraeumt-20261007.md) | Analyse | 2026-10-07 | 160 - §6 HDCP-Härtung aufgeräumt, S-EL1-Reste gelöscht, der Warteschalter vorbereitet (07.10.2026) | - |
@@ -224,7 +223,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`162-crust-paket-offline-20261007.md`](162-crust-paket-offline-20261007.md) | Analyse | 2026-10-07 | 162 - Crust als Paket für den Gerätetest vorbereitet, offline, nicht gemessen (07.10.2026) | 1 |
 | [`163-crust-am-geraet-20261007.md`](163-crust-am-geraet-20261007.md) | Analyse | 2026-10-07 | 163 - Crust am HY310: Normalbetrieb und TF-A-Start bestanden, erstes Aufwachen aus dem Standby (07.10.2026) | 4 |
 | [`164-standby-haenger-eingegrenzt-20261007.md`](164-standby-haenger-eingegrenzt-20261007.md) | Analyse | 2026-10-07 | 164 - Standby mit crust: der Stillstand nach dem Aufwachen liegt bei Display-MIPS/afbd (07.10.2026, Vormittag) | 3 |
-| [`165-erster-standby-zyklus-20261007.md`](165-erster-standby-zyklus-20261007.md) | Analyse | 2026-10-07 | 165 - Der erste vollständige Standby-Zyklus auf dem HY310 (07.10.2026, 12:08) | 5 |
+| [`165-erster-standby-zyklus-20261007.md`](165-erster-standby-zyklus-20261007.md) | Analyse | 2026-10-07 | 165 - Der erste vollständige Standby-Zyklus auf dem HY310 (07.10.2026, 12:08) | 6 |
 | [`166-standby-dram-selbstauffrischung-20261007.md`](166-standby-dram-selbstauffrischung-20261007.md) | Analyse | 2026-10-07 | 166 - Standby mit DRAM-Selbstauffrischung auf dem HY310 (07.10.2026, 12:47) | 1 |
 | [`167-falscher-key-power-behoben-20261007.md`](167-falscher-key-power-behoben-20261007.md) | Analyse | 2026-10-07 | 167 - Der falsche KEY_POWER nach dem Aufwachen ist behoben (07.10.2026, 13:46) | 5 |
 | [`168-stufe-c-vorbereitet-20261007.md`](168-stufe-c-vorbereitet-20261007.md) | Analyse | 2026-10-07 | 168 - Tiefschlaf (Stufe C) vorbereitet, nicht gelaufen (07.10.2026, 14:45) | 2 |
@@ -238,9 +237,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`176-nachtrag-mips-neustart-und-resume-haenger-20261008.md`](176-nachtrag-mips-neustart-und-resume-haenger-20261008.md) | Analyse | 2026-10-08 | 176 - Nachtrag 08.10. abends: MIPS-Neustart am HY310 (V2, V3, V8) und die Suche nach dem Resume-Hänger (L-B, L-A, L-C) (08.10.2026, 16:00-21:40; geschrieben 09.10.2026) | 4 |
 | [`177-r2-abgenommen-und-in-main-20261009.md`](177-r2-abgenommen-und-in-main-20261009.md) | Analyse | 2026-10-09 | 177 - R2 abgenommen und in `main`: Abnahmereihe V4 auf r2test4, Ton nach dem Standby, Aufräumen (09.10.2026, 16:45) | 5 |
 | [`178-hdcp-paket-entscheidungen-20261009.md`](178-hdcp-paket-entscheidungen-20261009.md) | Analyse | 2026-10-09 | 178 - HDCP-Härtungspaket: Entscheidungen für den Release-Neubau, Korrektur zu 6.5 (09.10.2026, abends) | - |
-| [`179-missglueckter-standby-endet-dunkel-im-gate-20261009.md`](179-missglueckter-standby-endet-dunkel-im-gate-20261009.md) | Analyse | 2026-10-09 | 179 - Ein missglückter Standby endet dunkel im Gate (TODO 2.30) (09.10.2026, 18:40) | 5 |
-| [`180-hdcp-haertung-eingebaut-und-gemessen-20261009.md`](180-hdcp-haertung-eingebaut-und-gemessen-20261009.md) | Analyse | 2026-10-09 | 180 - HDCP-Härtung eingebaut und per FEL gemessen: Übergabe ohne Adresse, einmal pro Boot, Watchdog über den Treiber (09.10.2026, 20:30) | 1 |
-| [`181-leistung-standby-gate-betrieb-20261009.md`](181-leistung-standby-gate-betrieb-20261009.md) | Analyse | 2026-10-09 | 181 - Leistung am HY310: Standby 2,4 W, Aus (Gate) 2,9 W, Betrieb ~24 W (TODO 2.31) (09.10.2026, 21:00) | 8 |
+| [`179-missglueckter-standby-endet-dunkel-im-gate-20261009.md`](179-missglueckter-standby-endet-dunkel-im-gate-20261009.md) | Analyse | 2026-10-09 | 179 - Ein missglückter Standby endet dunkel im Gate (TODO 2.30) (09.10.2026, 18:40) | 4 |
+| [`180-hdcp-haertung-eingebaut-und-gemessen-20261009.md`](180-hdcp-haertung-eingebaut-und-gemessen-20261009.md) | Analyse | 2026-10-09 | 180 - HDCP-Härtung eingebaut und per FEL gemessen: Übergabe ohne Adresse, einmal pro Boot, Watchdog über den Treiber (09.10.2026, 20:30) | 3 |
+| [`181-leistung-standby-gate-betrieb-20261009.md`](181-leistung-standby-gate-betrieb-20261009.md) | Analyse | 2026-10-09 | 181 - Leistung am HY310: Standby 2,4 W, Aus (Gate) 2,9 W, Betrieb ~24 W (TODO 2.31) (09.10.2026, 21:00) | 7 |
 | [`182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md`](182-hy300pro-g-eu-crust-und-mips-reload-panel-20261010.md) | Analyse | 2026-10-10 | 182 - HY300PRO-G-EU: crust läuft, und der schwarze MIPS-Reload ist das Panel - es braucht einen Stromzyklus (09./10.10.2026, 21:00-02:00) | 4 |
 | [`183-handoff-20261010-nachts.md`](183-handoff-20261010-nachts.md) | Handoff | 2026-10-10 | 183 - Handoff 10.10.2026 nachts: Stand und Plan (HY300-Tests mit geucrust2 stehen an) | - |
 | [`184-hy300pro-g-eu-geucrust2-testreihe-20261010.md`](184-hy300pro-g-eu-geucrust2-testreihe-20261010.md) | Analyse | 2026-10-10 | 184 - HY300PRO-G-EU mit geucrust2: alles, was am HY310 bestätigt ist, bis auf die Standby-Leistung (10.10.2026, 01:00-02:30) | 7 |
@@ -250,42 +249,42 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`188-aus-ueber-crust-0-3-watt-20261010.md`](188-aus-ueber-crust-0-3-watt-20261010.md) | Analyse | 2026-10-10 | 188 - "Aus" über crust: die Schienen aus (PL6), 0,3 W wie Stock, Timer, Fernbedienung und Taste wecken (10.10.2026) | 5 |
 | [`189-handoff-20261010-abends.md`](189-handoff-20261010-abends.md) | Handoff | 2026-10-10 | 189 - Handoff 10.10.2026 abends: das Aus über crust ist in `main`; als Nächstes das Aus am HY310 messen und mit Marco das Kaltstart-Gate besprechen; OSD und Konsole im Warp laufen als eigenes Paket | - |
 | [`190-aus-ueber-crust-am-hy310-20261010.md`](190-aus-ueber-crust-am-hy310-20261010.md) | Analyse | 2026-10-10 | 190 - "Aus" über crust am HY310 gemessen: Selbstwecken, Power-Taste und IR-Fernbedienung (10.10.2026) | 4 |
-| [`191-kaltstart-gate-ueber-crust-20261010.md`](191-kaltstart-gate-ueber-crust-20261010.md) | Analyse | 2026-10-10 | 191 - Kaltstart-Gate über crust: nach dem Einstecken wartet crust statt U-Boot, 0,3-0,6 W, die Fernbedienung weckt (10.10.2026) | 2 |
+| [`191-kaltstart-gate-ueber-crust-20261010.md`](191-kaltstart-gate-ueber-crust-20261010.md) | Analyse | 2026-10-10 | 191 - Kaltstart-Gate über crust: nach dem Einstecken wartet crust statt U-Boot, 0,3-0,6 W, die Fernbedienung weckt (10.10.2026) | 1 |
 | [`192-einblendung-ueber-kanal-2-und-plan-20261010.md`](192-einblendung-ueber-kanal-2-und-plan-20261010.md) | Plan | 2026-10-10 | 192 - Einblendung über dem HDMI-Bild in Hardware: über Kanal 2, nicht OSD-A; Kernel 0251 und der Gesamtplan (10.10.2026) | 4 |
-| [`193-einblendungen-tasten-und-h713-osd-20261011.md`](193-einblendungen-tasten-und-h713-osd-20261011.md) | Analyse | 2026-10-11 | 193 - Einblendungen über dem Bild: die Tasten per IR und Bluetooth, h713-osd vorverzerrt über dem Warp (11.10.2026) | 4 |
+| [`193-einblendungen-tasten-und-h713-osd-20261011.md`](193-einblendungen-tasten-und-h713-osd-20261011.md) | Analyse | 2026-10-11 | 193 - Einblendungen über dem Bild: die Tasten per IR und Bluetooth, h713-osd vorverzerrt über dem Warp (11.10.2026) | 3 |
 | [`194-handoff-20261011-frueh.md`](194-handoff-20261011-frueh.md) | Handoff | 2026-10-11 | 194 - Handoff 11.10.2026 früh: Fernbedienung und Einblendungen sind in `main` (nicht gepusht); als Nächstes dieselben Prüfstufen am HY300PRO-G-EU | - |
-| [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 4 |
+| [`195-einblendungen-tasten-am-g-eu-20261011.md`](195-einblendungen-tasten-am-g-eu-20261011.md) | Analyse | 2026-10-11 | 195 - Einblendungen und Tasten am HY300PRO-G-EU: dieselben zehn Prüfstufen, ein Fix in h713-osd (11.10.2026) | 3 |
 | [`196-nachtarbeit-kleinkram-und-warp-20261011.md`](196-nachtarbeit-kleinkram-und-warp-20261011.md) | Analyse | 2026-10-11 | 196 - Nachtarbeit 11.10.2026: Kleinkram (B) und der Warp mit dem CPU-Regler (A) | - |
-| [`197-fehlende-bilder-beim-verkleinern-20261011.md`](197-fehlende-bilder-beim-verkleinern-20261011.md) | Analyse | 2026-10-11 | 197 - Fehlende Bilder bei 1080p60 am 720p-Panel: was es nicht ist (11.10.2026, vormittags/mittags) | 5 |
-| [`198-ringpuffer-und-edid-panel-zuerst-20261011.md`](198-ringpuffer-und-edid-panel-zuerst-20261011.md) | Analyse | 2026-10-11 | 198 - Der Dreier-Ring der Aufnahme, und warum die EDID jetzt das Panel zuerst nennt (11.10.2026, mittags) | 4 |
-| [`199-panel-kopplung-swpll-20261011.md`](199-panel-kopplung-swpll-20261011.md) | Analyse | 2026-10-11 | 199 - Die Panel-Kopplung der Firmware läuft: Frequenz ja, Phase zufällig (11.10.2026, nachmittags) | 1 |
+| [`197-fehlende-bilder-beim-verkleinern-20261011.md`](197-fehlende-bilder-beim-verkleinern-20261011.md) | Analyse | 2026-10-11 | 197 - Fehlende Bilder bei 1080p60 am 720p-Panel: was es nicht ist (11.10.2026, vormittags/mittags) | 4 |
+| [`198-ringpuffer-und-edid-panel-zuerst-20261011.md`](198-ringpuffer-und-edid-panel-zuerst-20261011.md) | Analyse | 2026-10-11 | 198 - Der Dreier-Ring der Aufnahme, und warum die EDID jetzt das Panel zuerst nennt (11.10.2026, mittags) | 3 |
+| [`199-panel-kopplung-swpll-20261011.md`](199-panel-kopplung-swpll-20261011.md) | Analyse | 2026-10-11 | 199 - Die Panel-Kopplung der Firmware läuft: Frequenz ja, Phase zufällig (11.10.2026, nachmittags) | - |
 | [`20-flashen-und-recovery.md`](20-flashen-und-recovery.md) | Analyse |  | Flashen und Recovery | 1 |
-| [`200-ringplatz-aus-dem-schreibindex-20261011.md`](200-ringplatz-aus-dem-schreibindex-20261011.md) | Analyse | 2026-10-11 | 200 - Der Ringplatz kommt aus dem Schreibindex der Aufnahme, nicht aus dem Firmware-Zeiger (11.10.2026, nachmittags) | 5 |
-| [`201-warp-zeichnen-gpu-regler-20261011.md`](201-warp-zeichnen-gpu-regler-20261011.md) | Analyse | 2026-10-11 | 201 - Der Warp: GPU-Zeit gedrittelt, CPU-Takt ruhig, kein Bild Latenz mehr (11.10.2026, abends) | 2 |
+| [`200-ringplatz-aus-dem-schreibindex-20261011.md`](200-ringplatz-aus-dem-schreibindex-20261011.md) | Analyse | 2026-10-11 | 200 - Der Ringplatz kommt aus dem Schreibindex der Aufnahme, nicht aus dem Firmware-Zeiger (11.10.2026, nachmittags) | 6 |
+| [`201-warp-zeichnen-gpu-regler-20261011.md`](201-warp-zeichnen-gpu-regler-20261011.md) | Analyse | 2026-10-11 | 201 - Der Warp: GPU-Zeit gedrittelt, CPU-Takt ruhig, kein Bild Latenz mehr (11.10.2026, abends) | 4 |
 | [`202-ausschalten-kernel-abend-warmstart-20261012.md`](202-ausschalten-kernel-abend-warmstart-20261012.md) | Analyse | 2026-10-12 | 202 - Ausschalt-Einblendung, Abendkernel (UCLAMP, BT-Flusssteuerung), Maus, und zwei dunkle Starts (11./12.10.2026, nachts) | - |
-| [`203-standby-und-warmstart-behoben-20261012.md`](203-standby-und-warmstart-behoben-20261012.md) | Analyse | 2026-10-12 | 203 - Standby und Warmstart am G-EU behoben: afbd liest die Aufnahme nicht zu früh, die Sperren wie die Firmware (12.10.2026) | 2 |
+| [`203-standby-und-warmstart-behoben-20261012.md`](203-standby-und-warmstart-behoben-20261012.md) | Analyse | 2026-10-12 | 203 - Standby und Warmstart am G-EU behoben: afbd liest die Aufnahme nicht zu früh, die Sperren wie die Firmware (12.10.2026) | 3 |
 | [`204-uclamp-gemessen-aus-ueber-crust-20261012.md`](204-uclamp-gemessen-aus-ueber-crust-20261012.md) | Analyse | 2026-10-12 | 204 - UCLAMP gemessen, 0257 und IR-Wecken aus dem Aus bestätigt (12.10.2026, vormittags) | - |
 | [`205-remote-reihe-kaltstart-standby-warmstart-modi-20261012.md`](205-remote-reihe-kaltstart-standby-warmstart-modi-20261012.md) | Analyse | 2026-10-12 | 205 - Remote-Reihe am G-EU: Kaltstarts, Standbys, Warmstarts, HDCP, PC-Modi, WLAN-Hänger (12.10.2026, vormittags) | - |
-| [`206-wurzeln-pid255-dsp-blockgrenze-ringgroesse-20261012.md`](206-wurzeln-pid255-dsp-blockgrenze-ringgroesse-20261012.md) | Analyse | 2026-10-12 | 206 - Wurzeln: PID 255 als "Sperre frei", die DSP-Blockgrenze, die Ringgröße aus INCAP, der Ring ohne Ereignis; Handoff (12.10.2026, nachmittags/abends) | 4 |
+| [`206-wurzeln-pid255-dsp-blockgrenze-ringgroesse-20261012.md`](206-wurzeln-pid255-dsp-blockgrenze-ringgroesse-20261012.md) | Analyse | 2026-10-12 | 206 - Wurzeln: PID 255 als "Sperre frei", die DSP-Blockgrenze, die Ringgröße aus INCAP, der Ring ohne Ereignis; Handoff (12.10.2026, nachmittags/abends) | 5 |
 | [`207-hy310-auf-main-hy310main1-reihe-20261012.md`](207-hy310-auf-main-hy310main1-reihe-20261012.md) | Analyse | 2026-10-12 | 207 - HY310 auf `main`: Abbild hy310main1 gebaut und installiert, die offenen 2.x-Punkte gemessen; Handoff (12.10.2026, abends) | 1 |
 | [`208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`](208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md) | Analyse | 2026-10-12 | 208 - Die 5.x-Runde: Werkzeuge, Reste der Standby-Durchsicht, ARISC-Wahl, Panel-PR, Testabbild runde5x1 am HY310; Handoff (12.10.2026, nachts) | - |
 | [`209-runde-5x-teil-b-uebernahme-panel-20261013.md`](209-runde-5x-teil-b-uebernahme-panel-20261013.md) | Analyse | 2026-10-13 | 209 - Die 5.x-Runde, Teil B mit Marco am HY310, alles nach `main`, das Panel mit den Beamer-Begriffen; Handoff (13.10.2026, nachts) | - |
-| [`210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md`](210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md) | Analyse | 2026-10-13 | 210 - Entflechtung des Subtrees: cstengers Dateien ohne Lizenz sind aus dem Baum, was sie ersetzt (13.10.2026) | 5 |
-| [`211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md`](211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md) | Protokoll | 2026-10-15 | 211 - Das Nebenprojekt Medien: Dekoder, VA-API-Treiber, mesa, Kodi und der Wayland-Server im Warp; die Messungen am HY310 (13. bis 15.10.2026) | 6 |
-| [`212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md`](212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md) | Protokoll | 2026-10-16 | 212 - Das Nebenprojekt Medien, zweiter Teil: Launcher, Einstellungsseite, Desktop und Browser, Kodi als Nutzer, die VE mit 600 MHz, der VA-Treiber `0015` bis `0017`, der Endbau (15. und 16.10.2026) | 13 |
+| [`210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md`](210-entflechtung-unlizenzierte-dateien-aus-dem-subtree-20261013.md) | Analyse | 2026-10-13 | 210 - Entflechtung des Subtrees: cstengers Dateien ohne Lizenz sind aus dem Baum, was sie ersetzt (13.10.2026) | 6 |
+| [`211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md`](211-medien-dekoder-vaapi-mesa-kodi-warp-server-messungen-protokoll-20261015.md) | Protokoll | 2026-10-15 | 211 - Das Nebenprojekt Medien: Dekoder, VA-API-Treiber, mesa, Kodi und der Wayland-Server im Warp; die Messungen am HY310 (13. bis 15.10.2026) | 7 |
+| [`212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md`](212-medien-launcher-einstellungen-desktop-kodi-nutzer-ve-600-va-endbau-protokoll-20261016.md) | Protokoll | 2026-10-16 | 212 - Das Nebenprojekt Medien, zweiter Teil: Launcher, Einstellungsseite, Desktop und Browser, Kodi als Nutzer, die VE mit 600 MHz, der VA-Treiber `0015` bis `0017`, der Endbau (15. und 16.10.2026) | 14 |
 | [`213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md`](213-medien-bildweiche-bedienung-rtc-fokus-bt-licht-protokoll-20261016.md) | Protokoll | 2026-10-16 | 213 - Das Nebenprojekt Medien, dritter Teil: die Bildweiche, die Bedienung beim Start, die RTC am 24-MHz-Quarz (Patch `0320`), Fokus und Bluetooth, das Licht des HY310 (16. und 17.10.2026) | 12 |
-| [`214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md`](214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md) | Protokoll | 2026-10-17 | 214 - Das Nebenprojekt Medien: Bluetooth nach dem Neustart, der Launcher beim Start, der Warp übernimmt das Signal sofort (17.10.2026) | 4 |
-| [`215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md`](215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md) | Protokoll | 2026-10-17 | 215 - Das Nebenprojekt Medien: das Bedienmodell - Rückwege, Pause unter Seiten, HDMI als Modus, Start ohne geraden Ring, EDID ohne Deep Colour, Seite ohne Signal (17.10.2026) | 1 |
-| [`216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`](216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md) | Protokoll | 2026-10-20 | 216 Lizenzen: die offenen Teile von TODO 7.20 (a, b, c, d, e, g) - Protokoll | - |
-| [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 1 |
-| [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | - |
-| [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | - |
+| [`214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md`](214-medien-bluetooth-bund-launcher-start-warp-claim-protokoll-20261017.md) | Protokoll | 2026-10-17 | 214 - Das Nebenprojekt Medien: Bluetooth nach dem Neustart, der Launcher beim Start, der Warp übernimmt das Signal sofort (17.10.2026) | 5 |
+| [`215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md`](215-medien-bedienmodell-pause-rueckwege-start-edid-nosignal-protokoll-20261017.md) | Protokoll | 2026-10-17 | 215 - Das Nebenprojekt Medien: das Bedienmodell - Rückwege, Pause unter Seiten, HDMI als Modus, Start ohne geraden Ring, EDID ohne Deep Colour, Seite ohne Signal (17.10.2026) | 3 |
+| [`216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`](216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md) | Protokoll | 2026-10-20 | 216 Lizenzen: die offenen Teile von TODO 7.20 (a, b, c, d, e, g) - Protokoll | 1 |
+| [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 2 |
+| [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | 4 |
+| [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | 4 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
-| [`60-offen.md`](60-offen.md) | Analyse |  | Offene Punkte | 15 |
-| [`61-plan-vblank.md`](61-plan-vblank.md) | Plan |  | Der Vblank-Interrupt - gelöst | 10 |
-| [`61-todo.md`](61-todo.md) | Analyse |  | Alle offenen Punkte auf einer Seite | 10 |
+| [`60-offen.md`](60-offen.md) | Analyse |  | Offene Punkte | 16 |
+| [`61-plan-vblank.md`](61-plan-vblank.md) | Plan |  | Der Vblank-Interrupt - gelöst | 8 |
+| [`61-todo.md`](61-todo.md) | Analyse |  | Alle offenen Punkte auf einer Seite | 8 |
 | [`62-video.md`](62-video.md) | Analyse |  | Video: VE-Dekodierung und Wiedergabe auf dem Panel | 1 |
 | [`63-mips-elog.md`](63-mips-elog.md) | Analyse |  | Das Log des Coprozessors mitlesen | 1 |
 | [`64-afbd-quelle0.md`](64-afbd-quelle0.md) | Analyse |  | AFBD: die Kanäle, das Latch-Orakel, und der Beweis bis zum Panel | 1 |
@@ -294,8 +293,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`67-cpu-comm-linux.md`](67-cpu-comm-linux.md) | Analyse |  | CPU_COMM aus Linux: der Round-Trip steht | 2 |
 | [`68-stock-extraktion-arisc-hdcp.md`](68-stock-extraktion-arisc-hdcp.md) | Analyse |  | Aus den Stock-Daten geholt: HDCP-Keys und ARISC-Firmware | 3 |
 | [`69-handoff-20260905.md`](69-handoff-20260905.md) | Handoff | 2026-09-05 | Übergabe, 05.09.2026 - HDMI-Eingang: wo es steht und was als Nächstes kommt | - |
-| [`70-sackgassen.md`](70-sackgassen.md) | Analyse |  | Sackgassen | 4 |
-| [`71-tvtop-noetig.md`](71-tvtop-noetig.md) | Analyse |  | Braucht der ARM `tvtop`? - Nein, der MIPS setzt die HDMI-RX-Seite selbst auf | 2 |
+| [`70-sackgassen.md`](70-sackgassen.md) | Analyse |  | Sackgassen | 3 |
+| [`71-tvtop-noetig.md`](71-tvtop-noetig.md) | Analyse |  | Braucht der ARM `tvtop`? - Nein, der MIPS setzt die HDMI-RX-Seite selbst auf | 1 |
 | [`72-hdcp14-setsource.md`](72-hdcp14-setsource.md) | Analyse |  | Phase 3.5 und 4 am 05.09.2026: `ReloadHdcp14Key` ohne Wirkung, `SetSource(3)` hängt den SoC | 2 |
 | [`73-plan-setsource-absturz.md`](73-plan-setsource-absturz.md) | Plan |  | Plan: `SetSource` tötet den ARM - Sezierung und Angriff (Handoff, 06.09.2026) | 1 |
 | [`74-setsource-ursache-nullzeiger.md`](74-setsource-ursache-nullzeiger.md) | Analyse |  | 74 - Ursache des SetSource(HDMI)-Absturzes: `sgp_hal_signal_info` ist NULL | 1 |
@@ -312,13 +311,13 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`85-re-pq-register.md`](85-re-pq-register.md) | Analyse |  | 85 - PQ-Register der MIPS-Firmware (K5) und Vorstudie Compositing (K6) | 5 |
 | [`86-video-plane-nv16.md`](86-video-plane-nv16.md) | Plan |  | Die Video-Plane: NV16 aus dem HDMI-Capture-Ring (Patch 0093) | 6 |
 | [`87-gamma-ctm-kms.md`](87-gamma-ctm-kms.md) | Analyse |  | Gamma und Weißabgleich als KMS-Eigenschaften am H713-AFBD-CRTC | 3 |
-| [`88-v4l2-hdmirx.md`](88-v4l2-hdmirx.md) | Analyse |  | 88 - `sun50i-h713-hdmirx`: der HDMI-Eingang als V4L2-Gerät | 5 |
+| [`88-v4l2-hdmirx.md`](88-v4l2-hdmirx.md) | Analyse |  | 88 - `sun50i-h713-hdmirx`: der HDMI-Eingang als V4L2-Gerät | 4 |
 | [`89-composition-block.md`](89-composition-block.md) | Analyse |  | Der Composition-Block bei `0x05000000` - gelesen am 07.09.2026 | 1 |
 | [`90-stock-referenz.md`](90-stock-referenz.md) | Analyse |  | Der Stock-Vergleich | 1 |
 | [`91-plan-drei-punkte.md`](91-plan-drei-punkte.md) | Plan |  | Plan: die drei offenen Punkte des Umschalters | - |
 | [`92-plan-de-scaler.md`](92-plan-de-scaler.md) | Plan |  | Plan - DE-Scaler und Auflösungsunterstützung | - |
 | [`93-todo-scaler-und-720p.md`](93-todo-scaler-und-720p.md) | Analyse |  | TODO - Scaler und 720p | - |
-| [`94-fokusmotor-endschalter.md`](94-fokusmotor-endschalter.md) | Analyse |  | Fokusmotor und der Bereichswächter auf PH14 - Stand 12.09.2026 | 6 |
+| [`94-fokusmotor-endschalter.md`](94-fokusmotor-endschalter.md) | Analyse |  | Fokusmotor und der Bereichswächter auf PH14 - Stand 12.09.2026 | 7 |
 | [`95-netboot.md`](95-netboot.md) | Analyse |  | Netboot: Kernel per TFTP, Wurzelverzeichnis per NFS | - |
 | [`96-anzeigekette.md`](96-anzeigekette.md) | Analyse |  | Die Anzeigekette des H713 - wie sie wirklich funktioniert | 6 |
 | [`97-handoff-20260908.md`](97-handoff-20260908.md) | Handoff | 2026-09-08 | Handoff 08.09.2026 - Grünstich und Kippen gelöst, Scaler läuft, Restpunkte abgearbeitet | - |
@@ -436,9 +435,10 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-54 von 278 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+56 von 278 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
+* `104-plan-standby-stufe2.md` (ueberholt)
 * `106-handoff-20260910.md` (ueberholt)
 * `111-handoff-20260910-abend.md` (ueberholt)
 * `115-handoff-20260912.md` (ueberholt)
@@ -446,14 +446,19 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `119-plan-fremdgeraete-und-installer-fixes.md` (ueberholt)
 * `122-handoff-werkzeug-umbau.md` (ueberholt)
 * `123-handoff-20260915.md` (ueberholt)
+* `124-cstenger-abgleich-20260915.md`
+* `125-plan-bootzeit.md`
 * `127-handoff-20260917.md` (ueberholt)
 * `129-plan-keystone.md` (ueberholt)
 * `130-handoff-20260923.md` (ueberholt)
 * `131-nacht-20260923.md` (ueberholt)
 * `132-plan-fable-pakete-20260926.md` (ueberholt)
 * `135-handoff-20261002.md` (ueberholt)
+* `137-handoff-hy300pro-bildfehler-lvds-gamma-20261003.md`
+* `139-handoff-standby-geparkt-20261003.md`
 * `140-handoff-20261003.md` (ueberholt)
 * `141-plan-integration-release-20261003.md` (ueberholt)
+* `142-grosstest-protokoll-v096.md`
 * `143-handoff-gesamt-20261004.md` (ueberholt)
 * `144-offene-punkte-20261004.md` (ueberholt)
 * `146-handoff-hdcp14-und-plan.md` (ueberholt)
@@ -463,8 +468,6 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `153-sel1-payload-aus-der-linie-20261006.md`
 * `154-handoff-20261006-vormittag.md`
 * `155-zoom-aspect-und-schieber-20261006.md`
-* `156-bluetooth-warmstart-abgefangen-20261006.md`
-* `157-geometrie-modi-und-ecken-20261006.md`
 * `158-ap-latenz-nicht-nachvollziehbar-20261006.md` (ueberholt)
 * `159-presets-und-merken-20261006.md`
 * `160-hdcp-haertung-aufgeraeumt-20261007.md`
@@ -476,14 +479,12 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `189-handoff-20261010-abends.md`
 * `194-handoff-20261011-frueh.md`
 * `196-nachtarbeit-kleinkram-und-warp-20261011.md` (ueberholt)
+* `199-panel-kopplung-swpll-20261011.md`
 * `202-ausschalten-kernel-abend-warmstart-20261012.md`
 * `204-uclamp-gemessen-aus-ueber-crust-20261012.md`
 * `205-remote-reihe-kaltstart-standby-warmstart-modi-20261012.md`
 * `208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`
 * `209-runde-5x-teil-b-uebernahme-panel-20261013.md`
-* `216-lizenzen-abschluss-reinraum-hinweise-protokoll-20261020.md`
-* `218-summen-crust-arisc-entscheidung-protokoll-20261022.md` (ueberholt)
-* `219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)

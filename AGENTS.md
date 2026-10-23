@@ -68,7 +68,8 @@ Klon ohne diesen Ordner — dann fehlen dir die Geräteangaben, und du fragst na
 | `installer/h713-install` | Abbild auf ein Gerät bringen, mit Abzug und Rückweg | schreibt erst in Schritt 6, vergleicht in Schritt 7 zurück |
 | `installer/h713-extract` | Herstellerartefakte aus einem Stock-Abbild holen | fasst **nie** HDCP-/DRM-Schlüssel an |
 | `sunxi-fel` | Abbild über FEL laden | `mainline/build/out/sunxi-fel` |
-| `git` mit Submodulen | U-Boot und TF-A sind Submodule | `git submodule update --init` |
+| `release/tor.sh` | **alle Tore vor einem Commit**, ehrlicher Exit-Status | `release/tor.sh && git commit` - nie eine Pipeline vor dem `&&`; `--tests` nimmt die Installer-, h713-power- und h713-keys-Tests dazu |
+| `git` mit Submodulen und `.githooks` | U-Boot, TF-A und sunxi-tools sind Submodule; crust liegt als Klon neben dem Repo (`CRUST_SRC`), gespiegelt in `crust-h713/` | `git submodule update --init`; `git config core.hooksPath .githooks` (Identität nur `well0nez <8986239+well0nez@users.noreply.github.com>`) |
 
 ### Optional — nur für bestimmte Aufgaben
 
@@ -86,11 +87,10 @@ Klon ohne diesen Ordner — dann fehlen dir die Geräteangaben, und du fragst na
 ## 3 Tore — was grün sein muss, bevor etwas abgegeben wird
 
 ```bash
-bash installer/tests/run.sh                  # 412 Tests
-bash boards/check.sh                         # sagt jedes Board, was es behauptet?
-python3 release/doku-index.py --pruefen      # Journal-Index auf dem Stand?
-python3 release/sperr-scan.py .              # Schlüssel, Blobs, Abzüge, tote Pfade
-bash release/check-hdcp-artifacts.sh <uboot> <bl31>   # sitzt HDCP im Artefakt?
+release/tor.sh            # sperr-scan (Schlüssel, Blobs, Abzüge, tote Pfade, Identität, MACs, SPDX) + doku-index --pruefen
+release/tor.sh --tests    # dazu installer/tests/run.sh (etwa 470 Tests) und die Tests von h713-power und h713-keys
+bash boards/check.sh                                   # sagt jedes Board, was es behauptet?
+bash release/check-hdcp-artifacts.sh <uboot> <bl31>    # sitzt HDCP im Artefakt? build-all.sh ruft es selbst
 ```
 
 `sperr-scan.py` ist das Veröffentlichungstor. Es urteilt über **Artefakte**, nicht über
@@ -166,3 +166,6 @@ sie durchgeht.
 
 *Diese Seite ist Teil der Arbeit, nicht Beiwerk. Wer ein Werkzeug hinzufügt, eine Regel
 widerlegt oder einen Ort für Wissen braucht, der hier fehlt, ändert sie — mit Datum.*
+
+- 23.10.2026 — `release/tor.sh` als Pflichtwerkzeug und als die Tore; Submodule vollständig, crust als Klon genannt
+  (Doku-Runde vor v0.97-beta).
