@@ -96,7 +96,8 @@ points at, after the documentation round.
 
 **Before you install,** take the full dump of your device ([FLASHING.md](FLASHING.md)). The display firmware, the ARISC
 firmware, the picture tables and the boot logo are not in this repository, and the keys and MAC addresses in your secure
-storage exist exactly once. Without the dump a failed install is not repairable. **After the install** check
+storage exist exactly once. A failed install does not brick the device (FEL is always there to reinstall), but without the
+dump those device-bound parts may be lost for good. **After the install** check
 `fw_printenv h713_gate` and set it to 1 if the installer carried a 0 over from your dump (`TODO.md` 2.137).
 
 **New since v0.96-beta** - 351 kernel patches, 145 more ([docs/kernel-patches.md](docs/kernel-patches.md)):
