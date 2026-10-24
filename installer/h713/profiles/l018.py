@@ -11,8 +11,13 @@ PROFILE = {
     "name": "L018",                          # X:144
     "description": "L018 -- Allwinner H713, reference design h713_tuna_p3, "
                    "stock build 2025-05-14 (Projector05141211)",   # X:145, translated
-    # No image and no dump of this board on this host: everything below comes from the extractor tables,
-    # which were filled from the first run on a real L018 (X:57-62, S42 section 4). Hence "profile-only".
+    # Everything below comes from the extractor tables, which were filled from the first run on a real L018
+    # (X:57-62, S42 section 4). The stock update.img of this board (sunxi_version 2025-05-14 12:19:36,
+    # 1869393920 bytes, sha256 812392c7d3de68433b0716aa94155c38d87898956b9fc7e4998cb12b9e111066) has been read
+    # since (24.10.2026): every value below matches it, and its boot0 (but for the DRAM words boot0 writes back),
+    # sunxi package, bootloader_a/_b, vendor_boot, dtbo, vbmeta* and vendor match the eMMC of a running L018 byte
+    # for byte. Nothing of ours has run on this board, hence still "profile-only".
+    # (Until 24.10.2026 this comment said there was no image and no dump of this board on this host.)
     "status": "profile-only",
     "verified_by": None,
     "soc": "H713 (sun50iw12)",               # X:162 dtb_compatible "allwinner,tv303"
@@ -34,8 +39,8 @@ PROFILE = {
         "strong_features": ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version",
                             "arisc_version", "build_fingerprint", "mips_database_sha256"),
     },
-    "dram": None,                            # unknown: no boot0 of this board has been read
-    "layout": None,                          # unknown: no image and no GPT of this board has been read
+    "dram": None,                            # not taken over yet: the stock image's boot0 carries it
+    "layout": None,                          # not taken over yet: the stock image carries sys_partition and GPT
     # I:95 EINMALIG only for secure-storage, the one region whose position is fixed for every H713;
     # private and Reserve0 have to be found by name in the device's own GPT (A0 section 5, issue #1
     # defect 2) -- this board's GPT has never been read.
@@ -51,7 +56,8 @@ PROFILE = {
     "mips": {
         # X:95-96: the mips/ set of this board differs from the HY310 one in database.TSE only
         # (S42 section 9), so it is the same U-Boot family (A0 section 4). No vendor dump of an
-        # L018 exists (X:107-109), so the third entry is the family default, not a measurement.
+        # L018 exists (X:107-109), so the third entry is the family default, not a measurement. The stock
+        # image's vendor does carry that directory, all 19 files (24.10.2026); the order is still not measured.
         "sources": ("bootloader_b", "bootloader_a", "vendor:/etc/display/mips"),
         # F, row "HY310 (QZ713 V3.1)": the display.bin of the L018 is byte-identical to the HY310 one
         # (X:95-96 _MIPS_REF_L018 replaces database.TSE only), so it is the same revision and wait site.
@@ -60,7 +66,7 @@ PROFILE = {
              "name": "HY310 (QZ713 V3.1)", "hdcp_wait_va": 0x4b13d0a4},
         ],
     },
-    "panel": None,                           # unknown: no panel_config.ini of this board has been read
+    "panel": None,                           # not taken over yet: the stock image's Reserve0 carries panel_config.ini
     # X:146 GERAETE["l018"]["referenz"] -- values verbatim. EDID and MSP patch are byte-identical
     # with the HY310 (S42 section 4); of the mips/ set only database.TSE differs (S42 section 9).
     "reference": {
