@@ -385,6 +385,9 @@ else
 	say "1b/11 crust $CRUST_DEFCONFIG (${CRUST_HEAD:0:12})"
 	OR1K_STAMP=$(sh "$MAINLINE/tools/or1k-toolchain/build-or1k-toolchain.sh" --stamp)
 	in_common; git_in crust "$CRUST_SRC"; inp "crust $CRUST_DEFCONFIG"; inp "or1k $OR1K_STAMP"
+	# crust's version text counts from the tag (scripts/version.sh): scp.bin of a checkout without tags says v0.6.10000 and step 10 refuses it,
+	# so the tags a later fetch brings must not leave that scp.bin standing
+	inp "crust version $(git -C "$CRUST_SRC" describe --dirty --long --match 'v[0-9]*' 2>/dev/null || true)"
 	if ! stamp_fits crust; then
 		rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config" "$NOTICE/crust"
 		# Reused only with the stamp the toolchain script writes last, for its pinned sources: an unfinished
