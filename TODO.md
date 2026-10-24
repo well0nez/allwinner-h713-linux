@@ -733,18 +733,20 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 4.1 `hy300-pro` (Issue #1): test10 aus `main` nach dem Release (0168, 0182, 2de0cc8, Gamma, project 0x34)
 - [ ] 4.7 **L018 (Marcos eigener, 24.10.2026):** Testabbild `h713-l018-v0.97-test1-TEST` ist gebaut (Zweig `versuch/l018-board`
       `af5a1ba1`, Paket `arbeit/l018-board-20261024/`, `boards/l018/README.md`); nichts davon hat am Gerät gebootet. Reihenfolge:
-      (a) Stock-Messungen, solange Android drauf ist - nur mit Marco am Gerät: die drei Lampenmodi schalten und PWM2/PWM3 mitlesen
-      (welcher PWM stellt die Lampe?), IR-Codes der Fernbedienung, die sieben Tasten; (b) Marco klärt FEL-Weg (Taste? welcher
-      USB-Port ist OTG?), UART ja/nein, elektrischer Fokus ja/nein; (c) `h713-install install --full --test-image` (Abzug 7,3 GB =
+      (a) **erledigt 24.10.:** Lampe = PWM2/PB4, dimmt mit steigendem Tastgrad (high 30 / std 50 / low 75 %, Lüfter PWM0 95/70/60 %);
+      Fernbedienung = die des HY310 (NEC `0xfd02`, alle Codes in `rc-h713-fd02`); keine Gerätetasten außer Power
+      (`arbeit/l018-stock-20261024/BERICHT.md`); (b) **geklärt 24.10. (Marco):** nur USB-A (FEL per A-auf-A), FEL-Weg
+      `adb reboot efex`, UART am eigenen ESP32 `.150` (`referenz/geraete.md`); elektrischer Fokus noch offen; (c) `h713-install install --full --test-image` (Abzug 7,3 GB =
       Rückweg nach Android), erster Boot: Bild, WLAN, Fernbedienung, Lüfter-Drehzahl (PH13) und Temperatur; (d) Abnahme nach
       `messregeln`, dann `STATUS=verified` und Zweig nach `main`
 - [ ] 4.8 L018 U-Boot: `hy310_defconfig` fährt für Projekt 0x30 die HY310-Panelsequenz und setzt PF6 und PH9 high, die der
       L018 unter Stock abgeschaltet bzw. low hat (`boards/l018/README.md` "Known deviations"). Nach dem ersten Boot entscheiden:
       Board-Unterscheidung in `h713_disp init` (U-Boot-Fork + Spiegel `uboot-h713/`) oder belegt harmlos
-- [ ] 4.9 L018 Treiber nach dem ersten grünen Boot: Lampe in drei Stufen mit Lüfter-PWM0 (PH17) statt Hog 100 %;
+- [ ] 4.9 L018 Treiber nach dem ersten grünen Boot: Lüfter-PWM0 (PH17) nach Lampenstufe/Temperatur statt Hog 100 % (Stock
+      95/70/60 %); Helligkeit 0 von pwm-backlight schaltet PWM2 ab - Pinpegel und Lampe dabei messen, ggf. sicher machen;
       Neigungssensor `lsm6dsv` (twi2 PH4/PH5, `CONFIG_IIO_ST_LSM6DSX`, Achsenzuordnung, Werkswert `GsInitXYZ` im Secure Storage
-      als Referenz); Kamera `4098:a425` für h713-cam/Autofokus; Fokusmotor PF0..PF3 / Endschalter PB1; LEDs PL0/PL1; sieben
-      LRADC-Tasten; Kopfhörerbuchse/SPDIF
+      als Referenz); Kamera `4098:a425` für h713-cam/Autofokus; Fokusmotor PF0..PF3 / Endschalter PB1; LEDs PL0/PL1;
+      Kopfhörerbuchse/SPDIF
 
 ## 5 Installer und Werkzeuge
 
