@@ -16,6 +16,13 @@ a launcher and a settings page driven by the stock remote, keystone and autofocu
 Android: the device's own display firmware, its ARISC firmware, its Wi-Fi firmware and its picture tables are taken
 from **your own** device dump at install time and are never part of this repository or of an image.
 
+> **Help wanted - contributors and testers.** This project is looking for people who want to take part:
+> owners of an H713 projector who test an image or report their board (open an issue with the model and, if you
+> have it, the output of the read-only [probe](docs/tools/h713-probe.md); [boards/README.md](boards/README.md) lists
+> what is known), people who review the code one subsystem at a time - all of it was written by AI and needs human
+> eyes -, and anyone who fixes or improves something. **Pull requests are very welcome.** What does not work yet:
+> [docs/known-issues.md](docs/known-issues.md); how to work in this repository: [AGENTS.md](AGENTS.md).
+
 [![Ko-fi](https://ko-fi.com/img/githubbutton_sm.svg)](https://ko-fi.com/well0nez)
 
 **Working on this repository, as a person or as an agent?** Start at [AGENTS.md](AGENTS.md).
