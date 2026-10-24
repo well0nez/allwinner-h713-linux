@@ -3,8 +3,8 @@
 One command turns a clean clone into a flashable image:
 
 ```bash
-CRUST_SRC=<checkout of the head crust-h713/SERIES.txt names> \
-  release/build-all.sh --version v0.97-beta --board hy310 --profile media,desktop --vendor <output of h713-extract>
+git clone --recurse-submodules https://github.com/well0nez/allwinner-h713-linux && cd allwinner-h713-linux
+release/build-all.sh --version v0.97-beta --board hy310 --profile media,desktop --vendor <output of h713-extract>
 ```
 
 That is the release image since `v0.97-beta`: the base system plus the `media` and `desktop` profiles (Kodi, the desktop,
@@ -99,7 +99,8 @@ rather than ship one written for a different board.
 `--profile media,desktop` is what a release is built with since `v0.97-beta` (the owner's decision of 23.10.2026, the
 merge of the `medien` branch). Without `--standby`, as the release: the vendor ARISC firmware, no standby, crust as the
 experimental choice (`TODO.md` 2.42); with `--standby` the image runs crust and offers the standby ([standby](docs/subsystems/standby.md)).
-crust is not a submodule yet, so `CRUST_SRC=` names its checkout (`crust-h713/README.md` says how to make one; the fork is published with the release).
+crust is the submodule `mainline/external/crust` (the fork's branch `h713`, at the head `crust-h713/SERIES.txt` names); `CRUST_SRC=<checkout>` takes
+another checkout for a developer's own crust, and the stamp then says `reproducible: no`.
 A profile adds the VA-API driver, cross-built before the rootfs (`rootfs/libva/build-libva.sh`), and lays in the package lists and overlays of the profiles; the image is named
 `<name>-<version>-media-desktop` and the stamp says `profile:` and `libva:`. The tree of `media,desktop` is about 1.1 GiB, so a profile image gets a **2 GiB** rootfs file system
 (the base image keeps 1 GiB; either grows to the partition at the first start). The build container is the one of
@@ -134,8 +135,9 @@ year trust the same keys.
 
 ## Submodules
 
-Three: U-Boot, TF-A and sunxi-tools, pinned to our forks. Relative URLs, so they resolve next to whatever
-account this repo lives under.
+Four: U-Boot, TF-A, sunxi-tools and crust, pinned to our forks. Relative URLs, so they resolve next to whatever
+account this repo lives under. crust is read only for a board that names a `CRUST_DEFCONFIG` (the HY310 and the HY200
+QZ713DF A1), and its branch `h713` is the one `crust-h713/` mirrors.
 
 If `git submodule update --init` fails on U-Boot, you have a copy of this repository from before the
 first release: the fork went public with the release, and there is no way to build the boot chain

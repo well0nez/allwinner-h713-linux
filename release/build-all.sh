@@ -20,7 +20,7 @@
 # that board alone and only with --test-image. Not a release, no claim of support.
 #
 # crust, the ARISC firmware: a board that names CRUST_DEFCONFIG in board.env gets one crust build
-# (step 1b, from mainline/external/crust or CRUST_SRC=<checkout>, the series crust-h713/ mirrors).
+# (step 1b, from the submodule mainline/external/crust, or from CRUST_SRC=<checkout> for a developer's own; the series crust-h713/ mirrors the submodule's branch).
 # It goes into the rootfs as /lib/firmware/<board>-crust.bin, the name the board's device tree gives the
 # arisc driver - there it is the experimental choice: the image runs the vendor ARISC firmware from the
 # owner's dump (/etc/modprobe.d/h713-arisc.conf firmware=vendor, the owner's decision of 22.10.2026:
@@ -189,8 +189,8 @@ fi
 [[ -n "${KERNEL_DTB:-}" ]] || { echo "boards/$BOARD names no KERNEL_DTB -- no device tree of ours has booted there" >&2; exit 2; }
 [[ -n "${UBOOT_BOARD:-}" ]] || { echo "boards/$BOARD names no UBOOT_BOARD -- no U-Boot base defconfig of ours for it" >&2; exit 2; }
 [[ -n "${IMAGE_NAME:-}" ]] || { echo "boards/$BOARD names no IMAGE_NAME" >&2; exit 2; }
-# crust and the standby (header). The source must be the head crust-h713/SERIES.txt names, unless
-# CRUST_SRC points somewhere else on purpose - then the stamp says so.
+# crust and the standby (header). The source is the submodule mainline/external/crust, which must be at the head
+# crust-h713/SERIES.txt names, unless CRUST_SRC points somewhere else on purpose (a developer's own checkout) - then the stamp says so.
 # A test image for one unverified board may carry it too: that is how the board gets verified (TODO 1.4).
 STANDBY=none; [[ -n "${CRUST_DEFCONFIG:-}" && ( "${STATUS:-}" == verified || $TEST_IMAGE == 1 ) ]] && STANDBY=sr
 if ((WANT_STANDBY)) && [[ "$STANDBY" != sr ]]; then
@@ -199,11 +199,7 @@ fi
 CRUST_SRC_GIVEN=${CRUST_SRC:+1}; CRUST_SRC=${CRUST_SRC:-$MAINLINE/external/crust}
 if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
 	if [[ ! -f "$CRUST_SRC/Makefile" ]]; then
-		if git config -f "$ROOT/.gitmodules" --get-regexp '\.path$' 2>/dev/null | grep -q ' mainline/external/crust$'; then
-			echo "no crust source at $CRUST_SRC -- git submodule update --init mainline/external/crust, or CRUST_SRC=<checkout>" >&2
-		else
-			echo "boards/$BOARD names CRUST_DEFCONFIG, and there is no crust submodule yet: CRUST_SRC=<checkout of the head crust-h713/SERIES.txt names> (crust-h713/README.md says how to make one)" >&2
-		fi
+		echo "no crust source at $CRUST_SRC -- git submodule update --init mainline/external/crust (or CRUST_SRC=<your own checkout>)" >&2
 		exit 2
 	fi
 	CRUST_HEAD=$(git -C "$CRUST_SRC" rev-parse HEAD 2>/dev/null) || { echo "$CRUST_SRC is no git checkout: crust's version text needs one" >&2; exit 2; }
