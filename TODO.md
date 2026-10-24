@@ -731,8 +731,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 ## 4 Boards und Fremdgeräte
 
 - [ ] 4.1 `hy300-pro` (Issue #1): test10 aus `main` nach dem Release (0168, 0182, 2de0cc8, Gamma, project 0x34)
-- [ ] 4.7 **L018 (Marcos eigener, 24.10.2026):** Testabbild `h713-l018-v0.97-test1-TEST` ist gebaut (Zweig `versuch/l018-board`
-      `af5a1ba1`, Paket `arbeit/l018-board-20261024/`, `boards/l018/README.md`); nichts davon hat am Gerät gebootet. Reihenfolge:
+- [ ] 4.7 **L018 (Marcos eigener, 24.10.2026):** Testabbild `h713-l018-v0.97-test2-TEST` ist gebaut (Zweig `versuch/l018-board`
+      `94f4594c`, Paket `arbeit/l018-board-20261024/`, `boards/l018/README.md`); nichts davon hat am Gerät gebootet. Reihenfolge:
       (a) **erledigt 24.10.:** Lampe = PWM2/PB4, dimmt mit steigendem Tastgrad (high 30 / std 50 / low 75 %, Lüfter PWM0 95/70/60 %);
       Fernbedienung = die des HY310 (NEC `0xfd02`, alle Codes in `rc-h713-fd02`); keine Gerätetasten außer Power
       (`arbeit/l018-stock-20261024/BERICHT.md`); (b) **geklärt 24.10. (Marco):** nur USB-A (FEL per A-auf-A), FEL-Weg
