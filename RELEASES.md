@@ -72,7 +72,7 @@ building blocks (sha256, 16 characters):
 
 Two builds of the same commit give the same building-block hashes: the build clock is the commit's date (`source date:`),
 no part embeds the wall clock, and the cross builds map their paths out of their debug info. The `reproducible:` line says
-whether a build was made that way, and if not, why (local changes, `--skip-*`, a private `--wifi-env`). The `profile:` line
+whether a build was made that way, and if not, why (local changes, a step taken over from the build of another commit, a private `--wifi-env`). The `profile:` line
 still calls a `media,desktop` image "not a release image" because it is far above the 500 MiB a base image is held to; since
 `v0.97-beta` that is what a release ships, and the sentence in the stamp is a left-over (`TODO.md` 1.8). Image checksums
 differ between builds (the ext4 inputs carry their own UUIDs and times), so compare the stamp, not the image, and quote the

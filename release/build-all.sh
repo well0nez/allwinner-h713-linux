@@ -2,8 +2,12 @@
 # release/build-all.sh -- from a fresh clone to an installable image, one entry point.
 #
 #   release/build-all.sh --version v0.10 [--board hy310] [--variant NAME] [--vendor DIR]
-#                        [--wifi-env FILE] [--jobs N] [--skip-bl31] [--skip-uboot]
-#                        [--skip-kernel] [--skip-rootfs] [--test-image] [--standby] [--profile NAME[,NAME]] [--dry-run]
+#                        [--wifi-env FILE] [--jobs N] [--test-image] [--standby] [--profile NAME[,NAME]] [--dry-run]
+#
+# Going on after an abort (TODO 5.17): each step writes a stamp mainline/build/stempel/<step> when it has finished, the hash of
+# its inputs and the sha256 of its results. The same command again takes a step over when both still fit and builds from the
+# first one that does not; the steps after it follow, because the results of the steps they build on are among their inputs.
+# There is no switch for it, and a fresh clone has no stamps: a release build builds every step.
 #
 # --board <id> (default hy310) picks boards/<id>/board.env: the installer
 # profile, the kernel DTB the FIT carries, the U-Boot base defconfig and the
@@ -114,7 +118,6 @@ DEBIAN_SUITE=trixie
 DEBIAN_MIRROR=http://deb.debian.org/debian
 
 VERSION= BOARD=hy310 VARIANT= VENDOR= WIFI_ENV= JOBS=$(nproc) DRY=0 TEST_IMAGE=0 WANT_STANDBY=0 PROFILES=
-SKIP_BL31=0 SKIP_UBOOT=0 SKIP_KERNEL=0 SKIP_ROOTFS=0
 while (($#)); do
 	case "$1" in
 	--version)   VERSION=${2:?}; shift 2 ;;
@@ -123,15 +126,13 @@ while (($#)); do
 	--vendor)    VENDOR=$(cd "${2:?}" && pwd); shift 2 ;;
 	--wifi-env)  WIFI_ENV=$(readlink -f "${2:?}"); shift 2 ;;
 	--jobs)      JOBS=${2:?}; shift 2 ;;
-	--skip-bl31)   SKIP_BL31=1; shift ;;
-	--skip-uboot)  SKIP_UBOOT=1; shift ;;
-	--skip-kernel) SKIP_KERNEL=1; shift ;;
-	--skip-rootfs) SKIP_ROOTFS=1; shift ;;
+	--skip-bl31|--skip-uboot|--skip-kernel|--skip-rootfs)
+		echo "$1 is gone (TODO 5.17): a step whose stamp still fits is taken over by itself - run the same command again" >&2; exit 2 ;;
 	--test-image)  TEST_IMAGE=1; shift ;;
 	--standby)     WANT_STANDBY=1; shift ;;
 	--profile)     PROFILES=${2:?}; shift 2 ;;
 	--dry-run)   DRY=1; shift ;;
-	-h|--help)   sed -n '2,52p' "$0"; exit 0 ;;
+	-h|--help)   sed -n '2,57p' "$0"; exit 0 ;;
 	*) echo "unknown: $1" >&2; exit 2 ;;
 	esac
 done
@@ -237,8 +238,9 @@ DELIVERY="$INSTALLER/out"
 # One clock for everything that embeds a build time: the committer date of HEAD
 # (the release repository, else mainline/). The stamp's "reproducible:" line
 # names what would still make a second build differ: local changes (a dirty or
-# moved submodule counts as one), reused building blocks (--skip-*), a private
-# --wifi-env. The rootfs is reproducible only against the same mirror state.
+# moved submodule counts as one), steps taken over from a build of another commit
+# (their stamps, TODO 5.17), a private --wifi-env. The rootfs is reproducible only
+# against the same mirror state.
 REPRO_GIT=$ROOT; git -C "$REPRO_GIT" rev-parse -q --verify HEAD >/dev/null 2>&1 || REPRO_GIT=$MAINLINE
 REPRO_WHY=() REPRO_DIRTY=
 if SOURCE_DATE_EPOCH=$(git -C "$REPRO_GIT" log -1 --format=%ct 2>/dev/null) && [[ -n "$SOURCE_DATE_EPOCH" ]]; then
@@ -248,11 +250,14 @@ else
 	SOURCE_DATE_EPOCH=$(date +%s); REPRO_COMMIT=none; REPRO_FULL=none; REPRO_WHY+=("not a git checkout")
 fi
 export SOURCE_DATE_EPOCH
-((SKIP_BL31 || SKIP_UBOOT || SKIP_KERNEL || SKIP_ROOTFS)) && REPRO_WHY+=("--skip-* reused earlier building blocks")
 [[ -n "${CRUST_DEFCONFIG:-}" && "$CRUST_HEAD" != "$CRUST_MIRROR" ]] && REPRO_WHY+=("crust ${CRUST_HEAD:0:12} from CRUST_SRC is not the head crust-h713/SERIES.txt names")
 [[ -n "$WIFI_ENV" ]] && REPRO_WHY+=("--wifi-env is a private input")
-REPRO_LINE="reproducible: yes (SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH, commit $REPRO_COMMIT)"
-((${#REPRO_WHY[@]})) && { w=$(printf '%s; ' "${REPRO_WHY[@]}"); REPRO_LINE="reproducible: no, because ${w%; }"; }
+repro_line() {   # again at the end: a step taken over can still make it "no"
+	REPRO_LINE="reproducible: yes (SOURCE_DATE_EPOCH=$SOURCE_DATE_EPOCH, commit $REPRO_COMMIT)"
+	((${#REPRO_WHY[@]})) && { local w; w=$(printf '%s; ' "${REPRO_WHY[@]}"); REPRO_LINE="reproducible: no, because ${w%; }"; }
+	return 0
+}
+repro_line
 
 say()  { printf '\n\033[1;34m==>\033[0m \033[1m%s\033[0m\n' "$*"; }
 info() { printf '    %s\n' "$*"; }
@@ -270,6 +275,49 @@ in_container_root() { podman exec -u root -e JOBS="$JOBS" -e SOURCE_DATE_EPOCH="
 c() { printf '%s' "${1/#$ROOT/$WORK}"; }
 T0=$(date +%s)
 elapsed() { local s=$(( $(date +%s) - T0 )); printf '%d min %02d s' $((s/60)) $((s%60)); }
+
+# --- stamps: going on after an abort (header, TODO 5.17) ----------------------------
+# A step's inputs are collected in IN (inp, tree_in, git_in, in_step); stamp_fits takes the step over when the stamp has the same
+# hash and every result is still as it says, and otherwise removes the stamp, so that an abort leaves none; stamp_write follows
+# the build. in_step puts the results of a step this run went through among the inputs of the next: a step that comes out with
+# other bytes carries the ones after it along, one that comes out with the same bytes lets them stand.
+STEMPEL="$MAINLINE/build/stempel"; IN=() TAKEN=() BUILT=() FOREIGN=(); declare -A RES
+sha()  { sha256sum | cut -c1-64; }
+inp()  { IN+=("$*"); }
+# <label> <dir> [pathspec ...]: the files as they are there, tracked and untracked but not ignored: a dirty tree hashes differently
+tree_in() { inp "$1 $(git -C "$2" ls-files -z -co --exclude-standard -- "${@:3}" | LC_ALL=C sort -z | (cd "$2" && xargs -0r sha256sum 2>&1) | sha)"; }
+git_in()  { tree_in "$@"; inp "$1 head $(git -C "$2" rev-parse HEAD)"; }    # a checkout of its own: its commit is in its version text
+ver_in()  { inp "versions $(grep -E "^($1)" "$MAINLINE/config/versions.env" | sha)"; }    # the pins one step reads, not the file's comments
+in_step() { inp "step $1 ${RES[$1]:?step $1 has not run}"; }
+in_common() { IN=(); inp "format 1"; inp "tools $TOOLS"; tree_in script "$ROOT" release/build-all.sh release/notice.py; }
+stamp_fits() {   # <step>: 0 = its stamp fits (the step is taken over, its "var" lines set again), 1 = build it
+	local st=$STEMPEL/$1 n v c why=
+	STEP_IN=$(printf '%s\n' "${IN[@]}" | sha)
+	if [[ ! -f $st ]]; then why=
+	elif ! grep -qx "input $STEP_IN" "$st"; then why="its inputs are not those of the stamp"
+	elif ! (cd "$ROOT" && sed -n 's/^sha256 //p' "$st" | sha256sum -c --quiet >/dev/null 2>&1); then why="a result is not what the stamp says"
+	else
+		RES[$1]=$(sed -n 's/^sha256 //p' "$st" | sha)
+		while read -r n v; do printf -v "$n" '%s' "$v"; done < <(sed -n 's/^var //p' "$st")
+		c=$(sed -n 's/^commit //p' "$st"); TAKEN+=("$1")
+		[[ "$c" == "$REPRO_FULL" && -z $REPRO_DIRTY ]] || FOREIGN+=("$1 (stamp: $c)")
+		info "taken over: its stamp fits (built at ${c:0:12}, mainline/build/stempel/$1)"; return 0
+	fi
+	[[ -z $why ]] || info "stamp of $1: $why - building it"
+	rm -f "$st"; return 1
+}
+stamp_write() {   # <step> [NAME ...] -- <result> ...: a result is a file (a link to one too) or a directory (every file in it); NAME are variables a take-over sets again
+	local step=$1 vars=() p n; shift
+	while (($#)) && [[ $1 != -- ]]; do vars+=("$1"); shift; done; shift
+	mkdir -p "$STEMPEL"
+	{ echo "input $STEP_IN"; echo "commit $REPRO_FULL${REPRO_DIRTY:+ +$REPRO_DIRTY}"; echo "built $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
+	  for n in "${vars[@]+"${vars[@]}"}"; do echo "var $n ${!n}"; done
+	  for p; do p=${p#"$ROOT"/}; [[ -e "$ROOT/$p" ]] || die "step $step: no result at $p"
+		(cd "$ROOT" && if [[ -d $p ]]; then find "$p" -type f -print0 | LC_ALL=C sort -z | xargs -0r sha256sum; else sha256sum "$p"; fi | sed 's/^/sha256 /'); done
+	} > "$STEMPEL/$step.part"
+	mv "$STEMPEL/$step.part" "$STEMPEL/$step"
+	RES[$step]=$(sed -n 's/^sha256 //p' "$STEMPEL/$step" | sha); BUILT+=("$step")
+}
 
 say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
 info "root $ROOT"
@@ -294,7 +342,8 @@ case "$st" in
 	created|exited|stopped) ((DRY)) || podman start "$CONTAINER" >/dev/null; info "container $CONTAINER started (was: $st)" ;;
 	*) die "container $CONTAINER is missing -- recipe in doku/50-befehle.md §Bauen" ;;
 esac
-((DRY)) || in_container 'clang --version | head -1; command -v mmdebstrap mke2fs depmod dtc >/dev/null || { echo "tools are missing in the container (mmdebstrap/mke2fs/depmod/dtc)"; exit 1; }' | sed 's/^/    /'
+((DRY)) || { TOOLS=$(in_container 'clang --version | head -1; command -v mmdebstrap mke2fs depmod dtc >/dev/null || exit 1') \
+	|| die "tools are missing in the container (mmdebstrap/mke2fs/depmod/dtc)"; sed 's/^/    /' <<< "$TOOLS"; }   # TOOLS is an input of every step
 for f in "$INSTALLER/h713-mkimage" "$INSTALLER/mkimage-inputs.sh" "$ROOTFS/build-rootfs.sh" "$EXTRACTOR" "$MAINLINE/build/build.sh" "$MAINLINE/build/uboot-build.sh"; do
 	[[ -e "$f" ]] || die "missing: $f"
 done
@@ -303,80 +352,88 @@ mkdir -p "$OUT" "$DELIVERY"
 ((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}$( [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && echo " + scp")) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv${PROFILES:+, libva (profile $PROFILES)}, rootfs${PROFILES:+ (profile $PROFILES)}, inputs, image $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
-if ((SKIP_BL31)) && [[ -f "$OUT/bl31.bin" ]]; then say "1/11 bl31 -- skipped (--skip-bl31, $OUT/bl31.bin is there)"
-else
-	say "1/11 bl31 (TF-A)"
+# The notices that travel with BL31 (TODO 7.20 e; build-rootfs.sh lays $OUT/notice into the image): TF-A's licence, the copyright
+# lines of every file built into it (found through the build's dependency files, release/notice.py), and the BSD-2-Clause text
+# its libfdt is used under.
+NOTICE="$OUT/notice"; TFA="$MAINLINE/external/arm-trusted-firmware"
+say "1/11 bl31 (TF-A)"
+in_common; git_in tf-a "$TFA"; tree_in build "$ROOT" mainline/build/build.sh "boards/$BOARD"; ver_in ATF_
+inp "bsd2 $(sha < "$MAINLINE/external/u-boot/Licenses/bsd-2-clause.txt")"; inp "bl31 BOARD=$BOARD VARIANT=$VARIANT H713_STANDBY=$WANT_STANDBY H713_TEST_IMAGE=$TEST_IMAGE"
+if ! stamp_fits bl31; then
 	# Build from scratch. Reason (12.09., P3.9): the work tree held a bl31 from
 	# 10.09. built with assertions enabled (49260 instead of 45164 bytes). make
 	# saw everything as up to date and never replaced it -- it sits in v0.8 to v0.10.
 	rm -rf "$MAINLINE/external/arm-trusted-firmware/build"
 	in_container "cd $WORK/mainline && BOARD=$BOARD ${VARIANT:+VARIANT=$VARIANT }H713_STANDBY=$WANT_STANDBY H713_TEST_IMAGE=$TEST_IMAGE build/build.sh bl31" | tail -3 | sed 's/^/    /'
+	[[ -f "$OUT/bl31.bin" ]] || die "no bl31.bin"
+	rm -rf "$NOTICE/tf-a" "$NOTICE/licenses"; mkdir -p "$NOTICE/tf-a" "$NOTICE/licenses"
+	install -m 0644 "$TFA/docs/license.rst" "$NOTICE/tf-a/license.rst"
+	install -m 0644 "$MAINLINE/external/u-boot/Licenses/bsd-2-clause.txt" "$NOTICE/licenses/BSD-2-Clause"
+	python3 "$ROOT/release/notice.py" copyrights "$TFA" "$TFA/build" --main BSD-3-Clause \
+		--title "Trusted Firmware-A $(git -C "$TFA" rev-parse --short=12 HEAD), BL31 of this image: the copyright notices of its sources" \
+		> "$NOTICE/tf-a/COPYRIGHTS" || die "no copyright notices for BL31 (release/notice.py; is the TF-A build directory there?)"
+	stamp_write bl31 -- "$OUT/bl31.bin" "$NOTICE/tf-a" "$NOTICE/licenses"
 fi
-[[ -f "$OUT/bl31.bin" ]] || die "no bl31.bin"
-# The notices that travel with BL31 (TODO 7.20 e; build-rootfs.sh lays $OUT/notice into the image): TF-A's licence, the copyright
-# lines of every file built into it (found through the build's dependency files, release/notice.py), and the BSD-2-Clause text
-# its libfdt is used under.
-NOTICE="$OUT/notice"; TFA="$MAINLINE/external/arm-trusted-firmware"
-rm -rf "$NOTICE/tf-a" "$NOTICE/licenses"; mkdir -p "$NOTICE/tf-a" "$NOTICE/licenses"
-install -m 0644 "$TFA/docs/license.rst" "$NOTICE/tf-a/license.rst"
-install -m 0644 "$MAINLINE/external/u-boot/Licenses/bsd-2-clause.txt" "$NOTICE/licenses/BSD-2-Clause"
-python3 "$ROOT/release/notice.py" copyrights "$TFA" "$TFA/build" --main BSD-3-Clause \
-	--title "Trusted Firmware-A $(git -C "$TFA" rev-parse --short=12 HEAD), BL31 of this image: the copyright notices of its sources" \
-	> "$NOTICE/tf-a/COPYRIGHTS" || die "no copyright notices for BL31 (release/notice.py; is the TF-A build directory there?)"
 
 # --- 1b. crust --------------------------------------------------------------
-# One build feeds the FIT and the rootfs. A few seconds, so always from scratch; the or1k
+# One build feeds the FIT and the rootfs. A few seconds, from scratch when its stamp does not fit; the or1k
 # compiler is built once (mainline/tools/or1k-toolchain/, ~6 min) and then kept.
 CR_O="$MAINLINE/build/crust"; OR1K="$MAINLINE/build/toolchain/or1k"
-rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config" "$NOTICE/crust"   # no crust of an earlier board in this one's image
-if [[ -n "${CRUST_DEFCONFIG:-}" ]]; then
+if [[ -z "${CRUST_DEFCONFIG:-}" ]]; then
+	rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config" "$NOTICE/crust" "$STEMPEL/crust"   # no crust of an earlier board in this one's image
+else
 	say "1b/11 crust $CRUST_DEFCONFIG (${CRUST_HEAD:0:12})"
-	# Reused only with the stamp the toolchain script writes last, for its pinned sources: an unfinished
-	# build or a compiler copied in from elsewhere is built again.
 	OR1K_STAMP=$(sh "$MAINLINE/tools/or1k-toolchain/build-or1k-toolchain.sh" --stamp)
-	if [[ ! -x "$OR1K/bin/or1k-elf-gcc" || "$(cat "$OR1K/.h713-or1k-toolchain" 2>/dev/null)" != "$OR1K_STAMP" ]]; then
-		info "building the or1k toolchain first, no finished one of the pinned sources is there (log: $OUT/or1k-toolchain.log)"
-		in_container "OR1K_PREFIX=$(c "$OR1K") $WORK/mainline/tools/or1k-toolchain/build-or1k-toolchain.sh" > "$OUT/or1k-toolchain.log" 2>&1 \
-			|| { tail -20 "$OUT/or1k-toolchain.log"; die "the or1k toolchain failed (log: $OUT/or1k-toolchain.log)"; }
+	in_common; git_in crust "$CRUST_SRC"; inp "crust $CRUST_DEFCONFIG"; inp "or1k $OR1K_STAMP"
+	if ! stamp_fits crust; then
+		rm -rf "$CR_O" "$OUT/scp.bin" "$OUT/crust.config" "$NOTICE/crust"
+		# Reused only with the stamp the toolchain script writes last, for its pinned sources: an unfinished
+		# build or a compiler copied in from elsewhere is built again.
+		if [[ ! -x "$OR1K/bin/or1k-elf-gcc" || "$(cat "$OR1K/.h713-or1k-toolchain" 2>/dev/null)" != "$OR1K_STAMP" ]]; then
+			info "building the or1k toolchain first, no finished one of the pinned sources is there (log: $OUT/or1k-toolchain.log)"
+			in_container "OR1K_PREFIX=$(c "$OR1K") $WORK/mainline/tools/or1k-toolchain/build-or1k-toolchain.sh" > "$OUT/or1k-toolchain.log" 2>&1 \
+				|| { tail -20 "$OUT/or1k-toolchain.log"; die "the or1k toolchain failed (log: $OUT/or1k-toolchain.log)"; }
+		fi
+		CS=$(container_path "$CRUST_SRC") || die "$CRUST_SRC is in no mount of the container $CONTAINER"
+		# crust's version text (scripts/version.sh) asks git inside the container. A worktree's .git file and a
+		# shared clone's alternates name host paths the container does not have: the text would be v0.6.10000
+		# with the hash "unknown", and step 10 refuses that. So git gets its directories by their container paths.
+		CG=$(container_path "$(git -C "$CRUST_SRC" rev-parse --absolute-git-dir)") || die "the git directory of $CRUST_SRC is in no mount of the container"
+		CR_GIT="GIT_DIR=$CG GIT_WORK_TREE=$CS"; alt="$(git -C "$CRUST_SRC" rev-parse --path-format=absolute --git-common-dir)/objects/info/alternates"
+		if [[ -s "$alt" ]]; then
+			ca=; while IFS= read -r a; do [[ -n "$a" && "$a" != \#* ]] || continue
+				a=$(container_path "$a") || die "an alternate object store of $CRUST_SRC is in no mount of the container"; ca+=${ca:+:}$a; done < "$alt"
+			CR_GIT+=" GIT_ALTERNATE_OBJECT_DIRECTORIES=$ca"
+		fi
+		in_container "export PATH=$(c "$OR1K")/bin:\$PATH $CR_GIT; cd $CS && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") $CRUST_DEFCONFIG && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") scp" > "$OUT/crust-build.log" 2>&1 \
+			|| { tail -20 "$OUT/crust-build.log"; die "crust failed (log: $OUT/crust-build.log)"; }
+		install -m 0644 "$CR_O/scp/scp.bin" "$OUT/scp.bin"
+		install -m 0644 "$CRUST_SRC/.config" "$OUT/crust.config"
+		CRUST_VERSION=$(sed -n 's/^#define VERSION_STRING "\(.*\)"$/\1/p' "$CR_O/include/version.h")
+		CRUST_HASH=$(sed -n 's/^#define VERSION_HASH "\(.*\)"$/\1/p' "$CR_O/include/version.h")   # contract v5 on
+		[[ -z "$CRUST_HASH" || "$CRUST_HASH" == "g${CRUST_HEAD:0:12}"* ]] \
+			|| die "crust's notify text names the commit '$CRUST_HASH', the checkout is at ${CRUST_HEAD:0:12}: git did not see it in the container"
+		info "crust $CRUST_VERSION${CRUST_HASH:+-$CRUST_HASH}, $(stat -c %s "$OUT/scp.bin") bytes, sha256 $(sha256sum "$OUT/scp.bin" | cut -c1-16)"
+		# its notices, as for BL31; the kconfig of the build is a host program and not in scp.bin
+		mkdir -p "$NOTICE/crust"
+		install -m 0644 "$CRUST_SRC/LICENSE.md" "$NOTICE/crust/LICENSE.md"
+		python3 "$ROOT/release/notice.py" copyrights "$CRUST_SRC" "$CR_O" --main "BSD-3-Clause OR GPL-2.0-only" --exclude 3rdparty/kconfig/ \
+			--title "crust ${CRUST_HEAD:0:12}, scp.bin of this image: the copyright notices of its sources" \
+			> "$NOTICE/crust/COPYRIGHTS" || die "no copyright notices for crust (release/notice.py)"
+		stamp_write crust CRUST_VERSION CRUST_HASH -- "$OUT/scp.bin" "$OUT/crust.config" "$NOTICE/crust"
 	fi
-	CS=$(container_path "$CRUST_SRC") || die "$CRUST_SRC is in no mount of the container $CONTAINER"
-	# crust's version text (scripts/version.sh) asks git inside the container. A worktree's .git file and a
-	# shared clone's alternates name host paths the container does not have: the text would be v0.6.10000
-	# with the hash "unknown", and step 10 refuses that. So git gets its directories by their container paths.
-	CG=$(container_path "$(git -C "$CRUST_SRC" rev-parse --absolute-git-dir)") || die "the git directory of $CRUST_SRC is in no mount of the container"
-	CR_GIT="GIT_DIR=$CG GIT_WORK_TREE=$CS"; alt="$(git -C "$CRUST_SRC" rev-parse --path-format=absolute --git-common-dir)/objects/info/alternates"
-	if [[ -s "$alt" ]]; then
-		ca=; while IFS= read -r a; do [[ -n "$a" && "$a" != \#* ]] || continue
-			a=$(container_path "$a") || die "an alternate object store of $CRUST_SRC is in no mount of the container"; ca+=${ca:+:}$a; done < "$alt"
-		CR_GIT+=" GIT_ALTERNATE_OBJECT_DIRECTORIES=$ca"
-	fi
-	in_container "export PATH=$(c "$OR1K")/bin:\$PATH $CR_GIT; cd $CS && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") $CRUST_DEFCONFIG && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") scp" > "$OUT/crust-build.log" 2>&1 \
-		|| { tail -20 "$OUT/crust-build.log"; die "crust failed (log: $OUT/crust-build.log)"; }
-	install -m 0644 "$CR_O/scp/scp.bin" "$OUT/scp.bin"
-	install -m 0644 "$CRUST_SRC/.config" "$OUT/crust.config"
-	CRUST_VERSION=$(sed -n 's/^#define VERSION_STRING "\(.*\)"$/\1/p' "$CR_O/include/version.h")
-	CRUST_HASH=$(sed -n 's/^#define VERSION_HASH "\(.*\)"$/\1/p' "$CR_O/include/version.h")   # contract v5 on
-	[[ -z "$CRUST_HASH" || "$CRUST_HASH" == "g${CRUST_HEAD:0:12}"* ]] \
-		|| die "crust's notify text names the commit '$CRUST_HASH', the checkout is at ${CRUST_HEAD:0:12}: git did not see it in the container"
-	info "crust $CRUST_VERSION${CRUST_HASH:+-$CRUST_HASH}, $(stat -c %s "$OUT/scp.bin") bytes, sha256 $(sha256sum "$OUT/scp.bin" | cut -c1-16)"
-	# its notices, as for BL31; the kconfig of the build is a host program and not in scp.bin
-	mkdir -p "$NOTICE/crust"
-	install -m 0644 "$CRUST_SRC/LICENSE.md" "$NOTICE/crust/LICENSE.md"
-	python3 "$ROOT/release/notice.py" copyrights "$CRUST_SRC" "$CR_O" --main "BSD-3-Clause OR GPL-2.0-only" --exclude 3rdparty/kconfig/ \
-		--title "crust ${CRUST_HEAD:0:12}, scp.bin of this image: the copyright notices of its sources" \
-		> "$NOTICE/crust/COPYRIGHTS" || die "no copyright notices for crust (release/notice.py)"
 fi
 
 # --- 2. U-Boot: build, split, environment -----------------------------------
 UB_O="$MAINLINE/build/uboot-release"
-if ((SKIP_UBOOT)) && [[ -f "$OUT/spl-release.bin" && -f "$OUT/uboot-proper-release.bin" && -f "$OUT/hy310-env-release.bin" ]]; then
-	say "2/11 U-Boot -- skipped (--skip-uboot, the building blocks are there)"
-else
-	say "2/11 U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE"
+# SCP= for this role alone and only with --standby: crust in the release FIT, which BL31 starts; never
+# in the installer's or the probe's. Without it BL31 starts no crust and the vendor default runs (header).
+SCP_ENV=; [[ -f "$OUT/scp.bin" ]] && ((WANT_STANDBY)) && SCP_ENV="SCP=$(c "$OUT")/scp.bin "
+say "2/11 U-Boot $UBOOT_BASE + $UBOOT_RELEASE_ROLE"
+in_common; git_in u-boot "$MAINLINE/external/u-boot"; tree_in build "$ROOT" mainline/build/uboot-build.sh "boards/$BOARD"
+inp "uboot $UBOOT_BASE $UBOOT_RELEASE_ROLE DRAM_CLK=$DRAM_CLK"; in_step bl31; [[ -n "$SCP_ENV" ]] && in_step crust
+if ! stamp_fits uboot-release; then
 	rm -rf "$UB_O"   # as with bl31: no old objects, no old .config
-	# SCP= for this role alone and only with --standby: crust in the release FIT, which BL31 starts; never
-	# in the installer's or the probe's. Without it BL31 starts no crust and the vendor default runs (header).
-	SCP_ENV=; [[ -f "$OUT/scp.bin" ]] && ((WANT_STANDBY)) && SCP_ENV="SCP=$(c "$OUT")/scp.bin "
 	in_container "cd $WORK/mainline && ${UB_ENV}${SCP_ENV}build/uboot-build.sh $(c "$UB_O") $UBOOT_BASE $UBOOT_RELEASE_ROLE" > "$OUT/uboot-build.log" 2>&1 || { tail -20 "$OUT/uboot-build.log"; die "U-Boot build failed (log: $OUT/uboot-build.log)"; }
 	B="$UB_O/u-boot-sunxi-with-spl.bin"; [[ -f "$B" ]] || die "no $B"
 	spl_size_ok "$UB_O/spl/sunxi-spl.bin"
@@ -398,32 +455,34 @@ e = [x.decode() for x in d[4:].split(b"\0") if x and x != b"\xff" * len(x)]
 g = [x for x in e if x.startswith("h713_gate=")]; assert g, "h713_gate is missing"
 print("    environment: %d entries, %s" % (len(e), g[0]))
 PY
-	v=$(strings -n 8 "$OUT/uboot-proper-release.bin" | grep -m1 '^U-Boot 20' || true)
-	info "U-Boot $v"
+	stamp_write uboot-release -- "$OUT/spl-release.bin" "$OUT/uboot-proper-release.bin" "$OUT/hy310-env-release.bin" "$UB_O/.config"   # step 10 reads the .config
 fi
+v=$(strings -n 8 "$OUT/uboot-proper-release.bin" | grep -m1 '^U-Boot 20' || true)
+info "U-Boot $v"
 # 2b. The installer U-Boot (FEL -> ums): same fork, own role fragment. Without it
 #     h713-install cannot share the drive out of a fresh clone (P3, 12.09.).
 UBI_O="$MAINLINE/build/uboot-installer"
-if ((SKIP_UBOOT)) && [[ -f "$OUT/u-boot-installer.bin" ]]; then
-	say "2b/11 installer U-Boot -- skipped"
-else
-	say "2b/11 installer U-Boot $UBOOT_BASE + $UBOOT_INSTALLER_ROLE (ums)"
+say "2b/11 installer U-Boot $UBOOT_BASE + $UBOOT_INSTALLER_ROLE (ums)"
+in_common; git_in u-boot "$MAINLINE/external/u-boot"; tree_in build "$ROOT" mainline/build/uboot-build.sh "boards/$BOARD"
+inp "uboot $UBOOT_BASE $UBOOT_INSTALLER_ROLE DRAM_CLK=$DRAM_CLK"; in_step bl31
+if ! stamp_fits uboot-installer; then
 	rm -rf "$UBI_O"
 	in_container "cd $WORK/mainline && ${UB_ENV}build/uboot-build.sh $(c "$UBI_O") $UBOOT_BASE $UBOOT_INSTALLER_ROLE" > "$OUT/uboot-installer-build.log" 2>&1 || { tail -20 "$OUT/uboot-installer-build.log"; die "installer U-Boot failed (log: $OUT/uboot-installer-build.log)"; }
 	[[ -f "$UBI_O/u-boot-sunxi-with-spl.bin" ]] || die "no $UBI_O/u-boot-sunxi-with-spl.bin"
 	spl_size_ok "$UBI_O/spl/sunxi-spl.bin"
 	cp "$UBI_O/u-boot-sunxi-with-spl.bin" "$OUT/u-boot-installer.bin"
 	grep -q 'ums 0 mmc 1' "$OUT/u-boot-installer.bin" || die "the installer U-Boot carries no 'ums 0 mmc 1' in its bootcmd"
+	stamp_write uboot-installer -- "$OUT/u-boot-installer.bin"
 fi
 # 2b2. The probe (FEL -> h713_probe): for H713 devices we do not know. Same fork,
 #      own defconfig, DRAM at 624 instead of 792 -- the conservative end of the
 #      range our two known boards span (doku/120 §4). Writes nothing; belongs next
 #      to u-boot-installer.bin in the delivery directory.
 UBP_O="$MAINLINE/build/uboot-probe"
-if ((SKIP_UBOOT)) && [[ -f "$OUT/u-boot-h713-probe.bin" ]]; then
-	say "2b2/11 probe U-Boot -- skipped"
-else
-	say "2b2/11 probe U-Boot $UBOOT_PROBE_DEFCONFIG (h713_probe)"
+say "2b2/11 probe U-Boot $UBOOT_PROBE_DEFCONFIG (h713_probe)"
+in_common; git_in u-boot "$MAINLINE/external/u-boot"; tree_in build "$ROOT" mainline/build/uboot-build.sh
+inp "uboot $UBOOT_PROBE_DEFCONFIG"; in_step bl31
+if ! stamp_fits uboot-probe; then
 	rm -rf "$UBP_O"
 	in_container "cd $WORK/mainline && build/uboot-build.sh $(c "$UBP_O") $UBOOT_PROBE_DEFCONFIG" > "$OUT/uboot-probe-build.log" 2>&1 || { tail -20 "$OUT/uboot-probe-build.log"; die "probe U-Boot failed (log: $OUT/uboot-probe-build.log)"; }
 	[[ -f "$UBP_O/u-boot-sunxi-with-spl.bin" ]] || die "no $UBP_O/u-boot-sunxi-with-spl.bin"
@@ -433,39 +492,41 @@ else
 	# The probe must never be shipped with this board's clock: 792 on somebody
 	# else's RAM is exactly the guessing it is meant to avoid.
 	grep -q 'CONFIG_DRAM_CLK=624' "$MAINLINE/external/u-boot/configs/$UBOOT_PROBE_DEFCONFIG" || die "the probe defconfig is not at 624 MHz"
+	stamp_write uboot-probe -- "$OUT/u-boot-h713-probe.bin"
 fi
 # 2c. sunxi-fel with the S44 trap door (fork commit 269dfa2): the tool h713-install
 #     reaches the device with at all. A host program, built in the container
 #     (x86_64, libusb-1.0) -- belongs next to h713-install in the delivery directory.
-if ((SKIP_UBOOT)) && [[ -x "$OUT/sunxi-fel" ]]; then
-	say "2c/11 sunxi-fel -- skipped"
-else
-	say "2c/11 sunxi-fel (trap door, host program)"
+say "2c/11 sunxi-fel (trap door, host program)"
+in_common; git_in sunxi-tools "$MAINLINE/external/sunxi-tools"
+if ! stamp_fits sunxi-fel; then
 	in_container "make -s -C $WORK/mainline/external/sunxi-tools clean >/dev/null 2>&1; make -s -C $WORK/mainline/external/sunxi-tools sunxi-fel" > "$OUT/sunxi-fel-build.log" 2>&1 || { tail -20 "$OUT/sunxi-fel-build.log"; die "building sunxi-fel failed (log: $OUT/sunxi-fel-build.log)"; }
 	cp "$MAINLINE/external/sunxi-tools/sunxi-fel" "$OUT/sunxi-fel"
 	# (no grep -q behind a pipe: with pipefail strings dies of SIGPIPE and the test fails)
 	[[ $(strings -n 6 "$OUT/sunxi-fel" | grep -c 'FEL trap door') -gt 0 ]] || die "sunxi-fel without the trap-door marker -- wrong revision?"
+	stamp_write sunxi-fel -- "$OUT/sunxi-fel"
 fi
 
 # --- 3. kernel + modules ----------------------------------------------------
-if ((SKIP_KERNEL)) && [[ -f "$OUT/h713-kernel.fit" ]]; then say "3/11 kernel -- skipped (--skip-kernel)"
-else
-	say "3/11 kernel (board defconfig alone = delivery; BOARD=$BOARD, DTB $KERNEL_DTB)"
+say "3/11 kernel (board defconfig alone = delivery; BOARD=$BOARD, DTB $KERNEL_DTB)"
+in_common; tree_in kernel "$ROOT" mainline/patches/kernel mainline/build/build.sh "boards/$BOARD"; ver_in KERNEL_
+inp "kernel BOARD=$BOARD"
+KTAKEN=0; stamp_fits kernel && KTAKEN=1
+if ((!KTAKEN)); then
+	# build.sh makes the tree, the DTB, the FIT and the module tree build/modroot.<hash>
 	in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh kernel" > "$OUT/kernel-build.log" 2>&1 || { tail -20 "$OUT/kernel-build.log"; die "kernel build failed (log: $OUT/kernel-build.log)"; }
 	grep -o 'applied [0-9]* series patches' "$OUT/kernel-build.log" | sed 's/^/    /' || true
+	TREE_NAME=$(basename "$(ls -dt "$MAINLINE"/build/linux-6.18.38-*/ | head -1)")
 fi
 # The FIT names its configuration after the DTB (build.sh); an image for board X
 # must not quietly carry board Y's tree.
 [[ -f "$OUT/$KERNEL_DTB.dtb" ]] || die "no $OUT/$KERNEL_DTB.dtb -- build.sh did not build the DTB of boards/$BOARD"
 grep -q "conf-$KERNEL_DTB" "$OUT/h713-kernel.fit" || die "h713-kernel.fit carries no configuration conf-$KERNEL_DTB"
-TREE=$(ls -dt "$MAINLINE"/build/linux-6.18.38-*/ | head -1); TREE=${TREE%/}
+TREE="$MAINLINE/build/$TREE_NAME"
 [[ -f "$TREE/Module.symvers" ]] || die "no built kernel tree under $MAINLINE/build/"
-H=$(basename "$TREE" | sed 's/linux-6.18.38-//' | cut -c1-8)
+H=${TREE_NAME#linux-6.18.38-}; H=${H:0:8}
 MODROOT="$MAINLINE/build/modroot.$H"
-if ((SKIP_KERNEL)) && [[ -d "$MODROOT/lib/modules" ]]; then info "module tree $MODROOT is there"
-else
-	in_container "cd $(c "$TREE") && make -s ARCH=arm64 LLVM=1 INSTALL_MOD_PATH=$(c "$MODROOT") modules_install" >/dev/null
-fi
+((KTAKEN)) || stamp_write kernel TREE_NAME -- "$OUT/h713-kernel.fit" "$OUT/$KERNEL_DTB.dtb" "$MODROOT" "$TREE/Module.symvers"
 KREL=$(ls "$MODROOT/lib/modules" | head -1)
 info "tree $H, release $KREL, $(find "$MODROOT" -name '*.ko' | wc -l) modules"
 # the kernel's licence, with the syscall note it names, for the image's notices
@@ -474,11 +535,15 @@ install -m 0644 "$TREE/COPYING" "$TREE/LICENSES/preferred/GPL-2.0" "$TREE/LICENS
 
 # --- 4. aic8800 (always after the kernel, against the same tree) ------------
 say "4/11 aic8800 modules against tree $H"
-in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh aic8800" > "$OUT/aic8800-build.log" 2>&1 || { tail -20 "$OUT/aic8800-build.log"; die "aic8800 build failed"; }
-for k in aic8800_bsp aic8800_fdrv; do [[ -f "$OUT/modules/$k.ko" ]] || die "missing: $OUT/modules/$k.ko"; done
+in_common; tree_in aic8800 "$ROOT" mainline/patches/aic8800 mainline/build/build.sh; ver_in AIC8800_; in_step kernel
+if ! stamp_fits aic8800; then
+	in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh aic8800" > "$OUT/aic8800-build.log" 2>&1 || { tail -20 "$OUT/aic8800-build.log"; die "aic8800 build failed"; }
+	for k in aic8800_bsp aic8800_fdrv; do [[ -f "$OUT/modules/$k.ko" ]] || die "missing: $OUT/modules/$k.ko"; done
+	AIC_REV=$(basename "$(ls -dt "$MAINLINE"/build/aic8800-*/ | head -1)" | cut -d- -f2)   # aic8800-<revision>-<input hash>
+	stamp_write aic8800 AIC_REV -- "$OUT/modules/aic8800_bsp.ko" "$OUT/modules/aic8800_fdrv.ko" "$OUT/modules/aic8800_btlpm.ko"
+fi
 info "bsp + fdrv are there ($(stat -c %s "$OUT/modules/aic8800_fdrv.ko") bytes fdrv)"
-KVER=$(basename "$TREE" | cut -d- -f2)                    # linux-<version>-<input hash>
-AIC_REV=$(basename "$(ls -dt "$MAINLINE"/build/aic8800-*/ | head -1)" | cut -d- -f2)   # aic8800-<revision>-<input hash>
+KVER=$(echo "$TREE_NAME" | cut -d- -f2)                    # linux-<version>-<input hash>
 
 # --- 5. Debian keyring, pinned ----------------------------------------------
 say "5/11 Debian keyring for $DEBIAN_SUITE"
@@ -516,32 +581,44 @@ rm -rf "$NOTICE/static"
 for p in libfreetype-dev libpng-dev libbz2-dev libbrotli-dev zlib1g-dev; do
 	install -D -m 0644 "$SYSROOT/usr/share/doc/$p/copyright" "$NOTICE/static/$p/copyright" || die "no copyright file of $p in the sysroot"
 done
-in_container "cd $WORK/userspace/h713-tv && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-tv-cross.log" 2>&1 || { tail -20 "$OUT/h713-tv-cross.log"; die "cross-building h713-tv failed (log: $OUT/h713-tv-cross.log)"; }
-TV="$USERSPACE/h713-tv/h713-tv.aarch64-linux-gnu"; [[ -f "$TV" ]] || die "no $TV"
+TV="$USERSPACE/h713-tv/h713-tv.aarch64-linux-gnu"; OSD="$USERSPACE/h713-osd/h713-osd.aarch64-linux-gnu"
+SETTINGS="$USERSPACE/h713-settings/h713-settings.aarch64-linux-gnu"; AF="$USERSPACE/h713-autofocus/h713-afmetric.aarch64-linux-gnu"
+in_common; tree_in userspace "$ROOT" userspace/h713-tv userspace/h713-osd userspace/h713-settings userspace/h713-autofocus userspace/libh713osd userspace/libh713geom
+inp "sysroot ${SYSROOT_STAMP##*/}"
+if ! stamp_fits userspace; then
+	in_container "cd $WORK/userspace/h713-tv && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-tv-cross.log" 2>&1 || { tail -20 "$OUT/h713-tv-cross.log"; die "cross-building h713-tv failed (log: $OUT/h713-tv-cross.log)"; }
+	[[ -f "$TV" ]] || die "no $TV"
+	# The overlays over the picture (TODO 2.43-2.46): libc and libm only, with libh713osd and libh713geom
+	# compiled in; install-projekt.sh (5i) wants the binary and refuses without it.
+	in_container "cd $WORK/userspace/h713-osd && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-osd-cross.log" 2>&1 || { tail -20 "$OUT/h713-osd-cross.log"; die "cross-building h713-osd failed (log: $OUT/h713-osd-cross.log)"; }
+	[[ -f "$OSD" ]] || die "no $OSD"
+	# The settings page (package S): the same libraries, FreeType linked in; install-projekt.sh (5i) wants it too.
+	in_container "cd $WORK/userspace/h713-settings && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-settings-cross.log" 2>&1 || { tail -20 "$OUT/h713-settings-cross.log"; die "cross-building h713-settings failed (log: $OUT/h713-settings-cross.log)"; }
+	[[ -f "$SETTINGS" ]] || die "no $SETTINGS"
+	# The autofocus metric in C (Q11): optional for the tool, which falls back to Python,
+	# but the image should carry it - the fallback is ten times slower on the A53.
+	in_container "cd $WORK/userspace/h713-autofocus && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-afmetric-cross.log" 2>&1 || { tail -20 "$OUT/h713-afmetric-cross.log"; die "cross-building h713-afmetric failed (log: $OUT/h713-afmetric-cross.log)"; }
+	[[ -f "$AF" ]] || die "no $AF"
+	stamp_write userspace -- "$TV" "$OSD" "$SETTINGS" "$AF"
+fi
 info "h713-tv $(stat -c %s "$TV") bytes, $(file -b "$TV" 2>/dev/null | cut -d, -f1-2)"
-# The overlays over the picture (TODO 2.43-2.46): libc and libm only, with libh713osd and libh713geom
-# compiled in; install-projekt.sh (5i) wants the binary and refuses without it.
-in_container "cd $WORK/userspace/h713-osd && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-osd-cross.log" 2>&1 || { tail -20 "$OUT/h713-osd-cross.log"; die "cross-building h713-osd failed (log: $OUT/h713-osd-cross.log)"; }
-OSD="$USERSPACE/h713-osd/h713-osd.aarch64-linux-gnu"; [[ -f "$OSD" ]] || die "no $OSD"
 info "h713-osd $(stat -c %s "$OSD") bytes, $(file -b "$OSD" 2>/dev/null | cut -d, -f1-2)"
-# The settings page (package S): the same libraries, FreeType linked in; install-projekt.sh (5i) wants it too.
-in_container "cd $WORK/userspace/h713-settings && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-settings-cross.log" 2>&1 || { tail -20 "$OUT/h713-settings-cross.log"; die "cross-building h713-settings failed (log: $OUT/h713-settings-cross.log)"; }
-SETTINGS="$USERSPACE/h713-settings/h713-settings.aarch64-linux-gnu"; [[ -f "$SETTINGS" ]] || die "no $SETTINGS"
 info "h713-settings $(stat -c %s "$SETTINGS") bytes, $(file -b "$SETTINGS" 2>/dev/null | cut -d, -f1-2)"
-# The autofocus metric in C (Q11): optional for the tool, which falls back to Python,
-# but the image should carry it - the fallback is ten times slower on the A53.
-in_container "cd $WORK/userspace/h713-autofocus && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang" > "$OUT/h713-afmetric-cross.log" 2>&1 || { tail -20 "$OUT/h713-afmetric-cross.log"; die "cross-building h713-afmetric failed (log: $OUT/h713-afmetric-cross.log)"; }
-AF="$USERSPACE/h713-autofocus/h713-afmetric.aarch64-linux-gnu"; [[ -f "$AF" ]] || die "no $AF"
 info "h713-afmetric $(stat -c %s "$AF") bytes, $(file -b "$AF" 2>/dev/null | cut -d, -f1-2)"
 
 # --- 6b. mesa (panfrost only, no LLVM) for the GPU path -----------------------
 # The revision for the source notes of the mesa and libva tarballs comes from here, the host: in the container a git worktree's
 # .git points to a path that is not mounted, and the scripts would write "revision unknown"
-REPO_REV=$(git -C "$ROOT" describe --tags --always --dirty 2>/dev/null || echo unknown)
+REPO_REV=$(git -C "$ROOT" describe --tags --always --dirty --abbrev=12 2>/dev/null || echo unknown)
 say "6b/11 mesa cross-built (panfrost, EGL vendor for glvnd, GBM, Wayland platform; rootfs/mesa/build-mesa.sh)"
-in_container "cd $WORK && REPO_REV=$(printf %q "$REPO_REV") rootfs/mesa/build-mesa.sh" > "$OUT/mesa-cross.log" 2>&1 || { tail -20 "$OUT/mesa-cross.log"; die "mesa build failed (log: $OUT/mesa-cross.log, $OUT/mesa-build.log)"; }
-MESA="$OUT/mesa-panfrost-25.0.7.tar"; [[ -f "$MESA" ]] || die "no $MESA"
-grep -E "NEEDED|installed" "$OUT/mesa-cross.log" | sed 's/^ *//; s/^/    /'
+MESA="$OUT/mesa-panfrost-25.0.7.tar"; MESA_PREFIX="$MAINLINE/build/mesa-stage/usr/local"
+in_common; tree_in mesa "$ROOT" rootfs/mesa; inp "sysroot ${SYSROOT_STAMP##*/}"   # (the tar's source note names REPO_REV; not an input, the stamp's commit says it)
+if ! stamp_fits mesa; then
+	in_container "cd $WORK && REPO_REV=$(printf %q "$REPO_REV") rootfs/mesa/build-mesa.sh" > "$OUT/mesa-cross.log" 2>&1 || { tail -20 "$OUT/mesa-cross.log"; die "mesa build failed (log: $OUT/mesa-cross.log, $OUT/mesa-build.log)"; }
+	[[ -f "$MESA" ]] || die "no $MESA"
+	grep -E "NEEDED|installed" "$OUT/mesa-cross.log" | sed 's/^ *//; s/^/    /'
+	stamp_write mesa -- "$MESA" "$MESA_PREFIX/lib/libEGL_mesa.so.0"
+fi
 
 # --- 6c. h713-warp cross-built against the mesa stage -------------------------
 # The keystone warp links libEGL and libGLESv2, the glvnd dispatchers: the linker finds libEGL.so and
@@ -549,12 +626,16 @@ grep -E "NEEDED|installed" "$OUT/mesa-cross.log" | sed 's/^ *//; s/^/    /'
 # (libEGL_mesa.so.0) come from the stage build-mesa.sh leaves under mainline/build/mesa-stage;
 # install-projekt.sh (5c) wants the binary and refuses without it.
 say "6c/11 h713-warp cross-built (EGL, GLES2: glvnd dispatchers of the sysroot, vendor from the mesa stage)"
-MESA_PREFIX="$MAINLINE/build/mesa-stage/usr/local"
 [[ -f "$MESA_PREFIX/lib/libEGL_mesa.so.0" ]] || die "no $MESA_PREFIX/lib/libEGL_mesa.so.0 after the mesa step"
 [[ -e "$SYSROOT/usr/lib/aarch64-linux-gnu/libEGL.so" && -e "$SYSROOT/usr/lib/aarch64-linux-gnu/libGLESv2.so" ]] || \
 	die "no libEGL.so / libGLESv2.so in the sysroot -- libglvnd-dev missing from SYSROOT_PACKAGES?"
-in_container "cd $WORK/userspace/h713-warp && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang MESA_PREFIX=$(c "$MESA_PREFIX")" > "$OUT/h713-warp-cross.log" 2>&1 || { tail -20 "$OUT/h713-warp-cross.log"; die "cross-building h713-warp failed (log: $OUT/h713-warp-cross.log)"; }
-WARP="$USERSPACE/h713-warp/h713-warp.aarch64-linux-gnu"; [[ -f "$WARP" ]] || die "no $WARP"
+WARP="$USERSPACE/h713-warp/h713-warp.aarch64-linux-gnu"
+in_common; tree_in warp "$ROOT" userspace/h713-warp userspace/libh713geom; inp "sysroot ${SYSROOT_STAMP##*/}"; in_step mesa
+if ! stamp_fits warp; then
+	in_container "cd $WORK/userspace/h713-warp && make -s -B cross SYSROOT=$(c "$SYSROOT") CROSS_CC=clang MESA_PREFIX=$(c "$MESA_PREFIX")" > "$OUT/h713-warp-cross.log" 2>&1 || { tail -20 "$OUT/h713-warp-cross.log"; die "cross-building h713-warp failed (log: $OUT/h713-warp-cross.log)"; }
+	[[ -f "$WARP" ]] || die "no $WARP"
+	stamp_write warp -- "$WARP"
+fi
 info "h713-warp $(stat -c %s "$WARP") bytes, $(file -b "$WARP" 2>/dev/null | cut -d, -f1-2)"
 
 # --- 6d. libva: the VA-API driver for the media family of profiles ---------------
@@ -563,11 +644,16 @@ info "h713-warp $(stat -c %s "$WARP") bytes, $(file -b "$WARP" 2>/dev/null | cut
 LIBVA_TAR=
 if ((WANT_LIBVA)); then
 	say "6d/11 libva-v4l2_request cross-built (VA-API driver on cedrus; rootfs/libva/build-libva.sh)"
-	in_container "cd $WORK && REPO_REV=$(printf %q "$REPO_REV") rootfs/libva/build-libva.sh" > "$OUT/libva-cross.log" 2>&1 || { tail -20 "$OUT/libva-cross.log"; die "libva build failed (log: $OUT/libva-cross.log, $OUT/libva-build.log)"; }
-	LIBVA_TAR="$OUT/libva-v4l2-request-1.2.tar"; [[ -f "$LIBVA_TAR" ]] || die "no $LIBVA_TAR"
+	LIBVA_TAR="$OUT/libva-v4l2-request-1.2.tar"
+	in_common; tree_in libva "$ROOT" rootfs/libva; inp "sysroot ${SYSROOT_STAMP##*/}"
+	if ! stamp_fits libva; then
+		in_container "cd $WORK && REPO_REV=$(printf %q "$REPO_REV") rootfs/libva/build-libva.sh" > "$OUT/libva-cross.log" 2>&1 || { tail -20 "$OUT/libva-cross.log"; die "libva build failed (log: $OUT/libva-cross.log, $OUT/libva-build.log)"; }
+		[[ -f "$LIBVA_TAR" ]] || die "no $LIBVA_TAR"
+		grep -E "NEEDED|patches applied|installed" "$OUT/libva-cross.log" | sed 's/^ *//; s/^/    /'
+		stamp_write libva -- "$LIBVA_TAR"
+	fi
 	LIBVA_COMMIT=$(sed -n 's/^LIBVA_COMMIT=\([0-9a-f]*\).*/\1/p' "$ROOT/rootfs/libva/build-libva.sh")
 	LIBVA_PATCHES=$(grep -cv '^#\|^$' "$ROOT/rootfs/libva/patches/series")
-	grep -E "NEEDED|patches applied|installed" "$OUT/libva-cross.log" | sed 's/^ *//; s/^/    /'
 	info "driver tarball $(stat -c %s "$LIBVA_TAR") bytes, upstream ${LIBVA_COMMIT:0:12} + $LIBVA_PATCHES patches"
 fi
 
@@ -598,16 +684,14 @@ write_sources() {
 }
 
 # --- 7. rootfs --------------------------------------------------------------
-if ((SKIP_ROOTFS)) && [[ -f "$ROOTFS/out/hy310-rootfs.tar" ]]; then say "7/11 rootfs -- skipped (--skip-rootfs)"
-	# the tar carries its board's /etc/h713/features: one for another board would
-	# expect hardware this one has not (or hide what it has)
-	rec=$(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./etc/h713/features 2>/dev/null | sed -n 's/^board = //p') || rec=
-	[[ -z "$rec" || "$rec" == "$BOARD" ]] || die "the rootfs to reuse was built for board $rec, not $BOARD -- build it again (no --skip-rootfs)"
-	# ... and its profile: a base tar must not become the image of --profile media,desktop (or the other way round)
-	recp=$(sed -n 's/^profile=//p' "$ROOTFS/out/hy310-rootfs.manifest" 2>/dev/null) || recp=
-	[[ "${recp:-none}" == "${PROFILES:-none}" ]] || die "the rootfs to reuse was built with profile '${recp:-?}', not '${PROFILES:-none}' -- build it again (no --skip-rootfs)"
-else
-	say "7/11 rootfs ($DEBIAN_SUITE/arm64${PROFILES:+, profile $PROFILES}, mmdebstrap in the container as root)"
+say "7/11 rootfs ($DEBIAN_SUITE/arm64${PROFILES:+, profile $PROFILES}, mmdebstrap in the container as root)"
+# What goes in: this repository's rootfs/ and the board, the profiles, the switches, and the results of every step before it that
+# the tree carries (the notices of the boot chain and the kernel are made from those). The repository's commit is not one: the
+# tar's source note names it, and the stamp's commit tells a take-over from another commit (header).
+in_common; tree_in rootfs "$ROOT" rootfs ":!rootfs/tests" "boards/$BOARD"; inp "rootfs BOARD=$BOARD VARIANT=$VARIANT PROFILES=$PROFILES STANDBY=$WANT_STANDBY LIBVA=$WANT_LIBVA"
+inp "debian $DEBIAN_SUITE $DEBIAN_MIRROR keyring $KEYRING_DEB_SHA256 sysroot ${SYSROOT_STAMP##*/}"; [[ -z "$WIFI_ENV" ]] || inp "wifi-env $(sha < "$WIFI_ENV")"
+for r in bl31 kernel aic8800 userspace mesa warp; do in_step $r; done; [[ -f "$OUT/scp.bin" ]] && in_step crust; ((WANT_LIBVA)) && in_step libva
+if ! stamp_fits rootfs; then
 	write_sources > "$NOTICE/SOURCES"
 	CRUST_ARGS=; [[ -f "$OUT/scp.bin" ]] && CRUST_ARGS="--crust $(c "$OUT")/scp.bin"
 	((WANT_STANDBY)) && CRUST_ARGS="$CRUST_ARGS --standby"
@@ -615,6 +699,7 @@ else
 	# --image-size 1G and unread here; it broke the build when the profile tree grew past 1 GiB (16.10.2026, 1152 MiB).
 	in_container_root "cd $(c "$ROOTFS") && ./build-rootfs.sh --board $BOARD ${VARIANT:+--variant $VARIANT} --keyring $(c "$KEYRING") --modroot $(c "$MODROOT") --h713-tv $(c "$TV") --mesa $(c "$MESA") --notice $(c "$NOTICE") --no-ext4 ${PROFILES:+--profile $PROFILES} ${LIBVA_TAR:+--libva $(c "$LIBVA_TAR")} ${WIFI_ENV:+--wifi-env $(c "$WIFI_ENV")} $CRUST_ARGS" > "$OUT/rootfs-build.log" 2>&1 || { grep -E "^error:|acceptance failed|^!!" "$OUT/rootfs-build.log" | tail -8; die "rootfs build failed (log: $OUT/rootfs-build.log)"; }
 	grep -E "tree size|wifi.env from|acceptance" "$OUT/rootfs-build.log" | sed 's/^/    /' | head -4
+	stamp_write rootfs -- "$ROOTFS/out/hy310-rootfs.tar" "$ROOTFS/out/hy310-rootfs.manifest"
 fi
 
 # --- 8. ext4 inputs ---------------------------------------------------------
@@ -626,20 +711,29 @@ say "8/11 ext4 inputs (hy310-boot 128 MiB, hy310-rootfs $ROOTFS_EXT4_SIZE, the v
 # self-test (step 10) later puts probe-b-gefuellt.img next to it -- which does not
 # work in a root-owned directory (P3, 12.09.).
 mkdir -p "$INSTALLER/tmp"
-in_container_root "ROOTFS_EXT4_SIZE=$ROOTFS_EXT4_SIZE FIT=$(c "$OUT")/h713-kernel.fit ROOTFS_OUT=$(c "$ROOTFS")/out bash $(c "$INSTALLER")/mkimage-inputs.sh" > "$OUT/inputs.log" 2>&1 || { tail -12 "$OUT/inputs.log"; die "ext4 inputs failed"; }
-grep -c "  OK" "$OUT/inputs.log" | sed 's/^/    OK lines: /'
+in_common; tree_in inputs "$ROOT" installer/mkimage-inputs.sh; inp "ext4 size $ROOTFS_EXT4_SIZE"; in_step kernel; in_step rootfs
+if ! stamp_fits ext4; then
+	in_container_root "ROOTFS_EXT4_SIZE=$ROOTFS_EXT4_SIZE FIT=$(c "$OUT")/h713-kernel.fit ROOTFS_OUT=$(c "$ROOTFS")/out bash $(c "$INSTALLER")/mkimage-inputs.sh" > "$OUT/inputs.log" 2>&1 || { tail -12 "$OUT/inputs.log"; die "ext4 inputs failed"; }
+	grep -c "  OK" "$OUT/inputs.log" | sed 's/^/    OK lines: /'
+	stamp_write ext4 -- "$INSTALLER/tmp/hy310-boot.ext4" "$INSTALLER/tmp/hy310-rootfs-platz.ext4"
+fi
 
 # --- 9. image ---------------------------------------------------------------
 say "9/11 image $NAME"
 TEST_FOR=(); ((TEST_IMAGE)) && TEST_FOR=(--test-for "$TEST_PROFILE")
 # --board: the table is cut for this board's eMMC (its profile's layout.disk_sectors), a release image too
 ARISC_FW=vendor; [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && ARISC_FW=crust      # the table's "arisc" (TODO 5.20)
-( cd "$INSTALLER" && python3 h713-mkimage build -o "out/$NAME.img" "${TEST_FOR[@]+"${TEST_FOR[@]}"}" \
-	--board "$TEST_PROFILE" --arisc "$ARISC_FW" \
-	--spl "$OUT/spl-release.bin" --uboot "$OUT/uboot-proper-release.bin" --env "$OUT/hy310-env-release.bin" \
-	--boot-ext4 tmp/hy310-boot.ext4 --rootfs-ext4 tmp/hy310-rootfs-platz.ext4 ) > "$OUT/mkimage.log" 2>&1 \
-	|| { tail -20 "$OUT/mkimage.log"; die "image build failed (log: $OUT/mkimage.log)"; }
-grep -E "environment:|OK   $NAME|placeholders for|in all" "$OUT/mkimage.log" | sed 's/^/    /'
+in_common; tree_in mkimage "$ROOT" installer ":!installer/tests"; inp "image $NAME $TEST_PROFILE ${TEST_FOR[*]-} arisc=$ARISC_FW"
+in_step uboot-release; in_step ext4
+if ! stamp_fits image; then
+	( cd "$INSTALLER" && python3 h713-mkimage build -o "out/$NAME.img" "${TEST_FOR[@]+"${TEST_FOR[@]}"}" \
+		--board "$TEST_PROFILE" --arisc "$ARISC_FW" \
+		--spl "$OUT/spl-release.bin" --uboot "$OUT/uboot-proper-release.bin" --env "$OUT/hy310-env-release.bin" \
+		--boot-ext4 tmp/hy310-boot.ext4 --rootfs-ext4 tmp/hy310-rootfs-platz.ext4 ) > "$OUT/mkimage.log" 2>&1 \
+		|| { tail -20 "$OUT/mkimage.log"; die "image build failed (log: $OUT/mkimage.log)"; }
+	grep -E "environment:|OK   $NAME|placeholders for|in all" "$OUT/mkimage.log" | sed 's/^/    /'
+	stamp_write image -- "$DELIVERY/$NAME.tabelle.json" "$DELIVERY/$NAME.sha256" "$DELIVERY/$NAME-README.txt" "$DELIVERY/$NAME"-{a-bootkette,b-system,c-gptkopie}.img
+fi
 
 # --- 10. check --------------------------------------------------------------
 say "10/11 check"
@@ -689,6 +783,8 @@ fi
 
 # --- 11. stamp --------------------------------------------------------------
 say "11/11 stamp"
+((${#FOREIGN[@]})) && REPRO_WHY+=("steps taken over from the build of another commit or of a tree with local changes: ${FOREIGN[*]}")
+repro_line
 STAMP="$DELIVERY/$NAME.BUILD.txt"
 {
 	echo "$NAME  built $(date -u '+%Y-%m-%dT%H:%M:%SZ') in $(elapsed)"
@@ -713,6 +809,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	echo "$W: $(git -C "$MAINLINE" rev-parse --short HEAD 2>/dev/null) ($(git -C "$MAINLINE" status --short 2>/dev/null | wc -l) local changes)"
 	echo "source date: $SOURCE_DATE_EPOCH ($(date -u -d "@$SOURCE_DATE_EPOCH" '+%Y-%m-%dT%H:%M:%SZ'), committer date of $REPRO_COMMIT)"
 	echo "$REPRO_LINE"
+	echo "steps:    built ${BUILT[*]:-none}; taken over from their stamps ${TAKEN[*]:-none} (mainline/build/stempel, TODO 5.17)"
 	echo "profile:  ${PROFILES:-none (base image)}$( [[ -n "$PROFILES" ]] && echo ' -- not a release image: over the 500 MiB of doku/107 section 7.1, the base rootfs tar is replaced by the profile tar' )"
 	if [[ -n "$LIBVA_TAR" ]]; then
 		echo "libva:    libva-v4l2_request ${LIBVA_COMMIT:0:12} + $LIBVA_PATCHES patches (rootfs/libva/patches/series), tar sha256 $(sha256sum "$LIBVA_TAR" | cut -c1-16)"

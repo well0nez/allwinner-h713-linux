@@ -15,7 +15,8 @@ the Debian 13 root filesystem; the ext4 inputs; the image; verification; a build
 or it stops. Without `--vendor` it ends after the structural check, which is a weaker statement.
 
 Roughly 20 minutes from cold (including the kernel tarball download), about 10 with a kernel tree already
-built. Everything runs in a container; **nothing is built on your host**.
+built. Everything runs in a container; **nothing is built on your host**. An abort costs nothing but the step that was
+running: [the same command again](#going-on-after-an-abort) goes on there.
 
 ## Prerequisites
 
@@ -41,7 +42,6 @@ vendor blob, a key, a dump, an image or a private identity reached the tree.
 | Switch | Effect |
 |---|---|
 | `--dry-run` | say what would be built, build nothing |
-| `--skip-bl31`, `--skip-uboot`, `--skip-kernel`, `--skip-rootfs` | reuse what is already there |
 | `--board <id>`, `--variant <name>` | the board, and for a board with several stock firmwares the variant (required there) - see *Boards* |
 | `--test-image` | a TEST image for a board in test - see *Boards* |
 | `--wifi-env FILE` | put your own `/etc/h713/wifi.env` into the image instead of the public default. Never for an image you hand on: the file, password included, is then inside it, and the stamp says `reproducible: no`. A release is built without it; copy your own file onto the device after installing |
@@ -49,9 +49,26 @@ vendor blob, a key, a dump, an image or a private identity reached the tree.
 | `--profile NAME[,NAME]` | `media`, `desktop`: the rootfs gets the package lists and overlays of those profiles (players, Kodi, a desktop, a browser) and the VA-API driver - see *The media image* |
 | `--jobs N` | parallelism (default: all cores) |
 
-The skips are for iterating. A release build should run without them: since 2026-09-12 the script wipes
-the TF-A and U-Boot build directories first, because a stale BL31 from an earlier build silently shipped
-in three images before anyone noticed ([STATUS.md](STATUS.md), *Boot chain*).
+There is no switch for iterating, and none to build from scratch: see the next section. (`--skip-bl31`, `--skip-uboot`,
+`--skip-kernel` and `--skip-rootfs` are gone; they asked whether a result was *there*, not whether it was the one these
+inputs make. A stale BL31 from an earlier build silently shipped in three images that way, [STATUS.md](STATUS.md),
+*Boot chain*.)
+
+## Going on after an abort
+
+Every step writes a stamp, `mainline/build/stempel/<step>`, when it has finished: the hash of its inputs and the sha256 of
+each of its results. Run the same command again and a step is taken over when its inputs hash the same and every result is
+still what the stamp says; the first step that does not fit is built, and so is every step that builds on a result of it.
+The inputs are the sources the step reads (a submodule's files and commit, `mainline/patches/kernel`, `rootfs/`,
+`userspace/` ...), the board and the switches, `release/build-all.sh` itself, the compiler's version, and the results of the
+steps it follows. A step that is built anew and comes out with the same bytes lets the steps after it stand.
+
+Not iterating on the kernel inside one tree: a changed patch is a new tree, built whole (the tree is named after a hash of
+the series, `build/linux-<version>-<hash>/`). What the stamps do not see: a package state of the Debian mirror (a rootfs
+is built again only when something it is made of changes), and a toolchain change that leaves `clang --version` as it was.
+Delete `mainline/build/stempel/<step>` to make a step run again. A fresh clone has no stamps, so a release is built from
+the first step to the last, as it should be; the image's `.BUILD.txt` names under `steps:` what was built and what was
+taken over, and says `reproducible: no` if a step was taken over from the build of another commit.
 
 ## Boards
 
@@ -117,12 +134,12 @@ installer/out/          <name>-{a-bootkette,b-system,c-gptkopie}.img, .tabelle.j
                         .sha256, -README.txt, .BUILD.txt
 ```
 
-The `.BUILD.txt` stamp records the series hash, the defconfig hash, the kernel tree digest, the three
+The `.BUILD.txt` stamp records the series hash, the defconfig hash, the kernel tree digest, the
 submodule commits, the source date and a sha256 for each component. Quote it when you report a problem.
 
 The build clock is the commit's date (`SOURCE_DATE_EPOCH`, handed to every step), so two builds of the same
 commit give the same building blocks, from any checkout path; the stamp's `reproducible:` line says
-`yes`, or why not (local changes, a `--skip-*`, `--wifi-env`). The rootfs tar repeats only while the Debian
+`yes`, or why not (local changes, a step taken over from the build of another commit, `--wifi-env`). The rootfs tar repeats only while the Debian
 mirror is at the same state, and the image files themselves still differ (the ext4 inputs carry their own
 UUIDs and times) - compare stamps, not images ([RELEASES.md](RELEASES.md)).
 
