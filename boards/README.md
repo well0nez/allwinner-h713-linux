@@ -20,7 +20,7 @@ for instance, lives under `hy200-qz713df-a1`.
 | [`hy200-qz713-v2`](hy200-qz713-v2/) | "HY300 Pro+" (2025, LPDDR3) | LPDDR3 720 MHz | 1280×720 (0x34) | profile only |
 | [`hy300-t08`](hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280×720 (0x34) | profile only |
 | [`hy350`](hy350/) | HY350 (2024) | DDR3 792 MHz | 1920×1080 (0x30) | profile only |
-| `l018` | L018 (2025) | unknown | unknown | profile only, no board directory |
+| [`l018`](l018/) | L018 (2025) | DDR3 792 MHz | 1920×1080 dual (0x30) | profile only; a TEST image for its owner (24.10.2026) |
 
 The same table stands in the top-level [README](../README.md#boards); a change goes into both.
 

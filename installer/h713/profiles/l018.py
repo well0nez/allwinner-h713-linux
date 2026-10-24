@@ -11,13 +11,15 @@ PROFILE = {
     "name": "L018",                          # X:144
     "description": "L018 -- Allwinner H713, reference design h713_tuna_p3, "
                    "stock build 2025-05-14 (Projector05141211)",   # X:145, translated
-    # Everything below comes from the extractor tables, which were filled from the first run on a real L018
-    # (X:57-62, S42 section 4). The stock update.img of this board (sunxi_version 2025-05-14 12:19:36,
-    # 1869393920 bytes, sha256 812392c7d3de68433b0716aa94155c38d87898956b9fc7e4998cb12b9e111066) has been read
-    # since (24.10.2026): every value below matches it, and its boot0 (but for the DRAM words boot0 writes back),
-    # sunxi package, bootloader_a/_b, vendor_boot, dtbo, vbmeta* and vendor match the eMMC of a running L018 byte
-    # for byte. Nothing of ours has run on this board, hence still "profile-only".
-    # (Until 24.10.2026 this comment said there was no image and no dump of this board on this host.)
+    # The stock, reference and expected values come from the extractor tables (X:57-62, S42 section 4),
+    # filled by its first run over this board's stock update.img (sunxi_version 2025-05-14 12:19:36,
+    # 1869393920 bytes, sha256 812392c7d3de68433b0716aa94155c38d87898956b9fc7e4998cb12b9e111066); dram,
+    # layout and panel were read from the same image on 24.10.2026 (h713.facts.image_facts). Its boot0
+    # (but for the DRAM words boot0 writes back), sunxi package, bootloader_a/_b, vendor_boot, dtbo,
+    # vbmeta* and vendor match the eMMC of a running L018 byte for byte (24.10.2026). Nothing of ours
+    # has run on this board, hence still "profile-only".
+    # (Until 24.10.2026 this comment said there was no image and no dump of this board on this host,
+    # and that the extractor had run over a real L018.)
     "status": "profile-only",
     "verified_by": None,
     "soc": "H713 (sun50iw12)",               # X:162 dtb_compatible "allwinner,tv303"
@@ -39,15 +41,65 @@ PROFILE = {
         "strong_features": ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version",
                             "arisc_version", "build_fingerprint", "mips_database_sha256"),
     },
-    "dram": None,                            # not taken over yet: the stock image's boot0 carries it
-    "layout": None,                          # not taken over yet: the stock image carries sys_partition and GPT
-    # I:95 EINMALIG only for secure-storage, the one region whose position is fixed for every H713;
-    # private and Reserve0 have to be found by name in the device's own GPT (A0 section 5, issue #1
-    # defect 2) -- this board's GPT has never been read.
+    "dram": {                                # image boot0_sdcard.fex+0x38 (facts.json boot0.dram); word for word
+                                             # the HY310's (installer/h713/profiles/hy310.py), compared 24.10.2026
+        "clk": 792, "type": 3, "zq": 0x7b7bfb, "odt_en": 1,
+        "para1": 0x10f4, "para2": 0,
+        "mr0": 0x1c70, "mr1": 0x40, "mr2": 0x18, "mr3": 0,
+        "tpr0": 0x4a2195, "tpr1": 0x2423190, "tpr2": 0x8b061, "tpr3": 0xb4787896,
+        "tpr4": 0, "tpr5": 0x48484848, "tpr6": 0x48, "tpr7": 0x1620121e,
+        "tpr8": 0, "tpr9": 0, "tpr10": 0, "tpr11": 0x44340000,
+        "tpr12": 0x6666, "tpr13": 0x34010100,
+        "source": "boot0_sdcard.fex offset 0x38, update.img",
+    },
+    "layout": {                              # image sys_partition.fex (facts.json sys_partition); the device's GPT
+                                             # read on 24.10.2026 has the same names, starts and sizes
+        "disk_sectors": 15269888,            # sunxi_gpt.header.last_usable + 34; /proc/partitions of the device
+        "first_usable": 73728,               # sunxi_gpt.header.first_usable
+        "entries": 26,                       # len(sys_partition) = sunxi_gpt.header.entries
+        "partitions": [
+            ("bootloader_a",       73728,    65536, "boot-resource.fex"),
+            ("bootloader_b",      139264,    65536, "boot-resource.fex"),
+            ("env_a",             204800,      512, "env.fex"),
+            ("env_b",             205312,      512, None),
+            ("boot_a",            205824,   131072, "boot.fex"),
+            ("boot_b",            336896,   131072, None),
+            ("vendor_boot_a",     467968,    65536, "vendor_boot.fex"),
+            ("vendor_boot_b",     533504,    65536, None),
+            ("super",             599040,  4194304, "super.fex"),
+            ("misc",             4793344,    32768, "misc.fex"),
+            ("vbmeta_a",         4826112,      256, "vbmeta.fex"),
+            ("vbmeta_b",         4826368,      256, None),
+            ("vbmeta_system_a",  4826624,      128, "vbmeta_system.fex"),
+            ("vbmeta_system_b",  4826752,      128, None),
+            ("vbmeta_vendor_a",  4826880,      128, "vbmeta_vendor.fex"),
+            ("vbmeta_vendor_b",  4827008,      128, None),
+            ("frp",              4827136,     1024, None),
+            ("empty",            4828160,    30720, None),
+            ("metadata",         4858880,    32768, None),
+            ("private",          4891648,    32768, None),
+            ("dtbo_a",           4924416,     4096, "dtbo.fex"),
+            ("dtbo_b",           4928512,     4096, None),
+            ("media_data",       4932608,   524288, None),
+            ("Reserve0_a",       5456896,    32768, "Reserve0.fex"),
+            ("Reserve0_b",       5489664,    32768, None),
+            ("UDISK",            5522432,        0, None),
+        ],
+        "raw": [("boot0_sdcard.fex", 16), ("boot0_sdcard.fex", 256),
+                ("boot_package.fex", 24576), ("boot_package.fex", 32800)],
+        # facts.json layout_consistency is empty: sys_partition.fex and sunxi_gpt.fex agree (on the HY310
+        # they disagree about media_data).
+        "sunxi_gpt_disagrees": None,
+    },
+    # I:95 EINMALIG -- exists only on this device: always dumped, never written. Positions from the
+    # layout above, which the device's GPT confirms (24.10.2026); its secure storage carries, besides
+    # the HDCP items, the factory calibration of camera and tilt sensor (JbCam*, PoCam*, GsInitXYZ);
+    # item names read on the device, contents not read.
     "unique_regions": [
-        ("secure-storage", 12288, 2048, "HDCP keys, WLAN/BT MAC addresses, serial number"),
-        ("private", "by-name", None, "Android secure storage partition"),
-        ("Reserve0", "by-name", None, "panel_config.ini and calibration; may be a Reserve0_a/_b pair"),
+        ("secure-storage", 12288, 2048, "HDCP keys, WLAN/BT MAC addresses, serial number, camera/tilt calibration"),
+        ("private", 4891648, 32768, "Android secure storage partition"),
+        ("reserve0-a", 5456896, 32768, "Reserve0, slot A"),
+        ("reserve0-b", 5489664, 32768, "Reserve0, slot B"),
     ],
     # A0 section 5: partitions no stock image supplies (or supplies wrongly). "Reserve0*" matches the
     # single Reserve0 as well as the Reserve0_a/_b pair; media_data is /oem, where the vendor looks for
@@ -66,7 +118,16 @@ PROFILE = {
              "name": "HY310 (QZ713 V3.1)", "hdcp_wait_va": 0x4b13d0a4},
         ],
     },
-    "panel": None,                           # not taken over yet: the stock image's Reserve0 carries panel_config.ini
+    "panel": {                               # image Reserve0.fex:panel_config.ini -- vendor copy identical;
+                                             # the HY310's panel but for pwm_channel (2) and default_backlight (100)
+        "declared_project_id": 0x30,         # ProjectID 48
+        "width": 1920, "height": 1080, "dual_port": True,
+        "htotal": 2128, "vtotal": 1120, "dclk_hz": 143001600,
+        "hsync": 44, "vsync": 5, "hbp": 88, "vbp": 20,
+        "hsync_pol": 1, "vsync_pol": 1,
+        "pwm_channel": 3, "pwm_freq": 25000,
+        "source": "Reserve0.fex:panel_config.ini",
+    },
     # X:146 GERAETE["l018"]["referenz"] -- values verbatim. EDID and MSP patch are byte-identical
     # with the HY310 (S42 section 4); of the mips/ set only database.TSE differs (S42 section 9).
     "reference": {
@@ -115,7 +176,6 @@ PROFILE = {
         "sunxi_version": "2025-05-14 12:19:36",
         "mips_database_sha256": "002ad401d581a293d56106c8faf361eb9919f234562a6d7c316c1de1438a2aac",
     },
-    "board_dt": None,                        # no device tree of ours has booted on this board
-                                             # (boards/<id>/board.env leaves KERNEL_DTB empty)
-    "uboot_board": None,                     # no U-Boot base defconfig of ours for this board
+    "board_dt": "sun50i-h713-l018",          # kernel patch 0331; it has not booted on this board yet
+    "uboot_board": "hy310",                  # the HY310's base unchanged: same DRAM words, same panel (boards/l018/)
 }
