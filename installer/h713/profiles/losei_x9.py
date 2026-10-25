@@ -35,8 +35,8 @@ PROFILE = {
         "arisc_version": "TV-303  ARISC  00.00.00.09 Date:Sep 21 2024",
         # R dump LBA 24576: sunxi-package, 5 items. monitor (66060 B) and optee (275328 B) are
         # left out although their size is known: R prints their sha256 as a 16-hex prefix only
-        # ('017d32e1f283686f...', '58d8a6a5c6c1ad14...'), and a package item needs a full digest.
-        # They come with the owner's next report (TODO 4.13).
+        # ('017d32e1f283686f...', '58d8a6a5c6c1ad14...') - our extract.py cut them there, fixed
+        # since - and a package item needs a full digest. His next extract run prints them whole.
         "package_items": {
             "u-boot":  (638976, "f839d8050f6519abc36426070caf12e1ad3422d2bef8c2edc2d6c4b0267dbd1a"),
             "scp":     (176132, "3cf4065e77001953e9a0273d488d66cdf0581003d090e00272c40eede29c682b"),
@@ -52,7 +52,9 @@ PROFILE = {
     },
     # I3: the 24 u32 of the vendor boot0 at LBA 16 + 0x38, read off his device by h713_probe and
     # printed a second time by identify from his dump -- both agree. A device read, not an image:
-    # para2 = 0 is what his eMMC carries (the HY310 runs 0x04000000 there).
+    # para2 = 0 is what his eMMC carries (the HY310 runs 0x04000000 there). para2 and tpr13 are
+    # still bit for bit the HY300 T08 image's unpatched pair, and our SPL has never run that pair
+    # (boards/losei-x9/uboot.config).
     # Word for word the HY300 T08's block except clk (744 vs 640), tpr11 and tpr12.
     "dram": {
         "clk": 744, "type": 3, "zq": 0x7b7bfb, "odt_en": 1,

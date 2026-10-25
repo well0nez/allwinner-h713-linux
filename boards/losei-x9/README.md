@@ -28,10 +28,12 @@ No stock image and no dump of this board exist here; everything below comes from
 One source, three outputs of his, all read-only (issue #3, 25.10.2026):
 
 - **DRAM** - the 24 words of the vendor boot0 at LBA 16 + 0x38. `h713_probe` read them on the device
-  and `h713-install identify` printed the same block from his dump; both agree, so the pair a
-  flashing tool patches needs no caveat here: `para2` is 0 and `tpr13` is `0x34010100` on this
-  board's eMMC. The block is the HY300 T08's word for word except the clock (744 against 640 MHz)
-  and the PHY tuning `tpr11`/`tpr12`, which is the HY310's pair here.
+  and `h713-install identify` printed the same block from his dump; both agree. The block is the
+  HY300 T08's word for word except the clock (744 against 640 MHz) and the PHY tuning
+  `tpr11`/`tpr12`, which is the HY310's pair here. Note `para2` = 0 and `tpr13` = `0x34010100`:
+  read off his eMMC, and still bit for bit the HY300 T08 *image's* unpatched pair. Our SPL reads
+  bits of both that differ from the pair it has run with (`0x04000000` / `0xb4016103`), so no
+  build uses them until a run with the proven pair at his clock has worked.
 - **Panel** - `vendor:/etc/tvconfig/panel_config/panel_config.ini`, as `h713-extract --profile`
   derived it into a panel row (`panel.env`, 10 checks OK, 1 WARN). Project id `0x33` is **new**:
   `h713_disp_panels[]` in the U-Boot fork knows `0x30` (1920x1080 dual) and `0x34` (1280x720
@@ -55,13 +57,16 @@ lines that matter are swapped against every tree we ship:
 
 | Function | This board | Ours (HY310 family) |
 |---|---|---|
-| Fan on/off | **PB4** | PWM channel 2 on PB4 is the panel backlight PWM |
-| Lamp / backlight enable | **PB6** (`timing_bl`) | not PB6 |
-| Backlight PWM | channel 0, 480 Hz | PWM2 (HY310), channel 5 (0x34 boards) |
+| Fan on/off | **PB4** | **PB5**, shared with the backlight enable |
+| Lamp / backlight enable | **PB6** (`timing_bl`) | **PB5** (the same line) |
+| Backlight PWM | channel 0, 480 Hz | PWM2 on **PB4** (HY310 tree), channel 5 (0x34 boards) |
+| USB-A VBUS | PC2 (USB1) | PL3 |
 
-So a device tree of ours would drive this board's **fan** with a 25 kHz backlight PWM. That is the
-reason `KERNEL_DTB` is empty and no test image exists: nothing may be written to this board's pins
-before its own tree exists (the PB5 incident of 19.09.2026, `referenz/irrwege.md`).
+So none of our trees fits: the HY310 tree puts a 25 kHz `pwm-backlight` on PWM2/PB4 (kernel patch
+`0032`; the HY300 Pro and HY200 trees switch it off), which here is the **fan**, and every one of
+them treats PB5 as fan and lamp. That is the reason `KERNEL_DTB` is empty and no test image exists:
+nothing is driven on this board's pins before its own tree exists (the PB5 incident of 19.09.2026).
+The probe built for it (`h713_probe_x9_defconfig` in the U-Boot fork) drives no power line at all.
 
 The rest of his map, for that tree, when someone writes it: panel power/standby/reset PH19/PH13/PH10,
 focus motor phases PF0-PF3 (4-phase, 8-step table), keys `key_clk`/`key_vol` PF5/PF6, power key PL4
@@ -73,16 +78,21 @@ held while applying power; USB-A port; `1f3a:efe8`, SoC `0x1860`.
 ## What his probe log does and does not show
 
 It shows our SPL training this RAM and U-Boot coming up with 1 GiB, over FEL, with the coprocessor
-in reset and the panel dark. It does **not** show this board's `uboot.config` working: the probe
-build carries the HY200 QZ713DF A1 device tree and that board's DRAM clock, not 744 MHz, and its
-`Model:` line says so (`TODO.md` 4.13). He also reports that the HY300 T08's `fes1.fex` (DDR3
-640 MHz) trains this RAM, which says the same thing: the stock DDR3 init is forgiving about the
-clock, and a run at the right one is still to be done.
+in reset and the panel dark. It does **not** show this board's `uboot.config` working: that probe
+build (U-Boot `2ba4003276ba`, 14.09.2026) ran the probe's own DRAM set at 624 MHz with the HY200
+QZ713DF A1 device tree, not his clock, and its `Model:` line names that board (`TODO.md` 4.13).
+He also reports that the HY300 T08's `fes1.fex` (DDR3, 640 MHz) trained this RAM with a write/read
+test at `0x40000000`. A run at 744 MHz is still to be done.
+
+That build also raised **PB5 and PL3** on start-up (`CONFIG_H713_POWERON_LIGHT_FAN`, as
+`docs/tools/h713-probe.md` describes for our boards). On this board neither is known to be what
+it is on ours; he reports nothing broke.
 
 ## What we do not know
 
-- **The `monitor` and `optee` digests.** His report prints them as a 16-hex prefix only, so the
-  profile leaves both items out instead of carrying half a hash (`TODO.md` 4.13).
+- **The `monitor` and `optee` digests.** Our own `h713-extract` cut them to sixteen hex in its
+  report (fixed since), so the profile leaves both items out instead of carrying half a hash; his
+  next extract run prints them whole.
 - **`sunxi_version`.** His input is a partition backup, not a stock image, so the string is absent;
   `identify` prints `-` for it and the profile says `None`.
 - **Which project id the board actually runs.** Its `panel_config.ini` declares `0x33` and the

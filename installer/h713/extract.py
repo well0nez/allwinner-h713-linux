@@ -1155,7 +1155,7 @@ class Run:
             for n, sh in e["paket_item_sha256"].items():
                 actual = m["package_item_sha256"].get(n)
                 if actual and actual != sh:
-                    out.append(f"package item {n}: content differs from {nm} (sha256 {actual[:16]}...)")
+                    out.append(f"package item {n}: content differs from {nm} (sha256 {actual})")
         if "uboot_version" in m and not feature_matches("uboot_version", m["uboot_version"], e["uboot_version"]):
             out.append(f"U-Boot identifier '{m['uboot_version']}' instead of '{e['uboot_version']} ...' ({nm})")
         if "dtb_compatible" in m and e["dtb_compatible"] not in m["dtb_compatible"]:
@@ -1165,11 +1165,11 @@ class Run:
         if "vendor_size" in m and m["vendor_size"] != e["vendor_size"]:
             out.append(f"vendor partition {m['vendor_size']} B instead of {e['vendor_size']} B ({nm})")
         if "libmspsound_sha256" in m and m["libmspsound_sha256"] != e["libmspsound_sha256"]:
-            out.append(f"libmspsound.so differs from {nm} (sha256 {m['libmspsound_sha256'][:16]}...) -- check the patch stream")
+            out.append(f"libmspsound.so differs from {nm} (sha256 {m['libmspsound_sha256']}) -- check the patch stream")
         if "build_fingerprint" in m and m["build_fingerprint"] != e["build_fingerprint"]:
             out.append(f"vendor fingerprint '{m['build_fingerprint']}' instead of '{e['build_fingerprint']}' ({nm})")
         if "mips_database_sha256" in m and m["mips_database_sha256"] != e["mips_database_sha256"]:
-            out.append(f"mips/database.TSE differs from {nm} (sha256 {m['mips_database_sha256'][:16]}...) -- "
+            out.append(f"mips/database.TSE differs from {nm} (sha256 {m['mips_database_sha256']}) -- "
                        f"other vendor display data")
         if "sunxi_version" in m and m["sunxi_version"] != e["sunxi_version"]:
             out.append(f"sunxi_version {m['sunxi_version']} instead of {e['sunxi_version']} ({nm})")

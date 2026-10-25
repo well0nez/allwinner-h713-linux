@@ -810,27 +810,45 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       vtotal 755, DCLK 72 480 000 Hz, hsync/vsync 100/10, hbp/vbp 100/10, Polaritäten 0/0, `pll_n_plus_1` 42 (Zeile vollständig
       in `boards/losei-x9/README.md` und `installer/h713/profiles/losei_x9.py`, Prüfungen C1-C7 des Melders OK). Eine Zeile wie
       Patch `0009`/`0013` anlegen; **nicht in die Spiegel vor einer Messung** - niemand hier hat dieses Panel, und ohne Gerät
-      ist die Zeile ungemessen. Erst sinnvoll, wenn der Melder ein Probe-Abbild fahren will
+      ist die Zeile ungemessen. **Liegt auf dem Fork-Zweig `versuch/losei-x9` (`c70d3bd0067`)**; `pll_n_plus_1` = 42 ist aus
+      seinem DCLK über K = 14 abgeleitet (Board B hat K gemessen), nicht gefegt
 - [ ] 4.11 **display.bin-Revision `0x131b10` wird von unserem U-Boot abgelehnt** (Issue #3, 25.10.2026): seine Revision ist
       1 252 112 B (`49f698af...`, HDCP-Wartestelle gesucht und gefunden, `0x4b13d140`), 16 B kleiner als die des HY300 T08
-      (`0x131b20`). `h713_mips_accept_size()` nimmt nur Größen, die eine Zeile von `h713_mips_fw_revs[]` nennt - sonst
-      „display.bin is %llu bytes, no revision declares that size". Als Datenzeile ist sie da (`FIRMWARE_REVISIONS`,
-      „ADT-3 2024-09", und `h713-extract` nennt die Revision damit beim Namen); offen ist die Zeile im Fork. Zusammen mit 4.10
-      in einem Patch, gleiche Bedingung: nicht in den Spiegel vor einer Messung
+      (`0x131b20`). `h713_mips_accept_size()` nimmt außerhalb des Probe-Modus nur Größen, die eine Zeile von
+      `h713_mips_fw_revs[]` nennt - sonst „H713 MIPS: rejected size 0x…, no revision declares it". Als Datenzeile ist sie da
+      (`FIRMWARE_REVISIONS`, „ADT-3 2024-09", `h713-extract` nennt die Revision damit beim Namen); **die Fork-Zeile liegt auf
+      `versuch/losei-x9` (`c70d3bd0067`)**, die vier Firmware-Adressen null (sein Abbild ist nicht hier). Gleiche Bedingung
+      wie 4.10: nicht in den Spiegel vor einer Messung
 - [ ] 4.12 **Der Probe-Hinweis führt bei vendor-only-Boards ins Leere** (Issue #3, 25.10.2026): findet `h713_probe` kein
-      `display.bin`, sagt er „Set h713_mips_dev to the partition holding the vendor FAT and run h713_probe again". Beim X9
-      (wie HY300 T08 und HY350) liegen die Artefakte nur in `vendor:/etc/display/mips/`, also in einem ext4 **innerhalb** von
-      `super` - dorthin kommt U-Boot nicht, und kein Wert von `h713_mips_dev` hilft. Satz richtigstellen: wenn die
-      Bootloader-FAT kein `mips/` hat, auf `h713-extract` (liest `super`/vendor) und das Profil verweisen, statt eine
-      Partition zu verlangen. `h713-extract` kann die Quelle längst (`mips.sources = ("vendor:/etc/display/mips",)`)
+      `display.bin`, sagt er „Set h713_mips_dev to the partition holding the vendor FAT". Beim X9 (wie HY300 T08 und HY350)
+      liegen die Artefakte nur in `vendor:/etc/display/mips/`, einem ext4 **innerhalb** von `super` - dorthin kommt U-Boot
+      nicht, und kein Wert von `h713_mips_dev` hilft. Auf dem Fork-Zweig `versuch/losei-x9` (`f6faf3e539a`) sagt der Hinweis
+      beide Fälle und dass dann nichts fehlt: was die Probe über `display.bin` berichten würde (Größe, sha256, Wartestelle,
+      ProjectIDs), liefert `h713-extract` aus dem Abzug. Offen: in `h713-hy310` und `uboot-h713/`
 - [ ] 4.13 **LOSEI X9 (Issue #3, Melder GitHub `cosmonet-fr`) - der Plan: `arbeit/losei-x9-20261025/PLAN.md`** (25.10.2026).
-      Profil liegt, Antwort und drei Löcher offen. Profil
+      Profil liegt, Antwort und drei Löcher offen. **(b) erledigt 25.10. abends ohne ihn:** die `monitor`- und
+      `optee`-Prüfsummen waren nie seine Aufgabe - unser eigener Bericht kürzte sie auf 16 Hex (`extract.py`, Abweichungszeilen,
+      jetzt ganz); `sunxi_version` fehlt seinem Abzug naturgemäß. Profil
       `installer/h713/profiles/losei_x9.py` und `boards/losei-x9/` sind angelegt (`STATUS=partial`), Anhänge in
       `arbeit/losei-x9-20261025/anhaenge/`. Offen: (a) Antwort im Issue - was wir aus seinem Bericht gemacht haben, dass es
       **kein Abbild** gibt (fremdes Pinout: Lüfter PB4, Lampe PB6) und was uns fehlt; (b) `monitor`- und `optee`-sha256 (sein
       Bericht zeigt nur 16 Hex), `sunxi_version` fehlt ganz; (c) ein Probe-Lauf mit **seinem** DRAM-Takt 744 MHz - sein Log
       zeigt das SPL mit dem Standardtakt und dem HY200-QZ713DF-A1-Baum, also ist `boards/losei-x9/uboot.config` ungemessen.
       Nichts davon schreibt auf sein Gerät
+- [ ] 4.14 **Entscheidung (Marco): soll der allgemeine Probe-Bau Pins treiben?** `h713_probe_defconfig` setzt
+      `CONFIG_H713_POWERON_LIGHT_FAN=y`: die Probe hebt in `board_late_init` **PB5 und PL3** - auf unserer Familie gewollt und
+      dokumentiert (`docs/tools/h713-probe.md`: „The fan and the lamp *do* come on, because one GPIO powers both"), denn
+      ohne PB5 stehen Lampe *und* Lüfter. Die Probe ist aber für fremde Boards gemacht, und dort sind PB5/PL3 unbekannt: der
+      Melder von Issue #3 hat den Bau (`2ba4003276ba`, 14.09.) auf einem Board gefahren, dessen Lüfter an PB4 und dessen
+      Lampen-Enable an PB6 hängt (nichts kaputt; PB5-Vorfall 19.09. war dieselbe Klasse). Gilt auch für das Asset
+      `u-boot-h713-probe.bin` von `v0.97-beta` (U-Boot `daa35622b0b`, Option gesetzt). Wege: (a) allgemeine Probe ohne Pins
+      (Lampe und Lüfter bleiben dann bei der Probe auch auf unseren Boards aus, Doku-Satz ändern), (b) so lassen und in der
+      Doku vor fremden Boards warnen, (c) zwei Bauten. Für den X9 ist es schon gelöst: `h713_probe_x9_defconfig` treibt nichts
+- [ ] 4.15 **Der Probe-Bau für den LOSEI X9 liegt, Phase 2 wartet auf den Melder** (`arbeit/losei-x9-20261025/PLAN.md`).
+      `u-boot-h713-probe-x9.bin` ist gebaut (Fork-Zweig `versuch/losei-x9`, vier Commits über `daa35622b0b`, jeder einzeln
+      gebaut; `BERICHT.md`): sein DRAM-Takt 744 MHz mit dem bewährten Rest des Probe-Satzes, kein Pin getrieben. Nach seiner
+      Ausgabe: DRAM bei 744 bestätigt oder nicht; die fünf Panel-Register (über `sunxi_dump` am Stock) in `losei_x9.py` und
+      die Panel-Zeile, dann Phase 3 (Gerätebaum). **Nicht in die Spiegel vor einer Messung an diesem Panel**
 
 ## 5 Installer und Werkzeuge
 
