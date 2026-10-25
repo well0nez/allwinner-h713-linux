@@ -739,11 +739,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `adb reboot efex`, UART am eigenen ESP32 `.150` (`referenz/geraete.md`); elektrischer Fokus noch offen; (c) `h713-install install --full --test-image` (Abzug 7,3 GB =
       Rückweg nach Android), erster Boot: Bild, WLAN, Fernbedienung, Lüfter-Drehzahl (PH13) und Temperatur; (d) Abnahme nach
       `messregeln`, dann `STATUS=verified` und Zweig nach `main`
-- [ ] 4.8 L018 U-Boot: `hy310_defconfig` fährt für Projekt 0x30 die HY310-Panelsequenz und setzt PF6 und PH9 high, die der
-      L018 unter Stock abgeschaltet bzw. low hat (`boards/l018/README.md` "Known deviations"). Nach dem ersten Boot entscheiden:
-      Board-Unterscheidung in `h713_disp init` (U-Boot-Fork + Spiegel `uboot-h713/`) oder belegt harmlos
-- [ ] 4.9 L018 Treiber nach dem ersten grünen Boot: Lüfter-PWM0 (PH17) nach Lampenstufe/Temperatur statt Hog 100 % (Stock
-      95/70/60 %); Helligkeit 0 von pwm-backlight schaltet PWM2 ab - Pinpegel und Lampe dabei messen, ggf. sicher machen;
+- [x] 4.8 L018 U-Boot - **erledigt 25.10.2026 auf `versuch/l018-board` `947454cc`** (U-Boot-Fork `0103`, `l018_defconfig`,
+      `CONFIG_H713_BOARD_L018`): der erste Boot zeigte das Bild gespiegelt und im Gate Lampe (voll) und Lüfter an; jetzt Gate
+      dunkel und leise, Bild richtig herum (PH9 low vor dem Panel-Reset), Lampe std 50 %, Lüfter 70 % (3240 U/min). Gemessen am
+      Gerät nach Schnell-Deploy (`arbeit/l018-board-20261024/BERICHT.md`). HY310-Code ohne Option byte-gleich. Nicht gepusht
+- [ ] 4.9 L018 Treiber nach dem ersten grünen Boot: Lüfter-PWM0 (PH17) nach Lampenstufe/Temperatur statt fest 70 % (Stock
+      95/70/60 %); **Board-Manager liest auf dem L018 keine Temperatur** (`temp1` leer; Stock warnt 41 °C, aus bei 51 °C);
+      Launcher-Einträge (Abbild mit `--profile media,desktop` wie das Release); Lampe/Lüfter ~1 s an vor U-Boot (SPL);
+      Helligkeit 0 von pwm-backlight schaltet PWM2 ab - Pinpegel und Lampe dabei messen, ggf. sicher machen;
       Neigungssensor `lsm6dsv` (twi2 PH4/PH5, `CONFIG_IIO_ST_LSM6DSX`, Achsenzuordnung, Werkswert `GsInitXYZ` im Secure Storage
       als Referenz); Kamera `4098:a425` für h713-cam/Autofokus; Fokusmotor PF0..PF3 / Endschalter PB1; LEDs PL0/PL1;
       Kopfhörerbuchse/SPDIF
