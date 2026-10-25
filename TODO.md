@@ -814,7 +814,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `super` - dorthin kommt U-Boot nicht, und kein Wert von `h713_mips_dev` hilft. Satz richtigstellen: wenn die
       Bootloader-FAT kein `mips/` hat, auf `h713-extract` (liest `super`/vendor) und das Profil verweisen, statt eine
       Partition zu verlangen. `h713-extract` kann die Quelle längst (`mips.sources = ("vendor:/etc/display/mips",)`)
-- [ ] 4.13 **LOSEI X9 (Issue #3, Melder GitHub `cosmonet-fr`): Profil liegt, Antwort und drei Löcher offen.** Profil
+- [ ] 4.13 **LOSEI X9 (Issue #3, Melder GitHub `cosmonet-fr`) - der Plan: `arbeit/losei-x9-20261025/PLAN.md`** (25.10.2026).
+      Profil liegt, Antwort und drei Löcher offen. Profil
       `installer/h713/profiles/losei_x9.py` und `boards/losei-x9/` sind angelegt (`STATUS=partial`), Anhänge in
       `arbeit/losei-x9-20261025/anhaenge/`. Offen: (a) Antwort im Issue - was wir aus seinem Bericht gemacht haben, dass es
       **kein Abbild** gibt (fremdes Pinout: Lüfter PB4, Lampe PB6) und was uns fehlt; (b) `monitor`- und `optee`-sha256 (sein
