@@ -34,6 +34,8 @@
 #       and h713-osd (cross-built) + unit (enabled) + osd.conf - the overlays over the picture
 #   5j. h713-cpufreq + unit (enabled) - schedutil's rate limit and the GPU's interrupt threads
 #       out of the real-time class, once per boot (replaces the tmpfiles line of 11.10.)
+#   5k. h713-lamp + unit (enabled) - the lamp mode kept in /etc/h713/lamp.conf, set at boot;
+#       does nothing on a board without lamp modes (all but the L018)
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
 # guard that searches the tree afterwards and stops the run if one is in there
@@ -75,6 +77,7 @@ H713_OSD_BIN=${H713_OSD_BIN:-$H713_OSD_SRC/h713-osd.aarch64-linux-gnu}
 H713_SETTINGS_SRC=${H713_SETTINGS_SRC:-$PROJECT_ROOT/userspace/h713-settings}
 H713_SETTINGS_BIN=${H713_SETTINGS_BIN:-$H713_SETTINGS_SRC/h713-settings.aarch64-linux-gnu}
 H713_CPUFREQ_SRC=${H713_CPUFREQ_SRC:-$PROJECT_ROOT/userspace/h713-cpufreq}
+H713_LAMP_SRC=${H713_LAMP_SRC:-$PROJECT_ROOT/userspace/h713-lamp}
 # crust, built by release/build-all.sh from crust-h713/ - a build product of ours, not a vendor file,
 # so it is not in FORBIDDEN_NAMES. The name is the board's: the rootfs can be built without a board,
 # and a board's device tree names its own image (hy310-crust.bin). Standby only together with it.
@@ -278,6 +281,8 @@ check_sources() {
 		{ warn "missing: h713-features or h713-features.service in $H713_FEATURES_SRC"; errors=1; }
 	[[ -x "$H713_CPUFREQ_SRC/h713-cpufreq" && -f "$H713_CPUFREQ_SRC/h713-cpufreq.service" ]] || \
 		{ warn "missing: h713-cpufreq or h713-cpufreq.service in $H713_CPUFREQ_SRC"; errors=1; }
+	[[ -x "$H713_LAMP_SRC/h713-lamp" && -f "$H713_LAMP_SRC/h713-lamp.service" ]] || \
+		{ warn "missing: h713-lamp or h713-lamp.service in $H713_LAMP_SRC"; errors=1; }
 	if [[ -n "$H713_BOARD" ]] && ! board_features >/dev/null; then errors=1; fi
 	if [[ -n "$H713_BOARD" ]] && ! board_hostname >/dev/null; then errors=1; fi
 	if [[ -n "$H713_CRUST_BIN" ]]; then
@@ -400,6 +405,9 @@ if ((DRY_RUN)); then
     5j. h713-cpufreq
        h713-cpufreq -> /usr/local/sbin/, h713-cpufreq.service enabled (rate limit 20 ms, GPU
        interrupt threads SCHED_OTHER - the table in the script)
+    5k. h713-lamp
+       h713-lamp -> /usr/local/sbin/, h713-lamp.service enabled (sets the mode kept in
+       /etc/h713/lamp.conf; nothing on a board without lamp modes)
     6. blob guard
        Stop if one of these files is in the tree:
        ${FORBIDDEN_NAMES[*]}
@@ -723,6 +731,13 @@ install -m 0755 "$H713_CPUFREQ_SRC/h713-cpufreq" "$TREE/usr/local/sbin/h713-cpuf
 install -m 0644 "$H713_CPUFREQ_SRC/h713-cpufreq.service" "$TREE/etc/systemd/system/h713-cpufreq.service"
 ln -sfn ../h713-cpufreq.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-cpufreq.service"
 info "/usr/local/sbin/h713-cpufreq, h713-cpufreq.service enabled"
+
+# --- 5k. h713-lamp: the lamp mode kept across boots (lamp and fan together, the L018) ---
+say "h713-lamp"
+install -m 0755 "$H713_LAMP_SRC/h713-lamp" "$TREE/usr/local/sbin/h713-lamp"
+install -m 0644 "$H713_LAMP_SRC/h713-lamp.service" "$TREE/etc/systemd/system/h713-lamp.service"
+ln -sfn ../h713-lamp.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-lamp.service"
+info "/usr/local/sbin/h713-lamp, h713-lamp.service enabled"
 
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"

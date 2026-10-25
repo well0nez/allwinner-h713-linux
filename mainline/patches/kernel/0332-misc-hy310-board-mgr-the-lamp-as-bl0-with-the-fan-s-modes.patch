@@ -1,0 +1,454 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: misc: hy310-board-mgr: the lamp as bl0, set with the fan's modes
+
+The L018's stock fan driver owns the lamp as well (pwm_fan.c, read off
+the stock kernel, 25.10.2026): with fan_policy 1 one mode index sets the
+fan's duty-array-policy1 and the lamp's bl0 duty-array, and the
+temperature does not drive the fan. Above temp_warn for more than 30
+cycles of 2 s it switches to mode 3, which dims the lamp, keeps the
+chosen mode and restores it at temp_resume.
+
+This driver now does the same where a tree asks for it:
+
+- A bl0 subnode with duty-array (and dft_period_ns, else the fans'
+  pwm_period_ns) and a PWM named "bl0" give the driver the lamp. Every
+  mode change (probe, cooling device, resume) sets fans and lamp from the
+  same index; the lamp's PWM is never disabled.
+- lamp-mode-names in bl0 names the modes a user may choose. sysfs
+  lamp_mode (read: the chosen mode, write: a name), lamp_modes (the
+  names) and thermal_mode (1 while the thermal mode holds); the
+  attributes exist only with a lamp.
+- thermal-mode = <index> together with temp_resume: after NTC_WARN_CYCLES
+  above temp_warn the driver sets that index instead of forcing every fan
+  to 100 %, keeps the chosen mode, and sets it again once the NTC reads
+  temp_resume or less. A mode chosen meanwhile is kept for then, so the
+  lamp does not get brighter while the box is hot.
+
+A tree without bl0 - the HY310, both HY300 Pro trees, the HY200 trees -
+takes none of these paths: no lamp, no attributes, the overtemp action
+stays "all fans 100 %". Only the L018 tree (0331) has a bl0 node.
+
+Built in the h713-build container (drivers/misc/hy310-board-mgr.o, W=1:
+no compiler warning). Measured on the L018, 25.10.2026: the probe logs
+"bl0: lamp on PWM bl0, 4 modes, 3 by name" and "thermal mode 3 above
+41 C, back at 34 C"; lamp_mode low/std/high give PWM2 720/480/288 and
+PWM0 576/672/912 of 960 cycles - the registers the stock firmware wrote
+in the same three modes (24.10.2026) - and the fan follows (2880/3210
+rpm at low/std). The thermal mode itself is not measured (the NTC read
+21 C). Not run on the other boards: their trees have no bl0, which the
+code paths above were read for.
+
+diff -ruN a/drivers/misc/hy310-board-mgr.c b/drivers/misc/hy310-board-mgr.c
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -3,7 +3,9 @@
+  * HY310 Projector Board Management Driver
+  *
+  * Handles fan PWM control, fan tachometer monitoring, USB power GPIO,
+- * and NTC temperature sensing via GPADC (or LRADC) for the HY310 platform.
++ * and NTC temperature sensing via GPADC (or LRADC) for the HY310 platform;
++ * on a board whose tree hands it a "bl0" PWM, also the lamp's dimmer, set
++ * by the same mode index as the fans (the L018).
+  *
+  * Compatible with DTS nodes using:
+  *   compatible = "allwinner,hy310-board-mgr"
+@@ -226,6 +228,30 @@
+ };
+ 
+ /**
++ * struct hy310_lamp - the lamp's dimmer, where the board hands it to us
++ * @pwm:        PWM device "bl0"
++ * @period_ns:  PWM period (bl0/dft_period_ns, else the fans' pwm_period_ns)
++ * @duty_array: duty in percent per mode, the same index as the fans'
++ *              duty-array-policy1
++ * @num_modes:  entries in @duty_array
++ * @names:      lamp-mode-names: the modes a user may choose, by index
++ * @num_names:  entries in @names
++ *
++ * The stock driver owns lamp and fan together, one mode index sets both
++ * (L018, fan_policy 1: bl0 duty-array 50/75/30/75 and fan0
++ * duty-array-policy1 70/60/95/70 for std/low/high and its thermal mode 3).
++ * A board without a bl0 node has no lamp here, and nothing changes for it.
++ */
++struct hy310_lamp {
++	struct pwm_device	*pwm;
++	u32			 period_ns;
++	u32			 duty_array[HY310_MAX_MODES];
++	u32			 num_modes;
++	const char		*names[HY310_MAX_MODES];
++	int			 num_names;
++};
++
++/**
+  * struct hy310_board_mgr - main driver private data
+  * @fan_judge_after: jiffies before which a resumed fan rail gets no stall verdict
+  */
+@@ -237,6 +263,14 @@
+ 	int			 num_fans;
+ 	u32			 current_mode;
+ 
++	/* The lamp and the stock thermal mode, see struct hy310_lamp */
++	struct hy310_lamp	 lamp;
++	bool			 has_lamp;
++	u32			 user_mode;	/* last chosen, kept through the thermal mode */
++	u32			 thermal_mode;	/* thermal-mode: the index the NTC falls back to */
++	bool			 has_thermal_mode;
++	bool			 thermal_active;
++
+ 	/* Thermal cooling device */
+ 	struct thermal_cooling_device *cdev;
+ 
+@@ -265,6 +299,7 @@
+ 	/* Temperature thresholds */
+ 	int			 temp_poweroff_c;
+ 	int			 temp_warn_c;
++	int			 temp_resume_c;	/* INT_MIN: none in the tree */
+ 
+ 	/* Set once a poweroff has been requested, so it is requested only once */
+ 	bool			 poweroff_started;
+@@ -369,6 +404,50 @@
+ 	}
+ }
+ 
++/**
++ * hy310_lamp_apply - set the lamp's duty for current_mode
++ * @priv: driver private data
++ *
++ * The lamp's PWM is never disabled here: every mode has a duty.
++ */
++static void hy310_lamp_apply(struct hy310_board_mgr *priv)
++{
++	struct hy310_lamp *lamp = &priv->lamp;
++	struct pwm_state state;
++	u32 duty;
++	int ret;
++
++	if (!priv->has_lamp)
++		return;
++
++	if (priv->current_mode < lamp->num_modes)
++		duty = lamp->duty_array[priv->current_mode];
++	else
++		duty = lamp->duty_array[lamp->num_modes - 1];
++	if (duty > 100)
++		duty = 100;
++
++	pwm_get_state(lamp->pwm, &state);
++	state.period = lamp->period_ns;
++	state.polarity = PWM_POLARITY_NORMAL;
++	state.duty_cycle = (u64)lamp->period_ns * duty / 100;
++	state.enabled = true;
++
++	ret = pwm_apply_might_sleep(lamp->pwm, &state);
++	if (ret)
++		dev_warn(priv->dev, "bl0: PWM apply failed: %d\n", ret);
++}
++
++/**
++ * hy310_apply_mode - set fans and lamp for current_mode (caller holds lock)
++ * @priv: driver private data
++ */
++static void hy310_apply_mode(struct hy310_board_mgr *priv)
++{
++	hy310_update_all_fan_duties(priv);
++	hy310_lamp_apply(priv);
++}
++
+ /* -------------------------------------------------------------------------
+  * Fan power GPIO
+  * ------------------------------------------------------------------------- */
+@@ -713,16 +792,45 @@
+ 			 priv->ntc.warn_cycles, NTC_WARN_CYCLES);
+ 
+ 		if (priv->ntc.warn_cycles >= NTC_WARN_CYCLES) {
+-			dev_warn(priv->dev,
+-				 "NTC: sustained overtemp, forcing fans to 100%%\n");
+ 			mutex_lock(&priv->lock);
+-			hy310_set_all_fans_full(priv);
++			if (priv->has_thermal_mode) {
++				/*
++				 * The stock thermal mode: the lamp dims and the
++				 * fan follows it, the chosen mode is kept and
++				 * comes back at temp_resume.
++				 */
++				if (!priv->thermal_active) {
++					priv->thermal_active = true;
++					priv->current_mode = priv->thermal_mode;
++					hy310_apply_mode(priv);
++					dev_warn(priv->dev,
++						 "NTC: sustained overtemp, thermal mode %u until %d C (mode %u kept)\n",
++						 priv->thermal_mode,
++						 priv->temp_resume_c,
++						 priv->user_mode);
++				}
++			} else {
++				dev_warn(priv->dev,
++					 "NTC: sustained overtemp, forcing fans to 100%%\n");
++				hy310_set_all_fans_full(priv);
++			}
+ 			mutex_unlock(&priv->lock);
+ 		}
+ 	} else {
+ 		priv->ntc.warn_cycles = 0;
+ 	}
+ 
++	if (priv->thermal_active && temp_c <= priv->temp_resume_c) {
++		mutex_lock(&priv->lock);
++		priv->thermal_active = false;
++		priv->current_mode = priv->user_mode;
++		hy310_apply_mode(priv);
++		mutex_unlock(&priv->lock);
++		dev_info(priv->dev,
++			 "NTC: %d C, back from the thermal mode to mode %u\n",
++			 temp_c, priv->user_mode);
++	}
++
+ 	if (temp_c > priv->temp_poweroff_c) {
+ 		priv->ntc.poweroff_cycles++;
+ 		dev_err(priv->dev,
+@@ -795,8 +903,11 @@
+ 		state = max_state;
+ 
+ 	mutex_lock(&priv->lock);
+-	priv->current_mode = (u32)state;
+-	hy310_update_all_fan_duties(priv);
++	priv->user_mode = (u32)state;
++	if (!priv->thermal_active) {
++		priv->current_mode = (u32)state;
++		hy310_apply_mode(priv);
++	}
+ 	mutex_unlock(&priv->lock);
+ 
+ 	dev_dbg(priv->dev, "cooling mode set to %lu\n", state);
+@@ -1156,6 +1267,85 @@
+ 	return NULL;
+ }
+ 
++/**
++ * hy310_parse_lamp - the bl0 subnode: duty-array, dft_period_ns, lamp-mode-names
++ * @priv:      driver private data
++ * @np:        the board manager's node
++ * @period_ns: the fans' pwm_period_ns, used when bl0 has no dft_period_ns
++ *
++ * Optional: only a tree with a bl0 node and a PWM named "bl0" gets a lamp
++ * here (the L018); every other board keeps its lamp with pwm-backlight or
++ * has none. thermal-mode, the index the NTC falls back to, comes with it,
++ * because the stock thermal mode dims the lamp; it also needs temp_resume.
++ *
++ * Return: 0, or -EPROBE_DEFER while the PWM controller is not there yet.
++ */
++static int hy310_parse_lamp(struct hy310_board_mgr *priv,
++			    struct device_node *np, u32 period_ns)
++{
++	struct hy310_lamp *lamp = &priv->lamp;
++	struct device *dev = priv->dev;
++	struct device_node *bl_np;
++	int ret = 0;
++	int n;
++
++	bl_np = of_get_child_by_name(np, "bl0");
++	if (!bl_np)
++		return 0;
++
++	n = of_property_count_u32_elems(bl_np, "duty-array");
++	if (n <= 0) {
++		dev_warn(dev, "bl0: no duty-array, no lamp control\n");
++		goto out;
++	}
++	if (n > HY310_MAX_MODES)
++		n = HY310_MAX_MODES;
++	if (of_property_read_u32_array(bl_np, "duty-array",
++				       lamp->duty_array, n)) {
++		dev_warn(dev, "bl0: duty-array unreadable, no lamp control\n");
++		goto out;
++	}
++	lamp->num_modes = n;
++
++	if (of_property_read_u32(bl_np, "dft_period_ns", &lamp->period_ns))
++		lamp->period_ns = period_ns;
++
++	n = of_property_read_string_array(bl_np, "lamp-mode-names",
++					  lamp->names, HY310_MAX_MODES);
++	lamp->num_names = n > 0 ? min_t(int, n, lamp->num_modes) : 0;
++
++	lamp->pwm = devm_pwm_get(dev, "bl0");
++	if (IS_ERR(lamp->pwm)) {
++		ret = PTR_ERR(lamp->pwm);
++		lamp->pwm = NULL;
++		if (ret == -EPROBE_DEFER)
++			goto out;
++		dev_warn(dev, "bl0: PWM not found (%d), no lamp control\n", ret);
++		ret = 0;
++		goto out;
++	}
++	priv->has_lamp = true;
++	dev_info(dev, "bl0: lamp on PWM bl0, %u modes, %d by name, period %u ns\n",
++		 lamp->num_modes, lamp->num_names, lamp->period_ns);
++
++	if (!of_property_read_u32(np, "thermal-mode", &priv->thermal_mode)) {
++		if (priv->thermal_mode >= lamp->num_modes ||
++		    priv->temp_resume_c == INT_MIN) {
++			dev_warn(dev,
++				 "thermal-mode %u ignored: needs an index below %u and temp_resume\n",
++				 priv->thermal_mode, lamp->num_modes);
++		} else {
++			priv->has_thermal_mode = true;
++			dev_info(dev, "thermal mode %u above %d C, back at %d C\n",
++				 priv->thermal_mode, priv->temp_warn_c,
++				 priv->temp_resume_c);
++		}
++	}
++out:
++	of_node_put(bl_np);
++	return ret;
++}
++
+ /* -------------------------------------------------------------------------
+  * Probe
+  * ------------------------------------------------------------------------- */
+@@ -1224,6 +1414,8 @@
+ 		priv->temp_poweroff_c = DEFAULT_TEMP_POWEROFF_C;
+ 	if (of_property_read_u32(np, "temp_warn", &priv->temp_warn_c))
+ 		priv->temp_warn_c = DEFAULT_TEMP_WARN_C;
++	if (of_property_read_u32(np, "temp_resume", &priv->temp_resume_c))
++		priv->temp_resume_c = INT_MIN;
+ 
+ 	/* ---- ntc subnode: enable, source and channel ---- */
+ 	priv->ntc_source = HY310_NTC_SOURCE_GPADC;
+@@ -1380,9 +1572,14 @@
+ 	if (priv->num_fans == 0)
+ 		dev_warn(dev, "no fan subnodes found, fan control disabled\n");
+ 
++	/* ---- bl0: the lamp, where the board hands it to us ---- */
++	ret = hy310_parse_lamp(priv, np, period_ns);
++	if (ret)
++		return ret;
++
+ 	/* ---- Apply initial PWM duties (mode 0) ---- */
+ 	mutex_lock(&priv->lock);
+-	hy310_update_all_fan_duties(priv);
++	hy310_apply_mode(priv);
+ 	mutex_unlock(&priv->lock);
+ 
+ 	/* ---- Register thermal cooling device ---- */
+@@ -1497,7 +1694,7 @@
+ 
+ 	/* Restore PWM duties */
+ 	mutex_lock(&priv->lock);
+-	hy310_update_all_fan_duties(priv);
++	hy310_apply_mode(priv);
+ 	mutex_unlock(&priv->lock);
+ 
+ 	/* Restart periodic work */
+@@ -1526,6 +1723,103 @@
+ };
+ 
+ /* -------------------------------------------------------------------------
++ * sysfs: lamp_mode, lamp_modes, thermal_mode -- only with a bl0 lamp
++ * ------------------------------------------------------------------------- */
++
++static ssize_t lamp_mode_show(struct device *dev,
++			      struct device_attribute *attr, char *buf)
++{
++	struct hy310_board_mgr *priv = dev_get_drvdata(dev);
++	u32 mode;
++
++	mutex_lock(&priv->lock);
++	mode = priv->user_mode;
++	mutex_unlock(&priv->lock);
++
++	if (mode < priv->lamp.num_names)
++		return sysfs_emit(buf, "%s\n", priv->lamp.names[mode]);
++	return sysfs_emit(buf, "%u\n", mode);
++}
++
++/*
++ * A mode chosen while the thermal mode holds is kept and set when it ends:
++ * the lamp does not get brighter while the box is hot.
++ */
++static ssize_t lamp_mode_store(struct device *dev,
++			       struct device_attribute *attr,
++			       const char *buf, size_t count)
++{
++	struct hy310_board_mgr *priv = dev_get_drvdata(dev);
++	int mode;
++
++	mode = __sysfs_match_string(priv->lamp.names, priv->lamp.num_names, buf);
++	if (mode < 0)
++		return mode;
++
++	mutex_lock(&priv->lock);
++	priv->user_mode = mode;
++	if (!priv->thermal_active) {
++		priv->current_mode = mode;
++		hy310_apply_mode(priv);
++	}
++	mutex_unlock(&priv->lock);
++	return count;
++}
++static DEVICE_ATTR_RW(lamp_mode);
++
++static ssize_t lamp_modes_show(struct device *dev,
++			       struct device_attribute *attr, char *buf)
++{
++	struct hy310_board_mgr *priv = dev_get_drvdata(dev);
++	int i, len = 0;
++
++	for (i = 0; i < priv->lamp.num_names; i++)
++		len += sysfs_emit_at(buf, len, "%s%s", i ? " " : "",
++				     priv->lamp.names[i]);
++	len += sysfs_emit_at(buf, len, "\n");
++	return len;
++}
++static DEVICE_ATTR_RO(lamp_modes);
++
++static ssize_t thermal_mode_show(struct device *dev,
++				 struct device_attribute *attr, char *buf)
++{
++	struct hy310_board_mgr *priv = dev_get_drvdata(dev);
++
++	return sysfs_emit(buf, "%d\n", priv->thermal_active);
++}
++static DEVICE_ATTR_RO(thermal_mode);
++
++static struct attribute *hy310_board_mgr_attrs[] = {
++	&dev_attr_lamp_mode.attr,
++	&dev_attr_lamp_modes.attr,
++	&dev_attr_thermal_mode.attr,
++	NULL
++};
++
++static umode_t hy310_board_mgr_attr_visible(struct kobject *kobj,
++					    struct attribute *attr, int n)
++{
++	struct hy310_board_mgr *priv = dev_get_drvdata(kobj_to_dev(kobj));
++
++	if (!priv || !priv->has_lamp || !priv->lamp.num_names)
++		return 0;
++	if (attr == &dev_attr_thermal_mode.attr && !priv->has_thermal_mode)
++		return 0;
++	return attr->mode;
++}
++
++static const struct attribute_group hy310_board_mgr_group = {
++	.attrs      = hy310_board_mgr_attrs,
++	.is_visible = hy310_board_mgr_attr_visible,
++};
++
++static const struct attribute_group *hy310_board_mgr_groups[] = {
++	&hy310_board_mgr_group,
++	NULL
++};
++
++/* -------------------------------------------------------------------------
+  * Platform driver registration
+  * ------------------------------------------------------------------------- */
+ 
+@@ -1581,6 +1875,7 @@
+ 		.name           = "hy310-board-mgr",
+ 		.of_match_table = hy310_board_mgr_of_match,
+ 		.pm             = pm_sleep_ptr(&hy310_board_mgr_pm_ops),
++		.dev_groups     = hy310_board_mgr_groups,
+ 	},
+ };
+ 

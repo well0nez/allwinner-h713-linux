@@ -15,6 +15,8 @@ if [[ "${1:-}" == "--tests" ]]; then bash installer/tests/run.sh > /tmp/tor-test
   # h713-power entscheidet zwischen Standby und Ausschalten: seine Tests gehoeren ins Tor (nur stdlib, ~2 s)
   python3 -m unittest discover -s userspace/h713-power/tests > /tmp/tor-tests.$$ 2>&1 || { rc=1; tail -5 /tmp/tor-tests.$$; }; grep -E "^Ran|^OK|^FAILED" /tmp/tor-tests.$$ | sed 's/^/h713-power: /'; rm -f /tmp/tor-tests.$$
   # h713-keys gibt den Tasten ihre Bedeutung (Lautstärke, Stumm, Fokus): auch nur stdlib, ~1 s
-  python3 -m unittest discover -s userspace/h713-keys/tests > /tmp/tor-tests.$$ 2>&1 || { rc=1; tail -5 /tmp/tor-tests.$$; }; grep -E "^Ran|^OK|^FAILED" /tmp/tor-tests.$$ | sed 's/^/h713-keys: /'; rm -f /tmp/tor-tests.$$; fi
+  python3 -m unittest discover -s userspace/h713-keys/tests > /tmp/tor-tests.$$ 2>&1 || { rc=1; tail -5 /tmp/tor-tests.$$; }; grep -E "^Ran|^OK|^FAILED" /tmp/tor-tests.$$ | sed 's/^/h713-keys: /'; rm -f /tmp/tor-tests.$$
+  # h713-lamp setzt die Lampenstufe (L018: Lampe und Lüfter zusammen): auch nur stdlib, ~1 s
+  python3 -m unittest discover -s userspace/h713-lamp/tests > /tmp/tor-tests.$$ 2>&1 || { rc=1; tail -5 /tmp/tor-tests.$$; }; grep -E "^Ran|^OK|^FAILED" /tmp/tor-tests.$$ | sed 's/^/h713-lamp: /'; rm -f /tmp/tor-tests.$$; fi
 [[ $rc -eq 0 ]] && echo "Tore: alle gruen" || echo "Tore: ROT -- nicht committen"
 exit $rc

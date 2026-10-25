@@ -421,3 +421,4 @@
 
 # --- section 26 One more board: the L018 (24.10.2026).
 0331-arm64-dts-h713-add-the-l018-board-dts.patch
+0332-misc-hy310-board-mgr-the-lamp-as-bl0-with-the-fan-s-modes.patch

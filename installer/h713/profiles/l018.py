@@ -176,6 +176,6 @@ PROFILE = {
         "sunxi_version": "2025-05-14 12:19:36",
         "mips_database_sha256": "002ad401d581a293d56106c8faf361eb9919f234562a6d7c316c1de1438a2aac",
     },
-    "board_dt": "sun50i-h713-l018",          # kernel patch 0331; it has not booted on this board yet
+    "board_dt": "sun50i-h713-l018",          # kernel patches 0331, 0332; booted on this board since 25.10.2026
     "uboot_board": "l018",                   # l018_defconfig: the HY310's base + CONFIG_H713_BOARD_L018 (boards/l018/)
 }

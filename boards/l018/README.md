@@ -8,7 +8,7 @@ it.
 
 | | |
 |---|---|
-| Status | **profile-only** - nothing of ours has run on it; a TEST image is built for its owner (`--test-image`) |
+| Status | **profile-only** - a TEST image (`--test-image`) runs on its owner's unit since 25.10.2026; not verified |
 | Verified by | nobody |
 | Profile | `installer/h713/profiles/l018.py` |
 | Kernel DTB | `sun50i-h713-l018` (patch 0331): `sun50i-h713-hy310.dts` plus the differences below |
@@ -34,11 +34,12 @@ and `pinmux-pins`, 24.10.2026). "fn" is the pin function number of our pinctrl t
 | PH6/PH7 | focus motor phases | fn 2 (uart4) | `motor_ctr` off |
 | Accelerometer | SC7A20 at 0x18 on twi1 (PH2/PH3) | `lsm6dsv` at 0x6a on twi2, driver bound under stock; PH2/PH3 disabled | `twi1` off; the sensor is not described yet |
 | Fan tacho | PH17 | PH13 (stock `fg-gpio`, EINT under stock) | `fg-gpio` PH13 |
-| Fan speed | on/off on PB5 | PWM0 on **PH17** (fn 3): 95/70/60 % with the lamp at high/std/low; PB5 the rail as on the HY310 | U-Boot sets the stock std 70 %, the tree leaves PH17 alone (3240 rpm, 25.10.2026; 3990 rpm at 100 %) |
-| Lamp | not dimmable | PWM2 on **PB4** (fn 2), 25 kHz; **dims as the duty rises**: the three stock modes switched on the unit read high 30 %, std 50 %, low 75 % (the stock fan node's `bl0` duty-array 50/75/30/75), PWM3 stays off | the dtsi's pwm-backlight, `brightness-levels <100 75 50 30>`: 75 = high (the brightest stock drives), 50 = std (start), 25 = low |
+| Fan speed | on/off on PB5 | PWM0 on **PH17** (fn 3): 95/70/60 % with the lamp at high/std/low; PB5 the rail as on the HY310 | the board manager's `fan0` (`duty-array-policy1 <70 60 95 70>`, kernel 0332), set with the lamp; U-Boot sets the stock std before (2880/3210 rpm at low/std, 25.10.2026) |
+| Lamp | not dimmable | PWM2 on **PB4** (fn 2), 25 kHz; **dims as the duty rises**: the three stock modes switched on the unit read high 30 %, std 50 %, low 75 % (the stock fan node's `bl0` duty-array 50/75/30/75), PWM3 stays off | the board manager's `bl0` (stock duty-array, `lamp-mode-names` std/low/high, thermal mode 3), pwm-backlight off; `h713-lamp status \| set MODE`, kept in `/etc/h713/lamp.conf` |
 | Focus motor | PH4..PH7, end switch PH14 | PF0..PF3 (outputs under stock), end switch PB1; app `com.hysd.vafocus` | not described yet |
 | Camera | Realtek `0bda:5803` | `4098:a425` "HYSD-VAF02-ZH04", UVC, with a HID button | nothing needed (USB) |
 | Panel keys | 6 | none but the power key (owner, 24.10.2026); the seven LRADC keys of the stock tree are its template | - |
+| NTC | none (stock `ntc_num 0`) | GPADC channel 1, its own table 0..55 °C; warn 41, power off 51, resume 34 °C | `ntc_num 1`, the stock table and thresholds (21.4 °C read at a CPU of 49 °C, 25.10.2026; not held against a thermometer yet) |
 | LEDs | - | power PL0, status PL1 | not described yet |
 | Audio | - | headphone jack and SPDIF pins enabled in the stock tree | not described yet |
 
@@ -55,12 +56,13 @@ the PH bank reads `0x0009a100`, the stock value (owner's eyes plus the registers
 
 - From power-on until U-Boot proper runs (SPL, about 1 s) PB5 and PB4 are at their reset level: lamp and fan
   come on briefly before the gate turns them off.
-- Brightness 0 switches PWM2 off (the driver clears the channel's enable and clock gate). What the pin and
-  the lamp do then is not measured; nothing of ours writes 0.
-- The fan runs at the stock std 70 % whatever the lamp level and the temperature; the board manager reads no
-  temperature on this board (its `temp1` is empty), and the stock firmware warns at 41 and powers off at 51 °C.
+- The thermal mode (lamp dimmed above 41 °C) is not measured: the NTC has not been near 41 °C. The power off at
+  51 °C stays disarmed (`thermal_shutdown=0`) until the NTC is held against a thermometer.
+- At boot the lamp starts at std (U-Boot) and changes to the kept mode when `h713-lamp.service` runs, about 3 s
+  after the kernel.
 
 ## Not measured
 
-Nothing of this directory has booted. The installer has not run on the board. The accelerometer's axes, the
-camera's formats and the motor are unmeasured under our system.
+The test image test2 runs on the board since 25.10.2026, with U-Boot, the kernel FIT and the board manager
+quick-deployed after it. The accelerometer's axes, the camera's formats and the motor are unmeasured under
+our system; the lamp modes' brightness is not judged by eye yet.

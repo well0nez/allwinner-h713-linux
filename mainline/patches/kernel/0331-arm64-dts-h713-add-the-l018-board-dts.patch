@@ -11,22 +11,23 @@ state under stock (read on a running unit, 24.10.2026) say differently:
   homes at probe. This board's own motor is on PF0..PF3 and is not
   described yet.
 - twi1 off: PH2/PH3 are disabled under stock.
-- The fan tacho is PH13, as on the HY200 QZ713DF A1. PH17 carries the fan's
-  PWM0 (95/70/60 % with the lamp at high/std/low under stock); U-Boot's
-  CONFIG_H713_BOARD_L018 sets the stock std 70 %, and this tree leaves
-  PH17 and PWM0 as they are found.
-- The lamp is PWM2 on PB4 (function 2 under stock, 25 kHz) and dims as the
-  duty rises: the three stock modes, switched on the running unit, are
-  high 30 %, std 50 %, low 75 %. The dtsi's pwm-backlight stays with
-  brightness-levels <100 75 50 30> (pwm-backlight scales by the largest
-  level), so brightness 75 is stock high and the brightest it drives, 50
-  stock std and the start.
+- The fan tacho is PH13, as on the HY200 QZ713DF A1.
+- Lamp and fan belong to the board manager, as under stock (patch 0332):
+  PWM0 on PH17 is the fan's speed, PWM2 on PB4 the lamp's dimmer, which
+  dims as the duty rises, both 25 kHz with the stock pin groups. One mode
+  index sets both, the stock tables: std 0 = lamp 50 % / fan 70 %, low
+  1 = 75 / 60, high 2 = 30 / 95 (switched and measured on the running
+  unit, 24.10.2026), and 3, the stock thermal mode (75 / 70), which the
+  NTC selects above temp_warn until temp_resume. The dtsi's pwm-backlight
+  is disabled, it would be a second owner of PWM2. U-Boot's
+  CONFIG_H713_BOARD_L018 sets the stock std before Linux.
 - The NTC: the L018 has one (stock ntc_num 1, GPADC channel 1), the HY310
   none; its own gpadc-table (0..55 C) and thresholds (warn 41, power off
   51, resume 34 C), verbatim from the stock tree.
 - The vendor ARISC firmware, as on the HY300 Pro.
 
-Nothing of it has booted on the board yet.
+Booted on the L018 since 24.10.2026 (test image test2, then quick
+deploys of U-Boot and the kernel FIT).
 
 diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
 --- a/arch/arm64/boot/dts/allwinner/Makefile
@@ -42,7 +43,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinn
 diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts
-@@ -0,0 +1,106 @@
+@@ -0,0 +1,134 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * L018 projector (Allwinner H713; stock Android 11 of 2025-05-14,
@@ -96,7 +97,38 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 +	status = "disabled";
 +};
 +
++/* The stock L018's own pin groups for the two PWMs (both 10 mA). */
++&pio {
++	l018_pwm0_pin: l018-pwm0-pin {
++		pins = "PH17";
++		function = "pwm0";
++		drive-strength = <10>;
++		bias-pull-down;
++	};
++
++	l018_pwm2_pin: l018-pwm2-pin {
++		pins = "PB4";
++		function = "pwm2";
++		drive-strength = <10>;
++		bias-pull-up;
++	};
++};
++
 +&board_mgr {
++	/*
++	 * Lamp and fan as the stock driver owns them, one mode index for both
++	 * (stock fan node, fan_policy 1; measured on the running unit
++	 * 24.10.2026): std 0 = lamp 50 % / fan 70 %, low 1 = 75 / 60,
++	 * high 2 = 30 / 95; the lamp dims as PWM2's duty rises. 3 is the stock
++	 * thermal mode (75 / 70): above temp_warn for long the lamp dims, the
++	 * chosen mode is kept and comes back at temp_resume.
++	 */
++	pinctrl-names = "default";
++	pinctrl-0 = <&l018_pwm0_pin>, <&l018_pwm2_pin>;
++	pwms = <&pwm 0 40000 0>, <&pwm 2 40000 0>;
++	pwm-names = "fan0", "bl0";
++	thermal-mode = <3>;
++
 +	/*
 +	 * The L018 has an NTC (stock ntc_num = 1; ntc0: source 1 = GPADC,
 +	 * channel 1 - the dtsi's ntc0 says the same), the HY310 none (stock
@@ -106,8 +138,8 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 +	 * boards converts with the same code (get_adc_data, get_temp_data,
 +	 * search_table_gpadc, sunxi_gpadc_read_*: the same sizes). Below the
 +	 * last node both clamp to 55 C, which is above temp_poweroff, so a
-+	 * hotter box still counts towards the shutdown. temp_resume is read by
-+	 * the stock driver only (it ends its thermal mode 3 there).
++	 * hotter box still counts towards the shutdown. temp_resume ends the
++	 * thermal mode.
 +	 */
 +	io-channels = <&gpadc 1>;
 +	gpadc-table = <
@@ -123,7 +155,14 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 +	temp_resume = <34>;
 +
 +	fan0 {
++		duty-array-policy1 = <70 60 95 70>;	/* stock */
 +		fg-gpio = <&pio 7 13 GPIO_ACTIVE_HIGH>;	/* PH13, stock fan0 fg-gpio */
++	};
++
++	bl0 {
++		duty-array = <50 75 30 75>;		/* stock */
++		dft_period_ns = <40000>;		/* stock, 25 kHz */
++		lamp-mode-names = "std", "low", "high";
 +	};
 +
 +	ntc {
@@ -131,19 +170,9 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 +	};
 +};
 +
-+/*
-+ * pwm-backlight scales by the largest level, so the duties have to be the
-+ * levels themselves with 100 among them, and as the lamp dims with the duty
-+ * they run downwards: brightness 0..75 goes from 100 % (darker than stock low)
-+ * to 30 % (stock high, the brightest the stock firmware drives); 25 is stock
-+ * low, 50 stock std and the start. Brightness 0 itself switches the PWM off
-+ * (the driver clears the channel's enable and clock gate); what the pin and
-+ * the lamp then do is not measured, and nothing of ours writes 0.
-+ */
++/* The board manager owns PWM2 here (bl0); two owners would fight over it. */
 +&backlight {
-+	brightness-levels = <100 75 50 30>;
-+	num-interpolated-steps = <25>;
-+	default-brightness-level = <50>;	/* 50 %, stock std */
++	status = "disabled";
 +};
 +
 +&arisc {
