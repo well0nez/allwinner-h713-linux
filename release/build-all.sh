@@ -269,8 +269,22 @@ spl_size_ok() {
 	local n; n=$(stat -c %s "$1" 2>/dev/null || echo 0)
 	[[ "$n" -eq 32768 ]] || die "$1 is $n bytes, not 32768 -- the SPL no longer fits its 32 KiB slot"
 }
-in_container()      { podman exec -e JOBS="$JOBS" -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" "$CONTAINER" bash -lc "$*"; }
-in_container_root() { podman exec -u root -e JOBS="$JOBS" -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" "$CONTAINER" bash -lc "$*"; }
+# podman exec passes no signal on: killed, it answers 0 (SIGTERM) or 1 (SIGINT) and its command goes on in the container (measured
+# 26.10.2026; so an aborted kernel step once came back as done). Every command of a run carries RUN_MARK in its environment: one that
+# still runs with it once podman is back has failed, and an abort or the end of this script stops whatever has it (trap in step 0).
+RUN_MARK="H713_BUILD_ALL=$ROOT:$$"
+marked() {   # <environment line> [kill]: the container's pids that have it (without kill: lines that contain it); root needs --privileged to read them
+	podman exec --privileged -u root "$CONTAINER" bash -c 'for e in /proc/[0-9]*/environ; do
+		if [[ $2 == kill ]]; then grep -qzxF "$1" "$e" && kill -TERM "${e//[^0-9]/}" && echo "${e//[^0-9]/}"; else grep -qzF "$1" "$e" && echo "${e//[^0-9]/}"; fi
+	done 2>/dev/null; true' - "$@"
+}
+run_in() {   # podman in the background: wait gives way to a trapped signal at once
+	local rc=0 left; podman exec -e "$RUN_MARK" -e JOBS="$JOBS" -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" "$@" & wait $! || rc=$?
+	left=$(marked "$RUN_MARK" kill | tr '\n' ' '); [[ -z $left ]] && return $rc
+	echo "error: podman exec came back ($rc) while its command still ran in the container (pids ${left% }, stopped now)" >&2; return 1
+}
+in_container()      { run_in "$CONTAINER" bash -lc "$*"; }
+in_container_root() { run_in -u root "$CONTAINER" bash -lc "$*"; }
 # host path -> container path
 c() { printf '%s' "${1/#$ROOT/$WORK}"; }
 T0=$(date +%s)
@@ -342,6 +356,11 @@ case "$st" in
 	created|exited|stopped) ((DRY)) || podman start "$CONTAINER" >/dev/null; info "container $CONTAINER started (was: $st)" ;;
 	*) die "container $CONTAINER is missing -- recipe in doku/50-befehle.md §Bauen" ;;
 esac
+if ((!DRY)); then
+	left=$(marked "H713_BUILD_ALL=$ROOT:" | tr '\n' ' ')
+	[[ -z $left ]] || die "an earlier run of this checkout still runs in the container (pids ${left% }): let it end, or stop it with: podman exec -u root $CONTAINER kill ${left% }"
+	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'marked "$RUN_MARK" kill >/dev/null 2>&1 || true' EXIT
+fi
 ((DRY)) || { TOOLS=$(in_container 'clang --version | head -1; command -v mmdebstrap mke2fs depmod dtc >/dev/null || exit 1') \
 	|| die "tools are missing in the container (mmdebstrap/mke2fs/depmod/dtc)"; sed 's/^/    /' <<< "$TOOLS"; }   # TOOLS is an input of every step
 for f in "$INSTALLER/h713-mkimage" "$INSTALLER/mkimage-inputs.sh" "$ROOTFS/build-rootfs.sh" "$EXTRACTOR" "$MAINLINE/build/build.sh" "$MAINLINE/build/uboot-build.sh"; do
