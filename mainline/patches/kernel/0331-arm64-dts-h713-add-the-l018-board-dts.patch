@@ -12,8 +12,9 @@ state under stock (read on a running unit, 24.10.2026) say differently:
   described yet.
 - twi1 off: PH2/PH3 are disabled under stock.
 - The fan tacho is PH13, as on the HY200 QZ713DF A1. PH17 carries the fan's
-  PWM0 under stock; it is held high (100 %, the top of the stock duty
-  tables) until PWM0 is driven.
+  PWM0 (95/70/60 % with the lamp at high/std/low under stock); U-Boot's
+  CONFIG_H713_BOARD_L018 sets the stock std 70 %, and this tree leaves
+  PH17 and PWM0 as they are found.
 - The lamp is PWM2 on PB4 (function 2 under stock, 25 kHz) and dims as the
   duty rises: the three stock modes, switched on the running unit, are
   high 30 %, std 50 %, low 75 %. The dtsi's pwm-backlight stays with
@@ -38,7 +39,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinn
 diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts
-@@ -0,0 +1,85 @@
+@@ -0,0 +1,77 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * L018 projector (Allwinner H713; stock Android 11 of 2025-05-14,
@@ -57,9 +58,10 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 + *  - twi1 (PH2/PH3, the HY310's SC7A20) is disabled under stock: off here.
 + *  - The fan: the tacho is PH13 (stock fan0 fg-gpio, on EINT under stock) -
 + *    the board manager powers off when it counts too little, so it has to
-+ *    count the right pin. Its speed is PWM0 on PH17 (function 3 under stock,
-+ *    70 % at the time); until PWM0 is driven PH17 is held high, 100 %, the
-+ *    top of the stock duty tables.
++ *    count the right pin. Its speed is PWM0 on PH17 (function 3 under stock:
++ *    95/70/60 % with the lamp at high/std/low). U-Boot (CONFIG_H713_BOARD_L018)
++ *    sets PWM0 to the stock std 70 % before the fan's rail comes up, and this
++ *    tree leaves PH17 and PWM0 as they are found.
 + *  - The lamp: PWM2 on PB4 (function 2 = pwm2 under stock, 25 kHz), and it
 + *    dims as the duty rises - the three stock modes, switched on a running
 + *    unit with the registers read along (24.10.2026): high 30 %, std 50 %,
@@ -81,15 +83,6 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 +/ {
 +	model = "L018 (Allwinner H713)";
 +	compatible = "magcubic,l018", "allwinner,sun50i-h713";
-+};
-+
-+&pio {
-+	fan_pwm_hog: fan-pwm-hog {
-+		gpio-hog;
-+		gpios = <7 17 GPIO_ACTIVE_HIGH>;	/* PH17, PWM0 under stock */
-+		output-high;
-+		line-name = "ph17-fan-pwm";
-+	};
 +};
 +
 +&twi1 {

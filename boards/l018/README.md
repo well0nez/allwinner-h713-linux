@@ -12,7 +12,7 @@ it.
 | Verified by | nobody |
 | Profile | `installer/h713/profiles/l018.py` |
 | Kernel DTB | `sun50i-h713-l018` (patch 0331): `sun50i-h713-hy310.dts` plus the differences below |
-| U-Boot base | `hy310_defconfig`, unchanged - the DRAM block is this board's boot0 word for word (`uboot.config`) |
+| U-Boot base | `l018_defconfig` = `hy310_defconfig` (the DRAM block is this board's boot0 word for word) + `CONFIG_H713_BOARD_L018` (fork `0103`): dark gate, stock std mode, PH9 low, PF6 untouched |
 | DRAM | DDR3 (type 3), 792 MHz, 1 GiB: the 24 boot0 words of the stock image, equal to the HY310's |
 | Panel | project id `0x30`, 1920x1080 dual port, 2128x1120, 143.0016 MHz - the HY310's; its `panel_config.ini` differs in `pwm_channel` (3, HY310 2) and `default_backlight` (50, HY310 100) only |
 | display.bin | 1 256 216 B, `16c74a28...`, the HY310's revision; of the 19 files in `mips/` only `database.TSE` differs |
@@ -34,7 +34,7 @@ and `pinmux-pins`, 24.10.2026). "fn" is the pin function number of our pinctrl t
 | PH6/PH7 | focus motor phases | fn 2 (uart4) | `motor_ctr` off |
 | Accelerometer | SC7A20 at 0x18 on twi1 (PH2/PH3) | `lsm6dsv` at 0x6a on twi2, driver bound under stock; PH2/PH3 disabled | `twi1` off; the sensor is not described yet |
 | Fan tacho | PH17 | PH13 (stock `fg-gpio`, EINT under stock) | `fg-gpio` PH13 |
-| Fan speed | on/off on PB5 | PWM0 on **PH17** (fn 3): 95/70/60 % with the lamp at high/std/low; PB5 the rail as on the HY310 | PH17 held high (100 %, the top of the stock duty tables) |
+| Fan speed | on/off on PB5 | PWM0 on **PH17** (fn 3): 95/70/60 % with the lamp at high/std/low; PB5 the rail as on the HY310 | U-Boot sets the stock std 70 %, the tree leaves PH17 alone (3240 rpm, 25.10.2026; 3990 rpm at 100 %) |
 | Lamp | not dimmable | PWM2 on **PB4** (fn 2), 25 kHz; **dims as the duty rises**: the three stock modes switched on the unit read high 30 %, std 50 %, low 75 % (the stock fan node's `bl0` duty-array 50/75/30/75), PWM3 stays off | the dtsi's pwm-backlight, `brightness-levels <100 75 50 30>`: 75 = high (the brightest stock drives), 50 = std (start), 25 = low |
 | Focus motor | PH4..PH7, end switch PH14 | PF0..PF3 (outputs under stock), end switch PB1; app `com.hysd.vafocus` | not described yet |
 | Camera | Realtek `0bda:5803` | `4098:a425` "HYSD-VAF02-ZH04", UVC, with a HID button | nothing needed (USB) |
@@ -42,15 +42,23 @@ and `pinmux-pins`, 24.10.2026). "fn" is the pin function number of our pinctrl t
 | LEDs | - | power PL0, status PL1 | not described yet |
 | Audio | - | headphone jack and SPDIF pins enabled in the stock tree | not described yet |
 
+## What the first install showed (25.10.2026)
+
+test2 with the HY310's U-Boot base: the picture was **mirrored left-right**, and in the gate **lamp (full) and
+fan ran** - the L018's PB5 is ON at its reset level and an undriven PB4 is full light (the HY310's PB5 is off).
+Live tests on the running unit: PB5 low switches lamp and fan off, PWM2 at 100 % darkens the lamp, PH9 low at
+run time changed nothing. With `l018_defconfig` (fork `0103`) the gate is dark and quiet, the board comes up at
+the stock std mode, and PH9 is low before the panel's reset pulse: **the picture is the right way round** and
+the PH bank reads `0x0009a100`, the stock value (owner's eyes plus the registers over ssh).
+
 ## Known deviations of the TEST image
 
-- U-Boot (`hy310_defconfig`) runs the HY310's panel sequence for project 0x30 and drives **PF6 high**, which
-  this board's stock leaves disabled, and **PH9 high**, which it drives low. Neither pin is named by the board's
-  stock tree outside pin groups and the template `battery` node. If the picture comes up mirrored or not at
-  all, these two are the first suspects; taking them out needs a U-Boot change of its own.
+- From power-on until U-Boot proper runs (SPL, about 1 s) PB5 and PB4 are at their reset level: lamp and fan
+  come on briefly before the gate turns them off.
 - Brightness 0 switches PWM2 off (the driver clears the channel's enable and clock gate). What the pin and
   the lamp do then is not measured; nothing of ours writes 0.
-- The fan runs at full speed.
+- The fan runs at the stock std 70 % whatever the lamp level and the temperature; the board manager reads no
+  temperature on this board (its `temp1` is empty), and the stock firmware warns at 41 and powers off at 51 °C.
 
 ## Not measured
 

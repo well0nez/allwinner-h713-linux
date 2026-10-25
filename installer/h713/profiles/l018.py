@@ -177,5 +177,5 @@ PROFILE = {
         "mips_database_sha256": "002ad401d581a293d56106c8faf361eb9919f234562a6d7c316c1de1438a2aac",
     },
     "board_dt": "sun50i-h713-l018",          # kernel patch 0331; it has not booted on this board yet
-    "uboot_board": "hy310",                  # the HY310's base unchanged: same DRAM words, same panel (boards/l018/)
+    "uboot_board": "l018",                   # l018_defconfig: the HY310's base + CONFIG_H713_BOARD_L018 (boards/l018/)
 }

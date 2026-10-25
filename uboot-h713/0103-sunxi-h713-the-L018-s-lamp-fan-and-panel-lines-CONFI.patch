@@ -1,0 +1,343 @@
+From b0795ef3079bf01294d641096f1d3760678a4e8c Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sun, 25 Oct 2026 02:01:28 +0200
+Subject: [PATCH 103/103] sunxi: h713: the L018's lamp, fan and panel lines
+ (CONFIG_H713_BOARD_L018)
+
+The L018 builds from the HY310's base, but five lines around it behave
+differently, read off a running unit under its stock firmware
+(24.10.2026): PB5 at its reset level is lamp and fan ON, the lamp dims
+on PWM2/PB4 as the duty rises and an undriven PB4 is full light, the
+fan's speed is PWM0 on PH17, the panel's PH9 is low and PF6 undriven.
+
+With CONFIG_H713_BOARD_L018 (only l018_defconfig sets it) the gate
+holds PB5 low and PB4 high, the board comes up at the stock std mode
+(lamp PWM2 50 %, fan PWM0 70 %) before PB5 goes high, and the HY310
+panel sequence leaves PF6 alone and sets PH9 low before the reset pulse.
+Without the option the HY310's code and data are unchanged (board.o,
+h713_mips.o: every code and data section byte-identical).
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ arch/arm/mach-sunxi/Kconfig     | 14 ++++++
+ arch/arm/mach-sunxi/h713_mips.c | 22 ++++++++
+ board/sunxi/Makefile            |  1 +
+ board/sunxi/board.c             | 17 +++++++
+ board/sunxi/h713_l018.c         | 85 +++++++++++++++++++++++++++++++
+ configs/l018_defconfig          | 89 +++++++++++++++++++++++++++++++++
+ 6 files changed, 228 insertions(+)
+ create mode 100644 board/sunxi/h713_l018.c
+ create mode 100644 configs/l018_defconfig
+
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index b23f30f9e36..11de5aead1c 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -107,6 +107,20 @@ config H713_POWER_GATE_IR
+ 	  gate found before U-Boot goes on. With crust running on the ARISC
+ 	  the gate leaves the remote alone and waits for the key, as before.
+ 
++
++config H713_BOARD_L018
++	bool "H713: the L018's lamp, fan and panel lines"
++	depends on MACH_SUN50I_H713
++	help
++	  The L018 builds from the HY310's base (same DRAM words, panel and
++	  display firmware) but differs in five lines, read off a running unit
++	  under its stock firmware (24.10.2026): PB5 left at its reset level
++	  is lamp and fan ON; the lamp dims on PWM2 at PB4 as the duty rises
++	  (stock std 50 %), and an undriven PB4 is full light; the fan's speed
++	  is PWM0 on PH17 (stock std 70 %); the panel's PH9 is low under
++	  stock and PF6 is not driven. With this option the gate holds lamp
++	  and fan off, the board comes up at the stock std mode, and the
++	  HY310 panel sequence leaves PF6 alone and keeps PH9 low.
+ config DRAM_SUN50I_A133
+ 	bool
+ 	help
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 337ce74bd83..ba6bcc8f1d4 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -5650,11 +5650,24 @@ static int h713_disp_stock_panel_power(void)
+ 	printf("H713 panel: stock power pre-delay 550 ms\n");
+ 	mdelay(550);
+ 
++#ifdef CONFIG_H713_BOARD_L018
++	/*
++	 * The L018: PF6 is not driven under its stock firmware, and its PH9
++	 * is low - set before the reset pulse, which is when a panel takes
++	 * over pins like a scan direction (a PH9 change at run time showed
++	 * nothing, 24.10.2026). PH9 then stays out of the list below.
++	 */
++	sunxi_gpio_set_pull(reset, SUNXI_GPIO_PULL_DOWN);
++	clrbits_le32((void *)H713_PH_DATA, BIT(9));
++	sunxi_gpio_set_cfgpin(SUNXI_GPH(9), SUNXI_GPIO_OUTPUT);
++	printf("H713 panel: L018 - PF6 left alone, PH9 low\n");
++#else
+ 	sunxi_gpio_set_pull(power, SUNXI_GPIO_PULL_DOWN);
+ 	sunxi_gpio_set_pull(reset, SUNXI_GPIO_PULL_DOWN);
+ 
+ 	setbits_le32((void *)H713_PF_DATA, BIT(6));
+ 	sunxi_gpio_set_cfgpin(power, SUNXI_GPIO_OUTPUT);
++#endif
+ 
+ 	clrbits_le32((void *)H713_PH_DATA, BIT(16));
+ 	sunxi_gpio_set_cfgpin(reset, SUNXI_GPIO_OUTPUT);
+@@ -5682,7 +5695,11 @@ static int h713_disp_stock_panel_power(void)
+ 	 * Panel power is not something to leave to a pin's reset default.
+ 	 */
+ 	if (h713_disp_panel == &h713_panel_cfg_hy310) {
++#ifdef CONFIG_H713_BOARD_L018
++		static const u8 pins[] = { 19, 15, 8 };	/* PH9 stays low */
++#else
+ 		static const u8 pins[] = { 19, 15, 8, 9 };
++#endif
+ 		uint i;
+ 
+ 		for (i = 0; i < ARRAY_SIZE(pins); i++) {
+@@ -5691,8 +5708,13 @@ static int h713_disp_stock_panel_power(void)
+ 					      SUNXI_GPIO_OUTPUT);
+ 		}
+ 		mdelay(5);
++#ifdef CONFIG_H713_BOARD_L018
++		printf("H713 panel: vendor panel lines PH19/PH15/PH8 "
++		       "driven high, PH9 low (PH_DAT=%08x)\n", readl(H713_PH_DATA));
++#else
+ 		printf("H713 panel: vendor panel lines PH19/PH15/PH8/PH9 "
+ 		       "driven high (PH_DAT=%08x)\n", readl(H713_PH_DATA));
++#endif
+ 	}
+ 
+ 	pf_dat = readl(H713_PF_DATA);
+diff --git a/board/sunxi/Makefile b/board/sunxi/Makefile
+index c51fe525476..b65168eac88 100644
+--- a/board/sunxi/Makefile
++++ b/board/sunxi/Makefile
+@@ -8,6 +8,7 @@
+ # Wolfgang Denk, DENX Software Engineering, wd@denx.de.
+ obj-y	+= board.o
+ obj-$(CONFIG_H713_POWER_GATE_IR)	+= h713_gate_ir.o
++obj-$(CONFIG_H713_BOARD_L018)	+= h713_l018.o
+ obj-$(CONFIG_H713_VENDOR_CHAINLOAD)	+= h713_vendor_chain.o \
+ 					   h713_vendor_chain_tramp.o
+ obj-$(CONFIG_SUN7I_GMAC)	+= gmac.o
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index 90aa04786df..6dafbf81779 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -1395,12 +1395,29 @@ static void h713_power_gate(void)
+ }
+ #endif
+ 
++#ifdef CONFIG_H713_BOARD_L018
++void h713_l018_lamp_fan_off(void);
++void h713_l018_lamp_fan_std(void);
++#endif
++
+ int board_late_init(void)
+ {
++#ifdef CONFIG_H713_BOARD_L018
++	/*
++	 * The L018's PB5 is lamp and fan ON at its reset level and its PB4
++	 * full light (board/sunxi/h713_l018.c): drive both before the gate,
++	 * or the gate is a lit, loud board waiting for a key.
++	 */
++	h713_l018_lamp_fan_off();
++#endif
+ #ifdef CONFIG_H713_POWER_GATE
+ 	/* Must run before the power lines: the gate is their absence. */
+ 	h713_power_gate();
+ #endif
++#ifdef CONFIG_H713_BOARD_L018
++	/* The stock std mode on PWM2 and PWM0, then PB5 up. */
++	h713_l018_lamp_fan_std();
++#endif
+ #ifdef CONFIG_H713_POWERON_LIGHT_FAN
+ 	h713_poweron_lines();
+ #endif
+diff --git a/board/sunxi/h713_l018.c b/board/sunxi/h713_l018.c
+new file mode 100644
+index 00000000000..1cacd0616ea
+--- /dev/null
++++ b/board/sunxi/h713_l018.c
+@@ -0,0 +1,85 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * The L018's lamp and fan lines.
++ *
++ * The L018 shares the HY310's DRAM words, panel and display firmware, and
++ * builds from its base, but three lines around them behave the other way
++ * round (read off a running unit under its stock firmware, 24.10.2026):
++ *
++ *   PB5   the lamp and fan enable. Left at its reset level (input, no pull)
++ *         the HY310's is off; the L018's is on - lamp and fan run in the gate
++ *         unless PB5 is driven low, and go off when it is.
++ *   PB4   PWM2, the lamp's dimmer, which DIMS as the duty rises: the three
++ *         stock modes are high 30 %, std 50 %, low 75 % at 25 kHz, and an
++ *         undriven PB4 is full light. Held high (100 %) the lamp goes dark.
++ *   PH17  PWM0, the fan's speed: 95/70/60 % with the lamp at high/std/low.
++ *
++ * h713_l018_lamp_fan_off() makes the gate what it is on the HY310 - dark and
++ * quiet. h713_l018_lamp_fan_std() sets the stock std mode before PB5 comes up,
++ * and Linux keeps both PWMs as they are found (its pwm-sun8i probe only
++ * deasserts the block's reset; the kernel's pwm-backlight then owns PWM2).
++ */
++
++#include <asm/io.h>
++#include <linux/bitops.h>
++#include <linux/delay.h>
++#include <sunxi_gpio.h>
++#include <stdio.h>
++
++#define L018_PB_DATA		0x02000040UL	/* bank B: 0x02000030 + 0x10 */
++
++#define L018_CCU_PWM_BGR	0x020017acUL
++#define L018_PWM_BASE		0x02000c00UL
++#define L018_PWM_PCCR(pair)	(L018_PWM_BASE + 0x020 + (pair) * 4)
++#define L018_PWM_CLK_GATE	(L018_PWM_BASE + 0x040)
++#define L018_PWM_ENABLE		(L018_PWM_BASE + 0x080)
++#define L018_PWM_CTL(ch)	(L018_PWM_BASE + 0x100 + (ch) * 0x20)
++#define L018_PWM_PERIOD(ch)	(L018_PWM_BASE + 0x104 + (ch) * 0x20)
++
++#define L018_PWM_CYCLES		960		/* 24 MHz / 25 kHz, the stock period */
++#define L018_LAMP_PWM		2		/* PB4, pinmux function 2 */
++#define L018_FAN_PWM		0		/* PH17, pinmux function 3 */
++#define L018_LAMP_STD		50		/* % duty, stock std */
++#define L018_FAN_STD		70		/* % duty, stock std */
++
++static void l018_pwm_bus_enable(void)
++{
++	setbits_le32((void *)L018_CCU_PWM_BGR, BIT(0));		/* bus gate */
++	udelay(20);
++	setbits_le32((void *)L018_CCU_PWM_BGR, BIT(16));	/* reset off */
++	udelay(20);
++}
++
++/* One channel at 25 kHz from HOSC, active high (stock PCR 0x100). */
++static void l018_pwm_set(uint ch, uint percent)
++{
++	u32 act = L018_PWM_CYCLES * percent / 100;
++
++	clrbits_le32((void *)L018_PWM_PCCR(ch / 2), 0x18f);	/* HOSC, /1 */
++	writel(BIT(8), L018_PWM_CTL(ch));
++	writel(((L018_PWM_CYCLES - 1) << 16) | act, L018_PWM_PERIOD(ch));
++	setbits_le32((void *)L018_PWM_CLK_GATE, BIT(ch));
++	setbits_le32((void *)L018_PWM_ENABLE, BIT(ch));
++}
++
++void h713_l018_lamp_fan_off(void)
++{
++	setbits_le32((void *)L018_PB_DATA, BIT(4));		/* lamp dark */
++	sunxi_gpio_set_cfgpin(SUNXI_GPB(4), SUNXI_GPIO_OUTPUT);
++	clrbits_le32((void *)L018_PB_DATA, BIT(5));		/* lamp, fan off */
++	sunxi_gpio_set_cfgpin(SUNXI_GPB(5), SUNXI_GPIO_OUTPUT);
++	printf("L018: PB5 low, PB4 high - lamp and fan off\n");
++}
++
++void h713_l018_lamp_fan_std(void)
++{
++	l018_pwm_bus_enable();
++	l018_pwm_set(L018_FAN_PWM, L018_FAN_STD);
++	sunxi_gpio_set_cfgpin(SUNXI_GPH(17), 3);
++	l018_pwm_set(L018_LAMP_PWM, L018_LAMP_STD);
++	sunxi_gpio_set_cfgpin(SUNXI_GPB(4), 2);
++	setbits_le32((void *)L018_PB_DATA, BIT(5));
++	sunxi_gpio_set_cfgpin(SUNXI_GPB(5), SUNXI_GPIO_OUTPUT);
++	printf("L018: lamp PWM%u %u %%, fan PWM%u %u %% (stock std), PB5 high\n",
++	       L018_LAMP_PWM, L018_LAMP_STD, L018_FAN_PWM, L018_FAN_STD);
++}
+diff --git a/configs/l018_defconfig b/configs/l018_defconfig
+new file mode 100644
+index 00000000000..056a8fe97dd
+--- /dev/null
++++ b/configs/l018_defconfig
+@@ -0,0 +1,89 @@
++# MagCubic HY310 (HY260_QZ713_V3.1) -- board base.
++#
++# This is what the board is. What a build is *for* comes from a role fragment
++# in configs/fragments/, merged on top with scripts/kconfig/merge_config.sh -m
++# and make olddefconfig; build/uboot-build.sh does both. Six builds of this
++# board exist and docs/uboot/README.md has the matrix.
++#
++# The base is the shipping build minus the three lines that make it the
++# shipping build: the power gate, the environment file and the boot command.
++# Everything else stays here, including the USB gadget and the eMMC
++# environment, because a fragment can switch those off and have every symbol
++# that hangs off them follow, while a fragment that switches them on leaves
++# their dependants at whatever the base already decided. Merged fragments
++# subtract reliably and add unreliably, so the base carries the superset.
++CONFIG_ARM=y
++CONFIG_ARCH_SUNXI=y
++CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy310"
++CONFIG_DRAM_CLK=792
++CONFIG_SPL=y
++# DDR3 (type 3). The value set below is the bench board's; only the clock
++# differs (bench 624, this board 792). tpr0..tpr2 are never read on the DDR3
++# path of dram_sun50iw12.c (only the LPDDR3 arm unpacks them), para2 and tpr13
++# are what the flash tool writes; the rest is this board's own boot0. See
++# docs/tools/h713-probe.md.
++CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
++CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
++CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
++CONFIG_DRAM_SUNXI_ODT_EN=0x1
++CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
++CONFIG_DRAM_SUNXI_PARA1=0x000010f4
++CONFIG_DRAM_SUNXI_PARA2=0x04000000
++CONFIG_DRAM_SUNXI_MR0=0x00001c70
++CONFIG_DRAM_SUNXI_MR1=0x00000040
++CONFIG_DRAM_SUNXI_MR2=0x00000018
++CONFIG_DRAM_SUNXI_MR3=0x00000000
++CONFIG_DRAM_SUNXI_TPR0=0x00482151
++CONFIG_DRAM_SUNXI_TPR1=0x01b1a94c
++CONFIG_DRAM_SUNXI_TPR2=0x0006e04d
++CONFIG_DRAM_SUNXI_TPR3=0xb4787896
++CONFIG_DRAM_SUNXI_TPR4=0x00000000
++CONFIG_DRAM_SUNXI_TPR5=0x48484848
++CONFIG_DRAM_SUNXI_TPR6=0x00000048
++CONFIG_DRAM_SUNXI_TPR7=0x1620121e
++CONFIG_DRAM_SUNXI_TPR8=0x00000000
++CONFIG_DRAM_SUNXI_TPR9=0x00000000
++CONFIG_DRAM_SUNXI_TPR10=0x00000000
++CONFIG_DRAM_SUNXI_TPR11=0x44340000
++CONFIG_DRAM_SUNXI_TPR12=0x00006666
++CONFIG_DRAM_SUNXI_TPR13=0xb4016103
++CONFIG_MACH_SUN50I_H713=y
++CONFIG_H713_POWERON_LIGHT_FAN=y
++CONFIG_H713_MIPS_BOOT=y
++CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
++CONFIG_MMC_SUNXI_SLOT_EXTRA=2
++CONFIG_MMC0_CD_PIN=""
++CONFIG_MMC_HS200_SUPPORT=y
++# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
++CONFIG_SUPPORT_EMMC_BOOT=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_OHCI_HCD=y
++# CONFIG_WATCHDOG is not set
++CONFIG_WDT=y
++CONFIG_USB_MUSB_GADGET=y
++CONFIG_CMD_USB_MASS_STORAGE=y
++# CONFIG_USB_ETHER is not set
++CONFIG_CONSOLE_MUX=y
++CONFIG_SYS_CONSOLE_IS_IN_ENV=y
++CONFIG_USB_FUNCTION_ACM=y
++# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
++CONFIG_SYSRESET=y
++CONFIG_SYSRESET_PSCI=y
++CONFIG_CMD_POWEROFF=y
++CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
++# No "usb start" in the preboot: the host-side USB scan cost 2 to 5 s on every
++# boot and nothing in the product boot reads a USB device (no keyboard, no USB
++# boot medium; the installer role uses the gadget, not the host). The two
++# reboot-mode magics stay: "reboot fastboot" and "reboot bootloader" from Linux.
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi"
++# CONFIG_ENV_IS_IN_FAT is not set
++CONFIG_ENV_IS_IN_MMC=y
++CONFIG_ENV_OFFSET=0x700000
++CONFIG_ENV_MMC_DEVICE_INDEX=1
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
++CONFIG_H713_VENDOR_CHAINLOAD=y
++CONFIG_CMD_WDT=y
++CONFIG_CMD_GPIO=y
++CONFIG_IDENT_STRING=" L018"
++CONFIG_H713_BOARD_L018=y
