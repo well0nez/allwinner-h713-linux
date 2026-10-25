@@ -667,7 +667,7 @@ LIBVA_TAR=
 if ((WANT_LIBVA)); then
 	say "6d/11 libva-v4l2_request cross-built (VA-API driver on cedrus; rootfs/libva/build-libva.sh)"
 	LIBVA_TAR="$OUT/libva-v4l2-request-1.2.tar"
-	in_common; tree_in libva "$ROOT" rootfs/libva; inp "sysroot ${SYSROOT_STAMP##*/}"
+	in_common; tree_in libva "$ROOT" rootfs/libva rootfs/mesa/cross-aarch64.ini.in; inp "sysroot ${SYSROOT_STAMP##*/}"   # build-libva.sh reads mesa's cross file
 	if ! stamp_fits libva; then
 		in_container "cd $WORK && REPO_REV=$(printf %q "$REPO_REV") rootfs/libva/build-libva.sh" > "$OUT/libva-cross.log" 2>&1 || { tail -20 "$OUT/libva-cross.log"; die "libva build failed (log: $OUT/libva-cross.log, $OUT/libva-build.log)"; }
 		[[ -f "$LIBVA_TAR" ]] || die "no $LIBVA_TAR"
@@ -707,11 +707,13 @@ write_sources() {
 
 # --- 7. rootfs --------------------------------------------------------------
 say "7/11 rootfs ($DEBIAN_SUITE/arm64${PROFILES:+, profile $PROFILES}, mmdebstrap in the container as root)"
-# What goes in: this repository's rootfs/ and the board, the profiles, the switches, and the results of every step before it that
-# the tree carries (the notices of the boot chain and the kernel are made from those). The repository's commit is not one: the
-# tar's source note names it, and the stamp's commit tells a take-over from another commit (header).
-in_common; tree_in rootfs "$ROOT" rootfs ":!rootfs/tests" "boards/$BOARD"; inp "rootfs BOARD=$BOARD VARIANT=$VARIANT PROFILES=$PROFILES STANDBY=$WANT_STANDBY LIBVA=$WANT_LIBVA"
+# What goes in: this repository's rootfs/, the programs install-projekt.sh takes from userspace/ and tools/ as they are, the board,
+# the profiles, the switches, and the results of every step before it that the tree carries (the notices of the boot chain and the
+# kernel are made from those). The repository's commit is not one: the tar's source note names it, and the stamp's commit tells a
+# take-over from another commit (header).
+in_common; tree_in rootfs "$ROOT" rootfs ":!rootfs/tests" userspace tools/tse_dump.py "boards/$BOARD"; inp "rootfs BOARD=$BOARD VARIANT=$VARIANT PROFILES=$PROFILES STANDBY=$WANT_STANDBY LIBVA=$WANT_LIBVA"
 inp "debian $DEBIAN_SUITE $DEBIAN_MIRROR keyring $KEYRING_DEB_SHA256 sysroot ${SYSROOT_STAMP##*/}"; [[ -z "$WIFI_ENV" ]] || inp "wifi-env $(sha < "$WIFI_ENV")"
+[[ -f "$ROOTFS/wifi.env" ]] && inp "local wifi.env $(sha < "$ROOTFS/wifi.env")"   # ignored by git, read by build-rootfs.sh when there is no --wifi-env
 for r in bl31 kernel aic8800 userspace mesa warp; do in_step $r; done; [[ -f "$OUT/scp.bin" ]] && in_step crust; ((WANT_LIBVA)) && in_step libva
 if ! stamp_fits rootfs; then
 	write_sources > "$NOTICE/SOURCES"
