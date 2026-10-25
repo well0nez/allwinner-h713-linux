@@ -794,7 +794,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
   - [ ] 4.9h Autofokus bei offenem Launcher - **gebaut (`versuch/autofocus-launcher` `9728dd27`, h713-tv `ctl bare` + Handover)
         und am L018 gemessen 26.10. ~00:05 (Kombi-Zweig `versuch/l018-af-kombi` `9d0beed4`, `arbeit/l018-board-20261024/BERICHT.md`):**
         Gegenprobe alter Stand Ende 3 „no picture" (Pegel 706); neu Launcher 29586, Einstellungen 34790, „No signal" 34695, ohne
-        Seite 34751 (Untergrenze 3227), jedes Mal Ende 0 und die Seite danach wieder da. Offen: nach `main` (Messung bestanden),
+        Seite 34751 (Untergrenze 3227), jedes Mal Ende 0 und die Seite danach wieder da. Dazu 26.10. ~00:25 mit HDMI-Bild + Launcher (Warp an): 33772, Warp und Launcher danach wieder da. Offen: nach `main` (Messung bestanden),
         über die eigene Zeile der Einstellungsseite nicht gemessen. Der ursprüngliche Befund: das Schachbrett geht in die Konsole, die OSD-Ebene (Launcher, Seiten) liegt darüber →
         „no picture". Der Autofokus muss die OSD-Ebene für seinen Lauf freimachen (h713-osd: es gibt kein „launcher hide"); gilt
         für alle Boards (L018 25.10. gesehen)
