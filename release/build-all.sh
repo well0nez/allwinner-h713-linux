@@ -361,7 +361,9 @@ esac
 if ((!DRY)); then
 	left=$(marked "H713_BUILD_ALL=$ROOT:" | tr '\n' ' ')
 	[[ -z $left ]] || die "an earlier run of this checkout still runs in the container (pids ${left% }): let it end, or stop it with: podman exec -u root $CONTAINER kill ${left% }"
-	trap 'exit 130' INT; trap 'exit 143' TERM; trap 'marked "$RUN_MARK" kill >/dev/null 2>&1 || true' EXIT
+	exec 3>&2   # a trap runs under the redirection of the step at hand: the line goes to the script's own stderr
+	stopped() { printf '\nstopped (%s): the steps with a stamp stay, the same command again goes on from there\n' "$1" >&3; exit "$2"; }
+	trap 'stopped SIGINT 130' INT; trap 'stopped SIGTERM 143' TERM; trap 'marked "$RUN_MARK" kill >/dev/null 2>&1 || true' EXIT
 fi
 ((DRY)) || { TOOLS=$(in_container 'clang --version | head -1; command -v mmdebstrap mke2fs depmod dtc >/dev/null || exit 1') \
 	|| die "tools are missing in the container (mmdebstrap/mke2fs/depmod/dtc)"; sed 's/^/    /' <<< "$TOOLS"; }   # TOOLS is an input of every step
