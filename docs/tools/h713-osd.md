@@ -101,8 +101,9 @@ The daemon copies the new rows into its canvas, puts them into the buffer h713-t
 matrix as a **band** (two neighbour rows for the sampling, only the panel pixels whose source row lies in the band written: no
 seam, the launcher's reasoning, measured by a test that compares a page shown in pieces with the same page shown at once) - and
 answers after `osd show`: without an HDMI signal a page is shown over black (`osd show N cover`, pre-distorted with warp.conf's keystone
-when that warps; over the straight ring too, which it hides - the second before the warp's claim at every start, so the launcher no longer jumps, `doku/214` §3), and the launcher opens there too (measured 16.10.2026: Home over the console puts the launcher on the wall, Back brings the console back, `doku/213` §1). `ok waiting` means h713-tv has no picture at the moment and keeps the page for its return (the autofocus
-has the panel, a source changes its mode). Popups and the mute badge are not drawn while a page is open; the page covers the
+when that warps; over the straight ring too, which it hides - the second before the warp's claim at every start, so the launcher no longer jumps, `doku/214` §3), and the launcher opens there too (measured 16.10.2026: Home over the console puts the launcher on the wall, Back brings the console back, `doku/213` §1). `ok waiting` means h713-tv has no picture at the moment and keeps the page for its return (a source changes its mode;
+the autofocus has the panel - `h713-tv ctl bare`, which takes the page off for the chessboard and puts the last buffer back at its
+end, without a new drawing from here; [h713-tv](h713-tv.md), "Bare"). Popups and the mute badge are not drawn while a page is open; the page covers the
 panel, and a launcher does not open over it. `page` in `ctl status` says `closed`, `open (opaque ...)` or `open (transparent pixels ...)` - the first word stays `open`.
 A new keystone while a page is open (its corners, the turn to the wall, the automatic after a move) puts the page whole through the new
 matrix at the next refresh; before 19.10.2026 only the rows shown after it were, and the rest stood where the old one had put it.

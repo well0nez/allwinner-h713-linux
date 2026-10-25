@@ -2023,6 +2023,24 @@ struct osd {
 static struct osd osd = { .peer = -1, .want = -1 };
 
 /*
+ * Bare: nothing of ours on the wall for a while, "ctl bare SECONDS" (TODO 4.9h, 25.10.2026). The autofocus draws its chessboard on
+ * the console's framebuffer and hands the panel over with "ctl off" - but "off" leaves an opaque page standing over black (the
+ * launcher over the console is wanted), so the launcher, the settings or the page without a signal stood over the board, and the
+ * camera saw them and not the board ("no picture", L018 25.10.2026). While bare holds, osd_wanted() wants nothing on the primary
+ * plane: the page goes - with the black frame under it - and with no picture the master and the console go back as display_hide()
+ * gives them; h713-osd's "osd show" is kept as wanted and answered "ok waiting". At the end - "ctl bare 0" from the autofocus, or
+ * the time given, a net for a caller that died - what h713-osd wanted last comes back (osd_resume(), as with a picture that came
+ * back): nobody has to press a key. The picture path does not change: "ctl off" is still the console's mode, and a picture that
+ * is up stays up under a bare overlay.
+ */
+#define BARE_MAX_S	600
+
+static struct {
+	bool on;
+	int fd;			/* the timerfd of its end, -1: none made yet */
+} bare = { .fd = -1 };
+
+/*
  * No signal as a page (P5 of the media side project, 17.10.2026). In the mode HDMI with nothing to show - no signal, a source the
  * display cannot take - the wall shows h713-osd's opaque page "No signal on HDMI" (a line below: "HOME: menu"), not the console:
  * the wall shows nothing that nobody ordered (Marco), and the console is the service's - "ctl off" - and an image's without
@@ -2208,7 +2226,7 @@ static bool osd_learn(struct display *d)
 /* the buffer the primary plane is to carry, -1: the console's framebuffer under the video */
 static int osd_wanted(bool picture)
 {
-	if (!osd.claimed || osd.want < 0)
+	if (!osd.claimed || osd.want < 0 || bare.on)
 		return -1;
 	return picture || osd.cover ? osd.want : -1;
 }
@@ -2367,7 +2385,7 @@ static void osd_settle(struct display *d)
 {
 	if (!osd.queued || !osd_alone(d))
 		return;
-	if (osd.want >= 0)
+	if (osd_wanted(true) >= 0)	/* not osd.want: under "bare" the console's framebuffer goes, and nothing stays queued */
 		osd_resume(d);
 	else
 		osd_drop(d);
@@ -2416,7 +2434,10 @@ static void osd_serve(struct display *d)
 	if (sscanf(buf, "osd show %d %15s", &n, word) >= 1 && n >= 0 && n < OSD_BUFS) {
 		osd.want = n;
 		osd.cover = !strcmp(word, "cover");	/* an opaque page: it needs no picture under it */
-		if (!(d->on || d->warped) && osd.cover) {
+		if (bare.on) {
+			/* kept as wanted, nothing on the wall: the end of "ctl bare" shows it (bare_end()) */
+			answer = "ok waiting -- ctl bare: nothing of ours on the wall, it comes when that ends\n";
+		} else if (!(d->on || d->warped) && osd.cover) {
 			osd_resume(d);
 			answer = osd.shown ? "ok cover -- over black, there is no picture under it\n"
 					   : "error the commit was refused\n";
@@ -2462,6 +2483,49 @@ static void osd_serve(struct display *d)
 		warn("osd             answering \"%s\": %s", buf, strerror(errno));
 		osd_release(d);
 	}
+}
+
+/*
+ * "bare" begins (the story is with struct bare): what is ours goes off the primary plane as with "osd hide", only the wish stays.
+ * Over the warp's frames the console's framebuffer goes with the next one; with no picture display_hide() takes the page and the
+ * black frame under it off in one commit and gives the master and the console back; over a picture the console's framebuffer goes
+ * under it again.
+ */
+static void bare_begin(struct display *d)
+{
+	if (d->warped && osd.shown && !osd_alone(d)) {
+		osd.queued = true;	/* osd_state_add() wants nothing now: the warp's next frame carries the console's framebuffer */
+		return;
+	}
+	osd.queued = false;
+	if (!d->on && !d->warped)
+		display_hide(d);
+	else
+		osd_drop(d);
+}
+
+/* ... and ends: "ctl bare 0", or its time is over */
+static void bare_end(struct display *d, const char *why)
+{
+	struct itimerspec off = { 0 };
+
+	if (!bare.on)
+		return;
+	bare.on = false;
+	if (bare.fd >= 0)
+		timerfd_settime(bare.fd, 0, &off, NULL);
+	info("bare            %s -- %s", why, osd_wanted(d->on || d->warped) >= 0 ? "h713-osd's overlay comes back" : "nothing to come back");
+	osd_resume(d);		/* what h713-osd wanted last: over the picture, or an opaque page over black */
+}
+
+/* the seconds "bare" holds yet, 0 when it does not */
+static long bare_left(void)
+{
+	struct itimerspec its;
+
+	if (!bare.on || bare.fd < 0 || timerfd_gettime(bare.fd, &its))
+		return 0;
+	return its.it_value.tv_sec + (its.it_value.tv_nsec > 0);
 }
 
 
@@ -5214,6 +5278,11 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	reply_add(r, "cover           %s\n", cover.on ? (cover.plane_off || !d->warped ? "an opaque page hides the picture: h713-warp pauses, the video plane is off, the HDMI sound is muted" :
 		  "an opaque page hides the picture: h713-warp pauses, the HDMI sound is muted (the video plane could not go off)") :
 		  cover.resuming ? "the page went: the overlay's change waits for h713-warp's next frame" : "none");
+	if (bare.on)
+		reply_add(r, "bare            on, %ld s left: nothing of ours on the wall%s\n", bare_left(),
+			  osd.want >= 0 ? ", h713-osd's overlay waits" : "");
+	else
+		reply_add(r, "bare            off\n");
 	/* "page" first on the line when the wall shows the page: h713-settings reads "nosignal        page" for "No HDMI signal" */
 	reply_add(r, "nosignal        %s\n", !nosig.lost ? "none" :
 		  !nosig_page_ok() ? "no page: nothing to show, but h713-osd is not claimed, the console is forced or a program is the mode" :
@@ -6867,7 +6936,7 @@ static void osd_flush(struct display *d)
 	if (!osd.queued)
 		return;
 	osd.queued = false;
-	if (osd.want < 0) {
+	if (osd.want < 0 || bare.on) {
 		osd_drop(d);
 		osd_uncover(d);
 	} else if (osd_commit(d, osd.fb_id[osd.want], 2)) {
@@ -7383,8 +7452,51 @@ static void cmd_osd(struct reply *r, struct display *d, const char *what, int co
 		reply_add(r, "ok osd off -- nothing claimed\n");
 	else
 		reply_add(r, "ok osd claimed -- %s, primary plane %u, %ux%u ARGB8888, %lu shown, %lu busy, %lu refused\n",
-			  osd.shown ? "shown" : osd.want >= 0 ? "waiting for a picture" : "hidden",
+			  osd.shown ? "shown" : osd.want >= 0 && bare.on ? "held back (ctl bare)" :
+			  osd.want >= 0 ? "waiting for a picture" : "hidden",
 			  osd.plane_id, d->width, d->height, osd.shows, osd.busy, osd.errors);
+}
+
+/* bare [SECONDS]: nothing of ours on the wall for that long, 0 ends it (struct bare); without a number: show it */
+static void cmd_bare(struct reply *r, struct display *d, const char *arg)
+{
+	struct itimerspec its = { 0 };
+	char *end = NULL;
+	long s;
+
+	if (!arg) {
+		if (bare.on)
+			reply_add(r, "ok bare on -- %ld s left, nothing of ours on the wall\n", bare_left());
+		else
+			reply_add(r, "ok bare off\n");
+		return;
+	}
+	s = strtol(arg, &end, 10);
+	if (end == arg || *end || s < 0 || s > BARE_MAX_S) {
+		reply_fail(r, "bare takes SECONDS, 0..%d (0 ends it)", BARE_MAX_S);
+		return;
+	}
+	if (!s) {
+		bool was = bare.on;
+
+		bare_end(d, "ended (ctl bare 0)");
+		reply_add(r, "ok bare off%s\n", was ? " -- what h713-osd wants is back" : "");
+		return;
+	}
+	if (bare.fd < 0)
+		bare.fd = timerfd_create(CLOCK_MONOTONIC, TFD_CLOEXEC | TFD_NONBLOCK);
+	its.it_value.tv_sec = s;
+	if (bare.fd < 0 || timerfd_settime(bare.fd, 0, &its, NULL)) {
+		reply_fail(r, "no timer for its end (%s) -- bare not begun", strerror(errno));
+		return;
+	}
+	if (!bare.on) {
+		bare.on = true;
+		bare_begin(d);
+		info("bare            for %ld s: nothing of ours on the wall%s", s,
+		     osd.want >= 0 ? " -- h713-osd's overlay waits" : "");
+	}
+	reply_add(r, "ok bare %ld -- nothing of ours on the wall until \"bare 0\" or %ld s\n", s, s);
 }
 
 /*
@@ -8893,6 +9005,10 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "                        saved (tv.conf \"source =\" is the start value)\n"
 		  "  warp [status]         has h713-warp the video plane? plus its counters\n"
 		  "  osd [status]          has h713-osd an overlay over the picture? plus its counters\n"
+		  "  bare [SECONDS]        nothing of ours on the wall for SECONDS (1..600): no overlay, no opaque\n"
+		  "                        page - without a picture the console has the panel (the autofocus's\n"
+		  "                        chessboard); h713-osd's page waits and comes back with \"bare 0\" or\n"
+		  "                        at the end; without a number: show it\n"
 		  "  hdcp                  HDCP: version negotiated, authenticated, the 1.4 and 2.2 keys and the\n"
 		  "                        firmware's last HDCP line (sysfs, kernel 0174; status shows the same)\n"
 	  "  rpc NAME [ARG...]     an RPC to the firmware, e.g. rpc THal_Vp_DisableBlackScreen\n"
@@ -8983,6 +9099,8 @@ static bool control_dispatch(struct control *c, struct capture *cap,
 		return cmd_source(r, d, a1);
 	} else if (!strcmp(cmd, "osd")) {
 		cmd_osd(r, d, a1, conn);
+	} else if (!strcmp(cmd, "bare")) {
+		cmd_bare(r, d, a1);
 	} else if (!strcmp(cmd, "audio")) {
 		/*
 		 * The sound is decided here and not by the caller's
@@ -9476,7 +9594,7 @@ int main(int argc, char **argv)
 	struct audio au = { .settle_fd = -1, .tick_fd = -1 };
 	struct conf conf = { .path = CONF_FILE };
 	enum audio_policy apol;
-	struct pollfd fds[13];
+	struct pollfd fds[14];
 	const char *sock = CTL_SOCKET;
 	const char *startpreset = "standard";
 	bool gamma_own = false;		/* the curve is computed here (gamma.c) and not read from a file */
@@ -9873,8 +9991,8 @@ int main(int argc, char **argv)
 	 * its bind failed, and the two audio timers with -a none; then the
 	 * warp's and the overlay's connections, set in the loop, a client's
 	 * flip fence while an overlay change waits for it, the warp's grace
-	 * after a "note source", and the wait for the warp's first frame after
-	 * an opaque page went ("note cover off"). poll()
+	 * after a "note source", the wait for the warp's first frame after
+	 * an opaque page went ("note cover off"), and the end of "ctl bare". poll()
 	 * ignores an entry with a negative fd and reports revents 0 for it, so
 	 * the table keeps its fixed indices instead of shifting.
 	 */
@@ -9912,6 +10030,9 @@ int main(int argc, char **argv)
 		fds[11].events = POLLIN;
 		fds[12].fd = wish.armed ? wish.fd : -1;
 		fds[12].events = POLLIN;
+		/* the end of "ctl bare": its time, a net for a caller that did not say "bare 0" */
+		fds[13].fd = bare.on ? bare.fd : -1;
+		fds[13].events = POLLIN;
 		{
 			static struct timespec last_ret;
 			struct timespec now;
@@ -10032,6 +10153,13 @@ int main(int argc, char **argv)
 			LOOP_TIMED("the overlay after a page, alone", cover_resume_due(&d));
 		if (fds[12].fd >= 0 && (fds[12].revents & POLLIN) && want_hold_due())
 			LOOP_TIMED("the end of the wait for the warp's claim", reevaluate(&cap, &d, &rt, &au));
+		if (fds[13].fd >= 0 && (fds[13].revents & POLLIN)) {
+			uint64_t ticks;
+
+			if (read(bare.fd, &ticks, sizeof(ticks)) != sizeof(ticks))
+				warn("bare            reading the timerfd: %s", strerror(errno));
+			LOOP_TIMED("the end of bare", bare_end(&d, "its time is over (nobody said \"bare 0\")"));
+		}
 		/* whatever the handlers did with the overlay: does an opaque page hide the picture now? */
 		cover_follow(&cap, &d, &rt, &au);
 		nosig_follow(&cap, &d, &rt, &au);
@@ -10068,6 +10196,8 @@ int main(int argc, char **argv)
 		close(warp.revoke_fd);
 	if (cover.resume_fd >= 0)
 		close(cover.resume_fd);
+	if (bare.fd >= 0)
+		close(bare.fd);
 	if (wish.peer >= 0)
 		close(wish.peer);
 	if (wish.fd >= 0)

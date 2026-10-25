@@ -69,11 +69,19 @@ a white margin all round (from the vendor's origin it showed a white band on the
 It goes onto the panel through `/dev/fb0`, the console's own surface (`CONFIG_DRM_FBDEV_EMULATION=y` in the
 board defconfig). That is the first of the three routes AP1 section 7 lists, and it was chosen because it needs
 no DRM master and so cannot collide with `h713-tv`, which holds one whenever its plane is on. `run` takes the panel
-over from `h713-tv` and `h713-warp` itself and gives it back afterwards; with `--no-handover` you do it:
+over from `h713-tv` and `h713-warp` itself and gives it back afterwards: `h713-warp ctl off` when the warp is on,
+`h713-tv ctl off`, and `h713-tv ctl bare SECONDS` - `off` leaves an opaque page of h713-osd's (the launcher, the settings,
+"No signal") standing over black, and the board under it is not seen ("no picture", TODO 4.9h); `bare` takes it off the wall
+for the run, the seconds (the deadline plus 30, 52 by default) are only the net for a run that dies. On the way back
+`bare 0` comes first, so the page is up again before the picture returns under it, then `ctl auto` when the mode was
+automatic, then the warp. An h713-tv without `bare` answers error: noted, and the run goes on as before. With
+`--no-handover` you do it:
 
 ```
 h713-tv ctl off             # console instead of the capture plane
+h713-tv ctl bare 60         # no page of h713-osd's over it
 h713-autofocus run --no-handover
+h713-tv ctl bare 0          # the page back, if one was open
 h713-tv ctl auto            # picture follows the signal again
 ```
 

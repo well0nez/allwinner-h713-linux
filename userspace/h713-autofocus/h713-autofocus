@@ -138,6 +138,11 @@ PATTERN_CELL, PATTERN_ORIGIN = 69, (97, 92)       # AP1 2.2, bg_auto_focus.png; 
 EXIT_ERROR, EXIT_NO_PICTURE, EXIT_BLOCKED = 2, 3, 4
 EXIT_EDGE, EXIT_NO_PEAK = 5, 6
 EXIT_NOT_PRESENT = 7    # no camera or no focus motor on this board (h713-features)
+# `h713-tv ctl bare SECONDS` keeps h713-osd's pages off the wall for the pattern
+# (TODO 4.9h); give_back() ends it with "bare 0". The seconds are only the net
+# for a run that dies before that: the search's deadline and a margin for the
+# warm-up and the way back to the best position, h713-tv's longest without one.
+BARE_MARGIN_S, BARE_MAX_S = 30, 600
 SYS = os.environ.get("H713_SYS", "/sys")    # replaced by the tests
 
 
@@ -724,6 +729,13 @@ def chessboard(xres, yres, bpp, line_length, cell=PATTERN_CELL, origin=None):
                     for y in range(yres))
 
 
+def bare_seconds(timeout):
+    """The net of `h713-tv ctl bare` for a run with this deadline (0: none)."""
+    if not timeout:
+        return BARE_MAX_S
+    return min(BARE_MAX_S, int(timeout) + BARE_MARGIN_S)
+
+
 class Handover:
     """The wall for the pattern, and the picture back afterwards.
 
@@ -731,18 +743,27 @@ class Handover:
     wall only while h713-tv shows the console: with the HDMI picture up the
     video plane covers it, and with h713-warp drawing, the GPU's buffers do.
     So this takes the panel over - `h713-warp ctl off` when the warp is on,
-    then `h713-tv ctl off` - and gives it back the same way in reverse. A tool
-    that is not installed, or one that answers error, is noted and skipped:
-    the run still happens, the pattern may then not be seen (Marco, 23.09.:
+    then `h713-tv ctl off` - and gives it back the same way in reverse.
+    "off" leaves an opaque page of h713-osd's standing over black (the
+    launcher, the settings, "No signal"), and the camera saw the page, not
+    the pattern (L018, 25.10.2026: "no picture"); so `h713-tv ctl bare
+    SECONDS` follows: nothing of h713-osd's on the wall, the console has
+    the panel. On the way back `bare 0` comes first and puts the page up
+    again before the picture returns under it. A tool that is not
+    installed, or one that answers error, is noted and skipped: the run
+    still happens, the pattern may then not be seen (Marco, 23.09.:
     an autofocus that does not put its picture up is worth nothing). Nothing
     sleeps here: `ctl off` replies after its blocking commit and the console
     unblank (h713-tv, display_hide), and warm_up() waits on the picture.
     """
 
-    def __init__(self, tv="h713-tv", warp="h713-warp", log=None):
+    def __init__(self, tv="h713-tv", warp="h713-warp", log=None,
+                 bare_s=BARE_MAX_S):
         self.tv, self.warp, self.log = tv, warp, log or (lambda _: None)
+        self.bare_s = bare_s
         self.warp_was_on = False
         self.tv_was_auto = False
+        self.bare = False
         self.taken = False
 
     def _run(self, argv, timeout=15):
@@ -767,11 +788,24 @@ class Handover:
         if out is not None:
             self._run([self.tv, "ctl", "off"])
             self.log("the console has the panel for the pattern")
+            out = self._run([self.tv, "ctl", "bare", str(self.bare_s)])
+            if out is not None and out.startswith("ok"):
+                self.bare = True
+                self.log("no page of h713-osd's over the pattern (h713-tv "
+                         "ctl bare %d)" % self.bare_s)
+            else:
+                self.log("h713-tv ctl bare: %s -- an open page stays over "
+                         "the pattern" % ((out or "").strip().split("\n")[0]
+                                          or "no answer"))
         self.taken = True
 
     def give_back(self):
         if not self.taken:
             return
+        if self.bare:
+            self._run([self.tv, "ctl", "bare", "0"])
+            self.log("h713-osd's page may come back")
+            self.bare = False
         if self.tv_was_auto:
             self._run([self.tv, "ctl", "auto"])
             self.log("h713-tv is on automatic again")
@@ -1147,7 +1181,8 @@ def do_run(args, profile):
         if not args.no_pattern:
             if not args.no_handover:
                 handover = Handover(log=(lambda _: None) if args.quiet
-                                    else _stderr)
+                                    else _stderr,
+                                    bare_s=bare_seconds(args.timeout))
                 handover.take()
             panel = Panel()
             panel.save()
@@ -1232,7 +1267,8 @@ def do_pattern(args):
         if args.state == "on":
             panel.draw(args.cell)
             print("chessboard on %s (%dx%d, %d bpp, %d px cells). If the wall "
-                  "stays dark, `h713-tv ctl off` first."
+                  "stays dark, `h713-tv ctl off` first, and `h713-tv ctl bare "
+                  "600` over an open page of h713-osd's."
                   % (FB_DEV, panel.xres, panel.yres, panel.bpp, args.cell))
         else:
             panel.restore()
