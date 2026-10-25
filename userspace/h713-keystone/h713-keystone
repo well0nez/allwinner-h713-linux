@@ -311,11 +311,14 @@ class Sensor(object):
                            for a in ("x", "y", "z"))
         # Display only: every angle of the chain is a ratio of counts, so the
         # scale cancels exactly (AP2g 5) and a wrong one costs no accuracy.
-        try:
-            self.counts_per_g = G_M_S2 / float(
-                _read(os.path.join(path, "in_accel_x_scale")))
-        except (TypeError, ValueError, ZeroDivisionError):
-            self.counts_per_g = FALLBACK_COUNTS_PER_G
+        # st_accel names it per axis, st_lsm6dsx (the L018's LSM6DSV) once for all three
+        self.counts_per_g = FALLBACK_COUNTS_PER_G
+        for scale in ("in_accel_x_scale", "in_accel_scale"):
+            try:
+                self.counts_per_g = G_M_S2 / float(_read(os.path.join(path, scale)))
+                break
+            except (TypeError, ValueError, ZeroDivisionError):
+                pass
         self.rate = self.set_rate(rate) if rate else \
             float(_read(os.path.join(path, "sampling_frequency")) or 0.0)
 
