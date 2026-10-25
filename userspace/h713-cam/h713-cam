@@ -59,8 +59,10 @@ CID_EXPOSURE_ABS = 0x009a0902
 CTRL_FLAG_DISABLED = 0x0001
 
 #: How the camera is recognized -- the name uvcvideo takes over from the USB
-#: descriptor. Not the number of the node.
-CAMERA_NAME = "HD camera"
+#: descriptor. Not the number of the node. The HY310's Realtek "Generic HD
+#: camera", the L018's "HYSD-VAF02-ZH04" (4098:a425).
+CAMERA_NAMES = ("HD camera", "HYSD-VAF02")
+CAMERA_SAID = " or ".join(f"'{n}'" for n in CAMERA_NAMES)
 
 
 class Error(Exception):
@@ -94,7 +96,7 @@ def find_camera(given: str | None) -> str:
             name = open(path).read().strip()
         except OSError:
             continue
-        if CAMERA_NAME not in name:
+        if not any(n in name for n in CAMERA_NAMES):
             continue
         named = True
         dev = "/dev/" + path.split("/")[-2]
@@ -116,13 +118,13 @@ def find_camera(given: str | None) -> str:
             os.close(fd)
     if not named:
         raise NotPresent(f"camera: not present on this board - no video4linux device "
-                         f"named '{CAMERA_NAME}' (h713-features says whether the "
+                         f"named {CAMERA_SAID} (h713-features says whether the "
                          f"board should have one)")
     if not hits:
         raise Error(
-            f"no camera with '{CAMERA_NAME}' in its name under /sys/class/video4linux/.\n"
+            f"no camera with {CAMERA_SAID} in its name under /sys/class/video4linux/.\n"
             "  Is uvcvideo loaded? (lsmod | grep uvcvideo; without the module: modprobe uvcvideo)\n"
-            "  Is it on the bus?   (lsusb | grep 0bda:5803)")
+            "  Is it on the bus?   (lsusb: 0bda:5803 on the HY310, 4098:a425 on the L018)")
     return hits[0]
 
 
@@ -390,7 +392,7 @@ def main(argv=None) -> int:
     p = argparse.ArgumentParser(prog="h713-cam",
                                 description="Talk to the internal camera of the projector.")
     p.add_argument("--dev", metavar="NODE",
-                   help=f"give the device node instead of searching for '{CAMERA_NAME}'")
+                   help=f"give the device node instead of searching for {CAMERA_SAID}")
     u = p.add_subparsers(dest="command", required=True)
     u.add_parser("probe", help="driver, formats, frame sizes")
     u.add_parser("controls", help="every control with range and current value")

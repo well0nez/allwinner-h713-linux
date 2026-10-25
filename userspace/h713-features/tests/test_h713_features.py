@@ -35,6 +35,8 @@ class Board(object):
         self.write("bus/iio/devices/trigger0/name", "not an accelerometer")
         if "camera" in have:
             self.write("class/video4linux/video2/name", "Generic HD camera: Generic HD c")
+        if "l018-camera" in have:                                      # the L018's (4098:a425)
+            self.write("class/video4linux/video1/name", "HYSD-VAF02-ZH04: HYSD-VAF02-ZH0")
         if "accelerometer" in have:
             self.write("bus/iio/devices/iio:device0/name", "sc7a20")
             self.write("bus/iio/devices/iio:device0/in_accel_x_raw", "26")
@@ -132,6 +134,10 @@ class Features(unittest.TestCase):
         missing = self.board(record="board = l018\nfeatures = lamp-modes\n").run("check", "--wait", "0")
         self.assertIn("warning: lamp-modes: not present on this board - but boards/l018 FEATURES lists it", missing.stderr)
 
+    def test_the_l018_camera_is_a_camera(self):
+        status = self.board("l018-camera").run("status")
+        self.assertIn("camera          present  /dev/video1", status.stdout)
+
     def test_present_but_not_listed_is_said_and_not_a_warning(self):
         board = self.board("camera", "accelerometer", record=GEU)
         check = board.run("check", "--wait", "0")
@@ -157,8 +163,9 @@ class Features(unittest.TestCase):
     def test_the_search_rules_are_the_tools_own(self):
         """A rule that drifts from the tool's would hide a control the tool can use."""
         userspace = os.path.dirname(os.path.dirname(TOOL))
-        for tool, line in (("h713-cam/h713-cam", 'CAMERA_NAME = "%s"' % hf.CAMERA_NAME),
-                           ("h713-autofocus/h713-autofocus", 'CAMERA_NAME = "%s"' % hf.CAMERA_NAME),
+        names = "CAMERA_NAMES = (%s)" % ", ".join('"%s"' % n for n in hf.CAMERA_NAMES)
+        for tool, line in (("h713-cam/h713-cam", names),
+                           ("h713-autofocus/h713-autofocus", names),
                            ("h713-autofocus/h713-autofocus", 'DRIVER = "%s"' % hf.MOTOR_DRIVER),
                            ("h713-focus/h713-focus", 'DRIVER = "%s"' % hf.MOTOR_DRIVER),
                            ("h713-keystone/h713-keystone-auto.service", "in_accel_x_raw")):

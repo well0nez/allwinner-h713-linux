@@ -20,7 +20,7 @@ import time
 
 SYS, RECORD = os.environ.get("H713_SYS", "/sys"), "/etc/h713/features"
 NAMES = ("camera", "accelerometer", "focus-motor", "lamp-modes")
-CAMERA_NAME = "HD camera"            # h713-cam, h713-autofocus: the uvcvideo name
+CAMERA_NAMES = ("HD camera", "HYSD-VAF02")   # h713-cam, h713-autofocus: the uvcvideo name (HY310, L018)
 MOTOR_DRIVER = "hy310-focus-motor"   # h713-focus, h713-autofocus
 BOARD_MGR = "hy310-board-mgr"        # lamp_mode where it owns the lamp (the L018, kernel 0332)
 USERS = {"camera": "h713-cam, h713-autofocus",
@@ -45,7 +45,7 @@ def probe():
     """name -> the node that shows the feature, or None (the tools' rules)."""
     found = dict((name, None) for name in NAMES)
     for path in _glob("class/video4linux/video*/name"):
-        if CAMERA_NAME in (_read(path) or ""):
+        if any(n in (_read(path) or "") for n in CAMERA_NAMES):
             found["camera"] = "/dev/" + os.path.basename(os.path.dirname(path))
             break
     for path in _glob("bus/iio/devices/iio:device*/in_accel_x_raw"):
