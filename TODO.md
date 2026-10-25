@@ -736,7 +736,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `fg-warn-speed`, `orderly_poweroff(true)`, `fan_stall_shutdown=1` ab Werk) - lange nicht mehr gemessen. Test: Lüfter
       anhalten (PB5 aus bzw. beim L018 PWM0 auf 0 %) für 15 s; bestanden, wenn das Journal `fan0 stalled -- powering off`
       zeigt und das Gerät aus ist. Kein `STATUS=verified` mehr ohne diesen Test (Zeile in Abnahme und Board-README).
-      [ ] L018  [ ] HY310  [ ] HY300PRO-G-EU  [ ] HY300 Pro (Melder, nur mit dessen Ja)
+      [x] L018 (25.10.2026 nachts: PWM0 auf 0 % → 0 U/min nach 3,5 s, Urteil nach 8 Takten, geordnet aus in 6,2 s, Gate;
+      `arbeit/l018-board-20261024/BERICHT.md` „Nachtarbeit")  [ ] HY310  [ ] HY300PRO-G-EU  [ ] HY300 Pro (Melder, nur mit dessen Ja)
 - [ ] 4.7 **L018 (Marcos eigener, 24.10.2026):** Testabbild `h713-l018-v0.97-test2-TEST` ist gebaut (Zweig `versuch/l018-board`
       `94f4594c`, Paket `arbeit/l018-board-20261024/`, `boards/l018/README.md`); nichts davon hat am Gerät gebootet. Reihenfolge:
       (a) **erledigt 24.10.:** Lampe = PWM2/PB4, dimmt mit steigendem Tastgrad (high 30 / std 50 / low 75 %, Lüfter PWM0 95/70/60 %);
@@ -753,16 +754,25 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       verdrahtet, bis wir selbst messen; alles board-spezifisch (HY310 & Co. byte-gleich). Launcher: am 25.10. per apt auf das
       Gerät gebracht (Profile media,desktop), im nächsten Abbild `--profile media,desktop`.
   - [ ] 4.9a Temperatur: der L018 hat einen NTC (Stock `ntc_num 1`, GPADC Kanal 1), der HY310 keinen - unser Baum erbt 0. DT
-        mit eigener `gpadc-table` und Stock-Schwellen (warn 41, aus 51, resume 34 °C), messen, dann Abschaltung bei 51 °C scharf
-  - [ ] 4.9b Drei Lampenstufen low/std/high mit gekoppeltem Lüfter (Stock: Lampe 75/50/30 %, Lüfter 60/70/95 %, dazu die
-        Temperaturtabelle 30-60 °C → 70-100 %; Lüfter = Maximum aus beiden): Board-Manager besitzt Lampe (`bl0`, PWM2) und
-        Lüfter (PWM0), sysfs `lamp_mode`, Werkzeug `h713-lamp`, Stufe in `/etc/h713/lamp.conf`
+        mit eigener `gpadc-table` und Stock-Schwellen (warn 41, aus 51, resume 34 °C), messen, dann Abschaltung bei 51 °C scharf.
+        **Teils erledigt 25.10. (`versuch/l018-board` `f3062428`, kernel 0331):** NTC liest 21,2-21,6 °C über 22 min bei CPU ~49 °C,
+        Umrechnung nachgerechnet. Offen: gegen ein Thermometer halten (Marco), dann die Abschaltung bei 51 °C scharf - über eine
+        DT-Eigenschaft des L018-Baums, nicht über den globalen `thermal_shutdown`
+  - [x] 4.9b Drei Lampenstufen low/std/high mit gekoppeltem Lüfter - **erledigt 25.10. nachts (`versuch/l018-board` `4a2aee2e`,
+        kernel 0332 + 0331, `userspace/h713-lamp`)**: Board-Manager besitzt Lampe (`bl0`, PWM2) und Lüfter (PWM0), ein Modusindex
+        für beide, sysfs `lamp_mode`/`lamp_modes`/`thermal_mode`, `h713-lamp status|set|restore`, `/etc/h713/lamp.conf`. Am Gerät:
+        die Register der drei Stufen = die Stock-Messung, Lüfter folgt, gemerkte Stufe übersteht den Neustart. *Überholt:* „Lüfter =
+        Maximum aus Stufe und Temperaturtabelle" - so macht es Stock nicht (`fan_policy 1`: nur die Stufe; über 41 °C der
+        Wärmemodus 3, Lampe 75 %, bis 34 °C). Offen: Wärmemodus messen, Helligkeit mit Augen, high im Dauerlauf
   - [ ] 4.9c Bedienung: Mockup zuerst (englisch), dann Zeile `Lamp` (Low/Standard/High) in h713-settings und Knöpfe in
         h713-panel; sichtbar nur mit Feature `lamp-modes` (FEATURES + h713-features); Temperatur/Drehzahl als Anzeige
-  - [ ] 4.9d Hardware testen: Fokusmotor (Stock PF0..PF3, Endschalter PB1, step-type 4, cycle 3), Kamera `4098:a425`
+  - [ ] 4.9d Hardware testen: Fokusmotor (Stock PF0..PF3, Endschalter PB1, cycle 3; step-type wirkt bei Stock nicht auf die
+        Bewegung; PF0..PF5 sind die SD-Pins, sdmmc aus), Neigungssensor braucht twi2 im Baum + `IIO_ST_LSM6DSX`, Kamera `4098:a425`
         (h713-features kennt nur „HD camera"), Neigungssensor `lsm6dsv` + Keystone automatisch und von Hand, LEDs PL0/PL1,
         Ein/Aus und IR aus dem Gate, HDMI/HDCP, Ton/Kopfhörer, Kodi/VA-API, BT-Fernbedienung
-  - [ ] 4.9e Kleinkram: Lampe/Lüfter ~1 s an vor U-Boot (SPL); Helligkeit 0 von pwm-backlight (entfällt mit 4.9b)
+  - [ ] 4.9e Kleinkram: Lampe/Lüfter ~1 s an vor U-Boot (SPL); ~~Helligkeit 0 von pwm-backlight~~ (entfällt, pwm-backlight ist aus);
+        Ton: die Stock-`audio_config.ini` des L018 geht bis 0 dB statt -38 (HY310) - eigene Lautstärkegrenze, leise anfangen;
+        `h713-features` `lamp-modes` und `docs/tools/h713-lamp.md` mit der UI bzw. der Integration
   - [ ] 4.9f In die Linie: test3 mit Profilen, Abnahme inkl. 4.0, `verified`, Fork `versuch/l018` → `h713-hy310`, Zweig → `main`
         (Push nur mit Marcos Ja)
 
