@@ -68,6 +68,8 @@ LATER = {139, 127, 158, 103, 108, 105, 106, 352, 61, 64}    # recognised, no act
 SELECT_IS_OK = {353: 352, 28: 352}          # OK: KEY_ENTER since 70-h713-remote.rules; Bluetooth's HID "Menu Pick" = KEY_SELECT without it (11.10.)
 BTN_LEFT = 272                              # the remote's mouse mode sends OK as the left button; the launcher has no pointer, so it is OK there (TODO 2.130)
 EVIOCSREP = 0x40084503                      # _IOW('E', 0x03, unsigned int[2])
+EVIOCGBIT_EV = 0x80044520                   # _IOC(READ, 'E', 0x20, 4): the event types the node reports
+EV_REP = 20
 EVIOCGRAB = 0x40044590                      # _IOW('E', 0x90, int)
 SYSTEMCTL = shlex.split(os.environ.get("H713_KEYS_SYSTEMCTL", "systemctl"))
 POWER_SOCK = os.environ.get("H713_KEYS_POWER", "/run/h713-power.sock")
@@ -320,6 +322,12 @@ def bluetooth_remote(p):
 
 def repeat_like_ir(fd):
     """The held-key repeat of the IR receiver for this device; the error text when the kernel refuses."""
+    try:
+        types = fcntl.ioctl(fd, EVIOCGBIT_EV, bytes(4))
+        if isinstance(types, bytes) and not struct.unpack("I", types)[0] >> EV_REP & 1:
+            return "no key repeat on this node"     # the remote's mouse node: EVIOCSREP would only fail with ENOSYS
+    except OSError:
+        pass                                        # cannot tell: try the set below, it reports what the kernel says
     try:
         fcntl.ioctl(fd, EVIOCSREP, struct.pack("II", *REPEAT))
         return None

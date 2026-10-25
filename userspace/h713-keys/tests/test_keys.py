@@ -253,8 +253,21 @@ class KeysTest(unittest.TestCase):
             self.run_once()
         finally:
             self.mod.fcntl.ioctl = real
-        self.assertEqual(calls, [(0x40084503, struct.pack("II", 500, 125))])    # only the Bluetooth remote
+        self.assertEqual([c for c in calls if c[0] == 0x40084503], [(0x40084503, struct.pack("II", 500, 125))])    # only the Bluetooth remote
         self.assertTrue([m for m in out if m.endswith("event1, repeat 500/125 ms as over IR")], out)
+
+    def test_node_without_ev_rep_is_not_asked(self):
+        calls, out = [], []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        real = self.mod.fcntl.ioctl
+        self.mod.fcntl.ioctl = lambda fd, req, arg=0: calls.append(req) or struct.pack("I", 1 << 1)    # EV_KEY only
+        try:
+            self.press("home")
+            self.run_once()
+        finally:
+            self.mod.fcntl.ioctl = real
+        self.assertNotIn(0x40084503, calls)
+        self.assertTrue([m for m in out if "event1, repeat left at the kernel's (no key repeat on this node)" in m], out)
 
     def test_repeat_refused_is_said(self):
         out = []
