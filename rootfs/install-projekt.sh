@@ -188,6 +188,48 @@ board_hostname() {
 	printf '%s' "$got"
 }
 
+# KEYSTONE of boards/$H713_BOARD (variant.env over board.env): "key=value ..." over h713-keystone's
+# defaults - the IIO name and axes of an accelerometer that is not the HY310's SC7A20, the throw
+# ratio of other optics. Unset: the tool's defaults.
+board_keystone() {
+	local env="$PROJECT_ROOT/boards/$H713_BOARD/board.env"
+	( set +u; . "$env" >/dev/null 2>&1 || exit 1
+		[[ -z "$H713_VARIANT" ]] || . "${env%/board.env}/variants/$H713_VARIANT/variant.env" >/dev/null 2>&1 || exit 1
+		printf '%s' "${KEYSTONE:-}" ) || { warn "boards/$H713_BOARD: board.env not sourceable"; return 1; }
+}
+
+# /etc/h713/keystone.conf as the image carries it: the tool's defaults with the board's KEYSTONE over
+# them. A key the tool does not have, or a value it cannot read, stops the build.
+keystone_conf() {
+	local over=""
+	if [[ -n "$H713_BOARD" ]]; then over=$(board_keystone) || return 1; fi
+	printf '# h713-keystone: the automatic after a move. after_move = off leaves the picture\n'
+	printf '# alone and only logs a move; keystone or keystone+focus run the automatic ONCE\n'
+	printf '# after the projector has moved and settled. The settings page writes this key.\n'
+	[[ -z "$over" ]] || printf '# Board %s: KEYSTONE of boards/%s/board.env over the defaults.\n' "$H713_BOARD" "$H713_BOARD"
+	# shellcheck disable=SC2086 # KEYSTONE is a list of key=value words
+	python3 - "$H713_KS_SRC/h713-keystone" $over <<'PY'
+import sys
+from importlib.machinery import SourceFileLoader
+m = SourceFileLoader("h713_keystone", sys.argv[1]).load_module()
+parse = dict((name, p) for name, _, p in m.DEFAULTS)
+over = {}
+for pair in sys.argv[2:]:
+    name, eq, value = pair.partition("=")
+    if not eq or name not in parse:
+        sys.exit("KEYSTONE: %s is not key=value of keystone.conf" % pair)
+    try:
+        parse[name](value)
+    except ValueError as exc:
+        sys.exit("KEYSTONE: %s: %s" % (pair, exc))
+    over[name] = value
+for name, default, _ in m.DEFAULTS:
+    if name == "turn_to_wall":
+        print("# degrees, -30..30: + when the RIGHT side of the picture is the higher one; the settings page writes it")
+    print("%s = %s" % (name, over.get(name, default)))
+PY
+}
+
 # ---------------------------------------------------------------------------
 # Check the sources
 # ---------------------------------------------------------------------------
@@ -285,6 +327,7 @@ check_sources() {
 		{ warn "missing: h713-lamp or h713-lamp.service in $H713_LAMP_SRC"; errors=1; }
 	if [[ -n "$H713_BOARD" ]] && ! board_features >/dev/null; then errors=1; fi
 	if [[ -n "$H713_BOARD" ]] && ! board_hostname >/dev/null; then errors=1; fi
+	if [[ -x "$H713_KS_SRC/h713-keystone" ]] && ! keystone_conf >/dev/null; then errors=1; fi
 	if [[ -n "$H713_CRUST_BIN" ]]; then
 		[[ -f "$H713_CRUST_BIN" && -n "$H713_BOARD" ]] || \
 			{ warn "H713_CRUST_BIN=$H713_CRUST_BIN: missing, or no H713_BOARD to name it after"; errors=1; }
@@ -375,7 +418,7 @@ if ((DRY_RUN)); then
        ${H713_KS_SRC#"$PROJECT_ROOT"/}/{h713-keystone,model/}
            -> /usr/local/lib/h713-keystone/, /usr/local/bin/h713-keystone -> ../lib/...
        h713-keystone-auto.service -> /etc/systemd/system/ + multi-user.target.wants/
-       /etc/h713/keystone.conf with the tool's defaults (after_move = off)
+       /etc/h713/keystone.conf with the tool's defaults${H713_BOARD:+ and boards/$H713_BOARD KEYSTONE} (after_move = off)
     5e. h713-panel
        ${H713_PANEL_SRC#"$PROJECT_ROOT"/}/{h713-panel,page.html}
            -> /usr/local/lib/h713-panel/                  0755 / 0644
@@ -589,22 +632,9 @@ install -m 0644 "$H713_KS_SRC/h713-keystone-auto.service" "$TREE/etc/systemd/sys
 ln -sfn ../h713-keystone-auto.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-keystone-auto.service"
 install -D -m 0644 "$H713_KS_SRC/99-h713-keystone.rules" "$TREE/etc/udev/rules.d/99-h713-keystone.rules"
 if [[ ! -f "$TREE/etc/h713/keystone.conf" ]]; then
-	{
-		printf '# h713-keystone: the automatic after a move. after_move = off leaves the picture\n'
-		printf '# alone and only logs a move; keystone or keystone+focus run the automatic ONCE\n'
-		printf '# after the projector has moved and settled. The settings page writes this key.\n'
-		python3 - "$H713_KS_SRC/h713-keystone" <<'PY'
-import sys
-from importlib.machinery import SourceFileLoader
-m = SourceFileLoader("h713_keystone", sys.argv[1]).load_module()
-for name, default, _ in m.DEFAULTS:
-    if name == "turn_to_wall":
-        print("# degrees, -30..30: + when the RIGHT side of the picture is the higher one; the settings page writes it")
-    print("%s = %s" % (name, default))
-PY
-	} > "$TREE/etc/h713/keystone.conf"
+	keystone_conf > "$TREE/etc/h713/keystone.conf" || die "/etc/h713/keystone.conf: boards/$H713_BOARD KEYSTONE not usable (see above)"
 	chmod 0644 "$TREE/etc/h713/keystone.conf"
-	info "/etc/h713/keystone.conf (the tool's defaults, after_move = off)"
+	info "/etc/h713/keystone.conf (the tool's defaults${H713_BOARD:+ with boards/$H713_BOARD KEYSTONE}, after_move = off)"
 else
 	info "/etc/h713/keystone.conf kept"
 fi
