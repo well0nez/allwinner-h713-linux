@@ -758,7 +758,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
   - [ ] 4.9a Temperatur: der L018 hat einen NTC (Stock `ntc_num 1`, GPADC Kanal 1), der HY310 keinen - unser Baum erbt 0. DT
         mit eigener `gpadc-table` und Stock-Schwellen (warn 41, aus 51, resume 34 °C), messen, dann Abschaltung bei 51 °C scharf.
         **Teils erledigt 25.10. (`versuch/l018-board` `f3062428`, kernel 0331):** NTC liest 21,2-21,6 °C über 22 min bei CPU ~49 °C,
-        Umrechnung nachgerechnet. Offen: gegen ein Thermometer halten (Marco), dann die Abschaltung bei 51 °C scharf - über eine
+        Umrechnung nachgerechnet. ~~Offen: gegen ein Thermometer halten (Marco)~~ **Thermometer entfällt (Marco 25.10.: keins da)**; die Abschaltung bei 51 °C wird wie unter Stock scharf (gleiche Tabelle, gleiche Umrechnung im Stock-vmlinux) - über eine
         DT-Eigenschaft des L018-Baums, nicht über den globalen `thermal_shutdown`. **Die Eigenschaft gibt es seit 25.10. (kernel 0333,
         `a741c251`: `thermal-shutdown;`, geordnet über `orderly_poweroff(true)`); gesetzt wird sie nach dem Thermometer.**
   - [x] 4.9b Drei Lampenstufen low/std/high mit gekoppeltem Lüfter - **erledigt 25.10. nachts (`versuch/l018-board` `4a2aee2e`,
@@ -766,7 +766,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         für beide, sysfs `lamp_mode`/`lamp_modes`/`thermal_mode`, `h713-lamp status|set|restore`, `/etc/h713/lamp.conf`. Am Gerät:
         die Register der drei Stufen = die Stock-Messung, Lüfter folgt, gemerkte Stufe übersteht den Neustart. *Überholt:* „Lüfter =
         Maximum aus Stufe und Temperaturtabelle" - so macht es Stock nicht (`fan_policy 1`: nur die Stufe; über 41 °C der
-        Wärmemodus 3, Lampe 75 %, bis 34 °C). Offen: Wärmemodus messen, Helligkeit mit Augen, high im Dauerlauf
+        Wärmemodus 3, Lampe 75 %, bis 34 °C). Helligkeit der drei Stufen: **Marco bestätigt 25.10.**; high im Dauerlauf **entfällt (Marco)**; offen nur der Wärmemodus (über 41 °C, ohne Heizen nicht auszulösen)
   - [ ] 4.9c Bedienung: Mockup zuerst (englisch), dann Zeile `Lamp` (Low/Standard/High) in h713-settings und Knöpfe in
         h713-panel; sichtbar nur mit Feature `lamp-modes` (FEATURES + h713-features); Temperatur/Drehzahl als Anzeige.
         **Gebaut 25.10. (`ddcd42c6`, Mockup-Variante B):** h713-settings Bereich „Projector", h713-panel Karte „Lamp",
@@ -784,6 +784,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         für alle Boards (L018 25.10. gesehen)
         (h713-features kennt nur „HD camera"), Neigungssensor `lsm6dsv` + Keystone automatisch und von Hand, LEDs PL0/PL1,
         Ein/Aus und IR aus dem Gate, HDMI/HDCP, Ton/Kopfhörer, Kodi/VA-API, BT-Fernbedienung
+        **Gemeinsam mit Marco (25.10. abends vereinbart):** Tontest, HDMI inkl. HDCP und Ton, Videobeschleunigung, Bluetooth-Hardware; vorher macht die Sitzung allein, was ohne ihn geht
   - [ ] 4.9e Kleinkram: Lampe/Lüfter ~1 s an vor U-Boot (SPL) - **gebaut im Fork `d54ab262` (`versuch/l018`), HY310 byte-gleich;
         schreiben nur mit Marco (`deploy-runde2.sh U`, Kaltstart)** - **geschrieben 25.10., Marco: Licht bleibt bis zum Start aus, kein Weiß mehr; dazu `c97e5c6bb78`: Taste rot im Gate (Marco gesehen), blau ab dem Start; Zweig-Zeiger und Spiegel noch auf `b0795ef3079`**; ~~Helligkeit 0 von pwm-backlight~~ (entfällt, pwm-backlight ist aus);
         Ton: die Stock-`audio_config.ini` des L018 geht bis 0 dB statt -38 (HY310) - eigene Lautstärkegrenze, leise anfangen
