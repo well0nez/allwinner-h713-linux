@@ -89,7 +89,7 @@ H713_STANDBY=${H713_STANDBY:-0}
 # the device's nodes alone decide (boards/README.md, FEATURES).
 H713_BOARD=${H713_BOARD:-}
 H713_VARIANT=${H713_VARIANT:-}  # a board with variants: variants/<name>/variant.env over board.env
-FEATURE_NAMES="camera accelerometer focus-motor"
+FEATURE_NAMES="camera accelerometer focus-motor lamp-modes"
 # The C metric beside h713-autofocus. OPTIONAL on purpose: without it the tool
 # measures in Python, which works and is only slower (Q11 item 2).
 H713_AF_BIN=${H713_AF_BIN:-$H713_AF_SRC/h713-afmetric.aarch64-linux-gnu}

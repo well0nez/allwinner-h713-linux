@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""h713-features -- camera, accelerometer, focus motor: what this board has.
+"""h713-features -- camera, accelerometer, focus motor, lamp modes: what this board has.
 
 The port grew on the HY310, which has all three; other boards of the family
 lack one or more (boards/README.md, FEATURES).  /etc/h713/features is what the
@@ -19,12 +19,14 @@ import sys
 import time
 
 SYS, RECORD = os.environ.get("H713_SYS", "/sys"), "/etc/h713/features"
-NAMES = ("camera", "accelerometer", "focus-motor")
+NAMES = ("camera", "accelerometer", "focus-motor", "lamp-modes")
 CAMERA_NAME = "HD camera"            # h713-cam, h713-autofocus: the uvcvideo name
 MOTOR_DRIVER = "hy310-focus-motor"   # h713-focus, h713-autofocus
+BOARD_MGR = "hy310-board-mgr"        # lamp_mode where it owns the lamp (the L018, kernel 0332)
 USERS = {"camera": "h713-cam, h713-autofocus",
          "accelerometer": "h713-keystone, h713-keystone-auto",
-         "focus-motor": "h713-focus, h713-autofocus"}
+         "focus-motor": "h713-focus, h713-autofocus",
+         "lamp-modes": "h713-lamp, h713-settings Projector, h713-panel Lamp"}
 
 
 def _read(path):
@@ -55,6 +57,9 @@ def probe():
             or _glob("devices/platform/*/motor_limit"))
     if hits:
         found["focus-motor"] = os.path.realpath(os.path.dirname(hits[0]))
+    hits = _glob("bus/platform/drivers/%s/*/lamp_mode" % BOARD_MGR)
+    if hits:
+        found["lamp-modes"] = os.path.realpath(os.path.dirname(hits[0]))
     return found
 
 
@@ -113,7 +118,7 @@ def do_check(args, sleep=time.sleep, clock=time.monotonic):
 
 def main(argv=None):
     parser = argparse.ArgumentParser(
-        prog="h713-features", description="camera, accelerometer, focus motor: "
+        prog="h713-features", description="camera, accelerometer, focus motor, lamp modes: "
         "the device nodes decide, /etc/h713/features says what to expect.")
     parser.add_argument("--record", default=RECORD, metavar="PATH")
     sub = parser.add_subparsers(dest="command")

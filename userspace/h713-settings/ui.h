@@ -19,7 +19,7 @@ struct view {
 };
 
 #define D_ROW(i)	(1u << (i))		/* one row, by its place among the visible ones (up to 10) */
-#define D_AREA(i)	(1u << (10 + (i)))	/* one area's pill (up to 9) */
+#define D_AREA(i)	(1u << (10 + (i)))	/* one area's pill (up to 10) */
 #define D_RIGHT		(1u << 20)		/* every row of the right pane, or the options of a choice */
 #define D_NOTE		(1u << 21)		/* the sentence under the rows and the line of keys */
 #define D_SLIDER	(1u << 22)		/* the one pill of a slider over the picture */

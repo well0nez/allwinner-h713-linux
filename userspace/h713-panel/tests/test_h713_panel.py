@@ -379,6 +379,35 @@ def keystone_by(warp_set, last_auto):
                                               "focus-motor": False, "colour-manager": False})
         self.assertEqual(list(answer["after_move"]), ["off", "keystone"])
 
+    def test_the_lamp_card_reads_h713_lamp(self):
+        # the L018 (kernel 0332): the board's modes, the one it holds, fan and temperature
+        self.fake.tool("h713-lamp", {"status": "mode     high\nmodes    std low high\nthermal  off\n"
+                                               "fan      3660 RPM\nntc      21.6 C\nkept     high (/etc/h713/lamp.conf)"})
+        answer = self.call("lamp")
+        self.assertEqual((answer["ok"], answer["mode"], answer["modes"], answer["thermal"], answer["fan"], answer["ntc"]),
+                         (True, "high", ["std", "low", "high"], False, "3660 RPM", "21.6 C"))
+        self.fake.tool("h713-lamp", {"status": "mode     high\nmodes    std low high\n"
+                                               "thermal  on - the lamp is dimmed until the NTC cools"})
+        self.assertTrue(self.call("lamp")["thermal"])
+
+    def test_a_board_without_lamp_modes_says_so(self):
+        self.fake.tool("h713-lamp", {"status": "lamp modes: not present on this board"}, code=7)
+        answer = self.call("lamp")
+        self.assertFalse(answer["ok"])
+        self.assertIn("not present on this board", answer["line"])
+
+    def test_a_lamp_mode_is_one_set_and_the_tool_judges_the_name(self):
+        self.fake.tool("h713-lamp")
+        self.assertTrue(self.call("lamp_set", ["low"])["ok"])
+        self.assertEqual(self.fake.calls(), ["h713-lamp set low"])
+        self.fake.forget()
+        for bad in ("High!", "", "a b", "x" * 21):
+            self.assertFalse(self.call("lamp_set", [bad])["ok"], bad)
+        self.assertEqual(self.fake.calls(), [])
+        features = GEU_FEATURES + "\nlamp-modes      present  /sys/devices/platform/fan  (h713-lamp)"
+        self.fake.tool("h713-features", {"status": features})
+        self.assertTrue(self.call("controls")["features"]["lamp-modes"])
+
     def test_after_move_refuses_hardware_the_board_does_not_have(self):
         self.fake.tool("h713-features", {"status": GEU_FEATURES})
         answer = self.call("after_move", ["keystone+focus"])
@@ -506,6 +535,7 @@ class PlainTest(unittest.TestCase):
     def test_the_page_hides_the_controls_of_absent_hardware(self):
         with open(PAGE, "rb") as handle:
             page = handle.read().decode("utf-8")
+        self.assertIn('<div class="card" data-needs="lamp-modes">\n    <h2>Lamp</h2>', page)   # the L018's lamp, nowhere else
         wanted = {"keystone_now')": "accelerometer", "keystone_ref')": "accelerometer",
                   "autofocus')": "camera focus-motor", "after\"": "accelerometer"}
         for verb in ("['down', '20']", "['down', '5']", "['up', '5']", "['up', '20']"):

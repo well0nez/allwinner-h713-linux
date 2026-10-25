@@ -329,6 +329,13 @@ input[type=range].bi::-moz-range-thumb { width: 16px; height: 16px; border-radiu
 
 <!-- ============ picture ============ -->
 <section class="screen" id="picture">
+  <div class="card" data-needs="lamp-modes">
+    <h2>Lamp</h2>
+    <div class="seg" id="lamp" role="group" aria-label="lamp"></div>
+    <p class="help" id="lamp-line"></p>
+    <p class="help">Lamp and fan together, as the original firmware does it: High is brighter and the fan louder, Low
+      darker and quieter. One tap sets it and keeps it for the next start.</p>
+  </div>
   <div class="card">
     <h2>Picture</h2>
     <p class="help">The picture controls: brightness, contrast, saturation, hue, sharpness and the noise
@@ -361,8 +368,8 @@ input[type=range].bi::-moz-range-thumb { width: 16px; height: 16px; border-radiu
       <summary>What exactly is saved? What does brightness do?</summary>
       <p>Save writes the nine values, the preset, the gamma, the colour temperature, the aspect and the zoom to the device, so they come back after a
         reboot. Nothing here is written until you press it. <b>Brightness</b> is the black level on this
-        hardware, not a lamp control - on bright content you will see nothing move; the lamp is not
-        adjustable.</p>
+        hardware, not a lamp control - on bright content you will see nothing move. The lamp has its own card
+        where the projector can change it (Lamp, above); on the others it is not adjustable.</p>
     </details>
   </div>
 </section>
@@ -686,7 +693,7 @@ function show(name) {
     press("tab-" + n, n === name);
   });
   if (name === "colour" && READY) { if (has("colour")) { loadColour(); } loadLook(); }
-  if (name === "picture" && READY) { loadLook(); }
+  if (name === "picture" && READY) { loadLook(); loadLamp(); }
   if (name === "network") { loadNetwork(); }
   if (name === "remote") { loadRemote(); }
   if (name === "system") { loadSystem(); }
@@ -721,7 +728,7 @@ function features() {
   READY = true;
   if (id("colour").hidden && id("colour").classList.contains("on")) { show("projection"); }
   if (id("colour").classList.contains("on") && !id("colour").hidden) { if (has("colour")) { loadColour(); } loadLook(); }
-  if (id("picture").classList.contains("on")) { loadLook(); }
+  if (id("picture").classList.contains("on")) { loadLook(); loadLamp(); }
   id("absent").hidden = !gone.length;
   id("absent").textContent = "Not present on this board: " +
     gone.join(", ").replace("focus-motor", "focus motor") + ". What needs it is hidden.";
@@ -1129,6 +1136,26 @@ function loadLook() {
   return api("look").then(function (c) {
     if (!c.ok) { say(c.line, "bad"); return; }
     LOOK = c; lookDraw();
+  });
+}
+/* The Lamp card (the L018): the board's modes from h713-lamp, the one it holds pressed, fan and temperature under them. */
+var LAMP_NAMES = {low: "Low", std: "Standard", high: "High"};
+function loadLamp() {
+  if (FEAT["lamp-modes"] !== true) { return Promise.resolve(); }
+  return api("lamp").then(function (c) {
+    var seg = id("lamp");
+    if (!c.ok) { id("lamp-line").textContent = c.line; return; }
+    var order = ["low", "std", "high"].filter(function (m) { return c.modes.indexOf(m) >= 0; })
+      .concat(c.modes.filter(function (m) { return !LAMP_NAMES[m]; }));
+    seg.textContent = "";
+    order.forEach(function (m) {
+      var b = document.createElement("button");
+      b.id = "lamp-" + m; b.textContent = LAMP_NAMES[m] || m;
+      b.onclick = function () { act("lamp_set", [m]).then(loadLamp); };
+      seg.appendChild(b); press(b.id, m === c.mode);
+    });
+    id("lamp-line").textContent = (c.thermal ? "The projector is hot: the lamp is dimmed until it has cooled down, then " +
+      (LAMP_NAMES[c.mode] || c.mode) + " comes back. " : "") + "Fan " + (c.fan || "-") + ", temperature " + (c.ntc || "-") + ".";
   });
 }
 function ctSet(name) { return act("colour_temperature", [name]).then(loadLook); }

@@ -100,6 +100,8 @@ A held Left/Right arrives as a burst and goes out as **one** command. Every valu
 | | Zoom (50-100 %) | `h713-warp ctl zoom` | `ctl zoom N` (and `ctl on` below 100, as the web page does) | h713-warp |
 | | Projection | `ctl mode` | `ctl mode front \| rear \| ceiling \| rear-ceiling` | h713-warp |
 | | Reset keystone | | `ctl keystone reset`, `ctl zoom 100`, `turn_to_wall = 0` | h713-warp, the file |
+| Projector (only where the board manager owns the lamp: the L018, kernel 0332; looked up as `lamp_mode` in sysfs at the start) | Lamp (Low, Standard, High: lamp and fan together) | `h713-lamp status` (mode, modes, thermal mode); while the board manager holds the lamp dimmed (thermal mode) the row says so and that the chosen mode comes back | `h713-lamp set MODE` (the row then shows what h713-lamp holds) | `/etc/h713/lamp.conf`, written by h713-lamp, set at boot by `h713-lamp.service` |
+| | Fan, Temperature | `h713-lamp status` (fan speed, NTC), read again every 5 s while the area is open | | |
 | Sound | Volume, Mute | `h713-tv ctl volume`, `ctl mute` | `ctl volume N` (steps of 5), `ctl mute on \| off` | the sound card's own state; the volume survives a restart, mute does not (by decision: the box is audible after a start; `doku/212` §2) |
 | Focus | Autofocus now | | `h713-autofocus -q run` (the panel is the autofocus's for the length of the run) | |
 | | Autofocus after a move | `after_move` | `after_move = keystone+focus` (turns the automatic keystone on too) | the file |

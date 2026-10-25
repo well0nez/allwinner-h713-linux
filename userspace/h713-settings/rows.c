@@ -11,6 +11,7 @@
 #include <ctype.h>
 #include <math.h>
 #include <dirent.h>
+#include <glob.h>
 #include <signal.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -24,6 +25,7 @@
 struct area areas[MAXAREA];
 int nareas;
 int area_keystone = -1, area_sound = -1, area_wifi = -1;
+static int area_lamp = -1;
 
 /*
  * The Colour area (hue and saturation of six primaries, the firmware's colour manager) is left out: on the HY310 the block
@@ -1040,6 +1042,130 @@ static void power_enter(struct area *a)
 	rem->val = strcmp(v, "off") != 0;
 }
 
+/* --- Projector: the lamp's modes, where the board has them (the L018: lamp and fan together, h713-lamp) ------- */
+
+/*
+ * The area is there only on a board whose board manager owns the lamp: kernel 0332 creates lamp_mode there. That is looked
+ * up in sysfs once at the start - asking h713-lamp would cost a Python start on every board. Reading and setting go through
+ * h713-lamp, like every row through its tool. Fan and temperature are shown, never set; they are read again every 5 s while
+ * the area is open, so the fan is seen to follow the lamp.
+ */
+static struct row *r_lamp, *r_fan, *r_temp;
+static char lamp_note[160];
+static double lamp_at;
+
+static bool lamp_board(void)
+{
+	const char *sys = getenv("H713_SETTINGS_SYS");
+	char pat[256];
+	glob_t g;
+	bool there;
+
+	snprintf(pat, sizeof(pat), "%s/bus/platform/drivers/hy310-board-mgr/*/lamp_mode", sys && *sys ? sys : "/sys");
+	there = glob(pat, 0, NULL, &g) == 0 && g.gl_pathc > 0;
+	globfree(&g);
+	return there;
+}
+
+static const char *lamp_label(const char *mode)
+{
+	return !strcmp(mode, "low") ? "Low" : !strcmp(mode, "std") ? "Standard" : !strcmp(mode, "high") ? "High" : NULL;
+}
+
+/* "mode     std" -> "std": the value after the tool's label column */
+static bool lamp_field(const char *line, const char *key, char *v, size_t n)
+{
+	size_t k = strlen(key);
+
+	if (strncmp(line, key, k) || line[k] != ' ')
+		return false;
+	line += k + strspn(line + k, " ");
+	snprintf(v, n, "%s", line);
+	return true;
+}
+
+/* the sentence of each mode on the wall; one of a mode this page does not know: none */
+static const char *lamp_sentence(const char *mode)
+{
+	return !strcmp(mode, "low") ? "Low: darker, and the fan is quieter." :
+	       !strcmp(mode, "std") ? "Standard: the projector's usual brightness." :
+	       !strcmp(mode, "high") ? "High: brighter, and the fan is louder." : NULL;
+}
+
+static void lamp_options(const char *modes)
+{
+	static const char *const order[] = { "low", "std", "high" };
+	char list[160], key[40], *save = NULL, *w;
+
+	/* Low, Standard, High in that order, then what else the board offers, in its own order */
+	snprintf(list, sizeof(list), " %s ", modes);
+	for (size_t i = 0; i < sizeof(order) / sizeof(order[0]); i++) {
+		snprintf(key, sizeof(key), " %s ", order[i]);
+		if (strstr(list, key))
+			add_opt(r_lamp, order[i], lamp_label(order[i]));
+	}
+	snprintf(list, sizeof(list), "%s", modes);
+	for (w = strtok_r(list, " ", &save); w; w = strtok_r(NULL, " ", &save))
+		if (!lamp_label(w)) {
+			title(w, key, sizeof(key));
+			add_opt(r_lamp, w, key);
+		}
+}
+
+static void lamp_enter(struct area *a)
+{
+	const char *argv[] = { "h713-lamp", "status", NULL };
+	char mode[24] = "", modes[128] = "", thermal[80] = "", fan[48] = "", ntc[48] = "", *save = NULL, *line;
+	bool hot;
+	size_t k;
+
+	(void)a;
+	lamp_at = now_s() + 5.0;
+	snprintf(r_fan->text, sizeof(r_fan->text), "-");
+	snprintf(r_temp->text, sizeof(r_temp->text), "-");
+	if (run(argv, out, sizeof(out), 5000) != 0) {
+		r_lamp->hidden = true;		/* the tool could not say what the lamp is at: nothing is guessed */
+		return;
+	}
+	for (line = strtok_r(out, "\n", &save); line; line = strtok_r(NULL, "\n", &save))
+		(void)(lamp_field(line, "mode", mode, sizeof(mode)) || lamp_field(line, "modes", modes, sizeof(modes)) ||
+		       lamp_field(line, "thermal", thermal, sizeof(thermal)) || lamp_field(line, "fan", fan, sizeof(fan)) ||
+		       lamp_field(line, "ntc", ntc, sizeof(ntc)));
+	if (!r_lamp->n)
+		lamp_options(modes);
+	r_lamp->hidden = !r_lamp->n;
+	r_lamp->val = opt_find(r_lamp, mode) < 0 ? 0 : opt_find(r_lamp, mode);
+
+	/*
+	 * The board manager holds the lamp dimmed while the box is hot: the row says so instead of the mode's sentence, and a
+	 * mode chosen meanwhile is kept by the driver and comes back when it has cooled down.
+	 */
+	hot = !strncmp(thermal, "on", 2);
+	snprintf(lamp_note, sizeof(lamp_note), "The projector is hot: the lamp is dimmed until it has cooled down. Then %s comes back.",
+		 r_lamp->n ? r_lamp->opt[r_lamp->val] : mode);
+	r_lamp->note = hot ? lamp_note : NULL;
+	for (int i = 0; i < r_lamp->n; i++)
+		r_lamp->opt_note[i] = hot ? NULL : lamp_sentence(r_lamp->arg[i]);
+
+	if (fan[0])
+		snprintf(r_fan->text, sizeof(r_fan->text), "%.40s", fan);
+	k = strlen(ntc);
+	if (k > 2 && !strcmp(ntc + k - 2, " C"))	/* "21.4 C" from the tool, with its degree sign on the wall */
+		snprintf(r_temp->text, sizeof(r_temp->text), "%.*s \u00b0C", (int)(k - 2), ntc);
+	else if (k)
+		snprintf(r_temp->text, sizeof(r_temp->text), "%.40s", ntc);
+}
+
+static void lamp_apply(struct row *r, int dir)
+{
+	const char *argv[] = { "h713-lamp", "set", r->arg[r->val], NULL };
+	char o[256];
+
+	(void)dir;
+	run(argv, o, sizeof(o), 15000);
+	lamp_enter(NULL);			/* what h713-lamp holds now, not what was asked */
+}
+
 /* --- Wi-Fi: shown, not changed (a password needs a keyboard; wifi.env holds one network) -------------------- */
 
 static double wifi_at;
@@ -1104,6 +1230,8 @@ int rows_wake_ms(void)
 		next = save_at;
 	if (active == AREA_WIFI && wifi_at && (!next || wifi_at < next))
 		next = wifi_at;
+	if (active >= 0 && active == area_lamp && lamp_at && (!next || lamp_at < next))
+		next = lamp_at;
 	return next ? (int)((next > t ? next - t : 0) * 1000) + 1 : -1;
 }
 
@@ -1126,6 +1254,10 @@ void rows_tick(bool *changed)
 		picture_save();
 	if (active == AREA_WIFI && wifi_at && now_s() >= wifi_at) {
 		wifi_enter(&areas[AREA_WIFI]);
+		*changed = true;
+	}
+	if (active >= 0 && active == area_lamp && lamp_at && now_s() >= lamp_at) {
+		lamp_enter(&areas[area_lamp]);
 		*changed = true;
 	}
 }
@@ -1233,6 +1365,16 @@ void rows_init(void)
 	r->apply = mode_apply, r->more = true;
 	r = new_row(a, "Reset keystone", R_ACTION);
 	r->apply = keystone_reset;
+
+	if (lamp_board()) {			/* the L018: lamp and fan together (kernel 0332, h713-lamp) */
+		a = &areas[nareas++];
+		a->name = "Projector", a->icon = "lamp", a->enter = lamp_enter;
+		area_lamp = nareas - 1;
+		r_lamp = r = new_row(a, "Lamp", R_CHOICE);
+		r->apply = lamp_apply, r->more = true;
+		r_fan = info(a, "Fan");
+		r_temp = info(a, "Temperature");
+	}
 
 	a = &areas[nareas++];
 	a->name = "Sound", a->icon = "speaker", a->enter = sound_enter;

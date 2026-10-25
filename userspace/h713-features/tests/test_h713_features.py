@@ -40,6 +40,8 @@ class Board(object):
             self.write("bus/iio/devices/iio:device0/in_accel_x_raw", "26")
         if "focus-motor" in have:
             self.write("bus/platform/drivers/hy310-focus-motor/motor-ctr/motor_limit", "1 up=1")
+        if "lamp-modes" in have:                                       # the L018's board manager (kernel 0332)
+            self.write("bus/platform/drivers/hy310-board-mgr/fan/lamp_mode", "std")
         self.record = os.path.join(self.root, "features")
         if record is not None:
             with open(self.record, "wb") as fh:
@@ -81,7 +83,8 @@ class Features(unittest.TestCase):
         self.assertIn("focus-motor     present  ", status.stdout)
         check = board.run("check", "--wait", "0")
         self.assertEqual((check.returncode, check.stderr), (0, ""))
-        self.assertEqual(check.stdout.count("\nok "), 3, check.stdout)
+        self.assertEqual(check.stdout.count("\nok "), 4, check.stdout)          # the three, and lamp-modes: not present, not listed
+        self.assertIn("ok lamp-modes: not present on this board", check.stdout)
 
     def test_the_geu_says_not_present_and_warns_about_nothing(self):
         board = self.board("accelerometer", record=GEU)
@@ -118,6 +121,16 @@ class Features(unittest.TestCase):
             self.assertEqual(hf.do_check(args, sleep, lambda: now[0]), 0)
         self.assertEqual((len(naps), err.getvalue()), (2, ""))
         self.assertIn("ok camera: present  /dev/video3", out.getvalue())
+
+    def test_the_l018_has_lamp_modes(self):
+        board = self.board("lamp-modes", record="board = l018\nfeatures = lamp-modes\n")
+        status = board.run("status")
+        self.assertIn("lamp-modes      present  ", status.stdout)
+        self.assertIn("hy310-board-mgr/fan  (h713-lamp, h713-settings Projector, h713-panel Lamp)", status.stdout)
+        check = board.run("check", "--wait", "0")
+        self.assertEqual((check.returncode, check.stderr), (0, ""))
+        missing = self.board(record="board = l018\nfeatures = lamp-modes\n").run("check", "--wait", "0")
+        self.assertIn("warning: lamp-modes: not present on this board - but boards/l018 FEATURES lists it", missing.stderr)
 
     def test_present_but_not_listed_is_said_and_not_a_warning(self):
         board = self.board("camera", "accelerometer", record=GEU)

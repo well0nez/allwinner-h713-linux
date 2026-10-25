@@ -304,6 +304,16 @@ esac
     "h713-focus": 'echo "$@" >> "$LOG/focus.log"; sleep 0.2\n',
     "systemctl": 'echo "$@" >> "$LOG/systemctl.log"\nif [ "$1" = is-active ]; then grep -qx "$3" "$LOG/active" 2>/dev/null; exit $?; fi\n',
     "iw": 'printf "Connected to aa:bb:cc:dd:ee:ff (on wlan0)\\n\\tSSID: Wohnzimmer\\n\\tfreq: 2437\\n\\tsignal: -52 dBm\\n"\n',
+    # the lamp's modes as h713-lamp prints them (the L018); $LOG/lamp-mode is what the board manager holds
+    "h713-lamp": """echo "$@" >> "$LOG/lamp.log"
+[ -f "$LOG/lamp-mode" ] || { echo "lamp modes: not present on this board" >&2; exit 7; }
+case "$1" in
+status) printf 'mode     %s\\nmodes    %s\\nthermal  %s\\nfan      %s\\nntc      %s\\nkept     std (x)\\n' \\
+        "$(cat "$LOG/lamp-mode")" "${LAMPMODES:-std low high}" "${LAMPHOT:-off}" "${LAMPFAN:-3210 RPM}" "${LAMPNTC:-21.4 C}" ;;
+set) case " ${LAMPMODES:-std low high} " in *" $2 "*) [ -n "$LAMPHOT" ] || echo "$2" > "$LOG/lamp-mode"; echo "lamp mode $2" ;;
+     *) echo "error: '$2' is not a mode of this board" >&2; exit 2 ;; esac ;;
+esac
+""",
     "ip": 'echo "wlan0            UP             192.168.8.131/24"\n',
 }
 
@@ -311,7 +321,7 @@ esac
 class Box:
     """The tools, the files and the program, in one temporary directory."""
 
-    def __init__(self, features="all", standby="offered in the countdown", wifi_mode="sta", extra_env=None, launcher=True):
+    def __init__(self, features="all", standby="offered in the countdown", wifi_mode="sta", extra_env=None, launcher=True, lamp=None):
         self.dir = tempfile.mkdtemp(prefix="h713-settings-")
         self.etc = os.path.join(self.dir, "etc")
         self.bin = os.path.join(self.dir, "bin")
@@ -335,6 +345,14 @@ class Box:
                         CAM=have("camera"), ACC=have("accelerometer"), MOTOR=have("focus-motor"), STANDBY=standby)
         if features == "none":
             self.env.update(CAM=absent, ACC=absent, MOTOR=absent)
+        if lamp:                                                   # a board whose board manager owns the lamp (the L018, kernel 0332)
+            node = os.path.join(self.dir, "sys", "bus", "platform", "drivers", "hy310-board-mgr", "fan")
+            os.makedirs(node)
+            with open(os.path.join(node, "lamp_mode"), "w") as f:
+                f.write(lamp + "\n")
+            with open(os.path.join(self.log, "lamp-mode"), "w") as f:
+                f.write(lamp + "\n")
+        self.env.update(H713_SETTINGS_SYS=os.path.join(self.dir, "sys"))
         self.env.update(extra_env or {})
         self.write("power.conf", "# power\ndefault = poweroff\nlong_s = 3\nremote = on\n")
         self.write("keystone.conf", "# keystone\niio_name = sc7a20\nafter_move = off   # the page writes this\nhysteresis_degrees = 1.0\n")
@@ -1970,6 +1988,98 @@ class LookKit(Base):
         self.assertLessEqual(x1, self.W - 48, what)
         self.assertGreaterEqual(y0, 26, what)
         self.assertLessEqual(y1, self.H - 27, what)
+
+
+class Projector(LookKit):
+    """The L018's lamp modes (kernel 0332, h713-lamp): an area of its own, only where the board manager owns the lamp."""
+
+    def test_only_a_board_with_lamp_modes_has_the_area(self):
+        b = self.box()
+        b.start("Keystone")
+        b.keys("down")
+        self.assertIn("area Sound", b.dump())                       # Keystone, then Sound, as before
+        b.finish()
+        self.assertEqual(b.tool_log("lamp"), [])                    # and h713-lamp is not asked on such a board
+
+    def test_the_rows_come_from_h713_lamp(self):
+        b = self.box(lamp="std")
+        d = b.start("Projector").dump()
+        self.assertIn("area Projector", d)
+        self.assertIn("Lamp choice [Low|*Standard|High]", d)
+        self.assertIn('Fan info "3210 RPM"', d)
+        self.assertIn('Temperature info "21.4 \u00b0C"', d)
+        self.assertIn("status", b.tool_log("lamp"))
+        b.finish()
+
+    def test_it_sits_under_keystone(self):
+        b = self.box(lamp="std")
+        b.start("Keystone")
+        b.keys("down")
+        self.assertIn("area Projector", b.dump())
+        b.keys("down")
+        self.assertIn("area Sound", b.dump())
+        b.finish()
+
+    def test_a_choice_is_one_set_and_the_row_shows_what_the_tool_holds(self):
+        b = self.box(lamp="std")
+        b.start("Projector")
+        b.keys("ok", "ok", "down", "ok")                            # Lamp > High
+        d = b.dump()
+        self.assertIn("set high", b.tool_log("lamp"))
+        self.assertIn("Lamp choice [Low|Standard|*High]", d)
+        b.keys("ok", "up", "up", "ok")                              # Lamp > Low
+        self.assertIn("Lamp choice [*Low|Standard|High]", b.dump())
+        self.assertEqual([l for l in b.tool_log("lamp") if l.startswith("set")], ["set high", "set low"])
+        b.finish()
+
+    def test_every_mode_has_its_sentence(self):
+        b = self.box(lamp="low")
+        b.start("Projector")
+        b.keys("ok")
+        self.assertIn('sentence "Low: darker, and the fan is quieter."', b.dump())
+        b.finish()
+
+    def test_hot_the_row_says_so_and_a_choice_is_kept_for_later(self):
+        b = self.box(lamp="high", extra_env={"LAMPHOT": "on - the lamp is dimmed until the NTC cools", "LAMPNTC": "42.0 C"})
+        b.start("Projector")
+        b.keys("ok")
+        d = b.dump()
+        self.assertIn('sentence "The projector is hot: the lamp is dimmed until it has cooled down. Then High comes back."', d)
+        self.assertIn('Temperature info "42.0 \u00b0C"', d)
+        b.finish()
+
+    def test_a_board_with_modes_of_its_own(self):
+        b = self.box(lamp="eco", extra_env={"LAMPMODES": "std eco"})
+        self.assertIn("Lamp choice [Standard|*Eco]", b.start("Projector").dump())
+        b.finish()
+
+    def test_no_answer_from_the_tool_no_lamp_row(self):
+        b = self.box(lamp="std")
+        os.remove(os.path.join(b.log, "lamp-mode"))                # the tool says "not present": nothing is guessed
+        d = b.start("Projector").dump()
+        self.assertIn("(hidden) Lamp choice", d)
+        self.assertIn('Fan info "-"', d)
+        b.finish()
+
+    def test_ten_areas_stay_inside_the_safe_margin(self):
+        # the Colour area of the tests and the Projector: ten areas take the pitch of 86
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        for area in ("Picture", "Projector", "Wi-Fi"):
+            b = self.box(lamp="std").start(area, size="%dx%d" % (self.W, self.H))
+            self.inside(self.ink(self.snap(b, "a"), True), "%s, the areas" % area)
+            b.keys("ok")
+            self.inside(self.ink(self.snap(b, "r"), True), "%s, its rows" % area)
+            b.finish()
+
+    def test_every_drawing_reports_all_it_changed(self):
+        if not any(f and os.path.exists(f) for f in FONTS):
+            self.skipTest("no font")
+        b = self.box(lamp="std").start("Projector", size="%dx%d" % (self.W, self.H))
+        for key in ("up", "down", "down", "up", "ok", "ok", "down", "ok", "down", "down", "back", "up", "down"):
+            b.keys(key)
+        self.assertIn("outside 0", b.dump().splitlines())
+        b.finish()
 
 
 class Look(LookKit):
