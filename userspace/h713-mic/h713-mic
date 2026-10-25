@@ -1,0 +1,211 @@
+#!/usr/bin/env python3
+"""h713-mic - the stock remote's microphone as audio (prototype, TODO 2.51).
+
+The stock Bluetooth LE remote (1d5a:c081) sends its microphone while the microphone key is held: one HID input report
+with ID 0x1E and 60 bytes every 8 ms. The 60 bytes are three scrambled pieces of 20 bytes; unscrambled they are one SBC
+frame without its 4-byte header - mono, 16 kHz, 16 blocks, 8 subbands, loudness, bitpool 28: 128 samples. The first
+~10 frames of a press are SBC silence. Read out of the stock firmware's audio HAL (libhbgdecode.so, doku: TODO 2.51).
+
+This tool writes a standard SBC stream (each frame with its header and CRC); any SBC decoder makes PCM of it:
+    h713-mic record -o voice.sbc && ffmpeg -f sbc -i voice.sbc voice.wav
+It reads /dev/hidrawN, so the kernel needs CONFIG_HIDRAW. `h713-mic info` says, without hidraw, whether the remote's
+report descriptor lets 60-byte reports with ID 0x1E through (6.18 drops a report shorter than its description).
+
+Commands:
+    record [-o FILE] [--seconds N] [--device /dev/hidrawN]   one press as SBC (FILE '-' = stdout, the default)
+    convert CAPTURE OUT       a capture (one report per line: [time] hex, with or without the report ID) to SBC
+    info                      the remote's HID device, its hidraw node, the declared size of report 0x1E
+"""
+
+import argparse
+import glob
+import os
+import select
+import sys
+import time
+
+REMOTE_HID_ID = "0005:00001D5A:0000C081"     # bus Bluetooth, the stock remote
+VOICE_REPORT = 0x1E
+VOICE_LEN = 60
+END_GAP = 0.04                               # no voice report for 5 frame times: the key was let go
+
+# The scrambling (libhbgdecode.so, DecryptionSBC2): per piece, a chain over the bytes in this order, with this key.
+KEY = 50
+ORDER = (0, 12, 13, 3, 4, 9, 10, 11, 16, 17, 18, 19, 5, 6, 14, 15, 1, 2, 7, 8)
+
+# SBC header of the frame the remote sends: sync, 16 kHz | 16 blocks | mono | loudness | 8 subbands, bitpool 28.
+SBC_SYNC, SBC_CONFIG, SBC_BITPOOL = 0x9C, 0x31, 28
+
+
+def unscramble(piece):
+    """One 20-byte piece back to plain bytes."""
+    b = bytearray(piece)
+    for i in range(len(ORDER) - 1, 0, -1):
+        b[ORDER[i]] = ((b[ORDER[i]] + b[ORDER[i - 1]]) & 0xFF) ^ (i ^ KEY)
+    b[0] = ((b[0] - 62) & 0xFF) ^ KEY
+    return bytes(b)
+
+
+def crc8(data, nbits):
+    """SBC's CRC-8 (polynomial 0x1D, start 0x0F) over the first nbits of data."""
+    crc = 0x0F
+    for n in range(nbits):
+        bit = (data[n // 8] >> (7 - n % 8)) & 1
+        top = ((crc >> 7) ^ bit) & 1
+        crc = (crc << 1) & 0xFF
+        if top:
+            crc ^= 0x1D
+    return crc
+
+
+def sbc_frame(report):
+    """The 60 bytes of a voice report to a 64-byte SBC frame."""
+    if len(report) != VOICE_LEN:
+        raise ValueError("voice report of %d bytes, expected %d" % (len(report), VOICE_LEN))
+    body = b"".join(unscramble(report[i:i + 20]) for i in (0, 20, 40))
+    # the CRC covers config, bitpool and the 8 four-bit scale factors
+    crc = crc8(bytes([SBC_CONFIG, SBC_BITPOOL]) + body[:4], 16 + 32)
+    return bytes([SBC_SYNC, SBC_CONFIG, SBC_BITPOOL, crc]) + body
+
+
+def voice_payload(report):
+    """The 60 voice bytes of a report as hidraw delivers it (ID first), or None for any other report."""
+    if len(report) == VOICE_LEN + 1 and report[0] == VOICE_REPORT:
+        return report[1:]
+    return None
+
+
+def remote_hid_dirs():
+    """/sys/bus/hid/devices/<dev> of the stock remote - there with or without hidraw."""
+    out = []
+    for d in sorted(glob.glob("/sys/bus/hid/devices/*")):
+        try:
+            with open(os.path.join(d, "uevent")) as f:
+                if "HID_ID=" + REMOTE_HID_ID in f.read().upper():
+                    out.append(d)
+        except OSError:
+            pass
+    return out
+
+
+def hidraw_node(hid_dir):
+    nodes = glob.glob(os.path.join(hid_dir, "hidraw", "hidraw*"))
+    return "/dev/" + os.path.basename(nodes[0]) if nodes else None
+
+
+def report_sizes(rdesc):
+    """Input bits per report ID from a HID report descriptor (short items; Push/Pop kept)."""
+    sizes, size, count, rid, stack, i = {}, 0, 0, 0, [], 0
+    while i < len(rdesc):
+        p = rdesc[i]
+        if p == 0xFE:                                        # long item
+            i += 3 + (rdesc[i + 1] if i + 1 < len(rdesc) else 0)
+            continue
+        n = (0, 1, 2, 4)[p & 3]
+        val = int.from_bytes(rdesc[i + 1:i + 1 + n], "little")
+        kind, tag = (p >> 2) & 3, p >> 4
+        if kind == 1:                                        # global
+            if tag == 7:
+                size = val
+            elif tag == 8:
+                rid = val
+            elif tag == 9:
+                count = val
+            elif tag == 10:
+                stack.append((size, count, rid))
+            elif tag == 11 and stack:
+                size, count, rid = stack.pop()
+        elif kind == 0 and tag == 8:                         # main: Input
+            sizes[rid] = sizes.get(rid, 0) + size * count
+        i += 1 + n
+    return sizes
+
+
+def cmd_info(_args):
+    dirs = remote_hid_dirs()
+    if not dirs:
+        print("the stock remote (%s) is not connected" % REMOTE_HID_ID)
+        return 1
+    for d in dirs:
+        with open(os.path.join(d, "report_descriptor"), "rb") as f:
+            rdesc = f.read()
+        bits = report_sizes(rdesc).get(VOICE_REPORT)
+        node = hidraw_node(d) or "none (CONFIG_HIDRAW?)"
+        print("%s: descriptor %d bytes, hidraw %s" % (os.path.basename(d), len(rdesc), node))
+        if bits is None:
+            print("  report 0x1E: not described - the kernel drops the voice")
+        else:
+            verdict = "passes" if bits // 8 <= VOICE_LEN else "is dropped by 6.18 (too short for its description)"
+            print("  report 0x1E: %d bytes described, the remote sends %d: %s" % (bits // 8, VOICE_LEN, verdict))
+    return 0
+
+
+def cmd_record(args):
+    dev = args.device
+    if not dev:
+        nodes = [n for n in map(hidraw_node, remote_hid_dirs()) if n]
+        if not nodes:
+            print("h713-mic: no hidraw node of the stock remote (connected? CONFIG_HIDRAW?)", file=sys.stderr)
+            return 1
+        dev = nodes[0]
+    out = sys.stdout.buffer if args.output == "-" else open(args.output, "wb")
+    fd = os.open(dev, os.O_RDONLY)
+    frames, first, last = 0, None, None
+    try:
+        while True:
+            now = time.monotonic()
+            if first is not None and (now - last > END_GAP or (args.seconds and now - first > args.seconds)):
+                break
+            ready, _, _ = select.select([fd], [], [], END_GAP if first is not None else 1.0)
+            if not ready:
+                continue
+            payload = voice_payload(os.read(fd, 4096))
+            if payload is None:
+                continue
+            last = time.monotonic()
+            first = first if first is not None else last
+            out.write(sbc_frame(payload))
+            frames += 1
+    finally:
+        os.close(fd)
+        out.flush()
+        if out is not sys.stdout.buffer:
+            out.close()
+    print("h713-mic: %d frames = %.2f s from %s" % (frames, frames * 0.008, dev), file=sys.stderr)
+    return 0
+
+
+def cmd_convert(args):
+    frames = 0
+    with open(args.capture) as f, open(args.output, "wb") as out:
+        for line in f:
+            words = line.split()
+            if not words:
+                continue
+            report = bytes.fromhex(words[-1])
+            payload = voice_payload(report) if len(report) == VOICE_LEN + 1 else report
+            if payload is None or len(payload) != VOICE_LEN:
+                continue
+            out.write(sbc_frame(payload))
+            frames += 1
+    print("h713-mic: %d frames = %.2f s" % (frames, frames * 0.008), file=sys.stderr)
+    return 0
+
+
+def main(argv=None):
+    ap = argparse.ArgumentParser(prog="h713-mic", description="the stock remote's microphone as SBC (16 kHz mono)")
+    sub = ap.add_subparsers(dest="cmd", required=True)
+    r = sub.add_parser("record", help="one press of the microphone key as SBC")
+    r.add_argument("-o", "--output", default="-")
+    r.add_argument("--seconds", type=float, default=0, help="stop after this long (0: when the key is let go)")
+    r.add_argument("--device", help="the hidraw node (default: found by the remote's ids)")
+    c = sub.add_parser("convert", help="a capture (hex per line) to SBC")
+    c.add_argument("capture")
+    c.add_argument("output")
+    sub.add_parser("info", help="the remote's HID device and report 0x1E")
+    args = ap.parse_args(argv)
+    return {"record": cmd_record, "convert": cmd_convert, "info": cmd_info}[args.cmd](args)
+
+
+if __name__ == "__main__":
+    sys.exit(main())
