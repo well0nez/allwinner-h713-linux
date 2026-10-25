@@ -465,6 +465,74 @@ class SysfsMotor(Motor):
             pass
 
 
+def _focus_tool():
+    """h713-focus as a module, for its experimental counted range (focus.conf):
+    beside this file on the board, beside its directory in the repository."""
+    here = os.path.dirname(os.path.realpath(__file__))
+    for path in (os.path.join(here, "h713-focus"),
+                 os.path.join(here, "..", "h713-focus", "h713-focus")):
+        if os.path.exists(path):
+            import importlib.machinery
+            import importlib.util
+            loader = importlib.machinery.SourceFileLoader("h713_focus_tool", path)
+            module = importlib.util.module_from_spec(
+                importlib.util.spec_from_loader("h713_focus_tool", loader))
+            loader.exec_module(module)
+            return module
+    return None
+
+
+class SoftMotor(SysfsMotor):
+    """A unit whose end switch says nothing (h713-focus, "the experimental
+    mode"; the L018 of 25.10.2026): the switch is ignored, the counted range of
+    focus.conf takes its place, its ends are the edges the search turns at, and
+    the position h713-focus keeps is kept on after every move."""
+
+    def __init__(self, base, tool, soft):
+        SysfsMotor.__init__(self, base)
+        self.tool, self.soft = tool, soft
+        if not self.no_limit():
+            self._write_no_limit()
+
+    def _write_no_limit(self):
+        with open(os.path.join(self.base, ATTR_NO_LIMIT), "wb") as fh:
+            fh.write(b"1")
+
+    def position(self, st):
+        return self.tool.load_position(st)
+
+    def blocked(self, st):
+        if self.position(st) is None:
+            return ("no focus position kept (%s) - 'h713-focus home' sets it "
+                    "against the upper stop first" % self.tool.FOCUS_STATE)
+        return None
+
+    def edge_ahead(self, st, up):
+        pos = self.position(st)
+        if pos is None:
+            return True
+        return pos >= self.soft.high if up else pos <= self.soft.low
+
+    def _move(self, steps, up, before=None):
+        before = self.state() if before is None else before
+        pos = self.position(before)
+        room = (self.soft.high - pos) if up else (pos - self.soft.low)
+        steps = min(steps, max(room, 0))
+        if steps <= 0:
+            return
+        self._command(((CMD_UP if up else CMD_DOWN) << 8) | (steps & 0x7F))
+        target = before.step + (steps if up else -steps)
+        deadline = time.monotonic() + (steps + 5) * 0.03 + 0.3
+        time.sleep(max(steps * MSTEP_S - POLL_S, 0))
+        now = before
+        while time.monotonic() < deadline:
+            now = self.state()
+            if now.step == target:
+                break
+            time.sleep(POLL_S)
+        self.tool.save_position(pos + now.step - before.step, now)
+
+
 class ReplayMotor(Motor):
     """A motor made of recorded frames: the position indexes the directory."""
 
@@ -539,7 +607,9 @@ VIDIOC_STREAMON, VIDIOC_STREAMOFF, VIDIOC_S_CTRL = (0x40045612, 0x40045613,
                                                     0xC008561C)
 BUF_TYPE_CAPTURE, MEMORY_MMAP, FMT_YUYV = 1, 1, 0x56595559
 CID_EXPOSURE_AUTO, CID_EXPOSURE_ABS = 0x009A0901, 0x009A0902
-CAMERA_NAME = "HD camera"
+# the name uvcvideo takes over from the USB descriptor: the HY310's Realtek "Generic HD camera", the L018's "HYSD-VAF02-ZH04"
+CAMERA_NAMES = ("HD camera", "HYSD-VAF02")
+CAMERA_SAID = " or ".join("'%s'" % n for n in CAMERA_NAMES)
 
 
 def _is_capture(node):
@@ -576,16 +646,17 @@ def find_camera(given, ids):
                 name = fh.read().decode("utf-8", "replace")
         except OSError:
             continue
-        named = named or CAMERA_NAME in name
-        if CAMERA_NAME in name and _is_capture(node):
+        ours = any(n in name for n in CAMERA_NAMES)
+        named = named or ours
+        if ours and _is_capture(node):
             return node
     if not named:
         raise NotPresent("camera: not present on this board - no video4linux "
-                         "device named '%s' (h713-features says whether the "
-                         "board should have one)" % CAMERA_NAME)
-    raise Error("no capture node with '%s' in its name (the ini's pair is "
+                         "device named %s (h713-features says whether the "
+                         "board should have one)" % CAMERA_SAID)
+    raise Error("no capture node with %s in its name (the ini's pair is "
                 "%04x:%04x). Is uvcvideo loaded, is the camera on the bus?"
-                % (CAMERA_NAME, ids[0], ids[1]))
+                % (CAMERA_SAID, ids[0], ids[1]))
 
 
 class Camera:
@@ -1122,7 +1193,15 @@ def do_run(args, profile):
                             args.direction)
         grab = motor.grab
     else:
-        motor = SysfsMotor(find_base(args.sysfs))
+        tool = _focus_tool()
+        soft = tool.read_soft() if tool else None
+        if soft:
+            motor = SoftMotor(find_base(args.sysfs), tool, soft)
+            _stderr("experimental: the end switch is ignored on this unit, the "
+                    "counted range %d..%d of %s bounds the search"
+                    % (soft.low, soft.high, tool.FOCUS_CONF))
+        else:
+            motor = SysfsMotor(find_base(args.sysfs))
         motor.direction = args.direction
         st = motor.state()
         up = motor.direction == 0

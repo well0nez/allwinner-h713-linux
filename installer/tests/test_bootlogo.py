@@ -152,7 +152,7 @@ class OptionalInTheFileList(unittest.TestCase):
 
     def test_the_groups_that_are_optional_are_the_ones_a_firmware_may_be_without(self):
         optional = sorted({f.group for f in FILES if f.optional})
-        self.assertEqual(optional, ["logo", "pq", "wlan"])
+        self.assertEqual(optional, ["audio", "logo", "pq", "wlan"])
         mandatory = sorted({f.group for f in FILES if not f.optional})
         self.assertEqual(mandatory, ["firmware", "mips"])
         for group in optional:

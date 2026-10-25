@@ -3761,11 +3761,89 @@ static void audio_put_enum(struct audio *a, struct alsa_card *c,
  * what it last wrote, so an "amixer" from elsewhere shows up in "ctl status".
  * ------------------------------------------------------------------ */
 
+/*
+ * A board's own curve (tv.conf "volume_curve = vendor", 25.10.2026): [Volume] volume_curve[00..100] of the device's own
+ * audio_config.ini in the extracted vendor data (the data directory, /etc/h713/tvconfig), where the installer puts it next
+ * to the PQ files. A line "volume_curve[NN]=a,b,...," holds the values up to index NN. The HY310's file is the curve above,
+ * value for value; the L018's runs to +0.5 dB at 100 (-14.75 dB at 50), and its owner heard the DSP at 0 dB clean (hearing
+ * test of 25.10.2026, TODO 4.9e). A value above the stage's top ends there (0 dB in the DSP). Without the file, or with one
+ * that is not 101 values, rising from 1 to 100 within -512..120, the curve above stays and the journal says why.
+ */
+#define AUDIO_CURVE_FILE	"audio_config.ini"
+
+static char *trim(char *s);	/* the tv.conf reader's, below */
+
+static long vendor_curve[101];
+static bool vendor_curve_on;
+
+static bool audio_curve_load(const char *dir, char *why, size_t len)
+{
+	char path[200], line[512];
+	bool in_volume = false, have[101] = { false };
+	long v[101];
+	int i;
+	FILE *f;
+
+	snprintf(path, sizeof(path), "%s/%s", dir, AUDIO_CURVE_FILE);
+	f = fopen(path, "r");
+	if (!f) {
+		snprintf(why, len, "%s: %s", path, strerror(errno));
+		return false;
+	}
+	while (fgets(line, sizeof(line), f)) {
+		char *p = trim(line), *end;
+		long last, vals[101];
+		int k = 0;
+
+		if (*p == '[') {
+			in_volume = !strncmp(p, "[Volume]", 8);
+			continue;
+		}
+		if (!in_volume || strncmp(p, "volume_curve[", 13))
+			continue;
+		last = strtol(p + 13, &end, 10);
+		if (end == p + 13 || strncmp(end, "]=", 2) || last < 0 || last > 100)
+			continue;
+		for (p = end + 2; *p && k < 101; ) {
+			long x = strtol(p, &end, 10);
+
+			if (end == p)
+				break;
+			vals[k++] = x;
+			p = end + strspn(end, ", \t");
+		}
+		if (k > last + 1) {
+			fclose(f);
+			snprintf(why, len, "%s: volume_curve[%ld] holds %d values", path, last, k);
+			return false;
+		}
+		for (i = 0; i < k; i++) {
+			v[last - k + 1 + i] = vals[i];
+			have[last - k + 1 + i] = true;
+		}
+	}
+	fclose(f);
+	for (i = 0; i <= 100; i++) {
+		if (!have[i]) {
+			snprintf(why, len, "%s: no [Volume] volume_curve value %d", path, i);
+			return false;
+		}
+		if (i && (v[i] < -512 || v[i] > 120 || (i > 1 && v[i] < v[i - 1]))) {
+			snprintf(why, len, "%s: volume_curve value %d (%ld) is outside -512..120 or below the one before", path, i, v[i]);
+			return false;
+		}
+	}
+	memcpy(vendor_curve, v, sizeof(vendor_curve));
+	return true;
+}
+
 /* slider -> quarter dB */
 static long audio_curve_q(int n)
 {
 	if (n <= 0)
 		return AUDIO_CURVE_OFF_Q;
+	if (vendor_curve_on)
+		return vendor_curve[n > 100 ? 100 : n];
 
 	return n <= 28 ? 2 * n - 166 : n - 138;
 }
@@ -3773,12 +3851,30 @@ static long audio_curve_q(int n)
 /* quarter dB -> the nearest slider position; below 1 (-41 dB) is off */
 static int audio_curve_n(long q)
 {
+	int n;
+
+	if (vendor_curve_on) {
+		if (q < vendor_curve[1])
+			return 0;
+		for (n = 1; n <= 100; n++)
+			if (vendor_curve[n] >= q)
+				return n > 1 && q - vendor_curve[n - 1] < vendor_curve[n] - q ? n - 1 : n;
+		return 100;
+	}
 	if (q < -164)
 		return 0;
 	if (q <= -110)
 		return (int)((q + 167) / 2);
 
 	return q > -38 ? 100 : (int)(q + 138);
+}
+
+/* "0 = the floor, 1 = -41 dB, 50 = -22 dB, 100 = -9.5 dB" on the curve in force */
+static const char *audio_curve_text(char *buf, size_t len)
+{
+	snprintf(buf, len, "0 = the floor, 1 = %.2f dB, 50 = %.2f dB, 100 = %.2f dB%s", audio_curve_q(1) / 4.0,
+		 audio_curve_q(50) / 4.0, audio_curve_q(100) / 4.0, vendor_curve_on ? ", the board's own curve" : "");
+	return buf;
 }
 
 static const char *audio_stage_name(const struct audio *a)
@@ -4538,6 +4634,9 @@ static int source_by_name(const char *w)
  *                               input (the default), a Wayland client drawn by h713-warp, or
  *                               the client while there is one; "ctl source" changes it until
  *                               the next start
+ *       volume_curve = builtin | vendor  the volume slider's curve: the HY310's (the
+ *                               default), or the device's own from audio_config.ini in the
+ *                               data directory (the L018's board sets it, 25.10.2026)
  *
  * The keys are the file format, and since v0.8-beta they speak English like
  * the values. Their German spellings ("zustand", "daten", "rechner") and the
@@ -4592,6 +4691,7 @@ struct conf {
 	int edid;		/* edid = block0 | block1; -1 = not said */
 	bool edid_panel;	/* edid_prefer = panel (true) | file */
 	int source;		/* source = hdmi | client | auto (enum source) */
+	bool volume_vendor;	/* volume_curve = vendor (true) | builtin */
 	char input[24];	/* --input; the input h713-pq is asked about */
 	char lut[160];		/* where h713-pq is told to write the LUT */
 };
@@ -4645,6 +4745,7 @@ static void conf_read(struct conf *c)
 	c->edid = -1;
 	c->edid_panel = false;
 	c->source = SOURCE_HDMI;
+	c->volume_vendor = false;
 	snprintf(c->data, sizeof(c->data), "%s", PQ_DATA);
 	snprintf(c->calculator, sizeof(c->calculator), "%s", PQ_BIN);
 	snprintf(c->input, sizeof(c->input), "%s", PQ_INPUT);
@@ -4755,8 +4856,16 @@ static void conf_read(struct conf *c)
 			else
 				warn("%s:%u: source = \"%s\" unknown (hdmi client auto) -- hdmi stays",
 				     c->path, n, val);
+		} else if (!strcasecmp(key, "volume_curve")) {
+			if (!strcasecmp(val, "vendor"))
+				c->volume_vendor = true;
+			else if (!strcasecmp(val, "builtin"))
+				c->volume_vendor = false;
+			else
+				warn("%s:%u: volume_curve = \"%s\" unknown (builtin vendor) -- builtin stays",
+				     c->path, n, val);
 		} else {
-			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator, edid, edid_prefer, source)",
+			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator, edid, edid_prefer, source, volume_curve)",
 			     c->path, n, key);
 		}
 	}
@@ -8766,8 +8875,9 @@ static void cmd_volume(struct reply *r, struct audio *a, const char *text)
 	if (text) {
 		n = strtol(text, &end, 0);
 		if (*end || n < 0 || n > 100) {
-			reply_fail(r, "volume needs 0..100 (0 = the floor, 1 = -41 dB, 50 = -22 dB, 100 = -9.5 dB), not \"%s\"",
-				   text);
+			char curve[96];
+
+			reply_fail(r, "volume needs 0..100 (%s), not \"%s\"", audio_curve_text(curve, sizeof(curve)), text);
 			return;
 		}
 		a->volume = (int)n;
@@ -8878,7 +8988,8 @@ static void cmd_help(struct reply *r, const struct control *c)
 		  "  audio [on|off|auto]   audio: forced on, forced silent, or following the picture\n"
 		  "                        (default auto); without an argument: show it\n"
 		  "  volume [0..100]       volume on the stock curve (0 = the floor, 1 = -41 dB, 50 = -22 dB,\n"
-		  "                        100 = -9.5 dB): in the DSP where it mixes the device's own tones\n"
+		  "                        100 = -9.5 dB; tv.conf volume_curve = vendor: the device's own,\n"
+		  "                        which status names): in the DSP where it mixes the device's own tones\n"
 		  "                        (kernel 0176), else in the codec's DAC; without a number: show it\n"
 		  "  mute [on|off]         mute: the DSP master mute (HDMI and device sounds) and the codec's switch\n"
 		  "  resync                select the source again (S_INPUT 0 = SetSource HDMI-1)\n"
@@ -9554,6 +9665,19 @@ int main(int argc, char **argv)
 		snprintf(conf.calculator, sizeof(conf.calculator), "%s", o.calculator);
 	if (o.data)
 		snprintf(conf.data, sizeof(conf.data), "%s", o.data);
+	if (conf.volume_vendor) {
+		char why[240], curve[96];
+
+		if (!strcmp(conf.data, "none"))
+			warn("volume_curve = vendor, but data = none -- the built-in curve");
+		else if (!audio_curve_load(conf.data, why, sizeof(why)))
+			warn("volume_curve = vendor: %s -- the built-in curve", why);
+		else {
+			vendor_curve_on = true;
+			info("volume          the device's own curve (%s/%s): %s", conf.data, AUDIO_CURVE_FILE,
+			     audio_curve_text(curve, sizeof(curve)));
+		}
+	}
 	if (o.input)
 		snprintf(conf.input, sizeof(conf.input), "%s", o.input);
 	if (o.lut)

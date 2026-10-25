@@ -3,12 +3,12 @@
 **The patch files here are generated, not maintained** (since 12.09.2026, P3):
 `git format-patch --no-signature 8fe568cdfc46..<head>` in the submodule checkout
 `mainline/external/u-boot` (branch `h713-hy310`, base is cstenger's `h713`),
-last regenerated on 22.10.2026 at the head `daa35622b0bf` (102 patches). Verified the
-way a mirror should be: applying all 102 from the base produces a tree with the same
-hash as the head (`ca817b83e490`; before: 101 patches, head `61ea018712c8`, tree `595b6941482e`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31,
+last regenerated on 25.10.2026 at the head `c97e5c6bb78d` (105 patches, local branch `versuch/l018`). Verified the
+way a mirror should be: applying all 105 from the base produces a tree with the same
+hash as the head (`1d0b87cde693`; before: 102 patches, head `daa35622b0bf`, tree `ca817b83e490`; before that: 101 patches, head `61ea018712c8`, tree `595b6941482e`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31,
 `0097` names the gate word of a standby that did not finish (`doku/179`), `0098` - `0100` are the HDCP
 hardening (no `h713_hdcp14_wait`, the record staged where EL3 says and one write per boot, the guard
-through the watchdog driver; measured over FEL, `doku/180`). `0101` hands a cold start's wait to crust, when crust can power off (`doku/191`). `0102` lets the remote's power key (both stock remotes, NEC) start the board from the gate, where no crust runs (22.10.2026, tested over FEL on the HY300PRO-G-EU). `SERIES.txt` names base,
+through the watchdog driver; measured over FEL, `doku/180`). `0101` hands a cold start's wait to crust, when crust can power off (`doku/191`). `0102` lets the remote's power key (both stock remotes, NEC) start the board from the gate, where no crust runs (22.10.2026, tested over FEL on the HY300PRO-G-EU). `0103` (local branch `versuch/l018`, 25.10.2026) is the L018's `CONFIG_H713_BOARD_L018` and `l018_defconfig`: the gate holds lamp and fan off (PB5 low, PB4 high), the board comes up at the stock std mode (lamp PWM2 50 %, fan PWM0 70 %), and the panel sequence sets PH9 low before the reset pulse and leaves PF6 alone - measured on the unit (dark gate, picture the right way round); without the option the HY310's code and data are byte-identical. `0104` (same branch) holds lamp and fan off from the SPL on, so the lamp no longer lights for a second before U-Boot and no white picture comes before the logo; `0105` lights the power key red in the gate and blue once the board starts (PL0 red, PL1 blue, both active low) - both seen on the unit by its owner (25.10.2026). `SERIES.txt` names base,
 head and count, and is the only thing that says which fork commit this mirror stands
 on. Whoever wants to change something changes the fork and has the mirror generated
 again. This page explains *why* the changes look the way they do - the original text
@@ -76,7 +76,7 @@ bus 1, eMMC at HS400 with all 26 partitions. The panic at the end is expected -
 
 ## Playing them back
 
-The series lies next to this file as 102 `git format-patch` files on `8fe568cdfc4`.
+The series lies next to this file as 105 `git format-patch` files on `8fe568cdfc4`.
 How many of them are upstream as PR #1, and what the rest is, is stated once in
 [`docs/uboot/README.md`](../docs/uboot/README.md).
 

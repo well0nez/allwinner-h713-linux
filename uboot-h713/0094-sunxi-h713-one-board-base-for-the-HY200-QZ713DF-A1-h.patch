@@ -1,7 +1,7 @@
 From 6fb736cff0c0e60be32a46ecd8580914a10c7c07 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sun, 4 Oct 2026 06:03:59 +0200
-Subject: [PATCH 094/101] sunxi: h713: one board base for the HY200 QZ713DF A1
+Subject: [PATCH 094/105] sunxi: h713: one board base for the HY200 QZ713DF A1
  - hy200_qz713df_a1_defconfig takes the HY310 shape (layout v4), DRAM 624 as
  the base clock, hy300pro_g_eu goes (ST3-BOARDMERGE)
 

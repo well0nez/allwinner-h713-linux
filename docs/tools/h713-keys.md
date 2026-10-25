@@ -206,7 +206,7 @@ crust was the default; with the vendor firmware as the default (`0327`) the re-a
 | Key | Default | Range |
 |---|---|---|
 | `volume_step` | 5 | 1..20 of h713-tv's 0..100 |
-| `focus_steps` | 20 | 1..100 msteps; one mstep is about 16 ms of travel (`h713-autofocus`), the sharp range several hundred wide (`doku/94`) - 3 was too little to see (Marco, 11.10.2026) |
+| `focus_steps` | 20 | 1..100 msteps; one mstep is about 16 ms of travel (`h713-autofocus`), the sharp range several hundred wide (`doku/94`) - 3 was too little to see (Marco, 11.10.2026). A board with a short travel sets its own in the image (`boards/<id>/board.env` `FOCUS_STEPS`): the L018 13, its whole travel is about 110 msteps and 20 was much too coarse (its owner, 25.10.2026) |
 | `input_keys` | (none) | kernel key names, separated by spaces |
 | `on_start` | `launcher` | what the projector shows when it has started: `launcher`; `hdmi`; the id of an entry with a `unit` (`kodi`, `browser`, `desktop`: that mode, straight away); `last` (what ran when the box went off: the HDMI input, or the mode in `last-mode`; the launcher if nothing is kept). An unknown value is a warning and the default. See "The launcher at the start of the box" |
 

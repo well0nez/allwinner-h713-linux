@@ -38,7 +38,7 @@ below *verified* describes the board; it does not claim anything runs on it.
 | **HY300 Pro** | partial, in test by its owner | [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1): probe and dump 13.09., test images since 16.09.2026, `test11` of 22.10.2026 with the infrared retrofit; no green run | test images for its owner only; its board directory names what is known and what is not |
 | **HY200 QZ713_V2** (LPDDR3) | profile only, not testable yet | nobody | cstenger's defconfig and device tree, marked untested in his tree too; not in our layout |
 | **HY300 T08**, **HY350** | profile only | nobody | installer profile and DRAM fragment, read out of each stock image |
-| **L018** | profile only | nobody | the installer profile alone, from one extractor run over a real device |
+| **L018** | profile only | nobody | the installer profile from its stock image, a board directory and a TEST image (24.10.2026); nothing of ours has booted on it |
 
 `boards/<id>/board.env` carries these states machine-readably; `bash boards/check.sh` holds each one against the
 installer profile. A board below *verified* gets the read-only probe ([h713-probe](docs/tools/h713-probe.md)).

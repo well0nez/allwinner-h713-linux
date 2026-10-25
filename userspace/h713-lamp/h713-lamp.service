@@ -1,0 +1,17 @@
+# SPDX-License-Identifier: GPL-2.0
+#
+# h713-lamp: once per boot, the lamp mode kept in /etc/h713/lamp.conf (the
+# L018: std/low/high, lamp and fan together). On a board without lamp modes it
+# says so and does nothing; it never fails the boot.
+[Unit]
+Description=H713: the lamp mode kept in /etc/h713/lamp.conf
+After=systemd-modules-load.service
+
+[Service]
+Type=oneshot
+RemainAfterExit=yes
+ExecStart=/usr/local/sbin/h713-lamp restore
+TimeoutStartSec=30
+
+[Install]
+WantedBy=multi-user.target

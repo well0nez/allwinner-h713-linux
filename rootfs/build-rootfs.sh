@@ -1081,6 +1081,7 @@ fi
 if ((! SKIP_PROJECT)); then
 	t "h713-features linked"      test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-features.service"
 	t "h713-cpufreq linked"       test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-cpufreq.service"
+	t "h713-lamp linked"          test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-lamp.service"
 	t "keystone udev start"       test -f "$TREE/etc/udev/rules.d/99-h713-keystone.rules"
 	# Profile desktop: Kodi does not run as root (h713-kodi.service), its user comes from sysusers.d at the first boot, h713-warp
 	# hands its Wayland socket to the group the compositor is in, and h713-tv comes up on `auto`

@@ -319,6 +319,13 @@ static void build_icon(const char *name)
 	} else if (!strcmp(name, "power")) {
 		m_line(24, 10, 24, 23);
 		m_arc(24, 24.67, 12.5, 227.2, -47.2);
+	} else if (!strcmp(name, "lamp")) {		/* the lamp: a sun */
+		m_arc(24, 24, 6.5, 0, 360);
+		for (int i = 0; i < 8; i++) {
+			double w = i * M_PI / 4;
+
+			m_line(24 + 11 * cos(w), 24 + 11 * sin(w), 24 + 15 * cos(w), 24 + 15 * sin(w));
+		}
 	} else if (!strcmp(name, "wifi")) {
 		m_arc(24, 34.3, 20, -134.4, -45.6);
 		m_arc(24, 35.4, 13, -134, -46);
@@ -367,9 +374,16 @@ static void draw_icon(const char *name, double cx, double cy, double size, float
 /* --- the areas ----------------------------------------------------------------------------------------------- */
 
 /* nine areas fit between the top margin and the foot: the pitch of the rows (94), the first one on the first row's line */
+/* nine areas at a pitch of 94; a tenth (the Colour area of the tests together with a lamp's Projector) takes 86, so the last
+ * one stays inside the safe margin */
+static double area_pitch(void)
+{
+	return nareas > 9 ? 86 : 94;
+}
+
 static double area_y(int i)
 {
-	return 198 + 94 * i;
+	return 198 + area_pitch() * i;
 }
 
 static void draw_area(const struct view *v, int i)
@@ -377,7 +391,7 @@ static void draw_area(const struct view *v, int i)
 	bool sel = i == v->area, active = v->f == F_AREAS;
 	double y = area_y(i);
 
-	clear_box(80, y - 47, 584, y + 47, GROUND);
+	clear_box(80, y - area_pitch() / 2, 584, y + area_pitch() / 2, GROUND);
 	if (sel)
 		rrect(331, y, 235, 44, 44, PAGEPILL, 1.0f, BRIGHT, active ? 1.0f : 0.5f, active ? 3 : 2);
 	draw_icon(areas[i].icon, 156, y, 64, sel ? 1.0f : 0.42f);
@@ -656,11 +670,13 @@ int ui_draw(struct osd_canvas *c, const struct view *v, unsigned dirty, int box[
 		if (all)
 			clear_box(0, 0, 1920, 1080, GROUND);
 		seal();
-		for (int i = 0; i < nareas; i++)
-			if (all || (dirty & D_AREA(i))) {
-				draw_area(v, i);
-				seal();
-			}
+		/* the lit one last: at the pitch of 86 its pill reaches into the room of its neighbours */
+		for (int pass = 0; pass < 2; pass++)
+			for (int i = 0; i < nareas; i++)
+				if ((i == v->area) == pass && (all || (dirty & D_AREA(i)))) {
+					draw_area(v, i);
+					seal();
+				}
 		if (v->f == F_CHOICE) {
 			struct row *r = visible_row(a, v->row);
 

@@ -58,11 +58,12 @@ class TheTableIsTheFileList(unittest.TestCase):
         for key in PLACEHOLDER_KEYS:
             self.assertNotIn(key, text)
 
-    def test_44_files_22_of_them_optional(self):
+    def test_45_files_23_of_them_optional(self):
         """The number is not a golden value but the count of a firmware's parts; it moves
-        only when a file joins or leaves, and then this line says so."""
-        self.assertEqual(len(layout.FILES), 44)
-        self.assertEqual(sum(1 for f in layout.FILES if f.optional), 22)
+        only when a file joins or leaves, and then this line says so. 45 since 25.10.2026:
+        audio_config.ini, the volume curve h713-tv takes with "volume_curve = vendor"."""
+        self.assertEqual(len(layout.FILES), 45)
+        self.assertEqual(sum(1 for f in layout.FILES if f.optional), 23)
 
 
 class TheTreesCarryNoFile(unittest.TestCase):

@@ -1,7 +1,7 @@
 From 61ea018712c8d7b338b729acbd11c56553262bf0 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 21:10:00 +0200
-Subject: [PATCH 101/101] sunxi: h713: a cold start hands the gate's wait to
+Subject: [PATCH 101/105] sunxi: h713: a cold start hands the gate's wait to
  crust
 
 Since the power off through crust (TF-A 0031), Linux's poweroff leaves

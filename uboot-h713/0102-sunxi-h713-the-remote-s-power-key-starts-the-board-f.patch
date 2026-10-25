@@ -1,8 +1,8 @@
 From daa35622b0bf708dc72afa1a2d1146adae2e4bfd Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 22 Oct 2026 19:58:04 +0200
-Subject: [PATCH] sunxi: h713: the remote's power key starts the board from the
- gate
+Subject: [PATCH 102/105] sunxi: h713: the remote's power key starts the board
+ from the gate
 
 With the vendor's ARISC firmware nothing watches the remote while the
 power gate waits on the ARM core, so only the key on the device started

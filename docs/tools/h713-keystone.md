@@ -58,6 +58,17 @@ section 5) and `throw_ratio = ini` uses those `camprjspe.ini` constants untouche
 The default is the word `ini`, not `0.82`: that is a rounding of 0.8176, and writing it back would move the vendor
 optics by 0.3 % for nothing.
 
+**Other boards (25.10.2026).** The model counts in the SC7A20's digit (about 1000 to the g) and squares it in int32.
+A finer sensor - the L018's LSM6DSV reads 16393 to the g - is brought to that digit first (the divisor is the
+whole multiple the IIO scale gives: 16 there, 1 on the SC7A20); without it the squares overflowed and `once` said pitch
+NaN. A board whose accelerometer or lens is not the HY310's names its own `iio_name`, axes and `throw_ratio` in
+`boards/<id>/board.env` (`KEYSTONE`), and the image writes them into `keystone.conf`. The L018: `lsm6dsv_accel`,
+pitch `+z`, roll `+y`, vertical `-x`, `throw_ratio = 1.1501` from its own stock `camprjspe.ini` - with the HY310's
+optics the correction at 18.6 degrees left the top too narrow, with its own the owner saw the picture straight from in
+front of the wall. Its full optics and this ratio on the HY310's differ by at most 3 px over +-40 degrees pitch and
++-15 roll. Seen from the projector (its own camera) every picture looks rectangular: judge the keystone from in front
+of the wall.
+
 ## Reading the sensor: the IIO buffer
 
 `st_accel` switches the SC7A20 on for every sysfs value, waits for it to boot (`bootime` sample periods) and switches it off

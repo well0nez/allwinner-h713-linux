@@ -1,7 +1,7 @@
 From 9efefea6fceb335eb52f8b5d2086fa94e10d64d7 Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 22 Sep 2026 02:08:55 +0200
-Subject: [PATCH 087/101] sunxi: h713: name the HY310 backlight channel - PWM2
+Subject: [PATCH 087/105] sunxi: h713: name the HY310 backlight channel - PWM2
  at 25 kHz (Q8)
 
 The note at the deinit's "two deliberate omissions" called the backlight

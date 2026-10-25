@@ -50,6 +50,11 @@ MSP_LIB_CANDIDATES = ("/lib/libmspsound.so", "/lib64/libmspsound.so", "/lib/hw/l
 #       read_ini_flle@0x37E04 tries /oem/camprjspe.ini first and /system/camprjspe.ini second; /oem is
 #       the media_data partition, which is in no input the extractor opens, so /system it is.
 PANEL_CONFIG_OUTPUT = "pq/panel_config.ini"
+# The volume curve (25.10.2026): [Volume] volume_curve[00..100] of the vendor's audio_config.ini, which h713-tv reads with
+# tv.conf "volume_curve = vendor" (boards/<id>/board.env VOLUME_CURVE; the L018's own runs ~10 dB above the HY310's).
+# Next to the PQ set in tvconfig, and installed with it; without it h713-tv keeps its built-in curve, the HY310's.
+AUDIO_CONFIG = "audio_config.ini"
+AUDIO_CONFIG_OUTPUT = "pq/audio_config.ini"
 CAMPRJSPE_CANDIDATES = ("/system/camprjspe.ini", "/camprjspe.ini")
 CAMPRJSPE_OUTPUT = "pq/camprjspe.ini"
 SYSTEM_PARTITIONS = ("system_a", "system")
@@ -270,6 +275,32 @@ def check_text_config(name: str, data: bytes) -> List[str]:
         if "=" in line and not line.startswith("["):
             seen.add(line.split("=", 1)[0].strip().lower())
     return ["%s missing" % key for key in TEXT_CONFIG_KEYS.get(name, ()) if key.lower() not in seen]
+
+
+def check_volume_curve(data: bytes) -> List[str]:
+    """Empty list = h713-tv takes the curve (main.c audio_curve_load): in [Volume], every "volume_curve[NN]=a,b,...," ends
+    at index NN, together 101 values, rising from 1 to 100, within -512..120 (quarter dB)."""
+    values, section = {}, None
+    for line in data.decode("utf-8", "replace").splitlines():
+        line = line.strip()
+        if line.startswith("["):
+            section = line
+            continue
+        m = re.match(r"volume_curve\[(\d+)\]=(.*)$", line)
+        if section != "[Volume]" or not m or int(m.group(1)) > 100:
+            continue
+        last, nums = int(m.group(1)), [int(x) for x in re.findall(r"-?\d+", m.group(2))]
+        if len(nums) > last + 1:
+            return [f"volume_curve[{last}] holds {len(nums)} values"]
+        for i, v in enumerate(nums):
+            values[last - len(nums) + 1 + i] = v
+    missing = [i for i in range(101) if i not in values]
+    if missing:
+        return [f"[Volume] volume_curve value {missing[0]} missing"]
+    for i in range(1, 101):
+        if not -512 <= values[i] <= 120 or (i > 1 and values[i] < values[i - 1]):
+            return [f"volume_curve value {i} ({values[i]}) outside -512..120 or below the one before"]
+    return []
 
 
 def check_pq(name: str, data: bytes, tmp: Path) -> List[str]:

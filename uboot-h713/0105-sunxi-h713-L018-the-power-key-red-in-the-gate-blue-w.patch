@@ -1,0 +1,84 @@
+From c97e5c6bb78d0747fc02c213375eadda3734380e Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sun, 25 Oct 2026 22:13:32 +0100
+Subject: [PATCH 105/105] sunxi: h713: L018 - the power key red in the gate,
+ blue when started
+
+Plugged in but off, the L018's power key lights red under stock, and blue
+once it runs. Measured on the unit 25.10.2026 (Linux gpio-leds switched
+by hand, the owner's eyes): PL0 low = red, PL1 low = blue, both on when
+low; running stock sets PL0 high, PL1 low (blue). The gate left both
+undriven - the key stayed dark.
+
+h713_l018_lamp_fan_off() (SPL and before the gate) now drives PL0 low,
+PL1 high: red; h713_l018_lamp_fan_std() (after the gate) PL0 high, PL1
+low: blue, the level Linux's gpio-leds keep. Only with
+CONFIG_H713_BOARD_L018.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ board/sunxi/h713_l018.c | 24 +++++++++++++++++++++---
+ 1 file changed, 21 insertions(+), 3 deletions(-)
+
+diff --git a/board/sunxi/h713_l018.c b/board/sunxi/h713_l018.c
+index 1cacd0616ea..9ed628fd528 100644
+--- a/board/sunxi/h713_l018.c
++++ b/board/sunxi/h713_l018.c
+@@ -14,8 +14,12 @@
+  *         undriven PB4 is full light. Held high (100 %) the lamp goes dark.
+  *   PH17  PWM0, the fan's speed: 95/70/60 % with the lamp at high/std/low.
+  *
++ *   PL0   the power key's red LED, PL1 its blue one, both on when LOW (the
++ *         stock tree's standby_param names them; the levels measured on the
++ *         unit 25.10.2026: PL0 low, PL1 high is red, PL0 high, PL1 low blue -
++ *         what the stock kernel sets at probe, and what its owner sees running).
+  * h713_l018_lamp_fan_off() makes the gate what it is on the HY310 - dark and
+- * quiet. h713_l018_lamp_fan_std() sets the stock std mode before PB5 comes up,
++ * quiet - and the key red, as under stock while the unit is plugged in but off. h713_l018_lamp_fan_std() sets the stock std mode before PB5 comes up,
+  * and Linux keeps both PWMs as they are found (its pwm-sun8i probe only
+  * deasserts the block's reset; the kernel's pwm-backlight then owns PWM2).
+  */
+@@ -27,6 +31,10 @@
+ #include <stdio.h>
+ 
+ #define L018_PB_DATA		0x02000040UL	/* bank B: 0x02000030 + 0x10 */
++#define L018_PL_CFG0		0x07022000UL	/* R_PIO bank L: PL0..PL7 */
++#define L018_PL_DATA		0x07022010UL
++#define L018_LED_RED		0		/* PL0, on when low */
++#define L018_LED_BLUE		1		/* PL1, on when low */
+ 
+ #define L018_CCU_PWM_BGR	0x020017acUL
+ #define L018_PWM_BASE		0x02000c00UL
+@@ -62,13 +70,22 @@ static void l018_pwm_set(uint ch, uint percent)
+ 	setbits_le32((void *)L018_PWM_ENABLE, BIT(ch));
+ }
+ 
++/* The power key: red (true) or blue (false), the other one off. */
++static void l018_key_led(bool red)
++{
++	clrsetbits_le32((void *)L018_PL_DATA, BIT(L018_LED_RED) | BIT(L018_LED_BLUE),
++			red ? BIT(L018_LED_BLUE) : BIT(L018_LED_RED));
++	clrsetbits_le32((void *)L018_PL_CFG0, 0xff, 0x11);	/* PL0, PL1: outputs */
++}
++
+ void h713_l018_lamp_fan_off(void)
+ {
+ 	setbits_le32((void *)L018_PB_DATA, BIT(4));		/* lamp dark */
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(4), SUNXI_GPIO_OUTPUT);
+ 	clrbits_le32((void *)L018_PB_DATA, BIT(5));		/* lamp, fan off */
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(5), SUNXI_GPIO_OUTPUT);
+-	printf("L018: PB5 low, PB4 high - lamp and fan off\n");
++	l018_key_led(true);
++	printf("L018: PB5 low, PB4 high - lamp and fan off; the key red\n");
+ }
+ 
+ void h713_l018_lamp_fan_std(void)
+@@ -80,6 +97,7 @@ void h713_l018_lamp_fan_std(void)
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(4), 2);
+ 	setbits_le32((void *)L018_PB_DATA, BIT(5));
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPB(5), SUNXI_GPIO_OUTPUT);
+-	printf("L018: lamp PWM%u %u %%, fan PWM%u %u %% (stock std), PB5 high\n",
++	l018_key_led(false);
++	printf("L018: lamp PWM%u %u %%, fan PWM%u %u %% (stock std), PB5 high; the key blue\n",
+ 	       L018_LAMP_PWM, L018_LAMP_STD, L018_FAN_PWM, L018_FAN_STD);
+ }

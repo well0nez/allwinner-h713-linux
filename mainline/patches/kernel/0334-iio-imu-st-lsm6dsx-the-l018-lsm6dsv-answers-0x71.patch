@@ -1,0 +1,35 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: iio: imu: st_lsm6dsx: the L018's LSM6DSV answers WHO_AM_I 0x71
+
+The accelerometer at 0x6a on the L018's twi2 answers WHO_AM_I 0x71, and
+st_lsm6dsx refused it ("unsupported whoami [71]"; mainline knows 0x70 for
+the LSM6DSV and the LSM6DSV16X). The L018's vendor kernel drives this
+part with ST's LSM6DSV register API (lsm6dsv_reg: eis, sflp, dual fsm)
+after a check for exactly 0x71 (lsm6dsv_detect_init: cmp r3, #113), read
+off that kernel on 25.10.2026.
+
+So "st,lsm6dsv" accepts 0x71 as well as 0x70. No other compatible and no
+other ID changes; only the L018 tree names st,lsm6dsv.
+
+Measured on the L018, 25.10.2026 (module rebuilt with this change and
+reloaded): lsm6dsv_accel and lsm6dsv_gyro come up; at rest x -14791,
+y -140, z 8262 at 0.000598205 m/s2 per count - 10.1 m/s2, gravity.
+
+diff -ruN a/drivers/iio/imu/st_lsm6dsx/st_lsm6dsx_core.c b/drivers/iio/imu/st_lsm6dsx/st_lsm6dsx_core.c
+--- a/drivers/iio/imu/st_lsm6dsx/st_lsm6dsx_core.c
++++ b/drivers/iio/imu/st_lsm6dsx/st_lsm6dsx_core.c
+@@ -1603,7 +1603,13 @@
+ 		return err;
+ 	}
+ 
+-	if (data != st_lsm6dsx_sensor_settings[i].id[j].wai) {
++	/*
++	 * The LSM6DSV of the L018 projector answers 0x71, and its vendor kernel
++	 * drives it with ST's LSM6DSV register API after checking for exactly
++	 * 0x71 (lsm6dsv_detect_init, read off that kernel 25.10.2026).
++	 */
++	if (data != st_lsm6dsx_sensor_settings[i].id[j].wai &&
++	    !(id == ST_LSM6DSV_ID && data == 0x71)) {
+ 		dev_err(hw->dev, "unsupported whoami [%02x]\n", data);
+ 		return -ENODEV;
+ 	}

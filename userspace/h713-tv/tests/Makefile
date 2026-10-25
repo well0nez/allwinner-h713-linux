@@ -15,6 +15,8 @@
 #               commit takes it, the console's framebuffer first when nothing comes, the black one never removed while shown
 #   test_color  the firmware's white balance and colour management (bm-wb2): the registers a value gives, all six words every
 #               time, the colour management as a step on the board's own value, the firmware that forgets, the slots, the file werte
+#   test_curve  the volume slider's curve: the built-in one, a board's own from audio_config.ini (volume_curve = vendor),
+#               the way back from the card's dB, the files that are refused
 #   test_gamma  the gamma curve and the colour temperature: the arithmetic of the display firmware's library against checksums
 #               made by an independent description (gamma-vectors.txt), the file of raw curves, the two controls, the picture
 #               mode's colour temperature, the file werte
@@ -31,7 +33,7 @@ CFLAGS  += -std=gnu11 -Wall -Wextra -Wno-format-truncation -Wno-unused-function
 # program says why); the tests are built the same way
 CFLAGS  += -ffp-contract=off
 INC      = -idirafter $(SYSROOT)/usr/include -idirafter $(SYSROOT)/usr/include/libdrm
-TESTS    = test_want test_edid test_nosig test_hold test_wall test_color test_gamma
+TESTS    = test_want test_edid test_nosig test_hold test_wall test_color test_gamma test_curve
 
 all: $(TESTS)
 
@@ -41,7 +43,7 @@ color.o: ../color.c ../color.h
 gamma.o: ../gamma.c ../gamma.h ../color.h
 	$(CC) $(CFLAGS) -c -o $@ ../gamma.c
 
-test_want test_edid test_nosig test_hold test_wall: color.o gamma.o
+test_want test_edid test_nosig test_hold test_wall test_curve: color.o gamma.o
 test_color: gamma.o
 test_gamma: color.o
 
@@ -59,6 +61,7 @@ run: $(TESTS)
 	./test_wall
 	./test_color
 	./test_gamma
+	./test_curve
 
 clean:
 	rm -f $(TESTS) $(TESTS:%=%.o) $(TESTS:%=%-stubs.c) $(TESTS:%=%-stubs.o) stubs.c stubs.o

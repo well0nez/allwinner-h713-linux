@@ -1,0 +1,141 @@
+#!/usr/bin/env python3
+"""h713-lamp -- the lamp's modes on a board whose board manager owns the lamp (the L018).
+
+The L018's stock firmware has three lamp modes, and the fan follows each:
+std (lamp PWM 50 %, fan 70 %), low (75 / 60) and high (30 / 95); the lamp
+dims as its duty rises.  The board manager (kernel 0332) sets lamp and fan in
+one step from the board's own tables and offers them as lamp_mode (the chosen
+mode by name), lamp_modes (the names) and thermal_mode (1 while the NTC holds
+the lamp dimmed above temp_warn, until temp_resume).  This tool reads and sets
+them and keeps the choice in /etc/h713/lamp.conf ("mode = std"):
+
+  status         mode, the modes, thermal mode, fan speed, temperature
+  set MODE       set it now and keep it for the next boot
+  restore        the boot step (h713-lamp.service): set the kept mode
+
+A board without lamp modes (every other board) answers exit 7, "not present
+on this board"; restore then says so and exits 0.  A mode chosen while the
+thermal mode holds is kept by the driver and set when it ends.
+$H713_SYS replaces /sys, $H713_LAMP_CONF the file (the tests).
+"""
+
+import argparse
+import glob
+import os
+import sys
+import time
+
+SYS = os.environ.get("H713_SYS", "/sys")
+CONF = os.environ.get("H713_LAMP_CONF", "/etc/h713/lamp.conf")
+DRIVER = "hy310-board-mgr"
+NOT_HERE = 7
+
+
+def _read(path):
+    try:
+        with open(path, "rb") as fh:
+            return fh.read().decode("utf-8", "replace").strip()
+    except OSError:
+        return None
+
+
+def node():
+    """The board manager's device directory with lamp_mode, or None."""
+    hits = sorted(glob.glob(os.path.join(SYS, "bus/platform/drivers", DRIVER, "*", "lamp_mode")))
+    return os.path.dirname(hits[0]) if hits else None
+
+
+def hwmon(dev, name):
+    """A value of the board manager's hwmon device (fan1_input, temp1_input), or None."""
+    for path in sorted(glob.glob(os.path.join(dev, "hwmon", "hwmon*", name))):
+        return _read(path)
+    return None
+
+
+def kept(path=CONF):
+    """The mode in the file, or None."""
+    for line in (_read(path) or "").splitlines():
+        key, sign, value = [p.strip() for p in line.split("#", 1)[0].partition("=")]
+        if sign and key == "mode" and value:
+            return value
+    return None
+
+
+def keep(mode, path=CONF):
+    os.makedirs(os.path.dirname(path) or ".", exist_ok=True)
+    tmp = path + ".new"
+    with open(tmp, "w") as fh:
+        fh.write("# h713-lamp: the lamp mode set at boot (h713-lamp set MODE)\nmode = %s\n" % mode)
+    os.replace(tmp, path)
+
+
+def write_mode(dev, mode):
+    modes = (_read(os.path.join(dev, "lamp_modes")) or "").split()
+    if mode not in modes:
+        print("error: '%s' is not a mode of this board (%s)" % (mode, " ".join(modes)), file=sys.stderr)
+        return 2
+    try:
+        with open(os.path.join(dev, "lamp_mode"), "w") as fh:
+            fh.write(mode)
+    except OSError as problem:
+        print("error: lamp_mode: %s" % problem, file=sys.stderr)
+        return 1
+    return 0
+
+
+def status(dev):
+    thermal = _read(os.path.join(dev, "thermal_mode"))
+    temp, rpm = hwmon(dev, "temp1_input"), hwmon(dev, "fan1_input")
+    print("mode     %s" % _read(os.path.join(dev, "lamp_mode")))
+    print("modes    %s" % _read(os.path.join(dev, "lamp_modes")))
+    print("thermal  %s" % ("none on this board" if thermal is None else
+                           "on - the lamp is dimmed until the NTC cools" if thermal == "1" else "off"))
+    print("fan      %s" % ("%s RPM" % rpm if rpm else "no reading"))
+    print("ntc      %s" % ("%.1f C" % (int(temp) / 1000.0) if temp and temp.lstrip("-").isdigit() else "no reading"))
+    print("kept     %s (%s)" % (kept() or "nothing - the driver starts at its first mode", CONF))
+    return 0
+
+
+def main(argv=None, sleep=time.sleep, clock=time.monotonic):
+    parser = argparse.ArgumentParser(prog="h713-lamp", description="the lamp's modes (lamp and fan together)")
+    sub = parser.add_subparsers(dest="command")
+    sub.add_parser("status", help="the default")
+    setp = sub.add_parser("set", help="set a mode now and keep it")
+    setp.add_argument("mode")
+    restore = sub.add_parser("restore", help="the boot step: set the kept mode")
+    restore.add_argument("--wait", type=float, default=10.0, metavar="S")
+    args = parser.parse_args(argv)
+    getattr(sys.stdout, "reconfigure", lambda **_: None)(line_buffering=True)
+
+    dev = node()
+    if args.command == "restore":
+        deadline = clock() + args.wait
+        while dev is None and clock() < deadline:
+            sleep(0.5)
+            dev = node()
+        mode = kept()
+        if dev is None:
+            print("no lamp modes on this board - nothing to restore")
+            return 0
+        if mode is None:
+            print("nothing kept - the lamp stays at %s" % _read(os.path.join(dev, "lamp_mode")))
+            return 0
+        rc = write_mode(dev, mode)
+        if rc == 0:
+            print("lamp mode %s (kept in %s)" % (mode, CONF))
+        return 0
+    if dev is None:
+        print("lamp modes: not present on this board", file=sys.stderr)
+        return NOT_HERE
+    if args.command == "set":
+        rc = write_mode(dev, args.mode)
+        if rc:
+            return rc
+        keep(args.mode)
+        print("lamp mode %s, kept in %s" % (_read(os.path.join(dev, "lamp_mode")), CONF))
+        return 0
+    return status(dev)
+
+
+if __name__ == "__main__":
+    sys.exit(main())

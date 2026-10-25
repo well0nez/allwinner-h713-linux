@@ -1,7 +1,7 @@
 From 4cecddd55613f532bd5f6eb0cd69972794611bbc Mon Sep 17 00:00:00 2001
 From: well0nez <well0nez@users.noreply.github.com>
 Date: Tue, 22 Sep 2026 02:08:55 +0200
-Subject: [PATCH 089/101] sunxi: h713: annotate the panel patch table against
+Subject: [PATCH 089/105] sunxi: h713: annotate the panel patch table against
  the vendor's 19 addresses (Q8)
 
 AP3m part A 1.4 lists the nineteen record addresses __update_panel_setting

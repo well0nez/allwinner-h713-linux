@@ -266,6 +266,9 @@ CONFIG_SUN50I_H713_TVCAP=y
 CONFIG_IIO=y
 CONFIG_IIO_ST_ACCEL_3AXIS=m
 CONFIG_IIO_ST_ACCEL_I2C_3AXIS=m
+# The L018's accelerometer, an LSM6DSV on twi2 (only the L018 tree has its node; a module, loaded only there)
+CONFIG_IIO_ST_LSM6DSX=m
+CONFIG_IIO_ST_LSM6DSX_I2C=m
 
 # The keystone's accelerometer has no interrupt line: its buffer runs on an hrtimer trigger, which h713-keystone
 # creates through configfs. So the sensor stays on while it is read, instead of being switched on and off for

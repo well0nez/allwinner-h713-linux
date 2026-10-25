@@ -418,3 +418,9 @@
 0328-media-sunxi-cir-h713-apply-pl9-again-after-the-vendor-arisc-firmware-has-started.patch
 0329-media-rc-keymaps-h713-the-hy300-s-stock-remote-at-nec-address-0x00-and-the-map-for-every-board.patch
 0330-media-v4l2-ctrls-validate-hevc-active-reference-counts.patch
+
+# --- section 26 One more board: the L018 (24.10.2026).
+0331-arm64-dts-h713-add-the-l018-board-dts.patch
+0332-misc-hy310-board-mgr-the-lamp-as-bl0-with-the-fan-s-modes.patch
+0333-misc-hy310-board-mgr-thermal-shutdown-per-board-and-orderly.patch
+0334-iio-imu-st-lsm6dsx-the-l018-lsm6dsv-answers-0x71.patch

@@ -75,7 +75,7 @@ AFTER_MOVE = ("off", "keystone", "keystone+focus")
 # The optional hardware (boards/README.md, FEATURES) as `h713-features status`
 # names it, and what each after-move choice needs of it.  The page hides the
 # controls of what is not present; nothing here guesses at a node itself.
-FEATURE_NAMES = ("camera", "accelerometer", "focus-motor")
+FEATURE_NAMES = ("camera", "accelerometer", "focus-motor", "lamp-modes")   # lamp-modes: the L018 (kernel 0332, h713-lamp)
 FIRMWARE_FEATURES = ("colour", "gamma", "colour-manager")   # what h713-tv says of itself (`ctl wb` of the display firmware, `ctl get gamma` of the board's curves; the colour manager: not offered, cm-diagnose 20.10.2026), not h713-features
 AFTER_MOVE_NEEDS = {"keystone": ("accelerometer",),
                     "keystone+focus": ("accelerometer", "camera", "focus-motor")}
@@ -85,8 +85,8 @@ MODES = ("front", "rear", "ceiling", "rear-ceiling")
 SPECIALS = ("status", "controls", "picture_set", "after_move", "screen_zoom",
             "settings", "report", "remote", "remote_repair", "conf_set",
             "wifi_set", "wifi_confirm", "hostname_set",
-            "panel_password", "wb_tune", "cm_set", "colour", "look")  # Panel.do_*
-READS = ("settings", "report", "remote", "colour", "look")   # read only: no lock, they may take seconds
+            "panel_password", "wb_tune", "cm_set", "colour", "look", "lamp")  # Panel.do_*
+READS = ("settings", "report", "remote", "colour", "look", "lamp")   # read only: no lock, they may take seconds
 NUDGE_STEPS = (1, 10, 50)   # what one press of the pad may be worth
 
 # Colour (docs/tools/h713-tv.md, "White balance and colour management"), the way the settings page offers it
@@ -188,6 +188,9 @@ def _pattern(name, regex, valid=lambda text: True):
 
 WARP, KEY, FOCUS, AUTOF, TV = ("h713-warp", "h713-keystone", "h713-focus",
                                "h713-autofocus", "h713-tv")
+LAMP = "h713-lamp"
+# A lamp mode is the board's own name (h713-lamp lists them and refuses any other): the page checks only its shape.
+LAMP_MODE = _pattern("lamp mode", r"[a-z0-9_-]{1,20}")
 REMOTE, POWER, OSD, LOGS, WIFI = ("h713-remote-pair", "h713-power", "h713-osd",
                                   "h713-logs", "h713-wifi")
 CORNER, AXIS, ON_OFF = _choice(*CORNERS), _choice(*AXES), _choice("on", "off")
@@ -229,6 +232,8 @@ COMMANDS = {
     "save_off": (TV, ("ctl", "save", "off"), (), T),
     "resync": (TV, ("ctl", "resync"), (), T),
     "replug": (TV, ("ctl", "replug"), (), T),     # about a second of console
+    # Lamp: lamp and fan together, kept for the next start (h713-lamp; only where the board has lamp modes)
+    "lamp_set": (LAMP, ("set",), (LAMP_MODE,), T),
     # Sound
     "volume": (TV, ("ctl", "volume"), (_number(0, 100),), T),
     "mute": (TV, ("ctl", "mute"), (ON_OFF,), T),
@@ -694,6 +699,18 @@ class Panel(object):
         mode = (labelled(self.run(TV, ("ctl", "status", "brief"), T)[2]).get("preset") or "").split()
         return {"ok": True, "line": "ok look", "gamma": level, "gamma_name": name, "ct": chosen, "ct_now": now,
                 "preset": mode[0] if mode and mode[0] in PRESETS else ""}
+
+    def do_lamp(self, args):
+        """The Lamp card: `h713-lamp status` as the mode, the board's modes, the thermal mode, the fan and the
+        temperature.  Reads only; a board without lamp modes answers not ok (h713-lamp's exit 7)."""
+        code, out = self.execute(LAMP, ("status",), T)
+        if code != 0:
+            return no("error lamp modes: %s" % (out.strip().splitlines() or ["not present on this board"])[-1][:120])
+        found = labelled(out)
+        return {"ok": True, "line": "ok lamp", "mode": found.get("mode", ""),
+                "modes": (found.get("modes") or "").split(),
+                "thermal": (found.get("thermal") or "").startswith("on"),
+                "fan": found.get("fan", ""), "ntc": found.get("ntc", "")}
 
     def do_screen_zoom(self, args):
         """`h713-warp ctl zoom PERCENT`, and below 100 the warp on with it.
