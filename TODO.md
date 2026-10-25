@@ -86,10 +86,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Abbild persistent machen (`/var/log/journal`), ggf. pstore/ramoops, 5 weitere Kaltstarte beobachten
       - 11.10. nachts: der G-EU startete um 04:57 neu, das Journal davor war weg - es war Marco (vor dem Schlafen); ohne ihn
         wäre die Ursache nicht feststellbar gewesen (`doku/196` §3), ein weiterer Grund für das persistente Journal
+      - **25.10.2026 nachts, im Code (`versuch/kleinkram` 920d1b0f, `arbeit/kleinkram-20261025/`):** `Storage=persistent`, 32 MiB in 4-MiB-Dateien, `MaxLevelStore=info`, `/var/log/journal` im Abbild, Abnahme in `build-rootfs.sh` angepasst. Nicht gemessen: kein Abbild gebaut, am Gerät nichts gesehen; offen die fünf Kaltstarts. pstore/ramoops ist nicht konfiguriert (kein Defconfig-Eintrag, kein Reserved-Memory-Knoten).
 - [ ] 1.2b **Reinstall über unser Layout verwirft `/etc/h713`** (wifi.env → AP-Modus, warp.conf, keystone,
       tvconfig): der Installer soll die Nutzer-Einstellungen wie die 44 Herstellerdateien zurücklesen und
       übernehmen — oder `build-all.sh --wifi-env` ist Pflicht. Bis dahin: Sicherung vorher (`/root/pre-v096`)
       - 12.10. aus 5.18: dazu einen vom Nutzer geänderten Hostnamen (`/etc/hostname`) mitnehmen
+      - **25.10.2026 nachts, im Code (`versuch/installer-nutzerstand` 9a8c324f, `arbeit/installer-nutzerstand-20261025/`):** über unserem Layout übernimmt der Installer `/etc/h713` (ohne `tv/osd/keys/power.conf`, `features`, `board` und Unterordner - deren Abweichungen meldet er), die Hostschlüssel, `/var/lib/bluetooth`, `/var/lib/h713-tv` und einen gewählten Hostnamen; kein neuer Parameter. 495 Tests grün, Ende-zu-Ende gegen eine eMMC-Datei 19 von 19 (alter Code 6 von 19). Am Gerät nicht gemessen - Messplan BERICHT §5 (HY310, dann G-EU), danach nach `main`.
 - [x] 1.3 (erledigt: `TimeoutStopSec=10` steckt in `h713-wifi.service` im Abbild v0.97-beta; WLAN-Check nach den Installationen am 22./23.10.2026 an beiden Boxen bestanden) **WLAN-Timeouts verifizieren** (`82cb57e`): im Abbild drin, 5 Boots je ~9 s bis Finished — der Hängefall
       (Funk absichtlich verklemmen) ist noch nicht provoziert
       - **12.10. provoziert** (G-EU, ein `install`-Hänger in modprobe.d, `arbeit/remote-reihe-20261012/` H): `timeout 30` greift, aber
@@ -180,6 +182,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Für später vorgemerkt: libva `0018`-`0020` (AV1, be0712d) und Kernel `0160` mit 9.3b, `0162`/`0167` (VP9-Skalierer) mit 9.3d.
       Wissen: der 32-kHz-Takt der RTC ist 24 MHz/750 = 32 000 Hz, `0320` meldet 32 768 - die Uhrzeit ist gemessen richtig (doku/213 §5),
       betroffen wären nur Verbraucher, die aus dem Nennwert Zeiten rechnen.
+      **25.10.2026 nachts, g):** Lesewerkzeug `arbeit/kleinkram-20261025/skripte/panel-histogramm.py` (eigener Code, nicht im Repo), am Gerät nicht gelaufen; Prüfplan im BERICHT f).
 ## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
 
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
@@ -206,6 +209,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Aufwachen geht die Ebene im Bypass auf **volle** Ringplätze (3 Läufe, `ebene-wach.py`), der erste Warp-Puffer ist beim Flip
         gefenct (afbd nutzt `drm_atomic_helper_commit`). Offen: Inhalt des ersten Warp-Puffers (nicht über `/dev/mem` lesbar), die
         Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
+      - **25.10.2026 nachts (`arbeit/rgb-ebene-20261025/`):** vermutlich dieselbe Wurzel wie 2.126 - die Lage der RGB-Daten (`0x051C01A8`) wandert unter uns zwischen Boots (HY310 103/104 bei gleichem Registerstand); mit 2.126 messen (BERICHT §5 Schritt 7).
 - [ ] 2.42 (**Stand 22.10.2026: das Release läuft ohne Standby mit der Hersteller-ARISC, Aus = Gate, still (1.0 (0), `doku/218`); das Summen betrifft nur noch crust, das experimentell im Abbild bleibt**) **Netzteil summt/fiept im Standby (2,4 W) und im Aus über crust (0,3 W), im Gate (2,9 W) nicht** (Marco 09./10.10., HY310;
       Marco 20.10.: "das spricht dafür, dass wir irgendwas falsch machen"; Stock ist bei denselben 0,3 W still). Hypothesen und Testplan:
       `arbeit/medien/standby-summen/` (Mythos 20.10.2026, HYPOTHESEN.md mit Nachtrag H0a-e, TESTPLAN.md). **Hörtest 21.10.2026 abends am G-EU (Marco): T5c lief nicht wie gedacht** - im ersten B-Standby `slow_gestoppt=ja`
@@ -511,6 +515,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       0,25 statt 0,19 Grad, +0,1 s; Marcos Wert 10 nicht ändern); `in_timestamp_en` auf 0 setzen; `once --apply` 0,74 s -> ~0,4 s nur, wenn
       Marcos Augentest (2.103) das Nachlaufen stört: ein Warp-Aufruf statt acht, Modellsuche cachen. GERAETESTAND: der HY310 trägt seit 19.10.
       einen gemischten Modulbaum (rend6 + vier IIO-Module zum FIT e8c68904) - rend7 aus build-all von vorn.
+      - **25.10.2026 nachts, im Code (`versuch/kleinkram` e90f085f):** Vorgabe `average_samples` 20, `in_timestamp_en` 0; ein vorhandenes `/etc/h713/keystone.conf` behält seinen Wert (Marcos 10 bleibt). 229 Tests grün, am Gerät nicht gemessen.
 - [x] 2.109 **IIO-Puffer am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): Kernel mit 5d32cbc, `h713-keystone read`/`once --apply`-Zeiten,
       Journal ohne sysfs-Rückfall, `watch` nach einer Bewegung; ohne Beschleunigungssensor dort (falls keiner): Einheit übersprungen, nichts geändert.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** sc7a20 als iio:device2, keystone-auto "a reading every ~0.66 s through the IIO buffer", 0 sysfs-Zeilen; read 0,51-0,60 s, once --apply 0,65-0,74 s. Kippen: **Marco 20.10.2026: selbst getestet, das Trapez folgt** (vor dem Boot 21:23 UTC; das Journal ist flüchtig, kein Protokollbeleg; heute steht `after_move = off`, Marcos Vorgabe).
@@ -530,6 +535,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Stellungen in der Antwort von `ctl wb`), dann fallen die Kopien in h713-settings (rows.c) und h713-panel (Python) weg und die Offset-Lücke
       (Offsets lesen, sechs Zahlen schreiben) ist zu - beim nächsten Anfassen von color.c. Marcos Blick auf den Reiter Colour im Panel (:8080, Handy
       und PC); G-EU: Reiter Colour nachmessen (Zeile in panel-farbe/BERICHT §6).
+      - **25.10.2026 nachts, im Code (`versuch/kleinkram` be6a7101):** `ctl wb sliders COOL MAGENTA` in h713-tv, die Kopien in h713-settings und h713-panel sind weg (49 Zeilen weniger), Tests aller drei grün. Am Gerät nicht gemessen; h713-tv, -settings und -panel nur zusammen ausspielen.
 - [x] 2.114 (erledigt 20.10.2026, cbfdb4d, Mythos go; am Gerät nicht nachgestellt) **Launcher öffnet sich nach einem Neustart von h713-osd beim nächsten Signalwechsel von selbst** (Mythos 19.10., aus countdown-b, Ursache
       gelesen): header_follow() in h713-keys definiert den Launcher bei einem Signalwechsel neu, solange h713-keys ihn für offen hält; nach einem
       h713-osd-Neustart (Deploy, Absturz) steht dort "closed" -> h713-osd öffnet ihn. Fix ~5 Zeilen: vor dem Neudefinieren `ctl status` lesen, bei
@@ -600,6 +606,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Wand bekommt keinen Rahmen; under_black_fb() lässt bei Fehlschlag den Dumb-Buffer stehen (3 Zeilen). HY310 nachmessen: abnahme -t ps, -t st
       mit offenem Launcher, neue Kamera-Zelle "Licht bei offenem Launcher 30 s". Verwandt: known-issues "green stripe on the console" (2.34) -
       vermutlich dieselbe Wurzel (Spalten 48-49 zeigen Ebene 0).
+      - **25.10.2026 nachts, RE (`arbeit/rgb-ebene-20261025/`; Kandidat `versuch/rgb-ebene` 692abd08 + 6071f145, Kernel `0345`, gebaut, nicht gemessen):** die Display-Firmware legt die RGB-Ebene nicht; X ist bei Stock am G-EU ebenfalls 0 (Stock-U-Boot: max(hsync+hbp-77, 0)). Stock und wir unterscheiden sich im Panelblock nur in den Wörtern, die Stocks `ge2d_dev.ko` beim Probe schreibt: `0x051C0014/24/28` und ein Puls auf `0x051C0010` mit dem Wert aus `0x051C001C` - danach steht dort 0 statt der `0x45` der Firmware. Genau das wurde am 20.10. nicht probiert. Nächster Schritt am G-EU: `skripte/stockwoerter.py a/a2/b/c` (nur Rückleseworte, BERICHT §5), dann der Kernel-Kandidat; am HY310 prüfen, dass `01A8` stehen bleibt. Trifft es: Abdeckung b63044e zurück.
 - [x] 2.127 **MAC-Adressen im Repo maskieren und sperr-scan um eine MAC-Regel ergänzen** (Mythos 20.10.2026, Prüfung bt-neukoppeln; vor dem
       nächsten Push): die Adresse von Marcos Fernbedienung steht in doku/134 (3x), 135, 140 (nur lokal, nicht auf GitHub); auf GitHub (`origin/main`)
       stehen schon zwei Client-Adressen in den Beschreibungen von aic8800-0008/-0010 und eine eth-Adresse in vier Boot-Mitschnitten unter analyse/boot/
@@ -646,6 +653,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       dem Gerät stand 1, "carried over from the old one: h713_gate=0 (image: 1)"; `install-dump/uboot-env.bin` vom 20.10. trug 0). Am HY310 23.10.2026 genauso. Der Installer
       soll die Umgebung vom Gerät lesen, wie er es für Secure Storage tut, oder den Unterschied laut melden. Danach `fw_setenv h713_gate 1` von Hand.
+      - **25.10.2026 nachts, im Code (`versuch/installer-nutzerstand` 9a8c324f):** die Umgebung kommt immer vom Gerät, eine abweichende `uboot-env.bin` im Abzug wird als Warnung gemeldet; der Fall vom 22./23.10. ist als Test nachgestellt. Am Gerät nicht gemessen (Messplan wie 1.2b).
 - [x] 2.139 (**behoben 22.10.2026, medien f711ffc9**: Kernel 0328 setzt PL9 nach dem ARISC-Bind zurück, 0329 Tabelle der originalen HY300-
       Fernbedienung NEC 0x00; am G-EU mit Marco alle Tasten der originalen erkannt, Tabelle für beide gelesen; Mythos go. HY310 und Kaltstart mit
       dem Release-Neubau prüfen) **RELEASE-BLOCKER: unter der Hersteller-ARISC kommt bei Linux kein IR an** (G-EU v0.97-beta, 22.10.2026 ~19:10, Marco): HY310-
@@ -677,6 +685,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (Werbung, Verbindung, Diensterkennung); bis dahin nur IR, keine Maus. Gehört zu Bluetooth, nicht zu h713-keys.
 - [ ] 2.130c Klein: **Journalrauschen** - h713-keys setzt EVIOCSREP auf jeden Knoten der Fernbedienung, auch auf den Mausknoten (kein EV_REP,
       ENOSYS -> eine Warnzeile je Öffnung); EVIOCSREP nur bei EV_REP (Mythos 21.10.2026).
+      - **25.10.2026 nachts, im Code (`versuch/kleinkram` f2a0ddf3):** EVIOCSREP nur, wenn der Knoten EV_REP meldet; 85 Tests grün. Ob die Warnzeile am Gerät verschwindet: nicht gesehen.
 - [ ] 2.131 (**Marco 22.10.2026: für jetzt egal, nicht vor dem Release (nicht generell); bis dahin bekannter Fehler**) **G-EU: schwarzer Block unten im Launcher bei jedem zweiten Zug, nur ab und zu** (Marco 20.10.2026, Foto
       **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       `arbeit/medien/launcher-rand/foto-box-schatten.webp`, 18:06 und 21:01 bei Zügen über die uhid-Fernbedienung, nicht bei Marcos eigenem Aufruf).
@@ -706,6 +715,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       6.18.38 (Mythos 23.10.2026, Nebenfund 2); danach prüfen, ob `0316` damit entfällt (Upstream will die Prüfung im Core, nicht im Treiber).
 - [ ] 2.145 Klein: fünf Patchtexte sagen "not yet tested", obwohl später gemessen (`0136w`, `0072`, `0074`, `0076`, `0077`; Mythos 23.10.2026) - Texte
       nachziehen (mit dem Beleg), spätestens bevor einer davon upstream geht.
+      - **25.10.2026 nachts (`versuch/kleinkram` 053824f9):** `0136w` nachgezogen (doku/128, dev22). `0072`, `0074`, `0076`, `0077` (und `0073`) sind U-Boot-Patches der IDMA-Serie im Fork und im Spiegel `uboot-h713/` - nur dort zu ändern; Textvorschläge mit Belegen aus doku/125 in `arbeit/kleinkram-20261025/BERICHT.md` d); bei `0077` hat der PIO-Rückfall am Gerät nie ausgelöst.
 - [ ] 2.146 **Upstream-Einreichungen** (Marco 23.10.2026 gefragt; Liste `arbeit/upstream-kandidaten-20261023/KANDIDATEN.md`, Bewertung `MYTHOS-PRUEFUNG.md`):
       einreichen: U-Boot `0022`, Kernel `0136w`, `0127`, U-Boot `0027`, libva `0017`/`0016`; erst umbauen: cedrus `0309`/`0316` (Upstream überspringt statt
       abzulehnen), U-Boot `0071` (Autor "Claude", RFC), IDMA-Serie (nur H713 gemessen). Vorher Marco: eigene Durchsicht, Signed-off-by, erreichbare
