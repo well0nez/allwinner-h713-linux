@@ -822,6 +822,18 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Bericht zeigt nur 16 Hex), `sunxi_version` fehlt ganz; (c) ein Probe-Lauf mit **seinem** DRAM-Takt 744 MHz - sein Log
       zeigt das SPL mit dem Standardtakt und dem HY200-QZ713DF-A1-Baum, also ist `boards/losei-x9/uboot.config` ungemessen.
       Nichts davon schreibt auf sein Gerät
+- [ ] 4.14 **SICHERHEIT: das veröffentlichte Probe-Abbild treibt auf fremden Boards zwei unbekannte Pins** (gefunden
+      25.10.2026 beim Paket `arbeit/losei-x9-20261025/`). `h713_probe_defconfig` trug `CONFIG_H713_POWERON_LIGHT_FAN=y`,
+      also treibt jeder Probe-Bau in `board_late_init` **PB5 und PL3 high**. Auf unserer Familie ist das richtig (PB5 =
+      Lüfter und Backlight-Enable zusammen, PL3 = USB-VBUS), auf einem fremden Board sind es zwei unbekannte Pins - der
+      Melder von Issue #3 hat den Bau auf einem Board gefahren, dessen Lüfter an PB4 und dessen Lampen-Enable an PB6 hängt
+      (nichts kaputt, Glück; PB5-Vorfall 19.09. war dieselbe Klasse). Auf `versuch/losei-x9` (Fork `32121006774`) ist die
+      Option aus. Offen: in den Fork-Zweig `h713-hy310` und in `uboot-h713/`, und **das Abbild bei `v0.97-beta` ersetzen**
+      (`release/out/u-boot-h713-probe.bin`), damit der nächste Fremde keinen Bau bekommt, der seine Pins anfasst
+- [ ] 4.15 **Der Probe-Bau für den LOSEI X9 liegt, Phase 2 wartet auf den Melder** (`arbeit/losei-x9-20261025/PLAN.md`).
+      `u-boot-h713-probe-x9.bin` ist gebaut (Fork-Zweig `versuch/losei-x9`, vier Commits über `daa35622b0b`, jeder gebaut;
+      `BERICHT.md` „Phase 1"). Nach seiner Ausgabe: die vier/fünf Panel-Register in `losei_x9.py` und in die Panel-Zeile
+      nachtragen, dann Phase 3 (Gerätebaum). **Nicht in die Spiegel vor einer Messung an diesem Panel**
 
 ## 5 Installer und Werkzeuge
 
