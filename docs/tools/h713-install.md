@@ -141,12 +141,31 @@ known from its own /etc/h713/board`). Without that file the board stays unknown 
 is skipped as well (`our layout on the device -- nothing stock to save; --dump takes one anyway`); what
 the later steps took out of it is read into memory before the write instead, so step 7 still compares the
 secure storage byte for byte and the intent keys `h713_gate` / `h713_boot` are still carried over from the
-old environment. A file that is not on the device counts exactly as one a dump could not supply: an
+environment the device carries. A file that is not on the device counts exactly as one a dump could not supply: an
 optional one (the boot logo, the Wi-Fi firmware, the picture tables) is skipped with one line per group,
 anything else stops the run with the usual exit 8 plus the line `the device has no <name> -- give
 --vendor`. `--no-write` mounts nothing at all - it prints which files it would read back from which
 partition and where they would go, and that plan is the same code that does the work. On a stock device
 none of this applies: the dump is mandatory and it is what the vendor files come out of.
+
+**Your settings come along (since 25.10.2026, `TODO.md` 1.2b).** The new root file system would start from
+the image's defaults - the device would open the public access point again, with neutral corners, a new SSH
+host key and no remote paired. So before the write the installer reads out of the installed `hy310-rootfs`,
+read-only, and puts into the new one with its modes and owners: `wifi.env`, `warp.conf`, `keystone.conf`
+and every other file directly in `/etc/h713` the image does not bring itself (`keystone-ref`, `panel.env`,
+`lamp.conf`, `focus.conf`, ...), the SSH host keys (`/etc/ssh/ssh_host_*`), the Bluetooth pairings
+(`/var/lib/bluetooth`), `h713-tv`'s state (`/var/lib/h713-tv`) and a hostname you chose (with the `127.0.1.1`
+line of `/etc/hosts`; `hy310`, the name every board had before 11.10.2026, does not count as chosen). A file
+that equals the image's is not copied again. What stays the image's: the subdirectories of `/etc/h713`
+(`tvconfig` holds this run's vendor files, `labwc*` and `launcher.d` are the image's), `board` and `features`,
+and `tv.conf`, `osd.conf`, `keys.conf`, `power.conf` - a newer image's versions carry entries an older one
+lacks, so where the device's differ the log names the keys (`/etc/h713/osd.conf stays the image's; the
+device's differs: place = top-right (image: bottom)`) and the settings page sets them again. `/root` is not
+carried. The log says it in one line, `carried over from the device: ...`, with file names and counts but
+no Wi-Fi name, password or Bluetooth address; the files are held in memory and in the working copy only.
+`--no-write` names what it would read and mounts nothing; `--fresh-env` concerns the U-Boot environment
+only. Measured so far on the PC only (the installer's tests and a full install run against an eMMC image
+file, with real ext4 under root), not yet in an install on a device.
 
 ## Safety nets
 
@@ -156,12 +175,17 @@ is still accepted alongside `YES`, like the other German aliases.
 
 GPT partition names starting `hy310-` mean the device already runs this system; a stock layout is matched
 against the board profiles by several features at once, not by one fingerprint string. On a reinstall over
-our own layout the intent keys `h713_gate` and `h713_boot` are carried over from the old U-Boot
-environment and the declared project id is written as `h713_project`; everything else comes from the image,
-so a stale setting cannot silently survive an upgrade. `--fresh-env` carries nothing over. **Known (`TODO.md` 2.137):**
-with `--dump` pointing at the directory of a first install, the carried-over values came from the environment saved in that
-dump, not from the device - on 22.10.2026 a `h713_gate=0` set for a bench came back that way. After a reinstall check
-`fw_printenv h713_gate` and set it to `1` if it is not.
+our own layout the intent keys `h713_gate` and `h713_boot` are carried over from the U-Boot environment the
+device carries, read off it in this run, and the declared project id is written as `h713_project`;
+everything else comes from the image, so a stale setting cannot silently survive an upgrade. A
+`uboot-env.bin` in the dump directory is only compared: where it disagrees with the device the log says so
+(`the device and .../uboot-env.bin of <date> disagree -- h713_gate=1 on the device, 0 in the dump; the
+device's value is taken`), and where the device carries no valid environment nothing is taken from the
+file. `--fresh-env` carries nothing over. *Superseded 25.10.2026 (`TODO.md` 2.137):* up to `v0.97-beta`,
+with `--dump` pointing at the directory of a first install, the carried-over values came from the
+environment saved in that dump, not from the device - on 22.10.2026 a `h713_gate=0` set for a bench came
+back that way. After an install with that installer check `fw_printenv h713_gate` and set it to `1` if it
+is not.
 
 The secure storage region is never written, whatever you pass - the image itself has a gap there, so even
 a raw `dd` from someone bypassing this tool cannot reach it (see [`h713-mkimage`](h713-mkimage.md)).

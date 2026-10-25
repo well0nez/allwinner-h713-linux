@@ -83,7 +83,8 @@ The page has to stay beside the real file (the tool follows its own symlink to f
   first start and kept in `/etc/h713/panel.env` (root, 0600). `h713-panel --show-password` prints it,
   the journal shows it once when it was made. `--no-auth` serves an open page for a bench and says so.
   Plain HTTP: the password crosses the home network unencrypted, which is the level of the Wi-Fi
-  password itself. A reinstall of the system makes a new one (TODO 1.2b).
+  password itself. A reinstall keeps it: since 25.10.2026 the installer carries `panel.env` over (TODO 1.2b;
+  the `v0.97-beta` installer made a new one).
 - **No gamma points and no picture-mode tables.** (Superseded 19.10.2026: the page now sets the gamma level and the colour temperature, see Picture and Colour temperature above; before, it offered no gamma at all.) The 33 points of a gamma curve, the picture-mode tables and the per-board PQ data stay `h713-pq`'s and `h713-tv`'s; the Colour tab reaches the colour temperature, the firmware's white balance and colour management. It offers six of the firmware's twelve colour axes (not skin tone, lips or the in-between ones) and not the colour's value (brightness) step.
 - **No installer, no updates, no file upload, no shell.** The verb table is the whole surface.
 - **It decides nothing itself.** If a tool is missing or refuses, the page says which one and why, in that
