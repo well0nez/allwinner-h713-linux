@@ -6,5 +6,6 @@ stubs.c
 test_nosig
 test_hold
 test_wall
+test_crtc
 test_color
 test_gamma

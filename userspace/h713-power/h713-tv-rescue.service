@@ -6,7 +6,9 @@
 # and h713-tv gives up after its three starts. h713-tv@.service names this unit as OnFailure: it reloads the
 # MIPS once - halt, load display.bin, start, receiver, h713-tv and the warp again (h713-mips-restart; by hand
 # it brought the picture back in 3.4 s on the HY300PRO-G-EU, 11.10.2026). Once per boot: the marker in /run
-# keeps a MIPS that dies again from a loop. The cause itself is still open.
+# keeps a MIPS that dies again from a loop. The cause itself is still open. A crash of h713-tv itself needs no rescue:
+# Restart= starts it again, and its start gives the panel back to the console when the crash took the CRTC's mode with it
+# (TODO 2.125) - so a second crash in a boot, which finds the marker, comes back as well.
 # h713-mode rescue runs the restart: it stops h713-warp, which ends Kodi, the desktop or the browser (BindsTo=), so the mode
 # that ran is remembered before and started again after, as around a standby (h713-mode sleep-pre, sleep-post).
 [Unit]

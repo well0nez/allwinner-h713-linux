@@ -716,7 +716,7 @@ static int display_open_card(const char *want_path)
  * never touches the panel timing. On our board this finds CRTC 36 behind
  * connector 33, in 1920x1080.
  */
-static void display_find_crtc(struct display *d)
+static bool display_search_crtc(struct display *d)
 {
 	drmModeRes *res = drmModeGetResources(d->fd);
 	unsigned int i;
@@ -743,8 +743,40 @@ static void display_find_crtc(struct display *d)
 	drmModeFreeResources(res);
 
 	if (!d->crtc_id)
-		fail("no CRTC drives a mode -- is the console running? (dmesg | grep afbd)");
+		return false;
 	info("crtc            %u, mode %ux%u", d->crtc_id, d->width, d->height);
+	return true;
+}
+
+/* the holder's search (and -n's): what is on the wall is taken as it is */
+static void display_find_crtc(struct display *d)
+{
+	if (!display_search_crtc(d))
+		fail("no CRTC drives a mode -- is the console running? (dmesg | grep afbd)");
+}
+
+static void console_restore(void);
+
+/*
+ * The start's search (TODO 2.125). A framebuffer of this program's that is still on the primary plane when the program ends -
+ * a SIGKILL with the warp's or a client's frame up, or a way out whose commit was refused - is taken off by the kernel with the
+ * file, and the simple-KMS check refuses an enabled CRTC without its primary plane, so the CRTC goes off with it: no mode. The
+ * kernel's console gives the panel its mode back only at the card's last close or at an unblank; while any other file holds the
+ * card (the holder, a measuring tool) the last close does not come, and no start found a mode any more (HY300PRO-G-EU,
+ * 20.10.2026: after a refused way out, and after a second SIGKILL of the boot - the rescue runs once). The panel with the
+ * console on it is what this program starts from, so the start makes it so: the master it got with the open given back (the
+ * fbdev helper does not paint under a master), the console restored as at every way out, the search once more.
+ */
+static void display_find_crtc_start(struct display *d)
+{
+	if (display_search_crtc(d))
+		return;
+	info("crtc            none drives a mode (the last run's framebuffer went with the primary plane) -- the console first");
+	if (drmDropMaster(d->fd) && errno != EINVAL)
+		warn("DROP_MASTER before the console: %s", strerror(errno));
+	console_restore();
+	if (!display_search_crtc(d))
+		fail("no CRTC drives a mode, not even with the console restored -- is the console running? (dmesg | grep afbd)");
 }
 
 /*
@@ -9603,7 +9635,10 @@ int main(int argc, char **argv)
 	    drmSetClientCap(d.fd, DRM_CLIENT_CAP_ATOMIC, 1))
 		fail("this kernel does not hand out atomic and universal planes: %s",
 		     strerror(errno));
-	display_find_crtc(&d);
+	if (o.report_only)
+		display_find_crtc(&d);		/* -n reports, it does not switch: no console restored */
+	else
+		display_find_crtc_start(&d);
 	display_find_plane(&d);
 
 	/*
