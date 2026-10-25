@@ -815,7 +815,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Bootloader-FAT kein `mips/` hat, auf `h713-extract` (liest `super`/vendor) und das Profil verweisen, statt eine
       Partition zu verlangen. `h713-extract` kann die Quelle längst (`mips.sources = ("vendor:/etc/display/mips",)`)
 - [ ] 4.13 **LOSEI X9 (Issue #3, Melder GitHub `cosmonet-fr`) - der Plan: `arbeit/losei-x9-20261025/PLAN.md`** (25.10.2026).
-      Profil liegt, Antwort und drei Löcher offen. Profil
+      Profil liegt, Antwort und drei Löcher offen. **(b) erledigt 25.10. abends ohne ihn:** die `monitor`- und
+      `optee`-Prüfsummen waren nie seine Aufgabe - unser eigener Bericht kürzte sie auf 16 Hex (`extract.py`, Abweichungszeilen,
+      jetzt ganz); `sunxi_version` fehlt seinem Abzug naturgemäß. Profil
       `installer/h713/profiles/losei_x9.py` und `boards/losei-x9/` sind angelegt (`STATUS=partial`), Anhänge in
       `arbeit/losei-x9-20261025/anhaenge/`. Offen: (a) Antwort im Issue - was wir aus seinem Bericht gemacht haben, dass es
       **kein Abbild** gibt (fremdes Pinout: Lüfter PB4, Lampe PB6) und was uns fehlt; (b) `monitor`- und `optee`-sha256 (sein
