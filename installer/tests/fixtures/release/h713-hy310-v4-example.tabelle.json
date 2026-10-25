@@ -306,6 +306,13 @@
       "optional": true
     },
     {
+      "name": "pq/audio_config.ini",
+      "partition": "hy310-rootfs",
+      "pfad": "/etc/h713/tvconfig/audio_config.ini",
+      "gruppe": "audio",
+      "optional": true
+    },
+    {
       "name": "lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt",
       "partition": "hy310-rootfs",
       "pfad": "/lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig_8800d80.txt",
@@ -402,6 +409,7 @@
     "logo": "boot logo",
     "firmware": "ARISC, EDID, MSP",
     "pq": "picture presets",
+    "audio": "volume curve",
     "wlan": "WLAN firmware"
   },
   "nutzer": [

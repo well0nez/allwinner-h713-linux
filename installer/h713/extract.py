@@ -35,10 +35,12 @@ from h713.vendorfiles import (AIC_FW_DIR, AIC_FW_TARGET, BOOT_ROOT_FILES, BOOT_R
                               EDID_14, EDID_20, FALLBACK_MIPS_SOURCES,
                               MIPS_FEX, MIPS_FILES, MIPS_OUTPUT_DIR, MIPS_PART_KEYS, MIPS_PART_NAMES,
                               MIPS_PROJECTID, MIPS_SOURCE_DIR, MSP_LIB_CANDIDATES,
-                              CAMPRJSPE_CANDIDATES, CAMPRJSPE_OUTPUT, PANEL_CONFIG_CANDIDATES,
+                              AUDIO_CONFIG, AUDIO_CONFIG_OUTPUT, CAMPRJSPE_CANDIDATES, CAMPRJSPE_OUTPUT,
+                              PANEL_CONFIG_CANDIDATES,
                               PANEL_CONFIG_OUTPUT, PQ_FILES, REQUIRED_FILES, SYSTEM_PARTITIONS, TVCONFIG,
                               VENDOR_MIPS_DIR, VENDOR_MIPS_SOURCE, check_bootlogo, check_display_cfg,
-                              check_edid_block, check_pq, check_text_config, check_tse, edid_name, edid_vendor,
+                              check_edid_block, check_pq, check_text_config, check_tse, check_volume_curve,
+                              edid_name, edid_vendor,
                               elf_symbol, find_mspm_chain, firmware_revision_of, parse_mspm,
                               read_vendor_mips)
 
@@ -526,6 +528,18 @@ class Run:
                 self.log.warn(f"{n}: {p}")
             self.store(f"pq/{n}", b, origin=f"vendor:{TVCONFIG}/{n}",
                        checks=(["mandatory keys ok"] if not problems else problems), error=bool(problems))
+        # the volume curve h713-tv takes with "volume_curve = vendor"; not one of h713-pq's files
+        if AUDIO_CONFIG not in present:
+            self.log.warn(f"{TVCONFIG}/{AUDIO_CONFIG} is missing")
+            self.not_extracted.append(f"{AUDIO_CONFIG_OUTPUT} (missing from vendor)")
+            return
+        b = self.vendor.read(f"{TVCONFIG}/{AUDIO_CONFIG}", self.tmp)
+        problems = check_volume_curve(b)
+        for p in problems:
+            self.log.warn(f"{AUDIO_CONFIG}: {p}")
+        self.store(AUDIO_CONFIG_OUTPUT, b, origin=f"vendor:{TVCONFIG}/{AUDIO_CONFIG}",
+                   checks=(["[Volume] volume_curve: 101 values, rising"] if not problems else problems),
+                   error=bool(problems))
 
     def open_system(self) -> Optional[Ext4Base]:
         """The Android system partition, opened read-only for camprjspe.ini and nothing else."""

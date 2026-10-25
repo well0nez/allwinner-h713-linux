@@ -8,3 +8,4 @@ test_hold
 test_wall
 test_color
 test_gamma
+test_curve

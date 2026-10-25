@@ -448,6 +448,7 @@ def check_package(directory, d, log=console):
 CONSEQUENCE = {
     "wlan": "WLAN stays off",
     "pq": "h713-pq has no presets, the picture itself is unaffected",
+    "audio": "h713-tv keeps its built-in volume curve (the HY310's)",
     "logo": "U-Boot boots without a logo",
 }
 
@@ -615,7 +616,7 @@ def copy_entries(files, sources):
 
 
 # ------------------------------------------- the device's own file systems (N2, layout v4)
-# On a device that already runs our layout the 44 vendor files are not gone: they lie in its
+# On a device that already runs our layout the 45 vendor files are not gone: they lie in its
 # two ext4 file systems under the very paths the table names. Reading them back is cheaper
 # than a dump and needs nothing the owner has to keep (doku/61 B, Marco 15.09.). Under
 # layout v3 that was raw block arithmetic and needed a magic-byte check to notice a

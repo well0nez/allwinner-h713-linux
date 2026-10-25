@@ -102,6 +102,7 @@ GROUPS = {
     "logo": "boot logo",
     "wlan": "WLAN firmware",
     "pq": "picture presets",
+    "audio": "volume curve",
     "firmware": "ARISC, EDID, MSP",
 }
 
@@ -157,6 +158,9 @@ FILES = [File(*row) for row in (
     ("pq/pqcontrol_config_setting.xml",  "hy310-rootfs", "/etc/h713/tvconfig/pqcontrol_config_setting.xml", "pq", True),
     ("pq/pqcontrol_custom_setting.xml",  "hy310-rootfs", "/etc/h713/tvconfig/pqcontrol_custom_setting.xml", "pq", True),
     ("pq/tvpq.db",                       "hy310-rootfs", "/etc/h713/tvconfig/tvpq.db",                      "pq", True),
+    # the volume curve -> next to them (25.10.2026): h713-tv takes it with tv.conf "volume_curve = vendor" (the L018);
+    # optional, without it the built-in curve
+    ("pq/audio_config.ini",              "hy310-rootfs", "/etc/h713/tvconfig/audio_config.ini",             "audio", True),
     # 13 WLAN firmware files -> hy310-rootfs:/lib/firmware/aic8800_fw/SDIO/aic8800D80/
     # (12.09.2026, the set that brought wlan0 up the same day.) The target path is the
     # driver's CONFIG_AIC_FW_PATH -- if it differs, fdrv silently loads nothing.

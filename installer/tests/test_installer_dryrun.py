@@ -300,7 +300,7 @@ class ReleaseFolder(unittest.TestCase):
         code, text = self._identify(v4)
         self.assertEqual(code, 0, text)
         self.assertIn("release table  h713-hy310-v4-example", text)
-        self.assertIn("files: 44 from your own device, 1 of your own", text)
+        self.assertIn("files: 45 from your own device, 1 of your own", text)
         self.assertNotIn("placeholder layout v3", text)
 
     def test_the_tool_takes_uboot_and_fel_out_of_the_release_folder(self):

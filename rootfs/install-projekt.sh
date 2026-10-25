@@ -198,6 +198,19 @@ board_keystone() {
 		printf '%s' "${KEYSTONE:-}" ) || { warn "boards/$H713_BOARD: board.env not sourceable"; return 1; }
 }
 
+# VOLUME_CURVE of boards/$H713_BOARD (variant.env over board.env): "vendor" -- h713-tv takes the volume curve of the
+# device's own audio_config.ini (the installer puts it into /etc/h713/tvconfig) -- or "builtin"; unset: nothing is written
+# and h713-tv keeps its built-in curve, the HY310's. Another word stops the build.
+board_volume_curve() {
+	local env="$PROJECT_ROOT/boards/$H713_BOARD/board.env" got
+	got=$( set +u; . "$env" >/dev/null 2>&1 || exit 1
+		[[ -z "$H713_VARIANT" ]] || . "${env%/board.env}/variants/$H713_VARIANT/variant.env" >/dev/null 2>&1 || exit 1
+		printf '%s' "${VOLUME_CURVE:-}" ) || { warn "boards/$H713_BOARD: board.env not sourceable"; return 1; }
+	[[ -z "$got" || "$got" == vendor || "$got" == builtin ]] || \
+		{ warn "boards/$H713_BOARD: VOLUME_CURVE '$got' is neither vendor nor builtin"; return 1; }
+	printf '%s' "$got"
+}
+
 # /etc/h713/keystone.conf as the image carries it: the tool's defaults with the board's KEYSTONE over
 # them. A key the tool does not have, or a value it cannot read, stops the build.
 keystone_conf() {
@@ -327,6 +340,7 @@ check_sources() {
 		{ warn "missing: h713-lamp or h713-lamp.service in $H713_LAMP_SRC"; errors=1; }
 	if [[ -n "$H713_BOARD" ]] && ! board_features >/dev/null; then errors=1; fi
 	if [[ -n "$H713_BOARD" ]] && ! board_hostname >/dev/null; then errors=1; fi
+	if [[ -n "$H713_BOARD" ]] && ! board_volume_curve >/dev/null; then errors=1; fi
 	if [[ -x "$H713_KS_SRC/h713-keystone" ]] && ! keystone_conf >/dev/null; then errors=1; fi
 	if [[ -n "$H713_CRUST_BIN" ]]; then
 		[[ -f "$H713_CRUST_BIN" && -n "$H713_BOARD" ]] || \
@@ -480,6 +494,15 @@ install -D -m 0644 "$H713_TV_SRC/h713-tv.tmpfiles"    "$TREE/etc/tmpfiles.d/h713
 # move as in the Makefile target install-data.
 rm -f "$TREE/etc/systemd/system/h713-tv.service"
 info "/usr/local/sbin/h713-tv ($(stat -c %s "$TREE/usr/local/sbin/h713-tv") B), unit, udev rule, gamma-standard.bin, tmpfiles"
+# the board's volume curve (board.env VOLUME_CURVE), into the overlay's tv.conf; the last line of tv.conf wins
+if [[ -n "$H713_BOARD" ]]; then
+	VC=$(board_volume_curve) || die "boards/$H713_BOARD: VOLUME_CURVE not usable (see above)"
+	if [[ -n "$VC" ]]; then
+		printf '\n# board %s (board.env VOLUME_CURVE): the volume curve\nvolume_curve = %s\n' "$H713_BOARD" "$VC" \
+			>> "$TREE/etc/h713/tv.conf"
+		info "tv.conf: volume_curve = $VC (board $H713_BOARD)"
+	fi
+fi
 # No enable: h713-tv@.service deliberately has no [Install] section. The hdmirx
 # probe runs asynchronously (EDID/HPD over ten seconds), a start "at boot"
 # would be a race. The udev rule starts the instance as soon as /dev/videoN

@@ -41,7 +41,7 @@ and `pinmux-pins`, 24.10.2026). "fn" is the pin function number of our pinctrl t
 | Panel keys | 6 | none but the power key (owner, 24.10.2026); the seven LRADC keys of the stock tree are its template | - |
 | NTC | none (stock `ntc_num 0`) | GPADC channel 1, its own table 0..55 °C; warn 41, power off 51, resume 34 °C | `ntc_num 1`, the stock table and thresholds (21.4 °C read at a CPU of 49 °C, 25.10.2026; not held against a thermometer yet) |
 | LEDs | - | power PL0 (red, `standby_param`), status PL1 (blue, active low); the stock fan driver sets PL0 high, PL1 low at probe | `gpio-leds` at those levels; the colour seen is not measured |
-| Audio | - | headphone jack and SPDIF pins enabled in the stock tree | not described yet |
+| Audio | - | headphone jack and SPDIF pins enabled in the stock tree; its own volume curve in `audio_config.ini` (100 = +0.5 dB, the HY310's -9.5 dB) | the speaker plays HDMI and the device's sounds (25.10.2026); h713-tv takes the board's own curve (`board.env` `VOLUME_CURVE=vendor`), 0 dB in the DSP heard clean by the owner; headphones not tested. *Superseded (25.10.2026):* "not described yet" |
 
 ## What the first install showed (25.10.2026)
 

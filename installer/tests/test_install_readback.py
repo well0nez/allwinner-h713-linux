@@ -3,7 +3,7 @@ out of the device's file systems -- no placeholders, no offsets, no sizes (P-lay
 
 Two fixtures carry this. `fixtures/release/h713-hy310-v4-example.tabelle.json` is the complete
 v4 table: the real v0.7-beta table of 16.09.2026 with the placeholder keys replaced by
-`dateien`/`gruppen`/`nutzer` for all 44 files and the SSH key. The parts it names are not in
+`dateien`/`gruppen`/`nutzer` for all 45 files and the SSH key. The parts it names are not in
 the repository, so its `sha256` fields are null and nothing runs `check_package` on it -- it is
 there for the plan, which is pure Python. `Release` below is a miniature release the tool can
 really be run against: a part B of under half a megabyte with two small partitions behind the
@@ -63,7 +63,7 @@ FILES = (
      "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_8800d80.bin", "wlan", True),
 )
 GROUPS = {"mips": "display firmware and tables", "logo": "boot logo",
-          "firmware": "ARISC, EDID, MSP", "pq": "picture presets", "wlan": "WLAN firmware"}
+          "firmware": "ARISC, EDID, MSP", "pq": "picture presets", "audio": "volume curve", "wlan": "WLAN firmware"}
 USER = [{"name": "authorized_keys", "partition": ROOTFS[0], "pfad": "/root/.ssh/authorized_keys",
          "modus": "0600", "besitzer": "root", "verzeichnis_modus": "0700"}]
 WLAN = tuple(n for n, _p, _t, g, _o in FILES if g == "wlan")
@@ -113,18 +113,18 @@ class TheHandWrittenTable(unittest.TestCase):
         for gone in ("platzhalter", "platzhalter_nutzer", "platzhalter_datei", "platzhalter_info"):
             self.assertNotIn(gone, self.tab)
 
-    def test_all_forty_four_files_with_their_group_and_target(self):
+    def test_all_forty_five_files_with_their_group_and_target(self):
         files = self.tab["dateien"]
-        self.assertEqual(len(files), 44)
-        self.assertEqual(len(set(f["name"] for f in files)), 44)
+        self.assertEqual(len(files), 45)
+        self.assertEqual(len(set(f["name"] for f in files)), 45)
         groups = {}
         for f in files:
             self.assertTrue(f["pfad"].startswith("/"), f["name"])
             self.assertIn(f["partition"], (BOOT[0], ROOTFS[0]), f["name"])
             self.assertIn(f["gruppe"], self.tab["gruppen"], f["name"])
-            self.assertEqual(f["optional"], f["gruppe"] in ("logo", "pq", "wlan"), f["name"])
+            self.assertEqual(f["optional"], f["gruppe"] in ("audio", "logo", "pq", "wlan"), f["name"])
             groups[f["gruppe"]] = groups.get(f["gruppe"], 0) + 1
-        self.assertEqual(groups, {"mips": 19, "logo": 1, "firmware": 3, "pq": 8, "wlan": 13})
+        self.assertEqual(groups, {"mips": 19, "logo": 1, "firmware": 3, "pq": 8, "audio": 1, "wlan": 13})
         self.assertEqual(len([f for f in files if f["partition"] == BOOT[0]]), 20)
 
     def test_the_mount_window_of_a_partition_comes_out_of_the_table_alone(self):
@@ -174,7 +174,7 @@ class ThePlan(unittest.TestCase):
         self.assertEqual(self.log.lines, [])
         self.assertEqual(sorted(plan), [BOOT[0], ROOTFS[0]])
         self.assertEqual(len(plan[BOOT[0]]), 20)
-        self.assertEqual(len(plan[ROOTFS[0]]), 24)
+        self.assertEqual(len(plan[ROOTFS[0]]), 25)
         by_path = dict((e.path, e) for e in plan[BOOT[0]] + plan[ROOTFS[0]])
         for f in self.files:
             e = by_path[f["pfad"]]
@@ -185,7 +185,7 @@ class ThePlan(unittest.TestCase):
     def test_a_whole_optional_group_missing_is_one_line_and_no_abort(self):
         wlan = [f["name"] for f in self.files if f["gruppe"] == "wlan"]
         sources = self.sources(leave_out=wlan)
-        self.assertEqual(len(sources), 31)
+        self.assertEqual(len(sources), 32)
         self.assertEqual(len(self.log.lines), 1, self.log.text)
         self.assertIn("none of the 13 files in the dump", self.log.text)
         self.assertIn("this firmware has no WLAN firmware", self.log.text)
@@ -198,13 +198,13 @@ class ThePlan(unittest.TestCase):
         no pq_picturemode.ini -- one file of a group missing must not abort the install."""
         gone = [f["name"] for f in self.files if f["gruppe"] == "wlan"][:3]
         sources = self.sources(leave_out=gone)
-        self.assertEqual(len(sources), 41)
+        self.assertEqual(len(sources), 42)
         self.assertIn("3 of 13 files not in %s" % self.out, self.log.text)
         self.assertIn("another WLAN firmware set", self.log.text)
 
     def test_the_boot_logo_is_optional_on_its_own(self):
         sources = self.sources(leave_out=("boot/bootlogo.bmp",))
-        self.assertEqual(len(sources), 43)
+        self.assertEqual(len(sources), 44)
         self.assertEqual(len(self.log.lines), 1, self.log.text)
         self.assertIn("boot/bootlogo.bmp: not in %s -- no boot logo. U-Boot boots without a "
                       "logo." % self.out, self.log.text)
@@ -351,7 +351,7 @@ class TheReadBackPlan(unittest.TestCase):
         self.assertEqual((offset, size), (16384 * SECT, 262144 * SECT))
         self.assertEqual(len(wanted), 20)
         self.assertEqual(wanted["/mips/database.TSE"], "boot/mips/database.TSE")
-        self.assertEqual(len(plan[1][4]), 24)
+        self.assertEqual(len(plan[1][4]), 25)
 
     def test_a_device_without_our_partitions_says_so_instead_of_guessing(self):
         support.need(fakedisk.NEEDS_STOCK_GPT)
