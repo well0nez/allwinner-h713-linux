@@ -840,7 +840,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       beide Fälle und dass dann nichts fehlt: was die Probe über `display.bin` berichten würde (Größe, sha256, Wartestelle,
       ProjectIDs), liefert `h713-extract` aus dem Abzug. Offen: in `h713-hy310` und `uboot-h713/`
 - [ ] 4.13 **LOSEI X9 (Issue #3, Melder GitHub `cosmonet-fr`) - der Plan: `arbeit/losei-x9-20261025/PLAN.md`** (25.10.2026).
-      Profil liegt, Antwort und drei Löcher offen. **(b) erledigt 25.10. abends ohne ihn:** die `monitor`- und
+      Profil liegt, Antwort und drei Löcher offen. **(a) erledigt 25.10.2026 23:50:** Antwort mit `losei-x9-probe.zip` im Issue
+      gepostet (Marco; Text und Zip gegen den Entwurf geprüft, Download = lokales Zip). **(b) erledigt 25.10. abends ohne ihn:** die `monitor`- und
       `optee`-Prüfsummen waren nie seine Aufgabe - unser eigener Bericht kürzte sie auf 16 Hex (`extract.py`, Abweichungszeilen,
       jetzt ganz); `sunxi_version` fehlt seinem Abzug naturgemäß. Profil
       `installer/h713/profiles/losei_x9.py` und `boards/losei-x9/` sind angelegt (`STATUS=partial`), Anhänge in
