@@ -790,10 +790,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Ton: die Stock-`audio_config.ini` des L018 geht bis 0 dB statt -38 (HY310) - eigene Lautstärkegrenze, leise anfangen
         (h713-tv fährt die HY310-Kurve fest: oben -9,5 dB, am L018 ~10 dB leiser als Stock; eigene Kurve erst nach Hörtest);
         **Hörtest 25.10. ~23:30 (Marco, `arbeit/l018-board-20261024/runde3`):** 8 Stufen -27 .. 0 dB im DSP (Akkord, Rauschen,
-        100 Hz): 0 dB = Stock-Maximum „vollkommen ok, klingt nicht mal wie das Lauteste", nichts klirrt. Also: der L018 bekommt
-        seine Stock-Kurve (`volume_curve` seiner `audio_config.ini`: 50 = -14,75 dB, 100 = +0,5 dB → im DSP bei 0 dB gekappt).
-        Weg: `h713-extract` holt `audio_config.ini` mit nach `/etc/h713/tvconfig/` (fehlt dort heute), h713-tv liest
-        `[Volume] volume_curve` daraus, eingeschaltet je Board; ohne Schalter die heutige HY310-Kurve bitgleich
+        100 Hz): 0 dB = Stock-Maximum „vollkommen ok, klingt nicht mal wie das Lauteste", nichts klirrt. **Gebaut und am L018
+        gemessen 25.10. nachts (`versuch/l018-board` `6dd7cd20`):** h713-tv `volume_curve = vendor` liest `[Volume] volume_curve`
+        der eigenen `audio_config.ini` (1 = -50, 20 = -22,5, 50 = -12,5, 100 = 0 dB im DSP; Stock +0,5 gekappt), `h713-extract`
+        holt die Datei mit (Gruppe `audio`, 45 Dateien), `board.env` `VOLUME_CURVE=vendor` beim L018; HY310 & Co. unverändert.
+        *Überholt:* „50 = -14,75 dB" (verlesen). Offen: der mkimage-Selbsttest wird erst mit dem nächsten Abbild-Bau grün
+        (vergleicht das zuletzt gebaute Abbild mit 44 Dateien); ob HY310/G-EU ihre eigene Kurve wollen, nicht untersucht
         **Gemeinsame Tests 25.10. abends** (`runde3/TESTS-MIT-MARCO.md`): BT-Fernbedienung, HDMI 1080p60 mit Ton, HDCP 1.4 (Paar),
         Kodi-Video in Hardware mit Ton bestanden; offen: Kopfhörer (keine da), HDCP 2.2 (Fire-TV-Stick)
         `h713-features` `lamp-modes` und `docs/tools/h713-lamp.md` mit der UI bzw. der Integration
