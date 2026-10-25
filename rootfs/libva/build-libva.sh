@@ -80,9 +80,14 @@ sed "s|@SYSROOT@|$SYSROOT|g" "$ROOT/rootfs/mesa/cross-aarch64.ini.in" > "$BUILD/
 # 3. configure. megi's own default build type (debugoptimized, -O2) is kept, the debug info goes at install (--strip),
 #    as in the build cstenger measured the driver in. The module goes where LIBVA_DRIVERS_PATH points,
 #    not into Debian's multiarch driver directory.
+#    The paths of this checkout and of the sysroot are mapped away: they sit in the debug info, the linker's build-id
+#    (a hash of the file before --strip removes the debug info) covers them, and so the same commit built in two
+#    directories gave two tarballs (TODO 2.136, release builds of 22.10.2026).
+MAPS="-ffile-prefix-map=$ROOT=/h713"
+[[ "$SYSROOT" == "$ROOT"/* ]] || MAPS="$MAPS -ffile-prefix-map=$SYSROOT=/sysroot"
 say "meson setup (libva-v4l2_request $LIBVA_VER, sysroot $SYSROOT)"
 meson setup "$BUILD/build" "$SRC" --cross-file "$BUILD/cross-aarch64.ini" \
-	--prefix=/usr/local --libdir=lib --strip -Ddriverdir="$DRIVERDIR" >> "$LOG" 2>&1 ||
+	--prefix=/usr/local --libdir=lib --strip -Ddriverdir="$DRIVERDIR" -Dc_args="$MAPS" >> "$LOG" 2>&1 ||
 	{ tail -30 "$LOG"; die "meson setup failed (log: $LOG)"; }
 grep -E "kernel supports stateless|Dependency (libva|libdrm)" "$LOG" | sed 's/^/    /' || true
 
