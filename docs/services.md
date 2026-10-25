@@ -55,7 +55,7 @@ Beyond the tools in [docs/tools/](tools/):
 
 | Command | For |
 |---|---|
-| `h713-logs volatile\|persistent\|status` | the journal lives in RAM by default, so a projector left running for weeks does not chew through eMMC write cycles. `persistent` bind-mounts `/var/log` onto `/data/log` when you need logs to survive a crash. The old name `hy310-logs` is still there as a symlink |
+| `h713-logs volatile\|persistent\|status` | the journal is persistent but capped (32 MiB, `10-h713.conf`), so the cause of a crash can be read after the restart. `volatile` moves it to RAM; `persistent` bind-mounts `/var/log` onto `/data/log` for a larger troubleshooting journal (128 MiB). The old name `hy310-logs` is still there as a symlink |
 | `h713-fel` | put the running system into FEL from Linux ([details](tools/h713-fel.md)) |
 | `fw_printenv` / `fw_setenv` | read and change the U-Boot environment from Linux ([environment](uboot/environment.md)) |
 | `h713-arisc status\|set vendor\|crust` | which firmware the ARISC runs (crust or the vendor's from the dump), where the choice came from, and the switch for the next boot through `/etc/modprobe.d/h713-arisc.conf` ([h713-arisc](tools/h713-arisc.md)) |

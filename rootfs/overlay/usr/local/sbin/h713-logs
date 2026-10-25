@@ -3,15 +3,17 @@
 #
 # h713-logs -- the switch for troubleshooting (doku/107-plan-rootfs.md 4.3).
 #
-#   h713-logs volatile     journal in /run/log/journal (tmpfs). The default,
-#                          and the eMMC never sees the logs.
+#   h713-logs volatile     journal in /run/log/journal (tmpfs). The eMMC never
+#                          sees the logs; they are gone with a restart.
 #   h713-logs persistent   journal in /data/log, through a bind mount of
-#                          /var/log. Logs survive a restart.
+#                          /var/log, up to 128 MiB: the troubleshooting size.
+#                          (The image's own default is a 32 MiB persistent
+#                          journal on the rootfs, 10-h713.conf.)
 #   h713-logs status       what is in force right now, changing nothing.
 #
-# Storage=volatile is right for continuous use -- every write this eMMC is
-# spared is a write won (107 4) -- but after a crash exactly the last lines
-# are gone. /data is the place in the rootfs for everything that grows (107
+# Storage=volatile spares the eMMC every log write (107 4) -- but after a crash
+# exactly the last lines are gone, which is why the image no longer ships it
+# (TODO 1.2a). /data is the place in the rootfs for everything that grows (107
 # 4.4), and the bind mount fixes the location of the logs in one spot. A
 # restart is due after every switch: journald reads its configuration when it
 # starts, and the bind mount cannot go up under a running journald.
@@ -37,7 +39,7 @@ usage() {
 	cat >&2 <<'EOF'
 Usage: h713-logs persistent|volatile|status
   persistent  journal in /data/log (bind mount onto /var/log), Storage=persistent
-  volatile    journal in /run/log/journal (tmpfs), Storage=volatile  [default]
+  volatile    journal in /run/log/journal (tmpfs), Storage=volatile
   status      show the current state
 After persistent/volatile: `reboot`.
 EOF
@@ -67,7 +69,7 @@ write_dropin() {
 	mkdir -p "$(dirname "$DROPIN")"
 	cat > "$DROPIN" <<EOF
 # Written by h713-logs ($(date -u '+%Y-%m-%dT%H:%M:%SZ' 2>/dev/null || echo unknown)).
-# The image ships Storage=volatile; see doku/107-plan-rootfs.md 4.
+# The image ships a capped Storage=persistent; see 10-h713.conf and doku/107-plan-rootfs.md 4.
 [Journal]
 Storage=$1
 $2
@@ -102,7 +104,7 @@ state() {
 		grep -qi '^Storage=persistent' "$f" && echo persistent || echo volatile
 		return
 	done
-	echo volatile
+	echo persistent
 }
 
 case "${1:-}" in

@@ -23,7 +23,7 @@ and `release/build-all.sh` calls it as step 7. Building it by hand is only usefu
 for an image, take [BUILDING.md](../BUILDING.md).
 
 The base tree is about 242 MiB (the `media,desktop` tree of the release about 1.1 GiB, [BUILDING.md](../BUILDING.md)),
-journal in RAM by default, SSH key-only, and it carries no proprietary file at all: the display, ARISC and Wi-Fi firmware come off your own device while installing
+a capped persistent journal (32 MiB), SSH key-only, and it carries no proprietary file at all: the display, ARISC and Wi-Fi firmware come off your own device while installing
 ([PROVENANCE.md](../PROVENANCE.md)).
 
 ## Licences in the image
