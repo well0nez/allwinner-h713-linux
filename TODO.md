@@ -835,7 +835,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Bericht zeigt nur 16 Hex), `sunxi_version` fehlt ganz; (c) ein Probe-Lauf mit **seinem** DRAM-Takt 744 MHz - sein Log
       zeigt das SPL mit dem Standardtakt und dem HY200-QZ713DF-A1-Baum, also ist `boards/losei-x9/uboot.config` ungemessen.
       Nichts davon schreibt auf sein Gerät
-- [ ] 4.14 **Entscheidung (Marco): soll der allgemeine Probe-Bau Pins treiben?** `h713_probe_defconfig` setzt
+- [ ] 4.14 (**Marco 25.10.2026: bleibt für später**) **Entscheidung (Marco): soll der allgemeine Probe-Bau Pins treiben?** `h713_probe_defconfig` setzt
       `CONFIG_H713_POWERON_LIGHT_FAN=y`: die Probe hebt in `board_late_init` **PB5 und PL3** - auf unserer Familie gewollt und
       dokumentiert (`docs/tools/h713-probe.md`: „The fan and the lamp *do* come on, because one GPIO powers both"), denn
       ohne PB5 stehen Lampe *und* Lüfter. Die Probe ist aber für fremde Boards gemacht, und dort sind PB5/PL3 unbekannt: der
