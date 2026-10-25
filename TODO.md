@@ -758,7 +758,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
   - [ ] 4.9a Temperatur: der L018 hat einen NTC (Stock `ntc_num 1`, GPADC Kanal 1), der HY310 keinen - unser Baum erbt 0. DT
         mit eigener `gpadc-table` und Stock-Schwellen (warn 41, aus 51, resume 34 °C), messen, dann Abschaltung bei 51 °C scharf.
         **Teils erledigt 25.10. (`versuch/l018-board` `f3062428`, kernel 0331):** NTC liest 21,2-21,6 °C über 22 min bei CPU ~49 °C,
-        Umrechnung nachgerechnet. ~~Offen: gegen ein Thermometer halten (Marco)~~ **Thermometer entfällt (Marco 25.10.: keins da)**; die Abschaltung bei 51 °C wird wie unter Stock scharf (gleiche Tabelle, gleiche Umrechnung im Stock-vmlinux) - über eine
+        Umrechnung nachgerechnet. ~~Offen: gegen ein Thermometer halten (Marco)~~ **Thermometer entfällt (Marco 25.10.: keins da)**; die Abschaltung bei 51 °C ist **seit 25.10. abends scharf wie unter Stock** (`versuch/l018-board` `12a6bcfc`, `thermal-shutdown;` im L018-Baum; gleiche Tabelle, gleiche Umrechnung im Stock-vmlinux; Eigenschaft am Gerät gelesen, das Abschalten selbst nicht gemessen) - über eine
         DT-Eigenschaft des L018-Baums, nicht über den globalen `thermal_shutdown`. **Die Eigenschaft gibt es seit 25.10. (kernel 0333,
         `a741c251`: `thermal-shutdown;`, geordnet über `orderly_poweroff(true)`); gesetzt wird sie nach dem Thermometer.**
   - [x] 4.9b Drei Lampenstufen low/std/high mit gekoppeltem Lüfter - **erledigt 25.10. nachts (`versuch/l018-board` `4a2aee2e`,
