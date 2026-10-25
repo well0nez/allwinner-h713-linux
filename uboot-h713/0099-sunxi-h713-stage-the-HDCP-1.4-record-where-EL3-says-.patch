@@ -1,7 +1,7 @@
 From 34cc74822baf8b739cb1bdb843ba3db4b01605a6 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:26:58 +0200
-Subject: [PATCH 099/101] sunxi: h713: stage the HDCP 1.4 record where EL3
+Subject: [PATCH 099/105] sunxi: h713: stage the HDCP 1.4 record where EL3
  says, one write per boot
 
 The EL3 key-sink service no longer takes a source address (TF-A fork,

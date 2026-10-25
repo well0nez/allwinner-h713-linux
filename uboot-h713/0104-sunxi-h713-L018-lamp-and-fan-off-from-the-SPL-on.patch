@@ -1,0 +1,46 @@
+From d54ab262cc3d27d1665aec177d66ee09d656882a Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Sun, 25 Oct 2026 03:59:48 +0100
+Subject: [PATCH 104/105] sunxi: h713: L018 - lamp and fan off from the SPL on
+
+The L018's PB5 switches lamp and fan on at its reset level, and its PB4
+leaves the lamp at full light; h713_l018_lamp_fan_off() ran in U-Boot
+proper's board_late_init only, so for about a second after power-on
+(BROM, SPL, BL31) both ran. sunxi_board_init(), the SPL's first board
+step after the console and before the DRAM, now calls it too; U-Boot
+proper calls it again before the gate, as before.
+
+Only with CONFIG_H713_BOARD_L018; every other board builds as before.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ board/sunxi/board.c | 12 ++++++++++++
+ 1 file changed, 12 insertions(+)
+
+diff --git a/board/sunxi/board.c b/board/sunxi/board.c
+index 6dafbf81779..daadbb67d80 100644
+--- a/board/sunxi/board.c
++++ b/board/sunxi/board.c
+@@ -620,10 +620,22 @@ static void status_led_init(void)
+ #endif
+ }
+ 
++#ifdef CONFIG_H713_BOARD_L018
++void h713_l018_lamp_fan_off(void);
++#endif
++
+ void sunxi_board_init(void)
+ {
+ 	int power_failed = 0;
+ 
++#ifdef CONFIG_H713_BOARD_L018
++	/*
++	 * The L018's PB5 is lamp and fan ON at its reset level (board/sunxi/
++	 * h713_l018.c): off from the SPL's first board step, not only in
++	 * U-Boot proper, where they ran for about a second after power-on.
++	 */
++	h713_l018_lamp_fan_off();
++#endif
+ 	if (CONFIG_IS_ENABLED(SUNXI_LED_STATUS))
+ 		status_led_init();
+ 

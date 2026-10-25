@@ -1,7 +1,7 @@
 From 4913742a9a170a59fa28d17df95cef6c9c00de5f Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Mon, 5 Oct 2026 08:34:46 +0200
-Subject: [PATCH 095/101] sunxi: h713: hand the projector its own HDCP 1.4 key
+Subject: [PATCH 095/105] sunxi: h713: hand the projector its own HDCP 1.4 key
  set
 
 The display firmware polls the receiver's "key loaded" bit in Rx_HDCP14_LoadKey

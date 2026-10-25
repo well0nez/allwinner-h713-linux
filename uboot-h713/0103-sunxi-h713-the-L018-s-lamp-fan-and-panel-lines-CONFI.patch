@@ -1,7 +1,7 @@
 From b0795ef3079bf01294d641096f1d3760678a4e8c Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sun, 25 Oct 2026 02:01:28 +0200
-Subject: [PATCH 103/103] sunxi: h713: the L018's lamp, fan and panel lines
+Subject: [PATCH 103/105] sunxi: h713: the L018's lamp, fan and panel lines
  (CONFIG_H713_BOARD_L018)
 
 The L018 builds from the HY310's base, but five lines around it behave

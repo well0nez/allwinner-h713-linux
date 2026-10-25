@@ -1,7 +1,7 @@
 From 87b2a44fd004609e0806789cc78f6781c761fd21 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Wed, 7 Oct 2026 01:53:12 +0200
-Subject: [PATCH 096/101] sunxi: h713: stage scp.bin in DRAM for BL31 (crust
+Subject: [PATCH 096/105] sunxi: h713: stage scp.bin in DRAM for BL31 (crust
  load model, step 2)
 
 binman already describes an optional "scp" loadable at CONFIG_SUNXI_SCP_BASE
