@@ -23,8 +23,11 @@ import time
 
 d = pathlib.Path(sys.argv[1])
 edge = int(sys.argv[2]) if len(sys.argv) > 2 else -206
+# "dead": the L018 of 25.10.2026 - the end switch reads 0 everywhere; with
+# motor_ctrl_no_limit = 1 the driver then moves without any reversal
+dead = len(sys.argv) > 3 and sys.argv[3] == "dead"
 d.mkdir(parents=True, exist_ok=True)
-step, edge_dn, edge_up, raw = -200, 0, 0, 1
+step, edge_dn, edge_up, raw = (0 if dead else -200), 0, 0, (0 if dead else 1)
 
 
 def write():
@@ -59,6 +62,12 @@ while time.time() < end:
             down = (cmd == 9)
             if (down and edge_dn) or (not down and edge_up):
                 continue                        # the driver drops it silently
+            if dead:
+                if (d / "motor_ctrl_no_limit").read_text().strip() != "1":
+                    continue                    # the HY310 logic would walk back: not played here
+                step += -n if down else n
+                write()
+                continue
             for _ in range(max(1, n)):
                 step += -1 if down else 1
                 if down and step <= edge:       # the level drops

@@ -95,6 +95,93 @@ class StubRun(unittest.TestCase):
         self.assertIn("Blocked: edge_dn=1", again.stderr)
 
 
+class CountedRange(unittest.TestCase):
+    """The experimental mode (focus.conf "limiter = ignore", the L018 of
+    25.10.2026): the dead switch is ignored, a counted range takes its place."""
+
+    def setUp(self):
+        self.box = tempfile.TemporaryDirectory()
+        self.dir = self.box.name
+        self.sys = os.path.join(self.dir, "sys")
+        self.stub = subprocess.Popen([sys.executable, STUB, self.sys, "-206", "dead"],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        while self.stub.poll() is None and not os.path.exists(os.path.join(self.sys, "motor_ctrl")):
+            time.sleep(0.02)
+        time.sleep(0.2)     # the stub watches motor_ctrl's mtime: its own first write must be behind it
+        self.etc = os.path.join(self.dir, "etc")
+        os.makedirs(self.etc)
+        with open(os.path.join(self.etc, "focus.conf"), "w") as fh:
+            fh.write("limiter = ignore   # this unit\nrange_low = -35\nrange_high = 35\n"
+                     "home_up = 110\nhome_down = 55\n")
+        self.state = os.path.join(self.dir, "var", "focus.state")
+        self.boot = os.path.join(self.dir, "boot_id")
+        self.set_boot("boot-1")
+
+    def tearDown(self):
+        self.stub.terminate()
+        self.stub.wait(timeout=10)
+        self.box.cleanup()
+
+    def set_boot(self, text):
+        with open(self.boot, "w") as fh:
+            fh.write(text + "\n")
+
+    def focus(self, *argv):
+        env = dict(os.environ, H713_ETC=self.etc, H713_FOCUS_STATE=self.state, H713_BOOT_ID=self.boot)
+        return subprocess.run([sys.executable, TOOL, "--sysfs", self.sys] + list(argv),
+                              stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True,
+                              timeout=60, env=env)
+
+    def kept(self):
+        with open(self.state) as fh:
+            return dict(l.split(" = ") for l in fh.read().splitlines() if " = " in l)
+
+    def test_without_a_position_it_drives_nothing(self):
+        run = self.focus("up", "5")
+        self.assertEqual(run.returncode, 3)
+        self.assertIn("no focus position kept", run.stderr)
+        self.assertIn("h713-focus home", run.stderr)
+
+    def test_home_then_moves_inside_the_range_only(self):
+        home = self.focus("home")
+        self.assertEqual(home.returncode, 0, home.stderr)
+        self.assertEqual(self.kept()["position"], "0")
+        with open(os.path.join(self.sys, "motor_ctrl_no_limit")) as fh:
+            self.assertEqual(fh.read().strip(), "1")          # the dead switch is ignored
+        up = self.focus("up", "20")
+        self.assertEqual(up.returncode, 0, up.stderr)
+        self.assertIn("position 20", up.stdout)
+        cut = self.focus("up", "30")                           # only 15 left to range_high
+        self.assertIn("cut to 15", cut.stdout)
+        self.assertEqual(self.kept()["position"], "35")
+        blocked = self.focus("up", "1")
+        self.assertEqual(blocked.returncode, 3)
+        self.assertIn("upper end of the counted range", blocked.stderr)
+        down = self.focus("down", "100")
+        self.assertIn("cut to 70", down.stdout)
+        self.assertEqual(self.kept()["position"], "-35")
+
+    def test_the_position_survives_a_new_boot(self):
+        self.assertEqual(self.focus("home").returncode, 0)
+        self.focus("down", "10")
+        self.set_boot("boot-2")                                # a new boot: the driver's counter restarts
+        with open(os.path.join(self.sys, "motor_limit")) as fh:
+            line = fh.read()
+        self.stub.terminate(); self.stub.wait(timeout=10)
+        self.stub = subprocess.Popen([sys.executable, STUB, self.sys, "-206", "dead"],
+                                     stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL)
+        time.sleep(0.3)
+        status = self.focus("status")
+        self.assertIn("Position:    -10", status.stdout)
+        self.assertIn("EXPERIMENTAL", status.stdout)
+
+    def test_home_is_refused_where_the_switch_counts(self):
+        os.remove(os.path.join(self.etc, "focus.conf"))
+        run = self.focus("home")
+        self.assertEqual(run.returncode, 2)
+        self.assertIn("limiter = ignore", run.stderr)
+
+
 class NotPresent(unittest.TestCase):
     """No focus motor on this board (boards/README.md, FEATURES): every
     subcommand ends with exit 7 and the verdict as its last line, the line

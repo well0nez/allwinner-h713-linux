@@ -293,6 +293,182 @@ def check(g: Limit, up: bool, no_limit: int) -> str | None:
     return None
 
 
+# --- the experimental mode: a unit whose end switch says nothing -----------
+#
+# The L018 of 25.10.2026 (arbeit/l018-board-20261024/runde2): PB1, the stock
+# tree's limiter-up-gpio, reads 0 at every position and at both stops, and no
+# other pin or ADC channel changes on the way (endschalter-suche.py,
+# fokus-unten.py). The HY310 rules above then read "outside" for ever, and the
+# driver walks back up to RECOVERY_MAX msteps after every step - into the stop.
+# Only where /etc/h713/focus.conf says "limiter = ignore" (one unit, not a
+# board: the image never writes the file) the switch is ignored
+# (motor_ctrl_no_limit = 1) and a counted range takes its place. The position
+# is the driver's counter plus an offset kept in FOCUS_STATE across boots;
+# `home` sets it against the upper stop, blind: home_up msteps up (into the
+# stop), home_down back down - that is position 0. The driver's own homing at
+# probe must stay off on such a unit (modprobe option homing=0).
+
+FOCUS_CONF = os.path.join(os.environ.get("H713_ETC", "/etc/h713"), "focus.conf")
+FOCUS_STATE = os.environ.get("H713_FOCUS_STATE", "/var/lib/h713/focus.state")
+BOOT_ID = os.environ.get("H713_BOOT_ID", "/proc/sys/kernel/random/boot_id")
+SOFT_CHUNK = 10         # msteps per write in the counted range
+
+
+class Soft:
+    """The counted range of focus.conf, in msteps around position 0."""
+
+    def __init__(self, low: int, high: int, home_up: int, home_down: int):
+        self.low, self.high = low, high
+        self.home_up, self.home_down = home_up, home_down
+
+
+def _pairs(text: str) -> dict:
+    found = {}
+    for line in text.splitlines():
+        key, sign, value = [t.strip() for t in line.split("#", 1)[0].partition("=")]
+        if sign and key:
+            found[key] = value
+    return found
+
+
+def read_soft(path: str | None = None) -> Soft | None:
+    """The experimental mode, or None: without the file, or without
+    "limiter = ignore" in it, the end switch counts as before."""
+    path = path or FOCUS_CONF
+    try:
+        with open(path) as fh:
+            conf = _pairs(fh.read())
+    except OSError:
+        return None
+    if conf.get("limiter", "use") != "ignore":
+        return None
+    try:
+        low, high, up, down = (int(conf[k]) for k in
+                               ("range_low", "range_high", "home_up", "home_down"))
+    except KeyError as missing:
+        raise Error(f"{path}: limiter = ignore needs {missing.args[0]} as well") from None
+    except ValueError:
+        raise Error(f"{path}: range_low, range_high, home_up and home_down are "
+                    f"whole numbers of msteps") from None
+    if not (low < 0 < high and up > 0 and down > 0):
+        raise Error(f"{path}: needs range_low < 0 < range_high and home_up, "
+                    f"home_down above 0")
+    return Soft(low, high, up, down)
+
+
+def _boot_id() -> str:
+    try:
+        with open(BOOT_ID) as fh:
+            return fh.read().strip()
+    except OSError:
+        return ""
+
+
+def load_position(g: Limit) -> int | None:
+    """The position now, or None when none is kept. In the boot that saved it
+    the counter's change since then counts; in a later boot the driver's
+    counter started at 0 when the module came up."""
+    try:
+        with open(FOCUS_STATE) as fh:
+            kept = _pairs(fh.read())
+        position, step = int(kept["position"]), int(kept["step"])
+    except (OSError, KeyError, ValueError):
+        return None
+    if kept.get("boot_id") == _boot_id():
+        return position + g.step - step
+    return position + g.step
+
+
+def save_position(position: int, g: Limit) -> None:
+    os.makedirs(os.path.dirname(FOCUS_STATE), exist_ok=True)
+    tmp = FOCUS_STATE + ".new"
+    with open(tmp, "w") as fh:
+        fh.write("# h713-focus: the focus position in the counted range (focus.conf)\n"
+                 f"position = {position}\nstep = {g.step}\nboot_id = {_boot_id()}\n")
+    os.replace(tmp, FOCUS_STATE)
+
+
+def _no_limit_on(m: Motor) -> None:
+    if not m.no_limit() and not m.dry:
+        (m.base / ATTR_NO_LIMIT).write_text("1")
+
+
+def _drive_counted(m: Motor, up: bool, count: int, aborted: list) -> Limit:
+    """count msteps in chunks, each waited for on the counter alone."""
+    cmd, sign = (CMD_UP, 1) if up else (CMD_DOWN, -1)
+    left, now = count, read_limit(m)
+    while left > 0 and not aborted:
+        n = min(SOFT_CHUNK, left)
+        expected = now.step + sign * n
+        m.command(cmd, n)
+        end = time.monotonic() + _deadline_s(n)
+        while True:
+            now = read_limit(m)
+            if now.step == expected or time.monotonic() >= end or aborted:
+                break
+            time.sleep(POLL_MS / 1000.0)
+        if now.step != expected:
+            raise Error(f"the counter stands at {now.step}, not {expected} - "
+                        f"the driver did not take the command; stopped")
+        left -= n
+    return now
+
+
+def run_soft(m: Motor, soft: Soft, up: bool, count: int) -> int:
+    """A move in the counted range: never past range_low/range_high."""
+    start = read_limit(m)
+    pos = load_position(start)
+    if pos is None:
+        print(f"\nBlocked: no focus position kept ({FOCUS_STATE}) - "
+              f"'h713-focus home' sets it against the upper stop first.",
+              file=sys.stderr)
+        return 3
+    limit = soft.high if up else soft.low
+    room = (limit - pos) if up else (pos - limit)
+    print(f"before:  position {pos} in {soft.low}..{soft.high} (counted; the "
+          f"end switch is ignored on this unit, focus.conf)")
+    if room <= 0:
+        print(f"\nBlocked: position {pos} is at the {'upper' if up else 'lower'} "
+              f"end of the counted range.", file=sys.stderr)
+        return 3
+    if count > room:
+        print(f"Note: {count} msteps cut to {room} (the end of the counted range).")
+        count = room
+    if m.dry:
+        print(f"\nDry run: {count} msteps {'up' if up else 'down'} to position "
+              f"{pos + (count if up else -count)}. Nothing was written.")
+        return 0
+    aborted: list = []
+    old = signal.signal(signal.SIGINT, lambda *_: aborted.append(True))
+    try:
+        _no_limit_on(m)
+        after = _drive_counted(m, up, count, aborted)
+    finally:
+        signal.signal(signal.SIGINT, old)
+        now = read_limit(m)
+        save_position(pos + now.step - start.step, now)
+    print(f"after:   position {pos + now.step - start.step}   "
+          f"({abs(now.step - start.step)} msteps driven)")
+    return 130 if aborted else 0
+
+
+def home(m: Motor, soft: Soft) -> int:
+    """Blind against the upper stop, then back down: that is position 0."""
+    if m.dry:
+        print(f"Dry run: {soft.home_up} msteps up (into the upper stop), "
+              f"{soft.home_down} down, position 0. Nothing was written.")
+        return 0
+    _no_limit_on(m)
+    aborted: list = []
+    print(f"home: {soft.home_up} msteps up, into the upper stop (it knocks briefly)")
+    _drive_counted(m, True, soft.home_up, aborted)
+    print(f"home: {soft.home_down} msteps down")
+    now = _drive_counted(m, False, soft.home_down, aborted)
+    save_position(0, now)
+    print(f"home: position 0 ({FOCUS_STATE})")
+    return 0
+
+
 # --- the watched run ------------------------------------------------------
 
 def _line(g: Limit, extra: str = "") -> str:
@@ -470,6 +646,17 @@ def run(m: Motor, up: bool, count: int, chunk: int) -> int:
 
 def show_status(m: Motor, how: str) -> int:
     g = read_limit(m)
+    soft = read_soft()
+    if soft:
+        pos = load_position(g)
+        print(f"Node:        {m.base}  ({how})")
+        print(f"Mode:        EXPERIMENTAL - the end switch is ignored on this unit "
+              f"({FOCUS_CONF}), {ATTR_NO_LIMIT} = {m.no_limit()}")
+        print(f"Position:    {'unknown - h713-focus home' if pos is None else pos}"
+              f"   range {soft.low}..{soft.high}   home {soft.home_up} up, "
+              f"{soft.home_down} down")
+        print(f"{ATTR_LIMIT}: {g.raw_line}")
+        return 0
     print(f"Node:        {m.base}  ({how})")
     print(f"{ATTR_LIMIT}: {g.raw_line}")
     try:
@@ -542,6 +729,8 @@ def main(argv: list[str] | None = None) -> int:
         s = sub.add_parser(name, help=helptext + " (watched, in chunks)")
         s.add_argument("msteps", type=int)
     sub.add_parser("flush", help="drain the queue (emergency stop)")
+    sub.add_parser("home", help="experimental mode only: set position 0 against "
+                                "the upper stop (focus.conf)")
     sub.add_parser("unlatch", help="clear latched edges")
 
     a = p.parse_args(argv)
@@ -568,9 +757,17 @@ def main(argv: list[str] | None = None) -> int:
         return 0
     if a.command == "unlatch":
         return unlatch(m)
+    soft = read_soft()
+    if a.command == "home":
+        if not soft:
+            raise Error(f"home is for a unit whose end switch is ignored "
+                        f"({FOCUS_CONF}: limiter = ignore); here the switch counts")
+        return home(m, soft)
 
     if a.msteps < 1:
         p.error("msteps must be at least 1")
+    if soft:
+        return run_soft(m, soft, a.command == "up", a.msteps)
     return run(m, a.command == "up", a.msteps, a.chunk)
 
 
