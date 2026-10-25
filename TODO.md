@@ -731,6 +731,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 ## 4 Boards und Fremdgeräte
 
 - [ ] 4.1 `hy300-pro` (Issue #1): test10 aus `main` nach dem Release (0168, 0182, 2de0cc8, Gamma, project 0x34)
+- [ ] 4.0 **SICHERHEIT, Pflicht für jedes Gerät (Marco 25.10.2026): die Lüfter-Notabschaltung einzeln prüfen.** Der
+      Board-Manager schaltet ab, wenn der Tacho 8 aufeinanderfolgende Sekunden unter 1000 U/min liest (`fg-warn-cnt`,
+      `fg-warn-speed`, `orderly_poweroff(true)`, `fan_stall_shutdown=1` ab Werk) - lange nicht mehr gemessen. Test: Lüfter
+      anhalten (PB5 aus bzw. beim L018 PWM0 auf 0 %) für 15 s; bestanden, wenn das Journal `fan0 stalled -- powering off`
+      zeigt und das Gerät aus ist. Kein `STATUS=verified` mehr ohne diesen Test (Zeile in Abnahme und Board-README).
+      [ ] L018  [ ] HY310  [ ] HY300PRO-G-EU  [ ] HY300 Pro (Melder, nur mit dessen Ja)
 - [ ] 4.7 **L018 (Marcos eigener, 24.10.2026):** Testabbild `h713-l018-v0.97-test2-TEST` ist gebaut (Zweig `versuch/l018-board`
       `94f4594c`, Paket `arbeit/l018-board-20261024/`, `boards/l018/README.md`); nichts davon hat am Gerät gebootet. Reihenfolge:
       (a) **erledigt 24.10.:** Lampe = PWM2/PB4, dimmt mit steigendem Tastgrad (high 30 / std 50 / low 75 %, Lüfter PWM0 95/70/60 %);
@@ -743,13 +749,22 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `CONFIG_H713_BOARD_L018`): der erste Boot zeigte das Bild gespiegelt und im Gate Lampe (voll) und Lüfter an; jetzt Gate
       dunkel und leise, Bild richtig herum (PH9 low vor dem Panel-Reset), Lampe std 50 %, Lüfter 70 % (3240 U/min). Gemessen am
       Gerät nach Schnell-Deploy (`arbeit/l018-board-20261024/BERICHT.md`). HY310-Code ohne Option byte-gleich. Nicht gepusht
-- [ ] 4.9 L018 Treiber nach dem ersten grünen Boot: Lüfter-PWM0 (PH17) nach Lampenstufe/Temperatur statt fest 70 % (Stock
-      95/70/60 %); **Board-Manager liest auf dem L018 keine Temperatur** (`temp1` leer; Stock warnt 41 °C, aus bei 51 °C);
-      Launcher-Einträge (Abbild mit `--profile media,desktop` wie das Release); Lampe/Lüfter ~1 s an vor U-Boot (SPL);
-      Helligkeit 0 von pwm-backlight schaltet PWM2 ab - Pinpegel und Lampe dabei messen, ggf. sicher machen;
-      Neigungssensor `lsm6dsv` (twi2 PH4/PH5, `CONFIG_IIO_ST_LSM6DSX`, Achsenzuordnung, Werkswert `GsInitXYZ` im Secure Storage
-      als Referenz); Kamera `4098:a425` für h713-cam/Autofokus; Fokusmotor PF0..PF3 / Endschalter PB1; LEDs PL0/PL1;
-      Kopfhörerbuchse/SPDIF
+- [ ] 4.9 **L018 bis zum fertigen Board - der Plan: `arbeit/l018-board-20261024/PLAN.md`** (25.10.2026). Stock-Werte fest
+      verdrahtet, bis wir selbst messen; alles board-spezifisch (HY310 & Co. byte-gleich). Launcher: am 25.10. per apt auf das
+      Gerät gebracht (Profile media,desktop), im nächsten Abbild `--profile media,desktop`.
+  - [ ] 4.9a Temperatur: der L018 hat einen NTC (Stock `ntc_num 1`, GPADC Kanal 1), der HY310 keinen - unser Baum erbt 0. DT
+        mit eigener `gpadc-table` und Stock-Schwellen (warn 41, aus 51, resume 34 °C), messen, dann Abschaltung bei 51 °C scharf
+  - [ ] 4.9b Drei Lampenstufen low/std/high mit gekoppeltem Lüfter (Stock: Lampe 75/50/30 %, Lüfter 60/70/95 %, dazu die
+        Temperaturtabelle 30-60 °C → 70-100 %; Lüfter = Maximum aus beiden): Board-Manager besitzt Lampe (`bl0`, PWM2) und
+        Lüfter (PWM0), sysfs `lamp_mode`, Werkzeug `h713-lamp`, Stufe in `/etc/h713/lamp.conf`
+  - [ ] 4.9c Bedienung: Mockup zuerst (englisch), dann Zeile `Lamp` (Low/Standard/High) in h713-settings und Knöpfe in
+        h713-panel; sichtbar nur mit Feature `lamp-modes` (FEATURES + h713-features); Temperatur/Drehzahl als Anzeige
+  - [ ] 4.9d Hardware testen: Fokusmotor (Stock PF0..PF3, Endschalter PB1, step-type 4, cycle 3), Kamera `4098:a425`
+        (h713-features kennt nur „HD camera"), Neigungssensor `lsm6dsv` + Keystone automatisch und von Hand, LEDs PL0/PL1,
+        Ein/Aus und IR aus dem Gate, HDMI/HDCP, Ton/Kopfhörer, Kodi/VA-API, BT-Fernbedienung
+  - [ ] 4.9e Kleinkram: Lampe/Lüfter ~1 s an vor U-Boot (SPL); Helligkeit 0 von pwm-backlight (entfällt mit 4.9b)
+  - [ ] 4.9f In die Linie: test3 mit Profilen, Abnahme inkl. 4.0, `verified`, Fork `versuch/l018` → `h713-hy310`, Zweig → `main`
+        (Push nur mit Marcos Ja)
 
 ## 5 Installer und Werkzeuge
 
