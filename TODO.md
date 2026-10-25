@@ -737,7 +737,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       anhalten (PB5 aus bzw. beim L018 PWM0 auf 0 %) für 15 s; bestanden, wenn das Journal `fan0 stalled -- powering off`
       zeigt und das Gerät aus ist. Kein `STATUS=verified` mehr ohne diesen Test (Zeile in Abnahme und Board-README).
       [x] L018 (25.10.2026 nachts: PWM0 auf 0 % → 0 U/min nach 3,5 s, Urteil nach 8 Takten, geordnet aus in 6,2 s, Gate;
-      `arbeit/l018-board-20261024/BERICHT.md` „Nachtarbeit")  [ ] HY310  [ ] HY300PRO-G-EU  [ ] HY300 Pro (Melder, nur mit dessen Ja)
+      `arbeit/l018-board-20261024/BERICHT.md` „Nachtarbeit"; **im Betrieb bestätigt 25.10. ~23:50 (Marco): sein L018-Lüfter geht
+      manchmal von selbst aus - ein Defekt dieser Unit -, und die Notabschaltung hat das Gerät ausgeschaltet**; das Journal
+      dazu nicht gelesen, nach dem nächsten Start `journalctl -b -1`, falls es dauerhaft ist)  [ ] HY310  [ ] HY300PRO-G-EU  [ ] HY300 Pro (Melder, nur mit dessen Ja)
       HY310 und G-EU: **nur wenn Marco die Lüfter absteckt** (Marco 25.10.: „du kannst keine Notaus-Tests machen, ohne dass ich die
       Fans abstecke") - nicht per PB5 aus der Ferne
 - [ ] 4.7 **L018 (Marcos eigener, 24.10.2026):** Testabbild `h713-l018-v0.97-test2-TEST` ist gebaut (Zweig `versuch/l018-board`
