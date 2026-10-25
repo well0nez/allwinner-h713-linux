@@ -294,9 +294,11 @@ elapsed() { local s=$(( $(date +%s) - T0 )); printf '%d min %02d s' $((s/60)) $(
 # A step's inputs are collected in IN (inp, tree_in, git_in, in_step); stamp_fits takes the step over when the stamp has the same
 # hash and every result is still as it says, and otherwise removes the stamp, so that an abort leaves none; stamp_write follows
 # the build. in_step puts the results of a step this run went through among the inputs of the next: a step that comes out with
-# other bytes carries the ones after it along, one that comes out with the same bytes lets them stand.
+# other bytes carries the ones after it along, one that comes out with the same bytes lets them stand. Those are the bytes and the
+# names below each result (res_of): a kernel tree named after its input hash is the same result when its files are.
 STEMPEL="$MAINLINE/build/stempel"; IN=() TAKEN=() BUILT=() FOREIGN=(); declare -A RES
 sha()  { sha256sum | cut -c1-64; }
+res_of() { awk '$1 == "result" { n = length($2) } $1 == "sha256" { print $2, substr($0, 74 + n) }' "$1" | sha; }
 inp()  { IN+=("$*"); }
 # <label> <dir> [pathspec ...]: the files as they are there, tracked and untracked but not ignored: a dirty tree hashes differently
 tree_in() { inp "$1 $(git -C "$2" ls-files -z -co --exclude-standard -- "${@:3}" | LC_ALL=C sort -z | (cd "$2" && xargs -0r sha256sum 2>&1) | sha)"; }
@@ -311,7 +313,7 @@ stamp_fits() {   # <step>: 0 = its stamp fits (the step is taken over, its "var"
 	elif ! grep -qx "input $STEP_IN" "$st"; then why="its inputs are not those of the stamp"
 	elif ! (cd "$ROOT" && sed -n 's/^sha256 //p' "$st" | sha256sum -c --quiet >/dev/null 2>&1); then why="a result is not what the stamp says"
 	else
-		RES[$1]=$(sed -n 's/^sha256 //p' "$st" | sha)
+		RES[$1]=$(res_of "$st")
 		while read -r n v; do printf -v "$n" '%s' "$v"; done < <(sed -n 's/^var //p' "$st")
 		c=$(sed -n 's/^commit //p' "$st"); TAKEN+=("$1")
 		[[ "$c" == "$REPRO_FULL" && -z $REPRO_DIRTY ]] || FOREIGN+=("$1 (stamp: $c)")
@@ -327,10 +329,10 @@ stamp_write() {   # <step> [NAME ...] -- <result> ...: a result is a file (a lin
 	{ echo "input $STEP_IN"; echo "commit $REPRO_FULL${REPRO_DIRTY:+ +$REPRO_DIRTY}"; echo "built $(date -u '+%Y-%m-%dT%H:%M:%SZ')"
 	  for n in "${vars[@]+"${vars[@]}"}"; do echo "var $n ${!n}"; done
 	  for p; do p=${p#"$ROOT"/}; [[ -e "$ROOT/$p" ]] || die "step $step: no result at $p"
-		(cd "$ROOT" && if [[ -d $p ]]; then find "$p" -type f -print0 | LC_ALL=C sort -z | xargs -0r sha256sum; else sha256sum "$p"; fi | sed 's/^/sha256 /'); done
+		echo "result $p"; (cd "$ROOT" && if [[ -d $p ]]; then find "$p" -type f -print0 | LC_ALL=C sort -z | xargs -0r sha256sum; else sha256sum "$p"; fi | sed 's/^/sha256 /'); done
 	} > "$STEMPEL/$step.part"
 	mv "$STEMPEL/$step.part" "$STEMPEL/$step"
-	RES[$step]=$(sed -n 's/^sha256 //p' "$STEMPEL/$step" | sha); BUILT+=("$step")
+	RES[$step]=$(res_of "$STEMPEL/$step"); BUILT+=("$step")
 }
 
 say "build-all $NAME  ($(date '+%Y-%m-%d %H:%M'))"
