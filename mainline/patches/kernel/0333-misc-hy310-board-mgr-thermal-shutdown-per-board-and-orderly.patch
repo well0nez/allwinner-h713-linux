@@ -17,7 +17,10 @@ kernel_power_off(): no userspace shutdown, the file systems not unmounted.
 
 No tree sets thermal-shutdown yet, so nothing changes on any board until
 one does; with the parameter set the power off is now orderly instead of
-immediate. Built in the h713-build container. Not measured: the NTC has
+immediate.
+Since 25.10.2026 the L018's tree (0331) sets it - without the thermometer
+(its owner has none): the table and the conversion are the stock ones,
+and the stock firmware powers off at the same 51 C. No other tree sets it. Built in the h713-build container. Not measured: the NTC has
 not been near a power off threshold on any board.
 
 diff -ruN a/drivers/misc/hy310-board-mgr.c b/drivers/misc/hy310-board-mgr.c
