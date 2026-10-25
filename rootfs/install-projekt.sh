@@ -211,6 +211,22 @@ board_volume_curve() {
 	printf '%s' "$got"
 }
 
+# FOCUS_HOMING and FOCUS_STEPS of boards/$H713_BOARD (variant.env over board.env), as "HOMING STEPS" with "-" for unset:
+# FOCUS_HOMING=0 keeps the focus motor's reference run at probe off (/etc/modprobe.d/h713-focus.conf, hy310_focus_motor
+# homing=0), FOCUS_STEPS=N (1..100) is h713-keys' focus_steps, the travel of one press of a focus key. Unset: the driver
+# homes, a press is keys.conf's 20. Another value stops the build.
+board_focus() {
+	local env="$PROJECT_ROOT/boards/$H713_BOARD/board.env" got h s
+	got=$( set +u; . "$env" >/dev/null 2>&1 || exit 1
+		[[ -z "$H713_VARIANT" ]] || . "${env%/board.env}/variants/$H713_VARIANT/variant.env" >/dev/null 2>&1 || exit 1
+		printf '%s %s' "${FOCUS_HOMING:--}" "${FOCUS_STEPS:--}" ) || { warn "boards/$H713_BOARD: board.env not sourceable"; return 1; }
+	read -r h s <<< "$got"
+	[[ "$h" == - || "$h" == 0 || "$h" == 1 ]] || { warn "boards/$H713_BOARD: FOCUS_HOMING '$h' is neither 0 nor 1"; return 1; }
+	[[ "$s" == - ]] || { [[ "$s" =~ ^[0-9]+$ ]] && ((s >= 1 && s <= 100)); } || \
+		{ warn "boards/$H713_BOARD: FOCUS_STEPS '$s' is not 1..100"; return 1; }
+	printf '%s %s' "$h" "$s"
+}
+
 # /etc/h713/keystone.conf as the image carries it: the tool's defaults with the board's KEYSTONE over
 # them. A key the tool does not have, or a value it cannot read, stops the build.
 keystone_conf() {
@@ -341,6 +357,7 @@ check_sources() {
 	if [[ -n "$H713_BOARD" ]] && ! board_features >/dev/null; then errors=1; fi
 	if [[ -n "$H713_BOARD" ]] && ! board_hostname >/dev/null; then errors=1; fi
 	if [[ -n "$H713_BOARD" ]] && ! board_volume_curve >/dev/null; then errors=1; fi
+	if [[ -n "$H713_BOARD" ]] && ! board_focus >/dev/null; then errors=1; fi
 	if [[ -x "$H713_KS_SRC/h713-keystone" ]] && ! keystone_conf >/dev/null; then errors=1; fi
 	if [[ -n "$H713_CRUST_BIN" ]]; then
 		[[ -f "$H713_CRUST_BIN" && -n "$H713_BOARD" ]] || \
@@ -767,6 +784,23 @@ install -m 0644 "$H713_KEYS_SRC/h713-keys.service" "$TREE/etc/systemd/system/h71
 install -D -m 0644 "$H713_KEYS_SRC/70-h713-remote.rules" "$TREE/etc/udev/rules.d/70-h713-remote.rules"   # OK and Menu to codes a client gets
 ln -sfn ../h713-keys.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-keys.service"
 [[ -f "$TREE/etc/h713/keys.conf" ]] || install -m 0644 "$H713_KEYS_SRC/keys.conf" "$TREE/etc/h713/keys.conf"
+# the board's focus (board.env FOCUS_STEPS, FOCUS_HOMING): one press's travel, and no reference run at probe
+if [[ -n "$H713_BOARD" ]]; then
+	BF=$(board_focus) || die "boards/$H713_BOARD: FOCUS_HOMING/FOCUS_STEPS not usable (see above)"
+	read -r FH FS <<< "$BF"
+	if [[ "$FS" != - ]]; then
+		grep -q '^focus_steps *=' "$TREE/etc/h713/keys.conf" || die "/etc/h713/keys.conf has no focus_steps line"
+		sed -i "s/^focus_steps *=.*/focus_steps = $FS   # board $H713_BOARD (board.env FOCUS_STEPS)/" "$TREE/etc/h713/keys.conf"
+		info "keys.conf: focus_steps = $FS (board $H713_BOARD)"
+	fi
+	if [[ "$FH" == 0 ]]; then
+		install -d "$TREE/etc/modprobe.d"
+		printf '%s\n' "# Written by install-projekt.sh: board $H713_BOARD (board.env FOCUS_HOMING=0) - no reference run of the focus" \
+			"# motor at probe; its end switch is not proven on this board. Remove the file to home again." \
+			"options hy310_focus_motor homing=0" > "$TREE/etc/modprobe.d/h713-focus.conf"
+		info "/etc/modprobe.d/h713-focus.conf: homing=0 (board $H713_BOARD)"
+	fi
+fi
 install -D -m 0644 "$H713_KEYS_SRC/README.md" "$TREE/usr/local/share/doc/h713-keys/README.md"
 install -m 0755 "$H713_OSD_BIN" "$TREE/usr/local/sbin/h713-osd"
 install -m 0644 "$H713_OSD_SRC/h713-osd.service" "$TREE/etc/systemd/system/h713-osd.service"
