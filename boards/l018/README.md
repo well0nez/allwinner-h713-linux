@@ -30,17 +30,17 @@ and `pinmux-pins`, 24.10.2026). "fn" is the pin function number of our pinctrl t
 
 | What | HY310 | L018 | In patch 0331 |
 |---|---|---|---|
-| PH4/PH5 | focus motor phases | **twi2** (fn 5), the accelerometer's bus | `motor_ctr` off |
-| PH6/PH7 | focus motor phases | fn 2 (uart4) | `motor_ctr` off |
-| Accelerometer | SC7A20 at 0x18 on twi1 (PH2/PH3) | `lsm6dsv` at 0x6a on twi2, driver bound under stock; PH2/PH3 disabled | `twi1` off; the sensor is not described yet |
+| PH4/PH5 | focus motor phases | **twi2** (fn 5), the accelerometer's bus | `twi2` described (stock: SPI 9, 100 kHz) |
+| PH6/PH7 | focus motor phases | fn 2 (uart4) | not used |
+| Accelerometer | SC7A20 at 0x18 on twi1 (PH2/PH3) | `lsm6dsv` at 0x6a on twi2, driver bound under stock; PH2/PH3 disabled | `twi1` off; `st,lsm6dsv` at 0x6a on twi2, no interrupt (`st_lsm6dsx`, a module; h713-keystone reads it through sysfs); its IIO name and axes are not measured |
 | Fan tacho | PH17 | PH13 (stock `fg-gpio`, EINT under stock) | `fg-gpio` PH13 |
 | Fan speed | on/off on PB5 | PWM0 on **PH17** (fn 3): 95/70/60 % with the lamp at high/std/low; PB5 the rail as on the HY310 | the board manager's `fan0` (`duty-array-policy1 <70 60 95 70>`, kernel 0332), set with the lamp; U-Boot sets the stock std before (2880/3210 rpm at low/std, 25.10.2026) |
 | Lamp | not dimmable | PWM2 on **PB4** (fn 2), 25 kHz; **dims as the duty rises**: the three stock modes switched on the unit read high 30 %, std 50 %, low 75 % (the stock fan node's `bl0` duty-array 50/75/30/75), PWM3 stays off | the board manager's `bl0` (stock duty-array, `lamp-mode-names` std/low/high, thermal mode 3), pwm-backlight off; `h713-lamp status \| set MODE`, kept in `/etc/h713/lamp.conf` |
-| Focus motor | PH4..PH7, end switch PH14 | PF0..PF3 (outputs under stock), end switch PB1; app `com.hysd.vafocus` | not described yet |
+| Focus motor | PH4..PH7, end switch PH14 | PF0..PF3 (outputs under stock), end switch PB1, `motor-cycle` 3; app `com.hysd.vafocus` | `motor_ctr` with PF0..PF3, PB1, cycle 3; homing and the end switch's pull-up are the HY310's and not measured here - the first test loads the driver with `homing=0` |
 | Camera | Realtek `0bda:5803` | `4098:a425` "HYSD-VAF02-ZH04", UVC, with a HID button | nothing needed (USB) |
 | Panel keys | 6 | none but the power key (owner, 24.10.2026); the seven LRADC keys of the stock tree are its template | - |
 | NTC | none (stock `ntc_num 0`) | GPADC channel 1, its own table 0..55 °C; warn 41, power off 51, resume 34 °C | `ntc_num 1`, the stock table and thresholds (21.4 °C read at a CPU of 49 °C, 25.10.2026; not held against a thermometer yet) |
-| LEDs | - | power PL0, status PL1 | not described yet |
+| LEDs | - | power PL0 (red, `standby_param`), status PL1 (blue, active low); the stock fan driver sets PL0 high, PL1 low at probe | `gpio-leds` at those levels; the colour seen is not measured |
 | Audio | - | headphone jack and SPDIF pins enabled in the stock tree | not described yet |
 
 ## What the first install showed (25.10.2026)

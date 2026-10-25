@@ -6,11 +6,16 @@ HY310's DRAM words, panel (project 0x30) and display firmware, so its tree
 is the HY310's with what this board's own stock device tree and its pin
 state under stock (read on a running unit, 24.10.2026) say differently:
 
-- motor_ctr off: PH4/PH5 are twi2 here, the accelerometer's bus, and
-  PH6/PH7 are on function 2; the HY310's focus motor drives PH4..PH7 and
-  homes at probe. This board's own motor is on PF0..PF3 and is not
-  described yet.
+- PH4/PH5 are twi2 here, the accelerometer's bus: twi2 (from the stock
+  tree: SPI 9, 100 kHz, the dtsi's twi1 clock and reset plus one) with the
+  LSM6DSV at 0x6a the stock firmware bound, no interrupt line.
+- The focus motor on this board's own pins: phases PF0..PF3 (the SD
+  card's, sdmmc is off), end switch PB1, motor-cycle 3; the rest as the
+  HY310's, as in the stock tree. The driver's homing and end switch
+  pull-up are measured on the HY310 only.
 - twi1 off: PH2/PH3 are disabled under stock.
+- The power key's two LEDs as gpio-leds at the levels the stock fan
+  driver sets at probe: PL0 high, PL1 (active low) low.
 - The fan tacho is PH13, as on the HY200 QZ713DF A1.
 - Lamp and fan belong to the board manager, as under stock (patch 0332):
   PWM0 on PH17 is the fan's speed, PWM2 on PB4 the lamp's dimmer, which
@@ -43,7 +48,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinn
 diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts
-@@ -0,0 +1,134 @@
+@@ -0,0 +1,208 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * L018 projector (Allwinner H713; stock Android 11 of 2025-05-14,
@@ -56,27 +61,24 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 + * differs, and what this file does about it:
 + *
 + *  - PH4/PH5 are twi2 on this board, the bus of its accelerometer (lsm6dsv
-+ *    at 0x6a), and PH6/PH7 are on function 2. The HY310's focus motor drives
-+ *    PH4..PH7 and homes at probe, so motor_ctr is off. This board's own motor
-+ *    (phases PF0..PF3, end switch PB1) is not described yet.
++ *    at 0x6a), and PH6/PH7 are on function 2: twi2 and the sensor are
++ *    described below. The focus motor has its own pins here (phases
++ *    PF0..PF3, end switch PB1) and motor-cycle 3.
 + *  - twi1 (PH2/PH3, the HY310's SC7A20) is disabled under stock: off here.
 + *  - The fan: the tacho is PH13 (stock fan0 fg-gpio, on EINT under stock) -
 + *    the board manager powers off when it counts too little, so it has to
-+ *    count the right pin. Its speed is PWM0 on PH17 (function 3 under stock:
-+ *    95/70/60 % with the lamp at high/std/low). U-Boot (CONFIG_H713_BOARD_L018)
-+ *    sets PWM0 to the stock std 70 % before the fan's rail comes up, and this
-+ *    tree leaves PH17 and PWM0 as they are found.
-+ *  - The lamp: PWM2 on PB4 (function 2 = pwm2 under stock, 25 kHz), and it
-+ *    dims as the duty rises - the three stock modes, switched on a running
-+ *    unit with the registers read along (24.10.2026): high 30 %, std 50 %,
-+ *    low 75 %, the fan's PWM0 at 95/70/60 %. The dtsi's pwm-backlight keeps
-+ *    its PWM with exactly those duties (below).
++ *    count the right pin. Its speed is PWM0 on PH17.
++ *  - The lamp: PWM2 on PB4, and it dims as the duty rises. Lamp and fan
++ *    belong to the board manager, set together from the stock modes (std,
++ *    low, high and the thermal mode); pwm-backlight is off.
++ *  - The NTC on GPADC channel 1 with this board's table and thresholds.
 + *  - PB5 enables lamp and fan as on the HY310 (stock fan0 fan-power-gpio,
 + *    output high under stock); the board manager keeps it.
++ *  - The two LEDs of the power key (PL0, PL1) at the levels the stock kernel
++ *    sets.
 + *  - The vendor ARISC firmware, as on the HY300 Pro: crust has run on the
 + *    HY310 only.
 + *
-+ * Not described yet: the accelerometer, the focus motor, the LEDs (PL0/PL1).
 + * The camera is USB and needs nothing here. The board has no keys but the
 + * power key (PL4, as on the HY310); the stock tree's seven LRADC keys are its
 + * template.
@@ -87,18 +89,95 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 +/ {
 +	model = "L018 (Allwinner H713)";
 +	compatible = "magcubic,l018", "allwinner,sun50i-h713";
++
++	/*
++	 * The two LEDs of the power key. The stock fan driver drives them at
++	 * probe as its tree says: power-led-gpio PL0 (flags 0) to 1,
++	 * status-led-gpio PL1 (flags 1, active low) to 0 (pwm_fan_probe,
++	 * read off the stock kernel 25.10.2026). Both "on" here gives the same
++	 * levels. standby_param names PL0 the red and PL1 the blue LED; which
++	 * colour the owner then sees is not measured.
++	 */
++	leds {
++		compatible = "gpio-leds";
++
++		led-power {
++			label = "l018:power";
++			gpios = <&r_pio 0 0 GPIO_ACTIVE_HIGH>;	/* PL0 */
++			default-state = "on";
++		};
++
++		led-status {
++			label = "l018:status";
++			gpios = <&r_pio 0 1 GPIO_ACTIVE_LOW>;	/* PL1 */
++			default-state = "on";
++		};
++	};
++};
++
++/*
++ * twi2 with the accelerometer the stock firmware bound, an LSM6DSV at 0x6a
++ * (the stock tree also lists an LSM6DSR at 0x6b and an ICM42600 at 0x68 for
++ * other assemblies). Controller from the stock tree: SPI 9, 100 kHz; the
++ * clock and reset are the dtsi's twi1 ones plus one, as stock twi1 (SPI 8,
++ * clock 0x46, reset 0x1c) and twi2 (SPI 9, 0x47, 0x1d) are. No interrupt
++ * line: st_lsm6dsx then has no buffer, h713-keystone reads through sysfs.
++ */
++&{/soc} {
++	twi2: i2c@2502800 {
++		compatible = "allwinner,sun50i-h6-i2c",
++			     "allwinner,sun6i-a31-i2c";
++		reg = <0x02502800 0x400>;
++		interrupts = <GIC_SPI 9 IRQ_TYPE_LEVEL_HIGH>;
++		clocks = <&ccu CLK_BUS_TWI2>;
++		resets = <&ccu RST_BUS_TWI2>;
++		pinctrl-names = "default";
++		pinctrl-0 = <&l018_twi2_pins>;
++		clock-frequency = <100000>;
++		#address-cells = <1>;
++		#size-cells = <0>;
++		status = "okay";
++
++		accelerometer@6a {
++			compatible = "st,lsm6dsv";
++			reg = <0x6a>;
++		};
++	};
 +};
 +
 +&twi1 {
 +	status = "disabled";
 +};
 +
++/*
++ * The focus motor, with this board's own pins and timing from its stock tree:
++ * phases PF0..PF3 (the SD card's pins - sdmmc is off in both stock trees),
++ * the upper end switch PB1, motor-cycle 3 (the HY310's is 2). The tables,
++ * step-num, the delays and active_level are the HY310's, as in the stock tree.
++ * motor-step-type 4 is copied but moves nothing: the stock driver only stores
++ * and shows it (motor_step_num in sysfs), none of its move functions reads it.
++ * The driver homes at probe and pulls the end switch up, both measured on the
++ * HY310 only; the first test on this board loads it with homing=0.
++ */
 +&motor_ctr {
-+	status = "disabled";
++	motor-gpio-phase0 = <&pio 5 0 0>;	/* PF0 */
++	motor-gpio-phase1 = <&pio 5 1 0>;	/* PF1 */
++	motor-gpio-phase2 = <&pio 5 2 0>;	/* PF2 */
++	motor-gpio-phase3 = <&pio 5 3 0>;	/* PF3 */
++	limiter-up-gpio = <&pio 1 1 0>;		/* PB1 */
++	motor-cycle = <3>;
++	motor-step-type = <4>;
 +};
 +
-+/* The stock L018's own pin groups for the two PWMs (both 10 mA). */
++/* The stock L018's own pin groups for the two PWMs and twi2 (all 10 mA). */
 +&pio {
++	l018_twi2_pins: l018-twi2-pins {
++		pins = "PH4", "PH5";
++		function = "twi2";
++		drive-strength = <10>;
++		bias-pull-up;
++	};
++
 +	l018_pwm0_pin: l018-pwm0-pin {
 +		pins = "PH17";
 +		function = "pwm0";

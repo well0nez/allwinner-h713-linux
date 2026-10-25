@@ -1,0 +1,85 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: misc: hy310-board-mgr: thermal-shutdown per board, an orderly power off
+
+The NTC's power off was armed only by the module parameter
+thermal_shutdown, which arms it on every board, and it called
+kernel_power_off(): no userspace shutdown, the file systems not unmounted.
+
+- A board's tree arms it for that board alone with the boolean property
+  thermal-shutdown in the board manager's node - for the L018 once its NTC
+  has been held against a thermometer; the parameter stays and still arms
+  it everywhere.
+- The power off goes the way of the fan stall: orderly_poweroff(true),
+  once, with a dev_emerg line that names the temperature and the
+  threshold. The stock firmware leaves it to Android after a
+  TEMP_STATE=SHUTDOWN uevent (pwm_fan.c, read off the L018's stock kernel
+  25.10.2026); no userspace listens for that here.
+
+No tree sets thermal-shutdown yet, so nothing changes on any board until
+one does; with the parameter set the power off is now orderly instead of
+immediate. Built in the h713-build container. Not measured: the NTC has
+not been near a power off threshold on any board.
+
+diff -ruN a/drivers/misc/hy310-board-mgr.c b/drivers/misc/hy310-board-mgr.c
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -131,6 +131,10 @@
+  * table. What is still missing is the comparison of the curve against a
+  * reference thermometer on the device; until then the driver only reports and warns.
+  * Set thermal_shutdown=1 only once temp1_input has been measured on the device.
++ *
++ * A board's tree can arm it for that board alone with the boolean property
++ * thermal-shutdown in the board manager's node, once its NTC has been held
++ * against a thermometer; the parameter arms it everywhere.
+  */
+ static bool thermal_shutdown;
+ module_param(thermal_shutdown, bool, 0644);
+@@ -303,6 +307,8 @@
+ 
+ 	/* Set once a poweroff has been requested, so it is requested only once */
+ 	bool			 poweroff_started;
++	/* thermal-shutdown in the tree, or the parameter */
++	bool			 thermal_shutdown;
+ 	/* jiffies: the fan rail came back at resume, no stall verdict before */
+ 	unsigned long		 fan_judge_after;
+ 
+@@ -839,16 +845,26 @@
+ 			priv->ntc.poweroff_cycles, NTC_POWEROFF_CYCLES);
+ 
+ 		if (priv->ntc.poweroff_cycles >= NTC_POWEROFF_CYCLES) {
+-			if (!thermal_shutdown) {
++			if (!priv->thermal_shutdown && !thermal_shutdown) {
+ 				/* Report once per crossing, then keep counting. */
+ 				if (priv->ntc.poweroff_cycles == NTC_POWEROFF_CYCLES)
+ 					dev_err(priv->dev,
+ 						"NTC: thermal emergency (shutdown disabled, set thermal_shutdown=1 to arm)\n");
+ 			} else {
+-				dev_err(priv->dev,
+-					"NTC: thermal emergency, initiating poweroff\n");
+-				kernel_power_off();
+-				return;
++				/*
++				 * As at a stalled fan: userspace gets its shutdown (the
++				 * file systems are synced and unmounted), the force flag
++				 * makes sure a wedged userspace does not keep a hot box
++				 * running. The stock firmware leaves it to Android, after
++				 * a TEMP_STATE=SHUTDOWN uevent; here nobody would listen.
++				 */
++				if (!priv->poweroff_started) {
++					priv->poweroff_started = true;
++					dev_emerg(priv->dev,
++						  "NTC: thermal emergency, %d C above %d C -- powering off\n",
++						  temp_c, priv->temp_poweroff_c);
++					orderly_poweroff(true);
++				}
+ 			}
+ 		}
+ 	} else {
+@@ -1416,6 +1432,7 @@
+ 		priv->temp_warn_c = DEFAULT_TEMP_WARN_C;
+ 	if (of_property_read_u32(np, "temp_resume", &priv->temp_resume_c))
+ 		priv->temp_resume_c = INT_MIN;
++	priv->thermal_shutdown = of_property_read_bool(np, "thermal-shutdown");
+ 
+ 	/* ---- ntc subnode: enable, source and channel ---- */
+ 	priv->ntc_source = HY310_NTC_SOURCE_GPADC;
