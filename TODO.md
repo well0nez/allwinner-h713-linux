@@ -794,7 +794,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Kamera „HYSD-VAF02-ZH04" → `CAMERA_NAMES`; Fokus-Endschalter PB1 auf Marcos Unit tot (beide Anschläge, alle Pins geprüft) →
         experimenteller Zählbereich nur für diese Unit (`/etc/h713/focus.conf`, `h713-focus home`), Schachbrett-Autofokus findet
         den Scheitel; Keystone: `iio_name` richtig, ~~Achsen offen (zwei Lagen mit Marco, später)~~ **Achsen und Optik gemessen 25.10. abends (`versuch/l018-board` `9bd17502` Sensor-Digit gegen NaN, `cfe9c6cf` board.env `KEYSTONE` mit `throw_ratio = 1.1501` aus der L018-eigenen `camprjspe.ini`): bei 18,6° von vorn gerade (Marco)**; Vorzeichen der Rollachse nicht gemessen und praktisch ohne Belang (der Bügel kippt nur um sein Scharnier, seitlich nur auf schiefer Stellfläche; Marco 25.10.), `after_move` bleibt Standard aus
-  - [ ] 4.9h Autofokus bei offenem Launcher - **gebaut (`versuch/autofocus-launcher` `9728dd27`, h713-tv `ctl bare` + Handover)
+  - [x] 4.9h Autofokus bei offenem Launcher - **in `main` seit 26.10. (`c94be434`), validiert an L018, HY310 (Gegenprobe Pegel 11 → 14968) und G-EU; gebaut (`versuch/autofocus-launcher` `9728dd27`, h713-tv `ctl bare` + Handover)
         und am L018 gemessen 26.10. ~00:05 (Kombi-Zweig `versuch/l018-af-kombi` `9d0beed4`, `arbeit/l018-board-20261024/BERICHT.md`):**
         Gegenprobe alter Stand Ende 3 „no picture" (Pegel 706); neu Launcher 29586, Einstellungen 34790, „No signal" 34695, ohne
         Seite 34751 (Untergrenze 3227), jedes Mal Ende 0 und die Seite danach wieder da. Dazu 26.10. ~00:25 mit HDMI-Bild + Launcher (Warp an): 33772, Warp und Launcher danach wieder da. Offen: nach `main` (Messung bestanden),
@@ -824,7 +824,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         nicht gemessen; Kandidaten: Reihenfolge Panel-Reset (PH9/PH16, `CONFIG_H713_BOARD_L018`) gegen Lampe an (PB5/PWM2 std nach
         dem Gate) und Logo-Start der Display-Firmware. Messen: UART-Zeiten der L018-Zeilen gegen Kamera-/Augenbeobachtung; Stock-Ablauf
         zum Vergleich (dort kein Weiß gesehen? Marco fragen)
-  - [ ] 4.9f In die Linie: test3 mit Profilen, Abnahme inkl. 4.0, `verified`, Fork `versuch/l018` → `h713-hy310`, Zweig → `main`
+  - [ ] 4.9f In die Linie - **Code in `main` seit 26.10. (`c94be434`, Marcos Ja), Fork `h713-hy310` = `c97e5c6b`; vorher am L018, HY310 und
+        G-EU validiert (`arbeit/l018-board-20261024/VALIDIERUNG.md`), Worktrees und `versuch/*` aufgeräumt; offen: test3 mit Profilen,
+        Abnahme, `verified` - „deutlich später" (Marco)**. Ursprünglich: test3 mit Profilen, Abnahme inkl. 4.0, `verified`, Fork `versuch/l018` → `h713-hy310`, Zweig → `main`
         (Push nur mit Marcos Ja)
 - [ ] 4.10 **Panel `0x33` fehlt in `h713_disp_panels[]`** (Issue #3, LOSEI X9, 25.10.2026): die Panel-Tabelle des U-Boot-Forks
       kennt `0x30` (1920x1080 dual) und `0x34` (1280x720 single); der X9 meldet `0x33`, 1280x720 single LVDS, htotal 1600,
