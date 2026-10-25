@@ -785,11 +785,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         (h713-features kennt nur „HD camera"), Neigungssensor `lsm6dsv` + Keystone automatisch und von Hand, LEDs PL0/PL1,
         Ein/Aus und IR aus dem Gate, HDMI/HDCP, Ton/Kopfhörer, Kodi/VA-API, BT-Fernbedienung
   - [ ] 4.9e Kleinkram: Lampe/Lüfter ~1 s an vor U-Boot (SPL) - **gebaut im Fork `d54ab262` (`versuch/l018`), HY310 byte-gleich;
-        schreiben nur mit Marco (`deploy-runde2.sh U`, Kaltstart)**; ~~Helligkeit 0 von pwm-backlight~~ (entfällt, pwm-backlight ist aus);
+        schreiben nur mit Marco (`deploy-runde2.sh U`, Kaltstart)** - **geschrieben 25.10., Marco: Licht bleibt bis zum Start aus, kein Weiß mehr; dazu `c97e5c6bb78`: Taste rot im Gate (Marco gesehen), blau ab dem Start; Zweig-Zeiger und Spiegel noch auf `b0795ef3079`**; ~~Helligkeit 0 von pwm-backlight~~ (entfällt, pwm-backlight ist aus);
         Ton: die Stock-`audio_config.ini` des L018 geht bis 0 dB statt -38 (HY310) - eigene Lautstärkegrenze, leise anfangen
         (h713-tv fährt die HY310-Kurve fest: oben -9,5 dB, am L018 ~10 dB leiser als Stock; eigene Kurve erst nach Hörtest);
         `h713-features` `lamp-modes` und `docs/tools/h713-lamp.md` mit der UI bzw. der Integration
-  - [ ] 4.9g **Weißes Bild vor dem Logo** (Marco 25.10.2026 morgens: „beim l018 startet das bild weiß bevor das logo kommt, hier
+  - [x] 4.9g **Weißes Bild vor dem Logo** - **erledigt 25.10. mit dem SPL aus 4.9e (`d54ab262`), Marco: „kein weiß mehr"** (Marco 25.10.2026 morgens: „beim l018 startet das bild weiß bevor das logo kommt, hier
         ist auch der init irgendwie nicht so geil - für später"): beim Einschalten zeigt das Panel kurz Weiß, dann das Logo. Ursache
         nicht gemessen; Kandidaten: Reihenfolge Panel-Reset (PH9/PH16, `CONFIG_H713_BOARD_L018`) gegen Lampe an (PB5/PWM2 std nach
         dem Gate) und Logo-Start der Display-Firmware. Messen: UART-Zeiten der L018-Zeilen gegen Kamera-/Augenbeobachtung; Stock-Ablauf
