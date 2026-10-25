@@ -16,7 +16,7 @@ from the profiles so that the moved extractor code keeps behaving byte for byte 
 
 from __future__ import annotations
 
-from . import hy200_qz713_v2, hy200_qz713df_a1, hy300_pro, hy300_t08, hy310, hy350, l018
+from . import hy200_qz713_v2, hy200_qz713df_a1, hy300_pro, hy300_t08, hy310, hy350, l018, losei_x9
 
 #: board id -> profile dict. The id is also the module name.
 PROFILES = {
@@ -27,6 +27,7 @@ PROFILES = {
     "hy300_pro": hy300_pro.PROFILE,
     "hy200_qz713df_a1": hy200_qz713df_a1.PROFILE,
     "hy200_qz713_v2": hy200_qz713_v2.PROFILE,
+    "losei_x9": losei_x9.PROFILE,
 }
 
 #: the values "status" may take. Only "verified" may produce an image (doku/121 section 5).
@@ -109,7 +110,7 @@ def expected_features(profile):
 # The sha256 of a display.bin names its board, its project id and its panel; "hdcp_wait_va" is the
 # address of the wait site inside that revision (A5, .hdcp_wait_va of h713_mips_fw_revs[]).
 # Only the first two rows are declared by h713_mips_fw_revs[] in arch/arm/mach-sunxi/h713_mips.c --
-# the other two are revisions we have measured but which no row of that table declares, so they carry
+# the others are revisions we have measured but which no row of that table declares, so they carry
 # neither a project id nor a panel. UBOOT_FW_REVS below is the part the readers ask.
 FIRMWARE_REVISIONS = (
     {"board": "HY200 QZ713DF_A1", "project_id": 0x34, "panel": "1280x720", "size": 0x132910,
@@ -133,6 +134,13 @@ FIRMWARE_REVISIONS = (
     {"board": "HY200 QZ713_V2", "project_id": None, "panel": None, "size": 0x1328f0,
      "sha256": "4628cbaf8c93ea12ec59e871e4250facf0773daae722b251c73f1fad81e80c2c",
      "hdcp_wait_va": 0x4b13d538},
+    # Row "ADT-3 2024-09" (issue #3, 25.10.2026, the LOSEI X9's vendor copy): size 0x131b10 is
+    # declared by no row of h713_mips_fw_revs[] either, so it carries neither a project id nor a
+    # panel -- the board's panel_config.ini declares ProjectID 0x33, 1280x720. The wait site was
+    # searched with h713.hdcpsite over that display.bin (one hit with context, file offset 0x3d140).
+    {"board": "ADT-3 2024-09", "project_id": None, "panel": None, "size": 0x131b10,
+     "sha256": "49f698af43ce714a70e04390a9a81015faa5b228dbffc2d73cc384722f0b307b",
+     "hdcp_wait_va": 0x4b13d140},
 )
 
 #: X:266 verbatim: the rows h713_mips_fw_revs[] declares, with the keys the extractor reads. A row

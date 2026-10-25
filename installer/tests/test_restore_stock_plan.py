@@ -289,6 +289,7 @@ class SizesAllowed(unittest.TestCase):
             self.assertEqual(allowed("restore-stock", profile), SECTORS_KNOWN, profile)
         self.assertEqual(allowed("restore-stock", GEU_ID), (GEU,))
         self.assertEqual(allowed("restore-stock", "hy300_pro"), (HY310,))
+        self.assertEqual(allowed("restore-stock", "losei_x9"), (HY310,))   # its table is a unit's, below
         # a write that is not restore-stock stays at its profile's size
         self.assertEqual(allowed("install", "hy310"), (HY310,))
         self.assertEqual(allowed("restore", GEU_ID), (GEU,))
@@ -299,7 +300,10 @@ class SizesAllowed(unittest.TestCase):
         m = _tool()
         found = sorted(key for key, profile in units().items()
                        if m._size_is_a_units(profile["layout"] or {}))
-        self.assertEqual(found, sorted([GEU_ID, "hy300_pro"]))
+        # losei_x9 joined the three on 25.10.2026, and that is the decision this test asks for: its
+        # layout is the GPT of its owner's device (issue #3), not a sys_partition.fex, so its last
+        # row (UDISK, 6197215 sectors) has an end and disk_sectors is that chip's own size.
+        self.assertEqual(found, sorted([GEU_ID, "hy300_pro", "losei_x9"]))
         self.assertFalse(m._size_is_a_units({"disk_sectors": HY310, "partitions": [("UDISK", 1, 0, None)]}))
         self.assertFalse(m._size_is_a_units({"disk_sectors": None, "partitions": [("UDISK", 1, 5, None)]}))
         self.assertFalse(m._size_is_a_units({}))

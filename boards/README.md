@@ -21,6 +21,7 @@ for instance, lives under `hy200-qz713df-a1`.
 | [`hy300-t08`](hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280×720 (0x34) | profile only |
 | [`hy350`](hy350/) | HY350 (2024) | DDR3 792 MHz | 1920×1080 (0x30) | profile only |
 | `l018` | L018 (2025) | unknown | unknown | profile only, no board directory |
+| [`losei-x9`](losei-x9/) | LOSEI X9 (2024) | DDR3 744 MHz | 1280×720 (**0x33**) | partial - reported in [issue #3](https://github.com/well0nez/allwinner-h713-linux/issues/3) (25.10.2026), nothing of ours has run on it |
 
 The same table stands in the top-level [README](../README.md#boards); a change goes into both.
 

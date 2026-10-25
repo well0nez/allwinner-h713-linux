@@ -796,6 +796,31 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         zum Vergleich (dort kein Weiß gesehen? Marco fragen)
   - [ ] 4.9f In die Linie: test3 mit Profilen, Abnahme inkl. 4.0, `verified`, Fork `versuch/l018` → `h713-hy310`, Zweig → `main`
         (Push nur mit Marcos Ja)
+- [ ] 4.10 **Panel `0x33` fehlt in `h713_disp_panels[]`** (Issue #3, LOSEI X9, 25.10.2026): die Panel-Tabelle des U-Boot-Forks
+      kennt `0x30` (1920x1080 dual) und `0x34` (1280x720 single); der X9 meldet `0x33`, 1280x720 single LVDS, htotal 1600,
+      vtotal 755, DCLK 72 480 000 Hz, hsync/vsync 100/10, hbp/vbp 100/10, Polaritäten 0/0, `pll_n_plus_1` 42 (Zeile vollständig
+      in `boards/losei-x9/README.md` und `installer/h713/profiles/losei_x9.py`, Prüfungen C1-C7 des Melders OK). Eine Zeile wie
+      Patch `0009`/`0013` anlegen; **nicht in die Spiegel vor einer Messung** - niemand hier hat dieses Panel, und ohne Gerät
+      ist die Zeile ungemessen. Erst sinnvoll, wenn der Melder ein Probe-Abbild fahren will
+- [ ] 4.11 **display.bin-Revision `0x131b10` wird von unserem U-Boot abgelehnt** (Issue #3, 25.10.2026): seine Revision ist
+      1 252 112 B (`49f698af...`, HDCP-Wartestelle gesucht und gefunden, `0x4b13d140`), 16 B kleiner als die des HY300 T08
+      (`0x131b20`). `h713_mips_accept_size()` nimmt nur Größen, die eine Zeile von `h713_mips_fw_revs[]` nennt - sonst
+      „display.bin is %llu bytes, no revision declares that size". Als Datenzeile ist sie da (`FIRMWARE_REVISIONS`,
+      „ADT-3 2024-09", und `h713-extract` nennt die Revision damit beim Namen); offen ist die Zeile im Fork. Zusammen mit 4.10
+      in einem Patch, gleiche Bedingung: nicht in den Spiegel vor einer Messung
+- [ ] 4.12 **Der Probe-Hinweis führt bei vendor-only-Boards ins Leere** (Issue #3, 25.10.2026): findet `h713_probe` kein
+      `display.bin`, sagt er „Set h713_mips_dev to the partition holding the vendor FAT and run h713_probe again". Beim X9
+      (wie HY300 T08 und HY350) liegen die Artefakte nur in `vendor:/etc/display/mips/`, also in einem ext4 **innerhalb** von
+      `super` - dorthin kommt U-Boot nicht, und kein Wert von `h713_mips_dev` hilft. Satz richtigstellen: wenn die
+      Bootloader-FAT kein `mips/` hat, auf `h713-extract` (liest `super`/vendor) und das Profil verweisen, statt eine
+      Partition zu verlangen. `h713-extract` kann die Quelle längst (`mips.sources = ("vendor:/etc/display/mips",)`)
+- [ ] 4.13 **LOSEI X9 (Issue #3, Melder GitHub `cosmonet-fr`): Profil liegt, Antwort und drei Löcher offen.** Profil
+      `installer/h713/profiles/losei_x9.py` und `boards/losei-x9/` sind angelegt (`STATUS=partial`), Anhänge in
+      `arbeit/losei-x9-20261025/anhaenge/`. Offen: (a) Antwort im Issue - was wir aus seinem Bericht gemacht haben, dass es
+      **kein Abbild** gibt (fremdes Pinout: Lüfter PB4, Lampe PB6) und was uns fehlt; (b) `monitor`- und `optee`-sha256 (sein
+      Bericht zeigt nur 16 Hex), `sunxi_version` fehlt ganz; (c) ein Probe-Lauf mit **seinem** DRAM-Takt 744 MHz - sein Log
+      zeigt das SPL mit dem Standardtakt und dem HY200-QZ713DF-A1-Baum, also ist `boards/losei-x9/uboot.config` ungemessen.
+      Nichts davon schreibt auf sein Gerät
 
 ## 5 Installer und Werkzeuge
 

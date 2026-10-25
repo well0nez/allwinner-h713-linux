@@ -81,6 +81,7 @@ the circuit board, and one board is sold in several projectors.
 | [`hy300-t08`](boards/hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280x720 (0x34) | profile only |
 | [`hy350`](boards/hy350/) | HY350 (2024) | DDR3 792 MHz | 1920x1080 (0x30) | profile only |
 | `l018` | L018 (2025) | unknown | unknown | profile only, no board directory |
+| [`losei-x9`](boards/losei-x9/) | LOSEI X9 (2024) | DDR3 744 MHz | 1280x720 (**0x33**) | partial - reported in [issue #3](https://github.com/well0nez/allwinner-h713-linux/issues/3) (25.10.2026), nothing of ours has run on it |
 
 **The rule: no image for a board nobody has tested.** A board becomes *verified* when its owner reports a green run of a
 test image built for it; until then it gets the read-only probe, a profile, and a test image for its owner alone.
