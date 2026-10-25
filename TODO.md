@@ -738,6 +738,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       zeigt und das Gerät aus ist. Kein `STATUS=verified` mehr ohne diesen Test (Zeile in Abnahme und Board-README).
       [x] L018 (25.10.2026 nachts: PWM0 auf 0 % → 0 U/min nach 3,5 s, Urteil nach 8 Takten, geordnet aus in 6,2 s, Gate;
       `arbeit/l018-board-20261024/BERICHT.md` „Nachtarbeit")  [ ] HY310  [ ] HY300PRO-G-EU  [ ] HY300 Pro (Melder, nur mit dessen Ja)
+      HY310 und G-EU: **nur wenn Marco die Lüfter absteckt** (Marco 25.10.: „du kannst keine Notaus-Tests machen, ohne dass ich die
+      Fans abstecke") - nicht per PB5 aus der Ferne
 - [ ] 4.7 **L018 (Marcos eigener, 24.10.2026):** Testabbild `h713-l018-v0.97-test2-TEST` ist gebaut (Zweig `versuch/l018-board`
       `94f4594c`, Paket `arbeit/l018-board-20261024/`, `boards/l018/README.md`); nichts davon hat am Gerät gebootet. Reihenfolge:
       (a) **erledigt 24.10.:** Lampe = PWM2/PB4, dimmt mit steigendem Tastgrad (high 30 / std 50 / low 75 %, Lüfter PWM0 95/70/60 %);
@@ -772,7 +774,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
   - [ ] 4.9d Hardware testen: Fokusmotor (Stock PF0..PF3, Endschalter PB1, cycle 3; step-type wirkt bei Stock nicht auf die
         Bewegung; PF0..PF5 sind die SD-Pins, sdmmc aus), Neigungssensor braucht twi2 im Baum + `IIO_ST_LSM6DSX`, Kamera `4098:a425`.
         **Baum seit 25.10. (`a741c251`):** Motor, twi2 + LSM6DSV, LEDs PL0/PL1 (Stock-Probe-Pegel); Tests gebündelt in
-        `arbeit/l018-board-20261024/runde2/TESTS-MIT-MARCO.md` (Deploy `deploy-runde2.sh K`, erster Motortest mit `homing=0`)
+        `arbeit/l018-board-20261024/runde2/TESTS-MIT-MARCO.md` (Deploy `deploy-runde2.sh K`, erster Motortest mit `homing=0`).
+        **Am Gerät 25.10. (`versuch/l018-board` bis `7695d4d1`, BERICHT „Runde 2 am Gerät"):** Sensor antwortet 0x71 → kernel 0334, läuft;
+        Kamera „HYSD-VAF02-ZH04" → `CAMERA_NAMES`; Fokus-Endschalter PB1 auf Marcos Unit tot (beide Anschläge, alle Pins geprüft) →
+        experimenteller Zählbereich nur für diese Unit (`/etc/h713/focus.conf`, `h713-focus home`), Schachbrett-Autofokus findet
+        den Scheitel; Keystone: `iio_name` richtig, Achsen offen (zwei Lagen mit Marco, später), `after_move` bis dahin aus
+  - [ ] 4.9h Autofokus bei offenem Launcher: das Schachbrett geht in die Konsole, die OSD-Ebene (Launcher, Seiten) liegt darüber →
+        „no picture". Der Autofokus muss die OSD-Ebene für seinen Lauf freimachen (h713-osd: es gibt kein „launcher hide"); gilt
+        für alle Boards (L018 25.10. gesehen)
         (h713-features kennt nur „HD camera"), Neigungssensor `lsm6dsv` + Keystone automatisch und von Hand, LEDs PL0/PL1,
         Ein/Aus und IR aus dem Gate, HDMI/HDCP, Ton/Kopfhörer, Kodi/VA-API, BT-Fernbedienung
   - [ ] 4.9e Kleinkram: Lampe/Lüfter ~1 s an vor U-Boot (SPL) - **gebaut im Fork `d54ab262` (`versuch/l018`), HY310 byte-gleich;
