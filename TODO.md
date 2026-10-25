@@ -270,6 +270,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Desktop ist nichts zu tun. **Mikro offen:** kein ATV-Voice-ADPCM (kein Zähler, Codes gleichverteilt), Byte 0 hat nur 37
         Werte und wandert langsam (Kopf-/Parameterbyte). Nächster Schritt: die Sprachkomponente aus dem Stock-`super` lösen
         (Marco: lesend erlaubt) und den Codec dort nachlesen
+      - **26.10.2026 nachts, Format belegt (`arbeit/fb-mikro-20261026/`; Prototyp `versuch/fb-mikro` 79634d22 `h713-mic` + 5c9a5a95 `CONFIG_HIDRAW`, am Gerät nicht gemessen):** jeder 60-Byte-Bericht (Report-ID `0x1E`) ist ein SBC-Rahmen ohne seinen 4-Byte-Kopf (mono, 16 kHz, 16 Blöcke, 8 Subbänder, Loudness, Bitpool 28), in drei 20-Byte-Stücken verwürfelt; das Verfahren steht in der Stock-Bibliothek `libhbgdecode.so` (nur gelesen). Prüfung: der für SBC verbotene Code kommt entwürfelt 0-mal in 122 096 Werten vor, sonst in 4-9 %. Marco hat die WAVs gehört: Stimme erkennbar (26.10. 00:35). Offen: Gerätetest mit dem HIDRAW-Kernel.
 - [ ] 2.52 **Tasten, Reste aus 2.46** (11.10.): welche Taste die Eingangsumschaltung HDMI/Konsole bekommt (Marco; `keys.conf`
       `input_keys`, leer); welche Richtung "Fokus hoch" an der Wand fährt (beide Lesarten gesehen); ob die BLE-Fernbedienung beim
       Halten wiederholt (dann fährt der Fokus durch wie per IR)
@@ -587,6 +588,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Dazu (kodi-93 §6, Mythos 20.10.): ein zweiter Absturz von h713-tv im selben Boot bekommt keine Rettung (Einmal-Marke `/run/h713-tv-rescued`,
       ein Zähler ohne Zeit) und h713-tv endet mit "no CRTC drives a mode" - Vorschlag (i) ExecCondition "letzte Rettung länger als 5 min her",
       (ii) der Start stellt bei "no CRTC" die Konsole selbst her.
+      - **26.10.2026 nachts, im Code (`versuch/tv-rettung` f7360f98, `arbeit/tv-rettung-20261026/`):** an der Wurzel - findet der Start keine CRTC mit Modus, gibt er den Master ab, stellt die Konsole her und sucht noch einmal (der Kernel gibt den Modus nur beim letzten close der Karte oder einem Unblank ohne Master zurück; eine andere offene Datei auf der Karte verhinderte den letzten close). (i) ExecCondition ist damit nicht nötig. 12 neue Host-Prüfungen, der alte Code fällt in 8, Kreuzbau ohne Warnung. Am Gerät nicht gemessen - Messplan BERICHT §7, nur mit Marcos Ja (Absturztests stören die Wand).
 - [ ] 2.126 **G-EU: Strich in den ersten zwei Panelspalten, sobald die Videoebene aus ist** (Marco 20.10.2026, Fotos in `arbeit/medien/launcher-rand/`):
       **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       bei offenem Launcher, unter Seiten und unter der Konsole, nicht im HDMI-Bild. Gemessen (launcher-rand §13): die RGB-Ebene liegt 2 Bildpunkte
@@ -649,6 +651,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Ursache finden (Abfrage an die Firmware, die das Herstellerbild nicht beantwortet?); Belege `arbeit/medien/arisc-default/laeufe/`.
 - [ ] 2.136 Klein: **libva-Tar nicht reproduzierbar über verschiedene Baupfade** (Release-Bau 22.10.2026: gleicher Commit, Tar 7c0fdc55 in
       `R-rel/repo-hy310`, 237ec304 in `R-rel/repo-geu`; mesa gleich). Vermutlich Pfade im Ergebnis (`-ffile-prefix-map` in `build-libva.sh`); prüfen.
+      - **26.10.2026 nachts, behoben im Code (`versuch/libva-repro` 86746d24, `arbeit/libva-repro-20261026/`):** der einzige Unterschied war die ELF-Build-ID der `.so` (lld hasht vor `--strip`, die Debuginfo trug die Pfade); `-ffile-prefix-map` in `build-libva.sh` (4 Zeilen), dasselbe Tar `aa3d52a3...` aus drei Pfaden, Code und Symbole gleich. Die anderen Querbau-Schritte nur gelesen (sie bilden ihre Pfade schon ab), nicht doppelt gebaut.
 - [ ] 2.137 **Installer: `--keep-env` übernahm `h713_gate=0` aus der Sicherung im Abzug, nicht den Wert vom Gerät** (G-EU 22.10.2026: auf
       **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       dem Gerät stand 1, "carried over from the old one: h713_gate=0 (image: 1)"; `install-dump/uboot-env.bin` vom 20.10. trug 0). Am HY310 23.10.2026 genauso. Der Installer
