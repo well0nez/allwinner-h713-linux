@@ -33,7 +33,7 @@ in_accel_*_raw WAITS for the device's next sample, so at the driver default of
 sampling_frequency at the start.  And a single raw triple is noisy - 77/102/85
 LSB peak to peak at rest against about 1000 LSB per g, five degrees of nothing
 - while `average_samples` triples averaged spread only 16/12/11 LSB, about one
-degree.  That is why `hysteresis_degrees` defaults to 1.0 and not to the
+degree (the default is 20 since TODO 2.108: buffer triples scatter twice as much in z as sysfs ones, 0.25 against 0.19 degrees at ten).  That is why `hysteresis_degrees` defaults to 1.0 and not to the
 vendor's 0.3 degree step or to the 0.1146 degree ADC digit of AP2h 4a: the
 threshold has to be sized from the averaged reading, not from the digit.
 
@@ -238,7 +238,7 @@ DEFAULTS = (
     ("zoom_scale", "0", parse_zoom),
     ("turn_to_wall", "0", parse_turn),
     ("sampling_rate", "100", _above_zero(float, "a rate in Hz above zero")),
-    ("average_samples", "10", _above_zero(int, "at least one sample")),
+    ("average_samples", "20", _above_zero(int, "at least one sample")),
     ("hysteresis_degrees", "1.0", _above_zero(float, "degrees above zero")),
     ("hold_seconds", "1.0", _above_zero(float, "seconds above zero")),
     # the watch mode: what happens after the projector has been moved
@@ -489,6 +489,8 @@ class Sensor(object):
                 self._put("trigger/current_trigger", TRIGGER)
             for axis in "xyz":
                 self._put("scan_elements/in_accel_%s_en" % axis, "1")
+            if os.path.exists(os.path.join(self.path, "scan_elements/in_timestamp_en")):
+                self._put("scan_elements/in_timestamp_en", "0")   # _layout() counts the three axes only
             self._put("buffer/length", str(BUFFER_TRIPLES))
             size, layout = self._layout()
             self._put("buffer/enable", "1")

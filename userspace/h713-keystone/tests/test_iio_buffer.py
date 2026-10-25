@@ -109,6 +109,12 @@ class Burst(unittest.TestCase):
         self.assertEqual(self.k.get("iio:device2/buffer/length"), str(ks.BUFFER_TRIPLES))
         self.assertEqual(self.k.get("trigger0/sampling_frequency"), "50")
 
+    def test_a_timestamp_somebody_switched_on_is_switched_off(self):
+        self.k.write("iio:device2/scan_elements/in_timestamp_en", "1")
+        self.k.feed(JUNK + [(1, 2, 3)])
+        self.k.sensor().sample(1)
+        self.assertEqual(self.k.get("iio:device2/scan_elements/in_timestamp_en"), "0")
+
     def test_the_sensor_is_on_only_while_it_is_read(self):
         """enable is cleared first (a killed run may have left it on), set before the read, and cleared after."""
         log = []
@@ -315,9 +321,9 @@ class Commands(unittest.TestCase):
         return code, out.getvalue()
 
     def test_once_reads_the_nose_up_pose_through_the_buffer(self):
-        self.k.feed(JUNK + [t.REST] * 10)
+        self.k.feed(JUNK + [t.REST] * 20)                                   # average_samples defaults to 20
         self.assertEqual(self.run_tool("reference")[0], 0)                  # the level pose, taken through the buffer too
-        self.k.feed(JUNK + [t.POSES[1][1:4]] * 10)
+        self.k.feed(JUNK + [t.POSES[1][1:4]] * 20)
         code, out = self.run_tool("once")
         self.assertEqual(code, 0)
         self.assertIn("pitch 20.586", out)
@@ -360,6 +366,8 @@ class Commands(unittest.TestCase):
         sysfs = self.k.sensor().cadence(10, ks.WATCH_PAUSE_S)
         self.assertIn("through sysfs", sysfs[1])
         self.assertAlmostEqual(sysfs[0], 2.3, places=1)                     # thirty values at 60 ms, the pause
+        with open(os.path.join(self.dir, "keystone.conf"), "w") as fh:
+            fh.write("average_samples = 10\n")                              # the cadence above is for ten
         code, out = self.run_tool("watch", "--dry-run", "--for", "0.2")
         self.assertIn("a reading every ~2.30 s through sysfs", out)
 
