@@ -3,7 +3,7 @@
 **The patch files here are generated, not maintained** (since 12.09.2026, P3):
 `git format-patch --no-signature 8fe568cdfc46..<head>` in the submodule checkout
 `mainline/external/u-boot` (branch `h713-hy310`, base is cstenger's `h713`),
-last regenerated on 25.10.2026 at the head `c97e5c6bb78d` (105 patches, local branch `versuch/l018`). Verified the
+last regenerated on 25.10.2026 at the head `c97e5c6bb78d` (105 patches; on the fork's `h713-hy310` since 26.10.2026). Verified the
 way a mirror should be: applying all 105 from the base produces a tree with the same
 hash as the head (`1d0b87cde693`; before: 102 patches, head `daa35622b0bf`, tree `ca817b83e490`; before that: 101 patches, head `61ea018712c8`, tree `595b6941482e`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31,
 `0097` names the gate word of a standby that did not finish (`doku/179`), `0098` - `0100` are the HDCP
