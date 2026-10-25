@@ -14,8 +14,9 @@ state under stock (read on a running unit, 24.10.2026) say differently:
   HY310's, as in the stock tree. The driver's homing and end switch
   pull-up are measured on the HY310 only.
 - twi1 off: PH2/PH3 are disabled under stock.
-- The power key's two LEDs as gpio-leds at the levels the stock fan
-  driver sets at probe: PL0 high, PL1 (active low) low.
+- The power key's two LEDs as gpio-leds, red PL0 and blue PL1, both
+  active low; running, blue on and red off - the levels the stock fan
+  driver sets at probe (PL0 high, PL1 low).
 - The fan tacho is PH13, as on the HY200 QZ713DF A1.
 - Lamp and fan belong to the board manager, as under stock (patch 0332):
   PWM0 on PH17 is the fan's speed, PWM2 on PB4 the lamp's dimmer, which
@@ -28,7 +29,9 @@ state under stock (read on a running unit, 24.10.2026) say differently:
   CONFIG_H713_BOARD_L018 sets the stock std before Linux.
 - The NTC: the L018 has one (stock ntc_num 1, GPADC channel 1), the HY310
   none; its own gpadc-table (0..55 C) and thresholds (warn 41, power off
-  51, resume 34 C), verbatim from the stock tree.
+  51, resume 34 C), verbatim from the stock tree. The power-off at 51 C
+  is armed (thermal-shutdown, patch 0333) as under stock, without a
+  thermometer: the table and the conversion are the stock ones.
 - The vendor ARISC firmware, as on the HY300 Pro.
 
 Booted on the L018 since 24.10.2026 (test image test2, then quick
@@ -48,7 +51,7 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinn
 diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts
 --- /dev/null
 +++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts
-@@ -0,0 +1,208 @@
+@@ -0,0 +1,217 @@
 +// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
 +/*
 + * L018 projector (Allwinner H713; stock Android 11 of 2025-05-14,
@@ -71,11 +74,11 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 + *  - The lamp: PWM2 on PB4, and it dims as the duty rises. Lamp and fan
 + *    belong to the board manager, set together from the stock modes (std,
 + *    low, high and the thermal mode); pwm-backlight is off.
-+ *  - The NTC on GPADC channel 1 with this board's table and thresholds.
++ *  - The NTC on GPADC channel 1 with this board's table and thresholds; at
++ *    51 C it powers off, as under stock.
 + *  - PB5 enables lamp and fan as on the HY310 (stock fan0 fan-power-gpio,
 + *    output high under stock); the board manager keeps it.
-+ *  - The two LEDs of the power key (PL0, PL1) at the levels the stock kernel
-+ *    sets.
++ *  - The two LEDs of the power key, red PL0 and blue PL1, both active low.
 + *  - The vendor ARISC firmware, as on the HY300 Pro: crust has run on the
 + *    HY310 only.
 + *
@@ -85,30 +88,32 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 + */
 +
 +#include "sun50i-h713-hy310.dts"
++#include <dt-bindings/leds/common.h>
 +
 +/ {
 +	model = "L018 (Allwinner H713)";
 +	compatible = "magcubic,l018", "allwinner,sun50i-h713";
 +
 +	/*
-+	 * The two LEDs of the power key. The stock fan driver drives them at
-+	 * probe as its tree says: power-led-gpio PL0 (flags 0) to 1,
-+	 * status-led-gpio PL1 (flags 1, active low) to 0 (pwm_fan_probe,
-+	 * read off the stock kernel 25.10.2026). Both "on" here gives the same
-+	 * levels. standby_param names PL0 the red and PL1 the blue LED; which
-+	 * colour the owner then sees is not measured.
++	 * The two LEDs of the power key, red PL0 and blue PL1, both active low
++	 * (standby_param names them; the owner saw red in U-Boot's gate and blue
++	 * once running, 25.10.2026). Running: blue on, red off - PL0 high, PL1
++	 * low, the levels the stock fan driver sets at probe (pwm_fan_probe:
++	 * power-led-gpio PL0 to 1, status-led-gpio PL1 to 0).
 +	 */
 +	leds {
 +		compatible = "gpio-leds";
 +
-+		led-power {
-+			label = "l018:power";
-+			gpios = <&r_pio 0 0 GPIO_ACTIVE_HIGH>;	/* PL0 */
-+			default-state = "on";
++		led-red {
++			color = <LED_COLOR_ID_RED>;
++			function = LED_FUNCTION_POWER;
++			gpios = <&r_pio 0 0 GPIO_ACTIVE_LOW>;	/* PL0 */
++			default-state = "off";
 +		};
 +
-+		led-status {
-+			label = "l018:status";
++		led-blue {
++			color = <LED_COLOR_ID_BLUE>;
++			function = LED_FUNCTION_POWER;
 +			gpios = <&r_pio 0 1 GPIO_ACTIVE_LOW>;	/* PL1 */
 +			default-state = "on";
 +		};
@@ -232,6 +237,13 @@ diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-l018.dts b/arch/arm64/boot
 +	temp_warn = <41>;
 +	temp_poweroff = <51>;
 +	temp_resume = <34>;
++	/*
++	 * Armed as under stock, without a thermometer (the owner has none,
++	 * 25.10.2026): the table and the conversion are the stock ones, and the
++	 * unit reads 21 to 24 C at rest in a room of about that. The power-off
++	 * at 51 C itself is not measured.
++	 */
++	thermal-shutdown;
 +
 +	fan0 {
 +		duty-array-policy1 = <70 60 95 70>;	/* stock */
