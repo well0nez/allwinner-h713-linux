@@ -757,7 +757,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         mit eigener `gpadc-table` und Stock-Schwellen (warn 41, aus 51, resume 34 °C), messen, dann Abschaltung bei 51 °C scharf.
         **Teils erledigt 25.10. (`versuch/l018-board` `f3062428`, kernel 0331):** NTC liest 21,2-21,6 °C über 22 min bei CPU ~49 °C,
         Umrechnung nachgerechnet. Offen: gegen ein Thermometer halten (Marco), dann die Abschaltung bei 51 °C scharf - über eine
-        DT-Eigenschaft des L018-Baums, nicht über den globalen `thermal_shutdown`
+        DT-Eigenschaft des L018-Baums, nicht über den globalen `thermal_shutdown`. **Die Eigenschaft gibt es seit 25.10. (kernel 0333,
+        `a741c251`: `thermal-shutdown;`, geordnet über `orderly_poweroff(true)`); gesetzt wird sie nach dem Thermometer.**
   - [x] 4.9b Drei Lampenstufen low/std/high mit gekoppeltem Lüfter - **erledigt 25.10. nachts (`versuch/l018-board` `4a2aee2e`,
         kernel 0332 + 0331, `userspace/h713-lamp`)**: Board-Manager besitzt Lampe (`bl0`, PWM2) und Lüfter (PWM0), ein Modusindex
         für beide, sysfs `lamp_mode`/`lamp_modes`/`thermal_mode`, `h713-lamp status|set|restore`, `/etc/h713/lamp.conf`. Am Gerät:
@@ -765,13 +766,19 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Maximum aus Stufe und Temperaturtabelle" - so macht es Stock nicht (`fan_policy 1`: nur die Stufe; über 41 °C der
         Wärmemodus 3, Lampe 75 %, bis 34 °C). Offen: Wärmemodus messen, Helligkeit mit Augen, high im Dauerlauf
   - [ ] 4.9c Bedienung: Mockup zuerst (englisch), dann Zeile `Lamp` (Low/Standard/High) in h713-settings und Knöpfe in
-        h713-panel; sichtbar nur mit Feature `lamp-modes` (FEATURES + h713-features); Temperatur/Drehzahl als Anzeige
+        h713-panel; sichtbar nur mit Feature `lamp-modes` (FEATURES + h713-features); Temperatur/Drehzahl als Anzeige.
+        **Gebaut 25.10. (`ddcd42c6`, Mockup-Variante B):** h713-settings Bereich „Projector", h713-panel Karte „Lamp",
+        h713-features `lamp-modes`, Tests grün. Offen: am Gerät bedienen (Marco)
   - [ ] 4.9d Hardware testen: Fokusmotor (Stock PF0..PF3, Endschalter PB1, cycle 3; step-type wirkt bei Stock nicht auf die
-        Bewegung; PF0..PF5 sind die SD-Pins, sdmmc aus), Neigungssensor braucht twi2 im Baum + `IIO_ST_LSM6DSX`, Kamera `4098:a425`
+        Bewegung; PF0..PF5 sind die SD-Pins, sdmmc aus), Neigungssensor braucht twi2 im Baum + `IIO_ST_LSM6DSX`, Kamera `4098:a425`.
+        **Baum seit 25.10. (`a741c251`):** Motor, twi2 + LSM6DSV, LEDs PL0/PL1 (Stock-Probe-Pegel); Tests gebündelt in
+        `arbeit/l018-board-20261024/runde2/TESTS-MIT-MARCO.md` (Deploy `deploy-runde2.sh K`, erster Motortest mit `homing=0`)
         (h713-features kennt nur „HD camera"), Neigungssensor `lsm6dsv` + Keystone automatisch und von Hand, LEDs PL0/PL1,
         Ein/Aus und IR aus dem Gate, HDMI/HDCP, Ton/Kopfhörer, Kodi/VA-API, BT-Fernbedienung
-  - [ ] 4.9e Kleinkram: Lampe/Lüfter ~1 s an vor U-Boot (SPL); ~~Helligkeit 0 von pwm-backlight~~ (entfällt, pwm-backlight ist aus);
-        Ton: die Stock-`audio_config.ini` des L018 geht bis 0 dB statt -38 (HY310) - eigene Lautstärkegrenze, leise anfangen;
+  - [ ] 4.9e Kleinkram: Lampe/Lüfter ~1 s an vor U-Boot (SPL) - **gebaut im Fork `d54ab262` (`versuch/l018`), HY310 byte-gleich;
+        schreiben nur mit Marco (`deploy-runde2.sh U`, Kaltstart)**; ~~Helligkeit 0 von pwm-backlight~~ (entfällt, pwm-backlight ist aus);
+        Ton: die Stock-`audio_config.ini` des L018 geht bis 0 dB statt -38 (HY310) - eigene Lautstärkegrenze, leise anfangen
+        (h713-tv fährt die HY310-Kurve fest: oben -9,5 dB, am L018 ~10 dB leiser als Stock; eigene Kurve erst nach Hörtest);
         `h713-features` `lamp-modes` und `docs/tools/h713-lamp.md` mit der UI bzw. der Integration
   - [ ] 4.9f In die Linie: test3 mit Profilen, Abnahme inkl. 4.0, `verified`, Fork `versuch/l018` → `h713-hy310`, Zweig → `main`
         (Push nur mit Marcos Ja)
