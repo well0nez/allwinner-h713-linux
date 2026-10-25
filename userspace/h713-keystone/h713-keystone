@@ -309,9 +309,10 @@ class Sensor(object):
         self.name = _read(os.path.join(path, "name")) or "?"
         self.files = tuple(os.path.join(path, "in_accel_%s_raw" % a)
                            for a in ("x", "y", "z"))
-        # Display only: every angle of the chain is a ratio of counts, so the
-        # scale cancels exactly (AP2g 5) and a wrong one costs no accuracy.
-        # st_accel names it per axis, st_lsm6dsx (the L018's LSM6DSV) once for all three
+        # Every angle of the chain is a ratio of counts, so the scale cancels
+        # (AP2g 5); it sets the display and the digit the models count in
+        # (open_sensor).  st_accel names it per axis, st_lsm6dsx (the L018's
+        # LSM6DSV) once for all three
         self.counts_per_g = FALLBACK_COUNTS_PER_G
         for scale in ("in_accel_x_scale", "in_accel_scale"):
             try:
@@ -542,11 +543,18 @@ def model_triple(raw, conf):
     AP2g's iio_to_vendor_counts() reads: index 0 the PITCH source (the
     vendor's Y, GsY), index 1 the ROLL source (its X, GsX), index 2 the
     vertical one.  Rounding to whole digits loses nothing here: the averaged
-    noise is 11 to 16 digits, not a fraction of one."""
+    noise is 11 to 16 digits, not a fraction of one.
+
+    The models count in the SC7A20's digit, about 1000 to the g, and square
+    them in int32 (AP2g 5).  A sensor with finer digits - the L018's LSM6DSV
+    reads 16393 to the g - is brought to that digit first, or the squares
+    overflow and the pitch comes out NaN (L018, 25.10.2026); open_sensor()
+    sets the divisor, 1 on the SC7A20."""
+    per = conf.get("model_digit", 1)
     out = []
     for key in ("axis_pitch", "axis_roll", "axis_vertical"):
         index, sign = conf[key]
-        out.append(int(round(sign * raw[index])))
+        out.append(int(round(sign * raw[index] / per)))
     return tuple(out)
 
 
@@ -814,8 +822,11 @@ class Hysteresis(object):
 def open_sensor(args, conf, rate=True):
     """`rate` False leaves sampling_frequency alone, which is what a status
     that only reports wants."""
-    return Sensor(Sensor.find(conf["iio_name"], args.device),
-                  conf["sampling_rate"] if rate else None, args.quiet)
+    sensor = Sensor(Sensor.find(conf["iio_name"], args.device),
+                    conf["sampling_rate"] if rate else None, args.quiet)
+    # the digit model_triple() divides by: whole multiples of the SC7A20's
+    conf["model_digit"] = max(1, int(round(sensor.counts_per_g / FALLBACK_COUNTS_PER_G)))
+    return sensor
 
 
 def implausible(raw, sensor):

@@ -234,6 +234,48 @@ class AxisMap(unittest.TestCase):
         self.assertLess(gs_y, -20.0)
 
 
+class FineDigit(unittest.TestCase):
+    """A sensor with finer digits than the SC7A20 (the L018's LSM6DSV, 16393
+    to the g) is brought to the models' digit; the int32 squares overflowed
+    and the pitch came out NaN (L018, 25.10.2026)."""
+
+    LSM6DSV_SCALE = "0.000598205"     # in_accel_scale, 16393 counts per g
+    # the L018 in its mount, measured 25.10.2026: tilted 7.4 and 18.5 degrees
+    L018_POSES = (((-16450, -150, 2150), 7.45), ((-15800, -150, 5300), 18.54))
+
+    def conf(self, digit):
+        conf = conf_with(axis_pitch="+z", axis_roll="+y", axis_vertical="-x")
+        conf["model_digit"] = digit
+        return conf
+
+    def test_open_sensor_sets_the_digit_from_the_scale(self):
+        iio = FakeIio(name="lsm6dsv_accel")
+        self.addCleanup(iio.close)
+        os.remove(os.path.join(iio.device, "in_accel_x_scale"))
+        iio.write("iio:device2/in_accel_scale", self.LSM6DSV_SCALE)
+        args = type("Args", (), {"device": iio.device, "quiet": True})()
+        conf = conf_with()
+        ks.open_sensor(args, conf, rate=False)
+        self.assertEqual(conf["model_digit"], 16)
+
+    def test_the_sc7a20_keeps_its_digit(self):
+        iio = FakeIio()
+        self.addCleanup(iio.close)
+        args = type("Args", (), {"device": iio.device, "quiet": True})()
+        conf = conf_with()
+        ks.open_sensor(args, conf, rate=False)
+        self.assertEqual(conf["model_digit"], 1)
+        self.assertEqual(ks.model_triple(REST, conf),
+                         ks.model_triple(REST, conf_with()))
+
+    def test_the_l018_poses_give_their_tilt(self):
+        for raw, tilt in self.L018_POSES:
+            row = ak.auto_keystone(ks.model_triple(raw, self.conf(16)),
+                                   ini=ks.optics(self.conf(16)))
+            self.assertAlmostEqual(row["gs_y"], tilt, delta=0.1)
+            self.assertLess(abs(row["gs_x"]), 1.0)
+
+
 class Reference(unittest.TestCase):
     """The level pose on disk, and the vendor's 45 degree gate."""
 
