@@ -778,7 +778,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         **Am Gerät 25.10. (`versuch/l018-board` bis `7695d4d1`, BERICHT „Runde 2 am Gerät"):** Sensor antwortet 0x71 → kernel 0334, läuft;
         Kamera „HYSD-VAF02-ZH04" → `CAMERA_NAMES`; Fokus-Endschalter PB1 auf Marcos Unit tot (beide Anschläge, alle Pins geprüft) →
         experimenteller Zählbereich nur für diese Unit (`/etc/h713/focus.conf`, `h713-focus home`), Schachbrett-Autofokus findet
-        den Scheitel; Keystone: `iio_name` richtig, ~~Achsen offen (zwei Lagen mit Marco, später)~~ **Achsen und Optik gemessen 25.10. abends (`versuch/l018-board` `9bd17502` Sensor-Digit gegen NaN, `cfe9c6cf` board.env `KEYSTONE` mit `throw_ratio = 1.1501` aus der L018-eigenen `camprjspe.ini`): bei 18,6° von vorn gerade (Marco)**; offen nur das Vorzeichen der Rollachse, `after_move` bleibt Standard aus
+        den Scheitel; Keystone: `iio_name` richtig, ~~Achsen offen (zwei Lagen mit Marco, später)~~ **Achsen und Optik gemessen 25.10. abends (`versuch/l018-board` `9bd17502` Sensor-Digit gegen NaN, `cfe9c6cf` board.env `KEYSTONE` mit `throw_ratio = 1.1501` aus der L018-eigenen `camprjspe.ini`): bei 18,6° von vorn gerade (Marco)**; Vorzeichen der Rollachse nicht gemessen und praktisch ohne Belang (der Bügel kippt nur um sein Scharnier, seitlich nur auf schiefer Stellfläche; Marco 25.10.), `after_move` bleibt Standard aus
   - [ ] 4.9h Autofokus bei offenem Launcher: das Schachbrett geht in die Konsole, die OSD-Ebene (Launcher, Seiten) liegt darüber →
         „no picture". Der Autofokus muss die OSD-Ebene für seinen Lauf freimachen (h713-osd: es gibt kein „launcher hide"); gilt
         für alle Boards (L018 25.10. gesehen)
