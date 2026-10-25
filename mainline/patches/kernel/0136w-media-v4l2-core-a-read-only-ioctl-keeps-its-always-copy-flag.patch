@@ -45,9 +45,12 @@ Follow-up to 0136m/0136v (Q16, from the dev21 run of 22.09.2026). Not a
 h713 file: this is v4l2 core, and the fix is upstream material - the flag is
 documented behaviour that one direction of ioctl silently loses.
 
-Tested on the HY310: not yet. The device proof is a 1600x900 source on the
-debug kernel: `h713-tv ctl status` must show
-"signal          1600x900p60, 108.0 MHz not in the firmware's table -- console".
+Tested on the HY310 (dev22, 22.09.2026, debug kernel; doku/128, "Nachtrag
+22.09. nachts (2)"): with a 1600x900 source h713-tv now names the raster and
+the pixel clock of the refused source (the expected line is "signal
+1600x900p60, 108.0 MHz not in the firmware's table -- console"), where dev21
+printed 0x0p?, 0.0 MHz. The log records the check as green with timing; it
+does not quote the line. Not tested: any other V4L2 driver.
 
 diff -ruN a/drivers/media/v4l2-core/v4l2-ioctl.c b/drivers/media/v4l2-core/v4l2-ioctl.c
 --- a/drivers/media/v4l2-core/v4l2-ioctl.c
