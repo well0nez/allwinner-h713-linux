@@ -790,6 +790,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Ton: die Stock-`audio_config.ini` des L018 geht bis 0 dB statt -38 (HY310) - eigene Lautstärkegrenze, leise anfangen
         (h713-tv fährt die HY310-Kurve fest: oben -9,5 dB, am L018 ~10 dB leiser als Stock; eigene Kurve erst nach Hörtest);
         `h713-features` `lamp-modes` und `docs/tools/h713-lamp.md` mit der UI bzw. der Integration
+        **Fokus-Taste zu grob** (Marco 25.10. abends: „funzt, braucht aber 50 % mehr Sensitivität, viel zu grob"): `focus_steps` 20 je Druck ist am L018 rund ein Fünftel des ganzen Wegs (Zählbereich -35..35, Anschläge ~110 msteps auseinander; HY310 mehrere hundert) - als Board-Wert ~13 (20 / 1,5), am Gerät mit Marco nachprüfen
   - [x] 4.9g **Weißes Bild vor dem Logo** - **erledigt 25.10. mit dem SPL aus 4.9e (`d54ab262`), Marco: „kein weiß mehr"** (Marco 25.10.2026 morgens: „beim l018 startet das bild weiß bevor das logo kommt, hier
         ist auch der init irgendwie nicht so geil - für später"): beim Einschalten zeigt das Panel kurz Weiß, dann das Logo. Ursache
         nicht gemessen; Kandidaten: Reihenfolge Panel-Reset (PH9/PH16, `CONFIG_H713_BOARD_L018`) gegen Lampe an (PB5/PWM2 std nach
