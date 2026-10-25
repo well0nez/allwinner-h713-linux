@@ -410,6 +410,58 @@ int main(void)
 	reply_clear(&r);
 	cmd_wb(&r, args, 0);
 	check(!r.failed && strstr(r.buf, "ok wb 512 512 512 512 512 512"), "wb alone shows the six");
+	check(strstr(r.buf, "sliders 0 0 --"), "wb alone names the sliders: 0 0 for neutral");
+
+	/* the sliders: gains from "wb sliders", offsets as they are, positions read back off "wb" */
+	reply_clear(&r);
+	fwc_set(&r, fwc_key("wb_g_offset"), "500");
+	reply_clear(&r);
+	args[0] = "sliders"; args[1] = "2"; args[2] = "0";
+	cmd_wb(&r, args, 3);
+	check(!r.failed && fwc.wb[0] == 508 && fwc.wb[1] == 512 && fwc.wb[2] == 512 && fwc.wb[4] == 500,
+	      "wb sliders 2 0: red 508, the offsets stay");
+	reply_clear(&r);
+	cmd_wb(&r, args, 0);
+	check(strstr(r.buf, "ok wb 508 512 512 512 500 512 sliders 2 0 --"), "and wb names them: sliders 2 0");
+	reply_clear(&r);
+	args[1] = "-20"; args[2] = "-10";
+	cmd_wb(&r, args, 3);
+	check(!r.failed && fwc.wb[0] == 492 && fwc.wb[1] == 512 && fwc.wb[2] == 452, "warm and green lower blue and, with green, red");
+	{
+		unsigned int before = calls_wb;
+
+		args[1] = "51"; args[2] = "0";
+		reply_clear(&r);
+		cmd_wb(&r, args, 3);
+		check(r.failed && calls_wb == before, "wb sliders 51 0 is refused without a call");
+		args[1] = "x";
+		reply_clear(&r);
+		cmd_wb(&r, args, 3);
+		check(r.failed && calls_wb == before, "a word is refused without a call");
+	}
+	reply_clear(&r);
+	args[0] = "512"; args[1] = "512"; args[2] = "600"; args[3] = "512"; args[4] = "512"; args[5] = "512";
+	fwc.wb[2] = 600;
+	cmd_wb(&r, args, 0);
+	check(strstr(r.buf, "sliders 0 0 other --"), "gains the sliders cannot make show as 0 0 other");
+	reply_clear(&r);
+	args[0] = "reset";
+	cmd_wb(&r, args, 1);
+	{
+		/* all 101 x 101 positions: a position comes back exactly, no gain is lowered by more than 36 % */
+		int lowest = 512, worst = 0, c, m, i, g[3], c2, m2;
+
+		for (c = -FWC_SLIDER_MAX; c <= FWC_SLIDER_MAX; c++)
+			for (m = -FWC_SLIDER_MAX; m <= FWC_SLIDER_MAX; m++) {
+				fwc_slider_gains(c, m, g);
+				for (i = 0; i < 3; i++)
+					lowest = g[i] < lowest ? g[i] : lowest;
+				fwc_slider_positions(g, &c2, &m2);
+				i = abs(c2 - c) > abs(m2 - m) ? abs(c2 - c) : abs(m2 - m);
+				worst = i > worst ? i : worst;
+			}
+		check(lowest >= 327 && worst <= 1, "the sliders' whole range: a position comes back within one step, nothing below 64 %");
+	}
 	check(writes_only_in_slots(), "everything written lies in the two slots");
 
 	/* the hardware cannot be reached: nothing is held that cannot be carried out */

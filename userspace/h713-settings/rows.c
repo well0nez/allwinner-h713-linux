@@ -394,52 +394,14 @@ static void ctemp_row(struct area *a)
 /* --- White balance and Colour: the firmware's own (h713-tv ctl wb, ctl cm) --------------------------------- */
 
 /*
- * Two sliders for the eye, no instrument: "Warm - Cool" and "Green - Magenta", -50..+50. They only ever LOWER a gain
- * (so white never clips): cool lowers red, warm lowers blue, magenta lowers green, green lowers red and blue; each end is
- * 20 % off (s = 0.004 per step). The six values go to h713-tv in one command; the offsets stay as they are.
+ * Two sliders for the eye, no instrument: "Warm - Cool" and "Green - Magenta", -50..+50. What they mean in gains lives in
+ * h713-tv (color.c): `wb sliders COOL MAGENTA` sends them, the answer of `wb` says where they stand.
  */
-#define WB_S 0.004
-
 static struct row *r_wb_warm, *r_wb_tint, *r_wb_gone, *r_wb_reset;
-static int wb_off[3] = { 512, 512, 512 };	/* the offsets h713-tv holds: the sliders do not touch them */
-
-static void wb_gains(int w, int t, int g[3])
-{
-	double kr = (1 - WB_S * (w > 0 ? w : 0)) * (1 - WB_S * (t < 0 ? -t : 0));
-	double kg = 1 - WB_S * (t > 0 ? t : 0);
-	double kb = (1 - WB_S * (w < 0 ? -w : 0)) * (1 - WB_S * (t < 0 ? -t : 0));
-
-	g[0] = (int)lround(512 * kr);
-	g[1] = (int)lround(512 * kg);
-	g[2] = (int)lround(512 * kb);
-}
-
-/* the sliders a set of gains would have come from (to the nearest step); 0, 0 for gains the sliders cannot make */
-static void wb_positions(const int g[3], int *w, int *t)
-{
-	double r = g[0] / 512.0, gg = g[1] / 512.0, b = g[2] / 512.0, f, tt, ww;
-
-	*w = *t = 0;
-	if (g[0] > 512 || g[1] > 512 || g[2] > 512)
-		return;
-	if (gg < 1) {				/* magenta: green is lowered, red and blue only by the warm/cool slider */
-		tt = (1 - gg) / WB_S;
-		ww = r < 1 ? (1 - r) / WB_S : b < 1 ? -(1 - b) / WB_S : 0;
-	} else {				/* green or none: red and blue share the factor (1 - s|t|) */
-		f = r > b ? r : b;
-		tt = -(1 - f) / WB_S;
-		ww = f > 0 ? (r < b ? (1 - r / f) / WB_S : b < r ? -(1 - b / f) / WB_S : 0) : 0;
-	}
-	*t = clampi((int)lround(tt), -50, 50);
-	*w = clampi((int)lround(ww), -50, 50);
-}
 
 static bool wb_send(void)
 {
-	int g[3];
-
-	wb_gains(r_wb_warm->val, r_wb_tint->val, g);
-	return tv("wb %d %d %d %d %d %d", g[0], g[1], g[2], wb_off[0], wb_off[1], wb_off[2]);
+	return tv("wb sliders %d %d", r_wb_warm->val, r_wb_tint->val);
 }
 
 static void wb_slider_apply(struct row *r, int dir)
@@ -462,10 +424,8 @@ static void wb_reset(struct row *r, int dir)
 	bool ok = tv("wb reset");
 
 	(void)dir;
-	if (ok) {
+	if (ok)
 		r_wb_warm->val = r_wb_tint->val = 0;
-		wb_off[0] = wb_off[1] = wb_off[2] = 512;
-	}
 	if (!r_ctemp->hidden && r_ctemp->val) {		/* Auto is the first stop; already on it: nothing to send */
 		stops_apply(r_ctemp, -r_ctemp->val);
 		ok = ok && !r_ctemp->val;
@@ -477,46 +437,19 @@ static void wb_reset(struct row *r, int dir)
 
 static void wb_enter(struct area *a)
 {
-	int v[6], g[3];
+	int w, t;
 	bool there = tv("wb") && !strstr(reply, "not available") &&
-		     sscanf(reply, "ok wb %d %d %d %d %d %d", &v[0], &v[1], &v[2], &v[3], &v[4], &v[5]) == 6;
+		     sscanf(reply, "ok wb %*d %*d %*d %*d %*d %*d sliders %d %d", &w, &t) == 2;
 
 	for (int i = 0; i < a->n; i++)
 		if (&a->row[i] != r_ctemp)			/* the colour temperature is the curves' (h713-tv), not the firmware's registers */
 			a->row[i].hidden = there ? &a->row[i] == r_wb_gone : &a->row[i] != r_wb_gone;
 	if (there) {
-		g[0] = v[0], g[1] = v[1], g[2] = v[2];
-		wb_off[0] = v[3], wb_off[1] = v[4], wb_off[2] = v[5];
-		wb_positions(g, &r_wb_warm->val, &r_wb_tint->val);
+		r_wb_warm->val = w, r_wb_tint->val = t;
 		r_wb_reset->text[0] = '\0';
 	}
 	r_ctemp->hidden = !stops_read(r_ctemp);
 }
-
-#ifdef H713_TEST
-/* the host test sweeps the whole range: the lowest gain the sliders make, and the worst distance a position comes back from */
-void test_wb_sweep(int *lowest, int *worst, int *worst_w, int *worst_t)
-{
-	*lowest = 512;
-	*worst = 0;
-	for (int w = -50; w <= 50; w++)
-		for (int t = -50; t <= 50; t++) {
-			int g[3], w2, t2, d;
-
-			wb_gains(w, t, g);
-			for (int i = 0; i < 3; i++)
-				if (g[i] < *lowest)
-					*lowest = g[i];
-			wb_positions(g, &w2, &t2);
-			d = abs(w2 - w) > abs(t2 - t) ? abs(w2 - w) : abs(t2 - t);
-			if (d > *worst) {
-				*worst = d;
-				*worst_w = w;
-				*worst_t = t;
-			}
-		}
-}
-#endif
 
 /*
  * Colour by primary: one choice of the colour, then its hue and its saturation, as a step on what the picture mode itself

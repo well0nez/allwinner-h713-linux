@@ -61,6 +61,7 @@ class FakeTv(Ctl):
         self.saved, self.refuse_43 = 0, False
         self.nosignal = False                          # the page "No signal on HDMI" is on the wall (h713-tv's status line)
         self.wb = [512] * 6                            # the firmware's white balance: R G B gain, R G B offset
+        self.sliders = (0, 0)                          # what h713-tv says the sliders stand at (it owns the mapping, color.c)
         self.cm = {}                                   # (axis, "hue"|"sat"|"value") -> step; 0 = not there
         self.fw_color = True                           # False: "not available" (another firmware)
         self.curves = False                            # True: h713-tv has the board's gamma curves (ctl get/set gamma, colour_temperature)
@@ -123,11 +124,16 @@ class FakeTv(Ctl):
             if len(w) == 1:
                 if not self.fw_color:
                     return "ok wb %s [not available: not the display firmware these addresses were read from]\n" % " ".join(map(str, self.wb))
-                return "ok wb %s -- R G B gain, R G B offset; 512 is neutral\n" % " ".join(map(str, self.wb))
+                return "ok wb %s sliders %d %d -- R G B gain, R G B offset, then the sliders; 512 is neutral\n" % (
+                    " ".join(map(str, self.wb)), self.sliders[0], self.sliders[1])
             if not self.fw_color:
                 return "error wb: not the display firmware these addresses were read from\n"
             if w[1] == "reset":
                 self.wb = [512] * 6
+                self.sliders = (0, 0)
+            elif w[1] == "sliders" and len(w) == 4:
+                self.sliders = (int(w[2]), int(w[3]))
+                self.wb = wb_gains(*self.sliders) + self.wb[3:]
             elif len(w) == 7 and all(x.isdigit() and 0 <= int(x) <= 1023 for x in w[1:]):
                 self.wb = [int(x) for x in w[1:]]
             else:
@@ -598,85 +604,55 @@ class WhiteBalance(Base):
         self.assertIn("area Keystone", b.dump())
         b.finish()
 
-    def test_a_step_sends_all_six(self):
+    def test_a_step_sends_the_sliders(self):
         b = self.box().start("White balance")
         b.keys("ok", "right")                                       # Warm - Cool: one step (2) towards cool
         d = b.dump()
         self.assertIn("focus slider", d)
         self.assertIn("Warm - Cool slider 2 -50..50", d)
-        self.assertEqual(b.tv.log[-1], "wb %d %d %d 512 512 512" % tuple(wb_gains(2, 0)))
-        self.assertEqual(b.tv.log[-1], "wb 508 512 512 512 512 512")
+        self.assertEqual(b.tv.log[-1], "wb sliders 2 0")
         b.keys("down", "right", "right", "right")                   # Green - Magenta: three steps towards magenta
         b.dump()
-        self.assertEqual(b.tv.log[-1], "wb %d %d %d 512 512 512" % tuple(wb_gains(2, 6)))
+        self.assertEqual(b.tv.log[-1], "wb sliders 2 6")
         self.assertEqual(b.tv.wb, wb_gains(2, 6) + [512] * 3)
         b.finish()
 
-    def test_every_command_carries_six_numbers_and_never_fffff(self):
+    def test_every_command_carries_two_slider_positions(self):
         b = self.box().start("White balance")
         b.keys("ok", "right", "right", "left", "down", "left", "left", "left", "up", "left")
         b.dump()
         sent = [l for l in b.tv.log if l.startswith("wb ") and l != "wb"]
         self.assertGreaterEqual(len(sent), 3)             # (a run of presses the same way is one command)
         for line in sent:
-            words = line.split()[1:]
-            self.assertEqual(len(words), 6, line)
-            self.assertTrue(all(w.isdigit() and 0 <= int(w) <= 1023 for w in words), line)
+            words = line.split()
+            self.assertEqual(words[:2], ["wb", "sliders"], line)
+            self.assertEqual(len(words), 4, line)
+            self.assertTrue(all(-50 <= int(w) <= 50 for w in words[2:]), line)
         b.finish()
 
-    def test_the_other_end_lowers_the_other_gains(self):
+    def test_the_other_end_sends_the_other_positions(self):
         b = self.box().start("White balance")
-        b.keys("ok", *["left"] * 10)                                # warm: blue goes down
+        b.keys("ok", *["left"] * 10)                                # warm
         b.dump()
-        self.assertEqual(b.tv.wb[:3], wb_gains(-20, 0))
-        self.assertEqual(b.tv.wb[:3], [512, 512, 471])
-        b.keys("down", *["left"] * 5)                               # green: red and blue go down together
+        self.assertEqual(b.tv.log[-1], "wb sliders -20 0")
+        b.keys("down", *["left"] * 5)                               # green
         b.dump()
-        self.assertEqual(b.tv.wb[:3], wb_gains(-20, -10))
-        self.assertLess(b.tv.wb[0], 512)
-        self.assertEqual(b.tv.wb[1], 512)
+        self.assertEqual(b.tv.log[-1], "wb sliders -20 -10")
         b.finish()
 
-    def test_the_example_of_too_much_yellow_comes_back_as_its_sliders(self):
-        # "too much yellow": w = +15, t = +10 gives R 481, G 492, B 512 - and 481 492 512 shows as 15 and 10
-        b = self.box()
-        b.tv.wb = [481, 492, 512, 512, 512, 512]
-        b.start("White balance")
-        d = b.dump()
-        self.assertIn("Warm - Cool slider 15 ", d)
-        self.assertIn("Green - Magenta slider 10 ", d)
-        b.finish()
-
-    def test_the_positions_come_back_from_the_gains(self):
-        for w, t in ((0, 0), (-50, -50), (50, 50), (-50, 50), (50, -50), (20, -30), (-30, 20), (-8, 0), (0, -12)):
+    def test_the_positions_are_the_ones_h713_tv_names(self):
+        for w, t in ((15, 10), (0, 0), (-50, -50), (50, 50), (-50, 50), (20, -30), (-8, 0)):
             b = self.box()
-            b.tv.wb = wb_gains(w, t) + [512] * 3
+            b.tv.sliders = (w, t)
             b.start("White balance")
             d = b.dump()
-            got = [int(x) for x in (l.split()[-2] for l in d.splitlines() if l.strip().startswith(("Warm - Cool", "Green - Magenta")))]
-            self.assertLessEqual(abs(got[0] - w), 1, (w, t, got))
-            self.assertLessEqual(abs(got[1] - t), 1, (w, t, got))
+            self.assertIn("Warm - Cool slider %d " % w, d)
+            self.assertIn("Green - Magenta slider %d " % t, d)
             b.finish()
-
-    def test_the_mapping_over_its_whole_range(self):
-        # the real functions of rows.c over all 101 x 101 positions: a position comes back within one step, and no gain is
-        # lowered by more than 36 % (both sliders at the same end: 0.8 x 0.8)
-        b = self.box().start("White balance")
-        b.keys("wbsweep")
-        line = ""
-        for line in b.proc.stdout:
-            if line.startswith("wbsweep"):
-                break
-        words = line.split()
-        self.assertEqual(words[1], "lowest")
-        self.assertGreaterEqual(int(words[2]), 327)
-        self.assertEqual(words[3], "worst")
-        self.assertLessEqual(int(words[4]), 1, line)
-        b.finish()
 
     def test_gains_the_sliders_cannot_make_show_as_zero(self):
         b = self.box()
-        b.tv.wb = [600, 512, 512, 512, 512, 512]
+        b.tv.wb = [600, 512, 512, 512, 512, 512]                    # h713-tv says sliders 0 0 (other)
         b.start("White balance")
         d = b.dump()
         self.assertIn("Warm - Cool slider 0 ", d)
@@ -689,7 +665,8 @@ class WhiteBalance(Base):
         b.start("White balance")
         b.keys("ok", "right")
         b.dump()
-        self.assertEqual(b.tv.log[-1], "wb 508 512 512 530 500 512")
+        self.assertEqual(b.tv.log[-1], "wb sliders 2 0")
+        self.assertEqual(b.tv.wb, [508, 512, 512, 530, 500, 512])
         b.finish()
 
     def test_reset(self):
