@@ -313,6 +313,68 @@ class Pattern(unittest.TestCase):
         self.assertEqual(data[0:4], data[4 * 8:4 * 9])       # ... with period 2
 
 
+class Handover(unittest.TestCase):
+    """The panel for the pattern (TODO 4.9h): h713-tv and h713-warp are two
+    scripts that write down every call and answer as the real ones do."""
+
+    def _tools(self, tv_status="mode            automatic\n", bare="ok bare",
+               warp_on=False):
+        box = tempfile.mkdtemp(prefix="h713-af-tools-")
+        self.addCleanup(shutil.rmtree, box, True)
+        self.calls = os.path.join(box, "calls")
+        for name, status, extra in (
+                ("h713-tv", tv_status,
+                 'bare) echo "%s ${3:-}";;' % bare if bare else
+                 'bare) echo "error unknown: bare (h713-tv ctl help)";;'),
+                ("h713-warp", "warp            on\n" if warp_on else
+                 "warp            off\n", "")):
+            path = os.path.join(box, name)
+            with open(path, "w") as fh:
+                fh.write('#!/bin/sh\necho "%s $*" >> "%s"\ncase "$2" in\n'
+                         'status) printf "%%s" "%s";;\n%s\n'
+                         '*) echo ok;;\nesac\n'
+                         % (name, self.calls, status, extra))
+            os.chmod(path, 0o755)
+        return os.path.join(box, "h713-tv"), os.path.join(box, "h713-warp")
+
+    def _called(self):
+        with open(self.calls) as fh:
+            return [line.split(" ", 2)[0][5:] + " " + line.split(" ", 2)[2].strip()
+                    for line in fh]
+
+    def test_the_page_goes_for_the_pattern_and_comes_back_first(self):
+        tv, warp = self._tools(warp_on=True)
+        h = af.Handover(tv=tv, warp=warp, bare_s=52)
+        h.take()
+        self.assertEqual(self._called(), ["warp status", "warp off", "tv status",
+                                          "tv off", "tv bare 52"])
+        h.give_back()
+        self.assertEqual(self._called()[5:], ["tv bare 0", "tv auto", "warp on"])
+
+    def test_a_console_forced_before_stays_forced(self):
+        tv, warp = self._tools(tv_status="mode            console (ctl off)\n")
+        h = af.Handover(tv=tv, warp=warp, bare_s=52)
+        h.take()
+        h.give_back()
+        self.assertEqual(self._called(), ["warp status", "tv status", "tv off",
+                                          "tv bare 52", "tv bare 0"])
+
+    def test_an_h713_tv_without_bare_is_noted_and_the_run_goes_on(self):
+        tv, warp = self._tools(bare=None)
+        notes = []
+        h = af.Handover(tv=tv, warp=warp, log=notes.append, bare_s=52)
+        h.take()
+        h.give_back()
+        self.assertNotIn("tv bare 0", self._called())
+        self.assertTrue(any("an open page stays over the pattern" in n
+                            for n in notes), notes)
+
+    def test_the_net_is_the_deadline_and_a_margin(self):
+        self.assertEqual(af.bare_seconds(22.0), 52)      # the default deadline
+        self.assertEqual(af.bare_seconds(0), af.BARE_MAX_S)
+        self.assertEqual(af.bare_seconds(900.0), af.BARE_MAX_S)
+
+
 class SearchOnFrames(unittest.TestCase):
     """The convergence proof, on a fixture whose sharpest step is known."""
 

@@ -329,6 +329,9 @@ h713-tv ctl auto                the picture follows the signal (the default with
 h713-tv ctl off                 force the console (plane off, master gone, console unblanked), until "auto"
                                  auto/off are saved across restarts -- section 6c
 h713-tv ctl console             unblank the console and switch the cursor on, without touching the plane
+h713-tv ctl bare [SECONDS]      nothing of h713-osd's on the wall for 1..600 s (the autofocus's chessboard on the
+                                 console): an opaque page goes, "osd show" is kept and answered "ok waiting";
+                                 "bare 0" or the end of the time puts it back (docs/tools/h713-tv.md, "Bare")
 h713-tv ctl list                every picture control of the capture node, with value and range
 h713-tv ctl get CONTROL         read one control
 h713-tv ctl set CONTROL VALUE   set one control; menus also by text (set range full, set mode cinema)
