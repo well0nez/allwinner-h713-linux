@@ -780,6 +780,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Ton: die Stock-`audio_config.ini` des L018 geht bis 0 dB statt -38 (HY310) - eigene Lautstärkegrenze, leise anfangen
         (h713-tv fährt die HY310-Kurve fest: oben -9,5 dB, am L018 ~10 dB leiser als Stock; eigene Kurve erst nach Hörtest);
         `h713-features` `lamp-modes` und `docs/tools/h713-lamp.md` mit der UI bzw. der Integration
+  - [ ] 4.9g **Weißes Bild vor dem Logo** (Marco 25.10.2026 morgens: „beim l018 startet das bild weiß bevor das logo kommt, hier
+        ist auch der init irgendwie nicht so geil - für später"): beim Einschalten zeigt das Panel kurz Weiß, dann das Logo. Ursache
+        nicht gemessen; Kandidaten: Reihenfolge Panel-Reset (PH9/PH16, `CONFIG_H713_BOARD_L018`) gegen Lampe an (PB5/PWM2 std nach
+        dem Gate) und Logo-Start der Display-Firmware. Messen: UART-Zeiten der L018-Zeilen gegen Kamera-/Augenbeobachtung; Stock-Ablauf
+        zum Vergleich (dort kein Weiß gesehen? Marco fragen)
   - [ ] 4.9f In die Linie: test3 mit Profilen, Abnahme inkl. 4.0, `verified`, Fork `versuch/l018` → `h713-hy310`, Zweig → `main`
         (Push nur mit Marcos Ja)
 
