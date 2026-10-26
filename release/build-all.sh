@@ -218,7 +218,7 @@ KDEF=${KERNEL_DEFCONFIG:-$(sed -n 's/^KERNEL_DEFCONFIG=\([^ #]*\).*/\1/p' "$MAIN
 # takes the base without the suffix. For hy310 this is hy310, as before.
 UBOOT_BASE=${UBOOT_DEFCONFIG:-${UBOOT_BOARD}_defconfig}; UBOOT_BASE=${UBOOT_BASE%_defconfig}
 [[ -n "$VERSION" ]] || { echo "--version vX.Y is missing (name of the image: $IMAGE_NAME-vX.Y)" >&2; exit 2; }
-[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+(-[a-z0-9]+)?$ ]] || { echo "--version: expected vX.Y or vX.Y-beta, not '$VERSION'" >&2; exit 2; }
+[[ "$VERSION" =~ ^v[0-9]+\.[0-9]+(\.[0-9]+)?(-[a-z0-9]+)?$ ]] || { echo "--version: expected vX.Y, vX.Y-beta or vX.Y.Z-beta, not '$VERSION'" >&2; exit 2; }
 # A profile image says so in its name: the stamp and the file names must not pass it off as the base image.
 PROFILE_SUFFIX=
 if [[ -n "$PROFILES" ]]; then
