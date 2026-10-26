@@ -39,6 +39,10 @@ CONFIG_BT_HCIUART_H4=y
 # The stock BLE remote: bluez' HID over GATT hands its reports to the kernel through uhid.
 CONFIG_UHID=y
 
+# Its microphone: report 0x1E (60 bytes every 8 ms, scrambled SBC) reaches userspace only through /dev/hidraw
+# (h713-mic, TODO 2.51).
+CONFIG_HIDRAW=y
+
 # The fix-up of that remote's consumer report descriptor (kernel 0169).
 CONFIG_HID_H713_REMOTE=y
 CONFIG_CFG80211=y
