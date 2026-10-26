@@ -786,7 +786,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `CONFIG_H713_BOARD_L018`): der erste Boot zeigte das Bild gespiegelt und im Gate Lampe (voll) und Lüfter an; jetzt Gate
       dunkel und leise, Bild richtig herum (PH9 low vor dem Panel-Reset), Lampe std 50 %, Lüfter 70 % (3240 U/min). Gemessen am
       Gerät nach Schnell-Deploy (`arbeit/l018-board-20261024/BERICHT.md`). HY310-Code ohne Option byte-gleich. Nicht gepusht
-- [ ] 4.9 **L018 bis zum fertigen Board** (**verified seit 26.10.2026, `doku/222`; offen nur 4.9c Bedienung durch Marco, 4.9d Kopfhörer/HDCP 2.2**) - der Plan: `arbeit/l018-board-20261024/PLAN.md`** (25.10.2026). Stock-Werte fest
+- [ ] 4.9 **L018 bis zum fertigen Board** (**verified seit 26.10.2026, `doku/222`; offen nur 4.9c Bedienung durch Marco, 4.9d Kopfhörer/HDCP 2.2**) - der Plan: `arbeit/l018-board-20261024/PLAN.md` (25.10.2026). Stock-Werte fest
       verdrahtet, bis wir selbst messen; alles board-spezifisch (HY310 & Co. byte-gleich). Launcher: am 25.10. per apt auf das
       Gerät gebracht (Profile media,desktop), im nächsten Abbild `--profile media,desktop`.
   - [x] 4.9a Temperatur (**erledigt 25.10.: NTC liest, Abschaltung bei 51 °C scharf wie unter Stock; Thermometer entfällt, Wärmemodus und das Abschalten selbst bleiben ungemessen - Marco**): der L018 hat einen NTC (Stock `ntc_num 1`, GPADC Kanal 1), der HY310 keinen - unser Baum erbt 0. DT
