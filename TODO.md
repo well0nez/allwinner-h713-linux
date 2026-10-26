@@ -990,6 +990,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         häufigsten Fall fängt der Kernel-Cache über den Eingabe-Hash schon ab
       - **26.10.2026 (Integration, `arbeit/nacht-20261026/PLAN.md`):** das G-EU-Testabbild `v0.0-nacht` aus `versuch/nacht-integration` frisch gebaut (37 min 39 s, `steps: built` alle 15, `reproducible: yes`, Board `hy200-qz713df-a1/projector05061226`) - damit ist auch `--variant` gemessen; installiert, bootet, Abnahme 25/0/5. Offen aus dem Bericht: `--standby`, `--test-image`, Board-Wechsel in einer Kopie; Punkt 5 (Kernel inkrementell) bleibt zurückgestellt.
 
+- [ ] 5.24 **Lampe und Lüfter beim Installieren aus lassen, auf allen Boards** (Marco 26.10.2026, niedrige Priorität: „wieso fahren
+      wir auf allen geräten überhaupt lüfter und lampe? theoretisch könnte man beides auslassen - es gibt eh kein bild"): im FEL-/USB-
+      Speicher-Weg (Installer-U-Boot, `ums`) laufen Lampe und Lüfter, obwohl kein Bild kommt. Aus = keine Hitze, also auch kein
+      Lüfter nötig. Zu klären je Board, bevor etwas gebaut wird: wer sie dort einschaltet (U-Boot `board_init`/Panel-Folge, die
+      HY310-Schiene PB5 schaltet beides zusammen, L018 PB5 + PWM2/PWM0), und ob der Installer-Weg die Panel-Folge überhaupt braucht
+      (Bild für Meldungen?). Gemessen ist dazu nichts.
+
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
 **Erledigt 09.10. abends (`doku/180`):** das ganze Paket ist in Forks, Spiegeln und `main` und per FEL gemessen; 1.1a baut es
