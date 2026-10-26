@@ -786,7 +786,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `CONFIG_H713_BOARD_L018`): der erste Boot zeigte das Bild gespiegelt und im Gate Lampe (voll) und Lüfter an; jetzt Gate
       dunkel und leise, Bild richtig herum (PH9 low vor dem Panel-Reset), Lampe std 50 %, Lüfter 70 % (3240 U/min). Gemessen am
       Gerät nach Schnell-Deploy (`arbeit/l018-board-20261024/BERICHT.md`). HY310-Code ohne Option byte-gleich. Nicht gepusht
-- [ ] 4.9 **L018 bis zum fertigen Board - der Plan: `arbeit/l018-board-20261024/PLAN.md`** (25.10.2026). Stock-Werte fest
+- [ ] 4.9 **L018 bis zum fertigen Board** (**verified seit 26.10.2026, `doku/222`; offen nur 4.9c Bedienung durch Marco, 4.9d Kopfhörer/HDCP 2.2**) - der Plan: `arbeit/l018-board-20261024/PLAN.md`** (25.10.2026). Stock-Werte fest
       verdrahtet, bis wir selbst messen; alles board-spezifisch (HY310 & Co. byte-gleich). Launcher: am 25.10. per apt auf das
       Gerät gebracht (Profile media,desktop), im nächsten Abbild `--profile media,desktop`.
   - [x] 4.9a Temperatur (**erledigt 25.10.: NTC liest, Abschaltung bei 51 °C scharf wie unter Stock; Thermometer entfällt, Wärmemodus und das Abschalten selbst bleiben ungemessen - Marco**): der L018 hat einen NTC (Stock `ntc_num 1`, GPADC Kanal 1), der HY310 keinen - unser Baum erbt 0. DT
@@ -845,7 +845,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         nicht gemessen; Kandidaten: Reihenfolge Panel-Reset (PH9/PH16, `CONFIG_H713_BOARD_L018`) gegen Lampe an (PB5/PWM2 std nach
         dem Gate) und Logo-Start der Display-Firmware. Messen: UART-Zeiten der L018-Zeilen gegen Kamera-/Augenbeobachtung; Stock-Ablauf
         zum Vergleich (dort kein Weiß gesehen? Marco fragen)
-  - [ ] 4.9f In die Linie - **Code in `main` seit 26.10. (`c94be434`, Marcos Ja), Fork `h713-hy310` = `c97e5c6b`; vorher am L018, HY310 und
+  - [x] 4.9f In die Linie - **verified 26.10. nachmittags (`doku/222`): test3 aus `main` (`h713-l018-v0.97-test3-media-desktop-TEST`) auf Marcos L018
+        über unser Layout installiert und abgenommen, `STATUS=verified` (Marcos Ja); Kopfhörer und HDCP 2.2 nicht getestet. Offen: ein
+        Release-Abbild (von vorn bauen, TODO §1) - Marcos Entscheidung.** Code in `main` seit 26.10. (`c94be434`, Marcos Ja), Fork `h713-hy310` = `c97e5c6b`; vorher am L018, HY310 und
         G-EU validiert (`arbeit/l018-board-20261024/VALIDIERUNG.md`), Worktrees und `versuch/*` aufgeräumt; offen: test3 mit Profilen,
         Abnahme, `verified` - „deutlich später" (Marco)**. Ursprünglich: test3 mit Profilen, Abnahme inkl. 4.0, `verified`, Fork `versuch/l018` → `h713-hy310`, Zweig → `main`
         (Push nur mit Marcos Ja)
@@ -996,6 +998,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Lüfter nötig. Zu klären je Board, bevor etwas gebaut wird: wer sie dort einschaltet (U-Boot `board_init`/Panel-Folge, die
       HY310-Schiene PB5 schaltet beides zusammen, L018 PB5 + PWM2/PWM0), und ob der Installer-Weg die Panel-Folge überhaupt braucht
       (Bild für Meldungen?). Gemessen ist dazu nichts.
+
+- [ ] 5.25 **Probelauf über unser Layout verweigert ein Testabbild** (26.10.2026, L018, `doku/222` §3): `install --no-write` über
+      unserem Layout hängt das Rootfs nicht ein, liest `/etc/h713/board` nicht, das Board bleibt unbekannt, und die Testabbild-Prüfung
+      lehnt ab ("This device is no board we know") - der echte Lauf hätte das Board gelesen. Abhilfe am 26.10.: ein Vollabzug als
+      `h713-dump/emmc-full.img` nennt das Board. Richtig wäre: der Probelauf liest `/etc/h713/board` nur lesend (oder verschiebt die
+      Testabbild-Entscheidung auf den Lauf, der einhängt). Gemessen ist nur der Fehler, gebaut nichts.
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
