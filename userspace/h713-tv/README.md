@@ -455,7 +455,9 @@ second `h713-tv` does not start (`/run/h713-tv/lock`).
 program) and at the start, the program unblanks the console (`TIOCL_UNBLANKSCREEN`) and switches the cursor
 on (`ESC[?25h`); on 08.09. the console otherwise stood frozen without a cursor (`fb0/blank` = 4, the cursor
 hidden by DECTCEM - the culprit was not found, `consoleblank` is 0). The console's keyboard comes back on with
-it (§3; at the start too, should an earlier run have left it off).
+it (§3; at the start too, should an earlier run have left it off). A start that finds no CRTC driving a mode (the
+last run's framebuffer went with the primary plane: a SIGKILL, a refused way out) gives the master back, unblanks
+the console before it looks again and starts from the console's mode (TODO 2.125, `docs/tools/h713-tv.md`).
 
 ## 6b. Audio: the audio path follows the picture
 

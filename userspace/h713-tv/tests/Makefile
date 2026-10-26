@@ -16,6 +16,8 @@
 #               ring, a popup over a picture, the warp's next frame, no page at all
 #   test_wall   the wall black between a client's release and the straight ring (TODO 2.124): one commit to black, the ring's
 #               commit takes it, the console's framebuffer first when nothing comes, the black one never removed while shown
+#   test_crtc   the start after a run that left no mode on the CRTC (TODO 2.125): a refused way out, a SIGKILL, again in one
+#               boot - the master given back, the console restored, the console's mode found; the holder takes the wall as it is
 #   test_color  the firmware's white balance and colour management (bm-wb2): the registers a value gives, all six words every
 #               time, the colour management as a step on the board's own value, the firmware that forgets, the slots, the file werte
 #   test_curve  the volume slider's curve: the built-in one, a board's own from audio_config.ini (volume_curve = vendor),
@@ -36,7 +38,7 @@ CFLAGS  += -std=gnu11 -Wall -Wextra -Wno-format-truncation -Wno-unused-function
 # program says why); the tests are built the same way
 CFLAGS  += -ffp-contract=off
 INC      = -idirafter $(SYSROOT)/usr/include -idirafter $(SYSROOT)/usr/include/libdrm
-TESTS    = test_want test_edid test_nosig test_hold test_wall test_bare test_color test_gamma test_curve
+TESTS    = test_want test_edid test_nosig test_hold test_wall test_crtc test_bare test_color test_gamma test_curve
 
 all: $(TESTS)
 
@@ -46,7 +48,7 @@ color.o: ../color.c ../color.h
 gamma.o: ../gamma.c ../gamma.h ../color.h
 	$(CC) $(CFLAGS) -c -o $@ ../gamma.c
 
-test_want test_edid test_nosig test_hold test_wall test_bare test_curve: color.o gamma.o
+test_want test_edid test_nosig test_hold test_wall test_crtc test_bare test_curve: color.o gamma.o
 test_color: gamma.o
 test_gamma: color.o
 
@@ -62,6 +64,7 @@ run: $(TESTS)
 	./test_nosig
 	./test_hold
 	./test_wall
+	./test_crtc
 	./test_bare
 	./test_color
 	./test_gamma
