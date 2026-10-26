@@ -109,7 +109,7 @@ Measured on the HY310 on 19.10.2026 (one warm start after the deploy, the unit r
 The rest of `once --apply` is the start of Python, the model's search for the rectangle and the eight `h713-warp` calls. The averages
 of ten contiguous triples scatter a little more than those of ten sysfs triples taken over 0.7 s (30 averages, alternating, standard
 deviation 5.7/4.3/8.0 LSB against 4.9/4.4/4.0; single triples scatter alike, 14 to 17 LSB, and no two consecutive triples were equal);
-twenty triples (0.24 s) give 4.6/3.3/5.9, which `average_samples = 20` would use. Not measured: the current the sensor and the CPU
+twenty triples (0.24 s) give 4.6/3.3/5.9, which is why `average_samples` defaults to 20 (a device keeps the value in its own `keystone.conf`). Not measured: the current the sensor and the CPU
 draw (only the CPU shares above), whether the first triples after a switch-on are stale after a pose change (at rest they are
 indistinguishable from the later ones in 80 cold starts, which cannot show it), and the HY300PRO-G-EU.
 
@@ -125,7 +125,7 @@ throw_ratio        = ini       # ini = camprjspe.ini (0.8176), or a measured num
 zoom_scale         = 0         # 0/1/2 -> target width 1920/1728/1440 (16:9, 16:10, 4:3)
 turn_to_wall       = 0         # degrees, -30..30: + when the RIGHT side of the picture is the higher one (the settings page writes it)
 sampling_rate      = 100       # Hz written into sampling_frequency at the start
-average_samples    = 10        # raw triples averaged per reading
+average_samples    = 20        # raw triples averaged per reading
 hysteresis_degrees = 1.0       # a change this big applies ...
 hold_seconds       = 1.0       # ... after it has stood this long
 after_move         = off       # watch: off | keystone | keystone+focus (the settings page writes it)

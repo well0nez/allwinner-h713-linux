@@ -2,7 +2,7 @@
 #
 # Armbian's way (zram block device, ext4 on it, /var/log there, saved to
 # /var/log.hdd at shutdown) solves the same problem but is a construction of
-# three moving parts. We solve the logs with Storage=volatile (10-h713.conf)
+# three moving parts. We solve the logs with a capped journal (10-h713.conf)
 # and use zram only for what it is really needed for here: absorbing tmpfs
 # pressure and making the device sluggish instead of dead when memory is
 # short.

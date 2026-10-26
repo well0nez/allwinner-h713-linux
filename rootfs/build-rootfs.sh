@@ -805,10 +805,10 @@ rm -rf "$TREE"/var/lib/apt/lists/* "$TREE"/var/cache/apt/archives/*.deb
 install -d "$TREE/var/lib/apt/lists/partial"
 info "apt sources written, package lists NOT baked in"
 
-# 4i. Do not create the journal directory: if /var/log/journal exists, journald
-# switches to persistent despite Storage=volatile. That is exactly the trap
-# 107 §4.1 wants to avoid.
-rm -rf "$TREE/var/log/journal"
+# 4i. The journal directory: the journal is persistent (10-h713.conf, TODO 1.2a),
+# journald would create it itself; creating it here makes the image say so.
+# systemd-tmpfiles sets the owner and mode of the machine-id subdirectory later.
+install -d -m 2755 "$TREE/var/log/journal"
 
 # 4j. regulatory.db: wireless-regdb ships two signed copies and points, through
 # an alternative (priority 100 against 50), at the Debian-signed one. Our kernel
@@ -906,8 +906,9 @@ t "systemd as init"           test -x "$TREE/usr/lib/systemd/systemd"
 t "agetty present"            test -x "$TREE/sbin/agetty"
 t "autologin drop-in"         test -f "$TREE/etc/systemd/system/serial-getty@ttyS0.service.d/autologin.conf"
 t "serial-getty linked"       test -L "$TREE/etc/systemd/system/getty.target.wants/serial-getty@ttyS0.service"
-t "journald volatile"         grep -qx 'Storage=volatile' "$TREE/etc/systemd/journald.conf.d/10-h713.conf"
-t "no /var/log/journal"       test ! -d "$TREE/var/log/journal"
+t "journald persistent"       grep -qx 'Storage=persistent' "$TREE/etc/systemd/journald.conf.d/10-h713.conf"
+t "journal size capped"       grep -qx 'SystemMaxUse=32M' "$TREE/etc/systemd/journald.conf.d/10-h713.conf"
+t "/var/log/journal exists"   test -d "$TREE/var/log/journal"
 t "fstab: PARTLABEL root"     grep -q '^PARTLABEL=hy310-rootfs' "$TREE/etc/fstab"
 t "fstab: PARTLABEL boot"     grep -q '^PARTLABEL=hy310-boot' "$TREE/etc/fstab"
 t "fstab: no third line"      test "$(grep -c '^PARTLABEL=' "$TREE/etc/fstab")" = 2

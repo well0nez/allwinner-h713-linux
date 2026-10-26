@@ -13,6 +13,7 @@
 #include <errno.h>
 #include <dirent.h>
 #include <fcntl.h>
+#include <math.h>
 #include <stdint.h>
 #include <stdio.h>
 #include <stdlib.h>
@@ -965,8 +966,75 @@ void fwc_get(struct reply *r, int idx)
 }
 
 /*
- * "wb": show; "wb R G B RO GO BO": all six at once, one call; "wb reset": all 512.
- * One command for the settings page, whose two sliders move three gains together.
+ * The two white balance sliders of the settings page and the panel ("Warm - Cool", "Green - Magenta", -50..+50), for
+ * the eye and no instrument. They only ever LOWER a gain, so white never clips: cool lowers red, warm lowers blue,
+ * magenta lowers green, green lowers red and blue; each end is 20 % off (0.4 % per step). The sliders live here once:
+ * the callers send "wb sliders COOL MAGENTA" and read the positions off the answer of "wb".
+ */
+#define FWC_SLIDER_MAX	50
+#define FWC_SLIDER_S	0.004
+
+static void fwc_slider_gains(int cool, int magenta, int g[3])
+{
+	double kr = (1 - FWC_SLIDER_S * (cool > 0 ? cool : 0)) * (1 - FWC_SLIDER_S * (magenta < 0 ? -magenta : 0));
+	double kg = 1 - FWC_SLIDER_S * (magenta > 0 ? magenta : 0);
+	double kb = (1 - FWC_SLIDER_S * (cool < 0 ? -cool : 0)) * (1 - FWC_SLIDER_S * (magenta < 0 ? -magenta : 0));
+
+	g[0] = (int)lround(FWC_WB_NEUTRAL * kr);
+	g[1] = (int)lround(FWC_WB_NEUTRAL * kg);
+	g[2] = (int)lround(FWC_WB_NEUTRAL * kb);
+}
+
+static int fwc_slider_clamp(double x)
+{
+	long v = lround(x);
+
+	return v < -FWC_SLIDER_MAX ? -FWC_SLIDER_MAX : v > FWC_SLIDER_MAX ? FWC_SLIDER_MAX : (int)v;
+}
+
+/*
+ * The sliders a set of gains would have come from, to the nearest step; 0, 0 for gains the sliders cannot make. Two
+ * positions at the far ends can make the same gains (-8 and -9 of Warm - Cool at -50 of Green - Magenta); the pages
+ * move in steps of 2, so the even one is the answer. Returns whether the sliders make exactly these gains.
+ */
+static bool fwc_slider_positions(const int g[3], int *cool, int *magenta)
+{
+	double r = g[0] / (double)FWC_WB_NEUTRAL, gg = g[1] / (double)FWC_WB_NEUTRAL, b = g[2] / (double)FWC_WB_NEUTRAL, f;
+	int c = 0, m = 0, have[3], nc, nm;
+
+	if (g[0] <= FWC_WB_NEUTRAL && g[1] <= FWC_WB_NEUTRAL && g[2] <= FWC_WB_NEUTRAL) {
+		if (gg < 1) {			/* magenta: green is lowered, red and blue only by the warm/cool slider */
+			m = fwc_slider_clamp((1 - gg) / FWC_SLIDER_S);
+			c = fwc_slider_clamp(r < 1 ? (1 - r) / FWC_SLIDER_S : b < 1 ? -(1 - b) / FWC_SLIDER_S : 0);
+		} else {			/* green or none: red and blue share the factor 1 - s|m| */
+			f = r > b ? r : b;
+			m = fwc_slider_clamp(-(1 - f) / FWC_SLIDER_S);
+			c = fwc_slider_clamp(f > 0 ? (r < b ? (1 - r / f) / FWC_SLIDER_S : b < r ? -(1 - b / f) / FWC_SLIDER_S : 0) : 0);
+		}
+	}
+	if (c % 2 || m % 2)
+		for (nc = c - 1; nc <= c + 1; nc++)
+			for (nm = m - 1; nm <= m + 1; nm++) {
+				if (nc % 2 || nm % 2 || nc < -FWC_SLIDER_MAX || nc > FWC_SLIDER_MAX || nm < -FWC_SLIDER_MAX ||
+				    nm > FWC_SLIDER_MAX)
+					continue;
+				fwc_slider_gains(nc, nm, have);
+				if (!memcmp(have, g, sizeof(have))) {
+					*cool = nc;
+					*magenta = nm;
+					return true;
+				}
+			}
+	*cool = c;
+	*magenta = m;
+	fwc_slider_gains(c, m, have);
+
+	return !memcmp(have, g, sizeof(have));
+}
+
+/*
+ * "wb": show; "wb R G B RO GO BO": all six at once, one call; "wb reset": all 512; "wb sliders COOL MAGENTA": the two
+ * sliders' gains (fwc_slider_gains), the offsets as they are. The answer of "wb" names the sliders the gains come from.
  */
 void cmd_wb(struct reply *r, char **arg, unsigned int n)
 {
@@ -979,14 +1047,31 @@ void cmd_wb(struct reply *r, char **arg, unsigned int n)
 		fwc_wb_text(t, sizeof(t));
 		if (!fwc_probe())	/* "ok", not an error: the numbers are shown, and the page knows to hide itself */
 			reply_add(r, "ok wb %s [not available: %s]\n", t, fwc.why);
-		else
-			reply_add(r, "ok wb %s -- R G B gain, R G B offset; 512 is neutral%s\n", t,
+		else {
+			int cool, magenta;
+			bool exact = fwc_slider_positions(fwc.wb, &cool, &magenta);
+
+			reply_add(r, "ok wb %s sliders %d %d%s -- R G B gain, R G B offset, then the Warm - Cool and Green - Magenta sliders; "
+				  "512 is neutral%s\n", t, cool, magenta, exact ? "" : " other",
 				  fwc.wb_applied ? " [on the registers]" : fwc_wb_neutral() ? "" : " [not applied]");
+		}
 		return;
 	}
 	if (n == 1 && (!strcmp(arg[0], "reset") || !strcmp(arg[0], "neutral"))) {
 		for (i = 0; i < FWC_WB_N; i++)
 			v[i] = FWC_WB_NEUTRAL;
+	} else if (n == 3 && !strcmp(arg[0], "sliders")) {
+		char *end_c, *end_m;
+		long cool = strtol(arg[1], &end_c, 0), magenta = strtol(arg[2], &end_m, 0);
+
+		if (*end_c || end_c == arg[1] || *end_m || end_m == arg[2] || cool < -FWC_SLIDER_MAX || cool > FWC_SLIDER_MAX ||
+		    magenta < -FWC_SLIDER_MAX || magenta > FWC_SLIDER_MAX) {
+			reply_fail(r, "wb sliders needs two numbers in -%d..%d (Warm - Cool, Green - Magenta)", FWC_SLIDER_MAX,
+				   FWC_SLIDER_MAX);
+			return;
+		}
+		fwc_slider_gains((int)cool, (int)magenta, v);
+		memcpy(v + 3, fwc.wb + 3, 3 * sizeof(int));
 	} else if (n == FWC_WB_N) {
 		for (i = 0; i < FWC_WB_N; i++) {
 			char *end;
@@ -999,7 +1084,7 @@ void cmd_wb(struct reply *r, char **arg, unsigned int n)
 			v[i] = (int)x;
 		}
 	} else {
-		reply_fail(r, "wb needs six numbers (R G B gain, R G B offset, 0..%d, 512 neutral), or reset", FWC_WB_MAX);
+		reply_fail(r, "wb needs six numbers (R G B gain, R G B offset, 0..%d, 512 neutral), sliders COOL MAGENTA, or reset", FWC_WB_MAX);
 		return;
 	}
 	memcpy(old, fwc.wb, sizeof(old));

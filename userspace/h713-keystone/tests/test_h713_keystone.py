@@ -85,6 +85,11 @@ def sign_of(value, band=1.0):
     return 0 if abs(value) < band else (1 if value > 0 else -1)
 
 
+class DefaultsTest(unittest.TestCase):
+    def test_average_samples_defaults_to_twenty(self):      # TODO 2.108: buffer triples scatter twice as much in z
+        self.assertEqual(dict((n, d) for n, d, _ in ks.DEFAULTS)["average_samples"], "20")
+
+
 class FakeIio(object):
     """A directory that looks like /sys/bus/iio/devices."""
 
