@@ -79,6 +79,12 @@ that have to answer what a foreign projector's hardware is.
 | `pq/camprjspe.ini` | `system:/system/camprjspe.ini` | the optics constants of autofocus and auto-keystone (`F`, `Whalf`, `Hhalf`, `U1`, `U2`, `Vdec`, `LCD_O`, `DLP_AXIS`, `fdd` ...), the camera's PID/VID, and a CRC the vendor checks over five of them |
 
 Both are checked for their mandatory keys and hashed into the manifest like every other artifact.
+
+One more text file sits next to them but **is** installed: `pq/audio_config.ini` (`vendor:/etc/tvconfig/audio_config.ini`,
+since 26.10.2026), the vendor's audio settings with the volume curve `[Volume] volume_curve[00..100]`. The extractor checks
+that curve the way `h713-tv` reads it (101 values in quarter dB, rising from 1 to 100, within -512..120) and the installer
+puts the file into `/etc/h713/tvconfig/` as the optional group `audio`; `h713-tv` takes the curve only with
+`tv.conf` `volume_curve = vendor` (the L018's board sets it, [h713-tv](h713-tv.md)). Without it the built-in curve applies.
 The vendor reads each of them from more than one place - `PanelControl` tries `/oem`, `/Reserve0`
 and the vendor path, and `read_ini_flle` tries `/oem/camprjspe.ini` before `/system/camprjspe.ini`.
 `/oem` is the `media_data` partition, which is in none of the inputs this tool opens, so the copies

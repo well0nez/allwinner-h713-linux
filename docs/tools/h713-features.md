@@ -7,8 +7,9 @@ Other boards of the family lack one or more of them - the HY200 QZ713DF A1 with 
 - **The record**, `/etc/h713/features`: the board's `FEATURES` out of `boards/<id>/board.env` - or, for a board
   with firmware variants, out of the variant's `variant.env` - written into the image by `build-rootfs.sh
   --board [--variant]` (`release/build-all.sh` passes its own). It says what to expect.
-- **The device nodes**: a `video4linux` node named "HD camera", an `iio:device` with `in_accel_x_raw`, a device
-  of the `hy310-focus-motor` driver. They decide.
+- **The device nodes**: a `video4linux` node named "HD camera" (the HY310's) or "HYSD-VAF02" (the L018's, since 25.10.2026),
+  an `iio:device` with `in_accel_x_raw`, a device of the `hy310-focus-motor` driver, and for `lamp-modes` the board
+  manager's `lamp_mode` (a lamp the board manager dims in modes with the fan: the L018, [h713-lamp](h713-lamp.md)). They decide.
 
 ```
 h713-features                     # one line per feature: present (and its node) or not present on this board
@@ -22,5 +23,5 @@ Without a record (a tree built without `--board`) the nodes alone decide and not
 
 What the rest of the system does with a missing feature: `h713-keystone-auto` is skipped (a condition on
 the node; `99-h713-keystone.rules` starts it when a late sensor appears); `h713-keystone`, `h713-autofocus`,
-`h713-focus` and `h713-cam` say "not present on this board" as their last line and exit `7`; the settings page on
+`h713-focus`, `h713-cam` and `h713-lamp` say "not present on this board" as their last line and exit `7`; the settings page on
 the wall ([h713-settings](h713-settings.md)) and the web page ([h713-panel](h713-panel.md)) hide the controls. `$H713_SYS` replaces `/sys` in all five tools (the tests).

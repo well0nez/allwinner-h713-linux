@@ -42,6 +42,31 @@ switched off and on deliberately and answered correctly both times.
 deliberately cutting the fan rail on a bench, or the measurement ends in a poweroff eight seconds later.
 `thermal_shutdown` stays off: there is no sensor to trigger it.
 
+## The L018: an NTC, a lamp, a thermal mode
+
+The L018 (`boards/l018`, kernel `0331`-`0333`) is the board where the same driver does more, because its tree asks for it
+(`doku/220`):
+
+- **An NTC.** Its stock tree has `ntc_num = 1` (GPADC channel 1) and its own table (38 pairs, 0..55 °C, `gpadc-table`) and
+  thresholds: warn 41, power off 51, resume 34 °C. `temp1_input` reads 21-28 °C at room temperature; the conversion is the
+  stock vmlinux's, recomputed by hand. No thermometer was held against it (the owner has none).
+- **A lamp and a fan with speed control.** PWM0 on PH17 is the fan's speed, PWM2 on PB4 the lamp's dimmer (it dims as the
+  duty rises), the tachometer is PH13. A `bl0` subnode with `duty-array` and `lamp-mode-names` gives the driver the lamp: one
+  mode index sets the fans' `duty-array-policy1` and the lamp together, the stock tables std 50/70 %, low 75/60 %, high
+  30/95 % - the registers the stock firmware wrote, measured. sysfs `lamp_mode`, `lamp_modes`, `thermal_mode`
+  ([h713-lamp](../tools/h713-lamp.md)); without a `bl0` node (every other board) none of these paths runs and none of the
+  attributes exists - read on the HY310 and the HY300PRO-G-EU after a boot with the code: the probe lines are the same.
+- **A thermal mode.** `thermal-mode = <3>` with `temp_resume`: after 30 cycles above `temp_warn` the driver sets mode 3 (lamp
+  75 %, fan 70 %) instead of forcing every fan to 100 %, keeps the chosen mode and sets it again at `temp_resume`. Not
+  measured: the NTC never came near 41 °C.
+- **The power-off at 51 °C, per board.** The boolean property `thermal-shutdown` in the board manager's node arms it for that
+  board alone (kernel `0333`); the module parameter `thermal_shutdown` still arms it everywhere. The power-off goes the way
+  of the fan stall, `orderly_poweroff(true)`, once. The L018's tree sets it, as its stock firmware powers off at the same
+  51 °C. The power-off itself is not measured.
+
+The fan stall shutdown is measured on the L018: PWM0 at 0 % read 0 RPM after 3.5 s, the verdict came after 8 cycles and the
+box was off 6.2 s later. On the owner's unit it has also fired in use - that fan stops at times, a defect of the unit.
+
 ## The fan rail in a standby
 
 PB5 is one line with three jobs on the HY310: the fan's +V rail, the enable of the LED boost (the lamp), and the

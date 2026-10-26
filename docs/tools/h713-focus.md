@@ -10,6 +10,7 @@ h713-focus up 20           # 20 msteps up, in chunks of 2
 h713-focus down 20         # down
 h713-focus flush           # clear the queue (emergency stop)
 h713-focus unlatch         # clear a remembered edge
+h713-focus home            # only with an experimental counted range (below): set position 0 against the upper stop
 ```
 
 The script's messages and help texts are English; two of its switches keep their German names, because the
@@ -53,11 +54,32 @@ A hard cap of 400 msteps per run applies even when the watcher stays silent - si
 still room. Ctrl-C drains the queue instead of leaving it mid-chunk; the mstep already in flight finishes,
 because the driver cannot abort it.
 
+## An experimental counted range (a unit whose watcher says nothing)
+
+On a unit whose range watcher never changes (the one L018 measured, `doku/220`), `/etc/h713/focus.conf` can replace it with
+a counted range - one unit, not a board: no image writes the file.
+
+```
+# /etc/h713/focus.conf
+limiter    = ignore     # the watcher counts for nothing on this unit
+range_low  = -35        # msteps below position 0 ...
+range_high = 35         # ... and above it
+home_up    = 110        # `home`: this far up, into the stop, blind ...
+home_down  = 55         # ... and this far back down: that is position 0
+```
+
+With it the tool sets `motor_ctrl_no_limit` (the one place it does), moves in chunks of 10, refuses a move past the range
+and keeps the position - the driver's counter plus an offset - in `/var/lib/h713/focus.state` with the boot it belongs to;
+`status` says `EXPERIMENTAL`. `home` is the blind run against the upper stop that this tool otherwise refuses; it is the
+only way to know the position after the counter was lost. The driver's homing at probe must stay off on such a unit
+(`homing=0`). [h713-autofocus](h713-autofocus.md) honours the same range.
+
 ## What this deliberately does not do
 
 **Autofocus** - judging sharpness needs a test image with hard edges, and on a dark scene or a blank wall an
 autofocus measures noise and drives the focus into it. That is [h713-autofocus](h713-autofocus.md)'s job - it
 puts the pattern up itself and restores the picture afterwards - not a subcommand here. **Homing** - there is no reference point besides the two edges, and driving
-to an edge just to find it is the exact blind write this tool exists to avoid.
+to an edge just to find it is the exact blind write this tool exists to avoid; the one exception is `home` in an
+experimental counted range (above), where there is no watcher left to avoid.
 
 Details: doku/94-fokusmotor-endschalter.md, analyse/boot/motor-bereichswaechter-20260912.txt

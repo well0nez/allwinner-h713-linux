@@ -91,6 +91,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       tvconfig): der Installer soll die Nutzer-Einstellungen wie die 44 Herstellerdateien zurücklesen und
       übernehmen — oder `build-all.sh --wifi-env` ist Pflicht. Bis dahin: Sicherung vorher (`/root/pre-v096`)
       - 12.10. aus 5.18: dazu einen vom Nutzer geänderten Hostnamen (`/etc/hostname`) mitnehmen
+      - 26.10. (L018, `doku/220`): die Herstellerdateien sind jetzt 45 (`audio_config.ini`, Gruppe `audio`) - beim Abgleich mit
+        `versuch/installer-nutzerstand` beachten; aus `/etc/h713` auch `lamp.conf` und, nur auf Marcos L018, das experimentelle
+        `focus.conf` übernehmen; `tv.conf`/`keys.conf` des L018 schreibt das Abbild mit seinen Board-Werten (`VOLUME_CURVE`, `FOCUS_STEPS`)
       - **25.10.2026 nachts, im Code (`versuch/installer-nutzerstand` 9a8c324f, `arbeit/installer-nutzerstand-20261025/`):** über unserem Layout übernimmt der Installer `/etc/h713` (ohne `tv/osd/keys/power.conf`, `features`, `board` und Unterordner - deren Abweichungen meldet er), die Hostschlüssel, `/var/lib/bluetooth`, `/var/lib/h713-tv` und einen gewählten Hostnamen; kein neuer Parameter. 495 Tests grün, Ende-zu-Ende gegen eine eMMC-Datei 19 von 19 (alter Code 6 von 19). Am Gerät nicht gemessen - Messplan BERICHT §5 (HY310, dann G-EU), danach nach `main`.
 - [x] 1.3 (erledigt: `TimeoutStopSec=10` steckt in `h713-wifi.service` im Abbild v0.97-beta; WLAN-Check nach den Installationen am 22./23.10.2026 an beiden Boxen bestanden) **WLAN-Timeouts verifizieren** (`82cb57e`): im Abbild drin, 5 Boots je ~9 s bis Finished — der Hängefall
       (Funk absichtlich verklemmen) ist noch nicht provoziert
@@ -755,7 +758,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       dazu nicht gelesen, nach dem nächsten Start `journalctl -b -1`, falls es dauerhaft ist)  [ ] HY310  [ ] HY300PRO-G-EU  [ ] HY300 Pro (Melder, nur mit dessen Ja)
       HY310 und G-EU: **nur wenn Marco die Lüfter absteckt** (Marco 25.10.: „du kannst keine Notaus-Tests machen, ohne dass ich die
       Fans abstecke") - nicht per PB5 aus der Ferne
-- [ ] 4.7 **L018 (Marcos eigener, 24.10.2026):** Testabbild `h713-l018-v0.97-test2-TEST` ist gebaut (Zweig `versuch/l018-board`
+- [x] 4.7 **L018 (Marcos eigener, 24.10.2026)** - **erledigt 25.10.: test2 installiert (Vollabzug als Rückweg), läuft; weiter in 4.8/4.9, Abnahme ist 4.9f:** Testabbild `h713-l018-v0.97-test2-TEST` ist gebaut (Zweig `versuch/l018-board`
       `94f4594c`, Paket `arbeit/l018-board-20261024/`, `boards/l018/README.md`); nichts davon hat am Gerät gebootet. Reihenfolge:
       (a) **erledigt 24.10.:** Lampe = PWM2/PB4, dimmt mit steigendem Tastgrad (high 30 / std 50 / low 75 %, Lüfter PWM0 95/70/60 %);
       Fernbedienung = die des HY310 (NEC `0xfd02`, alle Codes in `rc-h713-fd02`); keine Gerätetasten außer Power
@@ -770,7 +773,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 4.9 **L018 bis zum fertigen Board - der Plan: `arbeit/l018-board-20261024/PLAN.md`** (25.10.2026). Stock-Werte fest
       verdrahtet, bis wir selbst messen; alles board-spezifisch (HY310 & Co. byte-gleich). Launcher: am 25.10. per apt auf das
       Gerät gebracht (Profile media,desktop), im nächsten Abbild `--profile media,desktop`.
-  - [ ] 4.9a Temperatur: der L018 hat einen NTC (Stock `ntc_num 1`, GPADC Kanal 1), der HY310 keinen - unser Baum erbt 0. DT
+  - [x] 4.9a Temperatur (**erledigt 25.10.: NTC liest, Abschaltung bei 51 °C scharf wie unter Stock; Thermometer entfällt, Wärmemodus und das Abschalten selbst bleiben ungemessen - Marco**): der L018 hat einen NTC (Stock `ntc_num 1`, GPADC Kanal 1), der HY310 keinen - unser Baum erbt 0. DT
         mit eigener `gpadc-table` und Stock-Schwellen (warn 41, aus 51, resume 34 °C), messen, dann Abschaltung bei 51 °C scharf.
         **Teils erledigt 25.10. (`versuch/l018-board` `f3062428`, kernel 0331):** NTC liest 21,2-21,6 °C über 22 min bei CPU ~49 °C,
         Umrechnung nachgerechnet. ~~Offen: gegen ein Thermometer halten (Marco)~~ **Thermometer entfällt (Marco 25.10.: keins da)**; die Abschaltung bei 51 °C ist **seit 25.10. abends scharf wie unter Stock** (`versuch/l018-board` `12a6bcfc`, `thermal-shutdown;` im L018-Baum; gleiche Tabelle, gleiche Umrechnung im Stock-vmlinux; Eigenschaft am Gerät gelesen, das Abschalten selbst nicht gemessen) - über eine
@@ -785,7 +788,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
   - [ ] 4.9c Bedienung: Mockup zuerst (englisch), dann Zeile `Lamp` (Low/Standard/High) in h713-settings und Knöpfe in
         h713-panel; sichtbar nur mit Feature `lamp-modes` (FEATURES + h713-features); Temperatur/Drehzahl als Anzeige.
         **Gebaut 25.10. (`ddcd42c6`, Mockup-Variante B):** h713-settings Bereich „Projector", h713-panel Karte „Lamp",
-        h713-features `lamp-modes`, Tests grün. Offen: am Gerät bedienen (Marco)
+        h713-features `lamp-modes`, Tests grün. Offen: am Gerät bedienen (Marco) - Lampe per `h713-lamp` und Fernbedienung am Gerät gemessen; den Bereich „Projector" der Einstellungen und die Panel-Karte hat Marco noch nicht selbst bedient
   - [ ] 4.9d Hardware testen: Fokusmotor (Stock PF0..PF3, Endschalter PB1, cycle 3; step-type wirkt bei Stock nicht auf die
         Bewegung; PF0..PF5 sind die SD-Pins, sdmmc aus), Neigungssensor braucht twi2 im Baum + `IIO_ST_LSM6DSX`, Kamera `4098:a425`.
         **Baum seit 25.10. (`a741c251`):** Motor, twi2 + LSM6DSV, LEDs PL0/PL1 (Stock-Probe-Pegel); Tests gebündelt in
@@ -794,6 +797,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Kamera „HYSD-VAF02-ZH04" → `CAMERA_NAMES`; Fokus-Endschalter PB1 auf Marcos Unit tot (beide Anschläge, alle Pins geprüft) →
         experimenteller Zählbereich nur für diese Unit (`/etc/h713/focus.conf`, `h713-focus home`), Schachbrett-Autofokus findet
         den Scheitel; Keystone: `iio_name` richtig, ~~Achsen offen (zwei Lagen mit Marco, später)~~ **Achsen und Optik gemessen 25.10. abends (`versuch/l018-board` `9bd17502` Sensor-Digit gegen NaN, `cfe9c6cf` board.env `KEYSTONE` mit `throw_ratio = 1.1501` aus der L018-eigenen `camprjspe.ini`): bei 18,6° von vorn gerade (Marco)**; Vorzeichen der Rollachse nicht gemessen und praktisch ohne Belang (der Bügel kippt nur um sein Scharnier, seitlich nur auf schiefer Stellfläche; Marco 25.10.), `after_move` bleibt Standard aus
+        (h713-features kennt nur „HD camera"), Neigungssensor `lsm6dsv` + Keystone automatisch und von Hand, LEDs PL0/PL1,
+        Ein/Aus und IR aus dem Gate, HDMI/HDCP, Ton/Kopfhörer, Kodi/VA-API, BT-Fernbedienung
+        **Gemeinsam mit Marco (25.10. abends vereinbart):** Tontest, HDMI inkl. HDCP und Ton, Videobeschleunigung, Bluetooth-Hardware; vorher macht die Sitzung allein, was ohne ihn geht
+        **Gemessen 25./26.10. (`doku/220`):** BT-Fernbedienung, Ein/Aus aus dem Gate (Taste rot/blau), HDMI 1080p60 mit Ton, HDCP 1.4
+        (Paar der Messregel), Kodi/VA-API mit Ton, Keystone, Autofokus; **offen nur:** Kopfhörer (keine da), HDCP 2.2 (Fire-TV-Stick)
   - [x] 4.9h Autofokus bei offenem Launcher - **in `main` seit 26.10. (`c94be434`), validiert an L018, HY310 (Gegenprobe Pegel 11 → 14968) und G-EU; gebaut (`versuch/autofocus-launcher` `9728dd27`, h713-tv `ctl bare` + Handover)
         und am L018 gemessen 26.10. ~00:05 (Kombi-Zweig `versuch/l018-af-kombi` `9d0beed4`, `arbeit/l018-board-20261024/BERICHT.md`):**
         Gegenprobe alter Stand Ende 3 „no picture" (Pegel 706); neu Launcher 29586, Einstellungen 34790, „No signal" 34695, ohne
@@ -801,10 +809,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         über die eigene Zeile der Einstellungsseite nicht gemessen. Der ursprüngliche Befund: das Schachbrett geht in die Konsole, die OSD-Ebene (Launcher, Seiten) liegt darüber →
         „no picture". Der Autofokus muss die OSD-Ebene für seinen Lauf freimachen (h713-osd: es gibt kein „launcher hide"); gilt
         für alle Boards (L018 25.10. gesehen)
-        (h713-features kennt nur „HD camera"), Neigungssensor `lsm6dsv` + Keystone automatisch und von Hand, LEDs PL0/PL1,
-        Ein/Aus und IR aus dem Gate, HDMI/HDCP, Ton/Kopfhörer, Kodi/VA-API, BT-Fernbedienung
-        **Gemeinsam mit Marco (25.10. abends vereinbart):** Tontest, HDMI inkl. HDCP und Ton, Videobeschleunigung, Bluetooth-Hardware; vorher macht die Sitzung allein, was ohne ihn geht
-  - [ ] 4.9e Kleinkram: Lampe/Lüfter ~1 s an vor U-Boot (SPL) - **gebaut im Fork `d54ab262` (`versuch/l018`), HY310 byte-gleich;
+  - [x] 4.9e Kleinkram (**erledigt 26.10.: SPL dunkel, Taste rot/blau, eigene Lautstärkekurve, Fokus-Taste 13, `docs/tools/h713-lamp.md`; alles in `main` `c94be434`**): Lampe/Lüfter ~1 s an vor U-Boot (SPL) - **gebaut im Fork `d54ab262` (`versuch/l018`), HY310 byte-gleich;
         schreiben nur mit Marco (`deploy-runde2.sh U`, Kaltstart)** - **geschrieben 25.10., Marco: Licht bleibt bis zum Start aus, kein Weiß mehr; dazu `c97e5c6bb78`: Taste rot im Gate (Marco gesehen), blau ab dem Start; Zweig-Zeiger und Spiegel noch auf `b0795ef3079`**; ~~Helligkeit 0 von pwm-backlight~~ (entfällt, pwm-backlight ist aus);
         Ton: die Stock-`audio_config.ini` des L018 geht bis 0 dB statt -38 (HY310) - eigene Lautstärkegrenze, leise anfangen
         (h713-tv fährt die HY310-Kurve fest: oben -9,5 dB, am L018 ~10 dB leiser als Stock; eigene Kurve erst nach Hörtest);

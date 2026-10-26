@@ -112,6 +112,11 @@ edge to edge plus the fine return). ONE edge does not end a run: the driver has 
 the search turns round, the way the stock does (AP1c, 23.09.2026); a latched edge from an earlier run only
 decides the starting direction.
 
+With an experimental counted range in `/etc/h713/focus.conf` (a unit whose watcher says nothing,
+[h713-focus](h713-focus.md)) the search takes that range instead of the watcher: it moves through `h713-focus`'s own
+bookkeeping, treats the range's ends as its edges and keeps the position afterwards (measured on the L018 that needs it,
+25.10.2026: the chessboard search found the peak inside -35..35, `doku/220`).
+
 The packed read-back the *vendor* parser wants is a separate attribute, `motor_state` (patch `0154a`,
 [`docs/subsystems/focus-motor.md`](../subsystems/focus-motor.md)). This tool does not use it; it exists so a
 vendor-side script can read the motor at all.

@@ -36,11 +36,11 @@ and `pinmux-pins`, 24.10.2026). "fn" is the pin function number of our pinctrl t
 | Fan tacho | PH17 | PH13 (stock `fg-gpio`, EINT under stock) | `fg-gpio` PH13 |
 | Fan speed | on/off on PB5 | PWM0 on **PH17** (fn 3): 95/70/60 % with the lamp at high/std/low; PB5 the rail as on the HY310 | the board manager's `fan0` (`duty-array-policy1 <70 60 95 70>`, kernel 0332), set with the lamp; U-Boot sets the stock std before (2880/3210 rpm at low/std, 25.10.2026) |
 | Lamp | not dimmable | PWM2 on **PB4** (fn 2), 25 kHz; **dims as the duty rises**: the three stock modes switched on the unit read high 30 %, std 50 %, low 75 % (the stock fan node's `bl0` duty-array 50/75/30/75), PWM3 stays off | the board manager's `bl0` (stock duty-array, `lamp-mode-names` std/low/high, thermal mode 3), pwm-backlight off; `h713-lamp status \| set MODE`, kept in `/etc/h713/lamp.conf` |
-| Focus motor | PH4..PH7, end switch PH14 | PF0..PF3 (outputs under stock), end switch PB1, `motor-cycle` 3; app `com.hysd.vafocus` | `motor_ctr` with PF0..PF3, PB1, cycle 3; homing and the end switch's pull-up are the HY310's and not measured here - the first test loads the driver with `homing=0` |
+| Focus motor | PH4..PH7, end switch PH14 | PF0..PF3 (outputs under stock), end switch PB1, `motor-cycle` 3; app `com.hysd.vafocus` | `motor_ctr` with PF0..PF3, PB1, cycle 3. On the one unit measured PB1 reads 0 everywhere (dead, a defect of that unit, `doku/220`): the image does no reference run (`board.env` `FOCUS_HOMING=0`), a focus key moves 13 msteps (`FOCUS_STEPS=13`, the travel is ~110). That unit runs an experimental counted range ([h713-focus](../../docs/tools/h713-focus.md)). *Superseded (25.10.2026):* "homing and the end switch's pull-up [...] not measured here" |
 | Camera | Realtek `0bda:5803` | `4098:a425` "HYSD-VAF02-ZH04", UVC, with a HID button | nothing needed (USB) |
 | Panel keys | 6 | none but the power key (owner, 24.10.2026); the seven LRADC keys of the stock tree are its template | - |
 | NTC | none (stock `ntc_num 0`) | GPADC channel 1, its own table 0..55 °C; warn 41, power off 51, resume 34 °C | `ntc_num 1`, the stock table and thresholds (21.4 °C read at a CPU of 49 °C, 25.10.2026; not held against a thermometer yet) |
-| LEDs | - | power PL0 (red, `standby_param`), status PL1 (blue, active low); the stock fan driver sets PL0 high, PL1 low at probe | `gpio-leds` at those levels; the colour seen is not measured |
+| LEDs | - | power PL0 (red, `standby_param`), status PL1 (blue, active low); the stock fan driver sets PL0 high, PL1 low at probe | `gpio-leds` `red:power`/`blue:power`, both active low: running, blue on and red off (the stock levels). U-Boot `0105`: red in the gate, blue once started - seen by the owner, 25.10.2026. *Superseded (25.10.2026):* "the colour seen is not measured" |
 | Audio | - | headphone jack and SPDIF pins enabled in the stock tree; its own volume curve in `audio_config.ini` (100 = +0.5 dB, the HY310's -9.5 dB) | the speaker plays HDMI and the device's sounds (25.10.2026); h713-tv takes the board's own curve (`board.env` `VOLUME_CURVE=vendor`), 0 dB in the DSP heard clean by the owner; headphones not tested. *Superseded (25.10.2026):* "not described yet" |
 
 ## What the first install showed (25.10.2026)
@@ -54,15 +54,21 @@ the PH bank reads `0x0009a100`, the stock value (owner's eyes plus the registers
 
 ## Known deviations of the TEST image
 
-- From power-on until U-Boot proper runs (SPL, about 1 s) PB5 and PB4 are at their reset level: lamp and fan
-  come on briefly before the gate turns them off.
 - The thermal mode (lamp dimmed above 41 °C) is not measured: the NTC has not been near 41 °C. The power off at
-  51 °C stays disarmed (`thermal_shutdown=0`) until the NTC is held against a thermometer.
+  51 °C is armed since 25.10.2026 (`thermal-shutdown` in the tree, as under stock, without a thermometer - its owner has
+  none); the power-off itself is not measured.
+- *Superseded (25.10.2026):* "From power-on until U-Boot proper runs (SPL, about 1 s) PB5 and PB4 are at their reset
+  level: lamp and fan come on briefly" - U-Boot `0104` keeps them off from the SPL on (seen by the owner), and
+  "the power off at 51 °C stays disarmed until the NTC is held against a thermometer".
 - At boot the lamp starts at std (U-Boot) and changes to the kept mode when `h713-lamp.service` runs, about 3 s
   after the kernel.
 
 ## Not measured
 
-The test image test2 runs on the board since 25.10.2026, with U-Boot, the kernel FIT and the board manager
-quick-deployed after it. The accelerometer's axes, the camera's formats and the motor are unmeasured under
-our system; the lamp modes' brightness is not judged by eye yet.
+Measured on the owner's unit 24.-26.10.2026 (`doku/220`): the lamp modes (registers and by eye), the fan stall shutdown,
+the NTC at room temperature, the accelerometer's axes and the keystone with the board's own optics (straight from in front
+at 18.6°), the camera and the chessboard autofocus, the Bluetooth remote, HDMI 1080p60 with sound, HDCP 1.4 (the pair of
+the measuring rule), video in hardware, its own volume curve (hearing test up to 0 dB). **Not measured:** headphones,
+HDCP 2.2, the thermal mode, the power-off at 51 °C; no release image. *Superseded (26.10.2026):* "The accelerometer's
+axes, the camera's formats and the motor are unmeasured under our system; the lamp modes' brightness is not judged by eye
+yet."

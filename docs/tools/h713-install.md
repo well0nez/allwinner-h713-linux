@@ -121,10 +121,10 @@ on screen which region it guessed rather than read.
 ## Reinstalling over our own layout
 
 A device whose GPT names begin `hy310-` already runs this system, and then `install` demands neither a
-dump nor `--vendor`. The 44 proprietary files are on it, in its own `hy310-boot` and `hy310-rootfs`, under
+dump nor `--vendor`. The 45 proprietary files are on it (44 before 26.10.2026, `audio_config.ini` joined), in its own `hy310-boot` and `hy310-rootfs`, under
 exactly the paths the image's table names. The installer mounts those two partitions read-only and copies
 the files out (about 12 MiB), then puts them into the new image the same way it would put an extraction
-in, and logs `44 files read back from the device`. Where the two partitions are comes out of the device's
+in, and logs `45 files read back from the device`. Where the two partitions are comes out of the device's
 own GPT: the entry slot is what Linux calls `/dev/sdX5` and `/dev/sdX6`, and both the node and the window
 are named in the log. The window is what is mounted, not the node - the installer holds the whole drive
 open exclusively while it works, and the kernel will not mount a partition of a drive somebody holds like

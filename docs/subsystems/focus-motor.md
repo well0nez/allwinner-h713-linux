@@ -97,6 +97,19 @@ and 2.7); the twelve board variants differ in the move sizes, not in the rules (
 [`h713-autofocus`](../tools/h713-autofocus.md) is that procedure, and it writes `cmd 1/2` here, the codes that
 set the driver's `autofocus` flag and its busy-wait timing.
 
+## The L018: other pins, and a unit whose watcher says nothing
+
+The L018's motor has its own pins in its stock tree: phases PF0..PF3 (the SD card's, `sdmmc` is off), the watcher on PB1
+(`limiter-up-gpio`), `motor-cycle 3` (the HY310's is 2); the tables and delays are the HY310's (kernel `0331`). On the one
+L018 measured, PB1 reads 0 at every position and at both stops, and no other pin of banks B..I and L and no ADC channel
+changes - the watcher is dead on that unit (its owner: a defect of his unit, `doku/220`). A homing run at probe would drive
+it into the stop, so the L018's image keeps it off (`boards/l018/board.env` `FOCUS_HOMING=0`, which writes
+`/etc/modprobe.d/h713-focus.conf` with `homing=0`) until an L018 with a working watcher has been measured. On that one unit
+a counted range takes the watcher's place - experimental, configured on the device only
+([h713-focus](../tools/h713-focus.md), "An experimental counted range"). Its whole travel is about 110 msteps (the stops
+~55 above and 50-100 below the sharp point, found through the camera's sharpness and lost steps), which is why a focus key
+moves 13 msteps there (`FOCUS_STEPS=13`, [h713-keys](../tools/h713-keys.md)).
+
 ## Using it
 
 Move it by hand - `h713-focus status|up|down|flush|unlatch` - which checks `motor_limit` before and

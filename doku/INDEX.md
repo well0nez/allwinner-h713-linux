@@ -15,26 +15,27 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `PROVENANCE.md` | `doku/116`, `doku/210`, `doku/213` |
 | `RELEASES.md` | `doku/107`, `doku/193`, `doku/210`, `doku/211`, `doku/212`, `doku/216`, `doku/218`, `doku/219` |
 | `ROADMAP.md` | `doku/134`, `doku/211`, `doku/213`, `doku/215`, `doku/218` |
-| `STATUS.md` | `doku/114`, `doku/121`, `doku/134`, `doku/152`, `doku/157`, `doku/165`, `doku/174`, `doku/180`, `doku/181`, `doku/184`, `doku/200`, `doku/201`, `doku/203`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/217`, `doku/218`, `doku/219`, `doku/60`, `doku/94` |
+| `STATUS.md` | `doku/114`, `doku/121`, `doku/134`, `doku/152`, `doku/157`, `doku/165`, `doku/174`, `doku/180`, `doku/181`, `doku/184`, `doku/200`, `doku/201`, `doku/203`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/217`, `doku/218`, `doku/219`, `doku/220`, `doku/60`, `doku/94` |
 | `boards/README.md` | `doku/121` |
 | `boards/hy200-qz713df-a1/README.md` | `doku/136`, `doku/182`, `doku/184`, `doku/185`, `doku/219` |
 | `boards/hy300-t08/README.md` | `doku/121` |
 | `boards/hy310/README.md` | `doku/10`, `doku/121`, `doku/219` |
+| `boards/l018/README.md` | `doku/220` |
 | `docs/architecture.md` | `doku/103`, `doku/163`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/177`, `doku/181`, `doku/192`, `doku/193`, `doku/211`, `doku/82`, `doku/83`, `doku/96` |
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/185`, `doku/188`, `doku/190`, `doku/213`, `doku/218`, `doku/70`, `doku/72`, `doku/94` |
-| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/200`, `doku/210`, `doku/212`, `doku/213`, `doku/80` |
+| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/200`, `doku/210`, `doku/212`, `doku/213`, `doku/220`, `doku/80` |
 | `docs/known-issues.md` | `doku/147`, `doku/156`, `doku/180`, `doku/200`, `doku/201`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215`, `doku/218`, `doku/219`, `doku/60` |
 | `docs/services.md` | `doku/107`, `doku/170`, `doku/213` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/181`, `doku/184`, `doku/219`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
-| `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/206`, `doku/nachtlog/S21-re-audif-zugang` |
-| `docs/subsystems/board-mgr.md` | `doku/00`, `doku/171`, `doku/60` |
+| `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/206`, `doku/220`, `doku/nachtlog/S21-re-audif-zugang` |
+| `docs/subsystems/board-mgr.md` | `doku/00`, `doku/171`, `doku/220`, `doku/60` |
 | `docs/subsystems/cpu-comm.md` | `doku/165`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/182`, `doku/203`, `doku/206`, `doku/210`, `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/85`, `doku/96` |
 | `docs/subsystems/crypto-engine.md` | `doku/112`, `doku/114` |
 | `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/192`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
-| `docs/subsystems/focus-motor.md` | `doku/94` |
+| `docs/subsystems/focus-motor.md` | `doku/220`, `doku/94` |
 | `docs/subsystems/gpu.md` | `doku/201` |
 | `docs/subsystems/hdcp.md` | `doku/112`, `doku/145`, `doku/147`, `doku/148`, `doku/170`, `doku/172`, `doku/173`, `doku/175`, `doku/180`, `doku/184`, `doku/187` |
 | `docs/subsystems/hdmi-in.md` | `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/175`, `doku/176`, `doku/197`, `doku/198`, `doku/200`, `doku/206`, `doku/207`, `doku/71`, `doku/84`, `doku/86`, `doku/88`, `doku/96` |
@@ -45,16 +46,17 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/video.md` | `doku/212`, `doku/62`, `doku/64`, `doku/76`, `doku/78` |
 | `docs/subsystems/wifi.md` | `doku/134`, `doku/193`, `doku/195`, `doku/60` |
 | `docs/tools/h713-arisc.md` | `doku/181`, `doku/219` |
-| `docs/tools/h713-autofocus.md` | `doku/134` |
+| `docs/tools/h713-autofocus.md` | `doku/134`, `doku/220` |
 | `docs/tools/h713-cam.md` | `doku/61`, `doku/94` |
 | `docs/tools/h713-cpufreq.md` | `doku/196`, `doku/201` |
 | `docs/tools/h713-desktop.md` | `doku/212`, `doku/213` |
 | `docs/tools/h713-extract.md` | `doku/108`, `doku/121`, `doku/nachtlog/S42-r2-extract` |
 | `docs/tools/h713-fel.md` | `doku/20`, `doku/nachtlog/S48-fel-aus-uboot` |
-| `docs/tools/h713-focus.md` | `doku/94` |
+| `docs/tools/h713-focus.md` | `doku/220`, `doku/94` |
 | `docs/tools/h713-install.md` | `doku/110`, `doku/121` |
 | `docs/tools/h713-keys.md` | `doku/138`, `doku/195`, `doku/212`, `doku/213`, `doku/214`, `doku/94` |
 | `docs/tools/h713-keystone.md` | `doku/134` |
+| `docs/tools/h713-lamp.md` | `doku/220` |
 | `docs/tools/h713-mips-restart.md` | `doku/172`, `doku/173`, `doku/174`, `doku/177` |
 | `docs/tools/h713-mkimage.md` | `doku/109`, `doku/nachtlog/S47-abbild-bauer` |
 | `docs/tools/h713-osd.md` | `doku/212`, `doku/213`, `doku/214`, `doku/219` |
@@ -282,6 +284,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 2 |
 | [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | 5 |
 | [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | 12 |
+| [`220-l018-board-bis-main-validierung-protokoll-20261026.md`](220-l018-board-bis-main-validierung-protokoll-20261026.md) | Protokoll | 2026-10-26 | 220 Der L018 als eigenes Board bis nach main, der Autofokus über offenen Seiten und die Validierung auf drei Geräten - Protokoll | 9 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -438,7 +441,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-55 von 278 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+55 von 279 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `104-plan-standby-stufe2.md` (ueberholt)

@@ -45,6 +45,12 @@ had volume 60 at -18.4 dBFS and 40 at -33.6 dBFS - about 15 dB across that stret
 below half. Audio follows the picture automatically: it comes up when `h713-tv` shows a source and goes
 quiet on the console, with no separate switch to operate.
 
+That curve is the HY310's. A board whose own stock curve differs takes it with `tv.conf` `volume_curve = vendor`: `h713-tv`
+reads `[Volume] volume_curve` of the device's own `audio_config.ini`, which the installer takes out of the owner's firmware
+([h713-tv](../tools/h713-tv.md)). The L018 does (`boards/l018/board.env` `VOLUME_CURVE=vendor`): its curve runs to +0.5 dB at
+100 (-12.5 dB at 50), and the DSP ends at 0 dB; in a hearing test on 25.10.2026 0 dB through its speaker was "completely ok"
+and nothing rattled (`doku/220`). Every other board keeps the built-in curve unchanged.
+
 ## Acceptance
 
 Acceptance testing completed **08.09.2026, 22:05** (kernel patch series 110): a cold start patches and
