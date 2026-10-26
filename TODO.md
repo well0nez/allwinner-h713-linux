@@ -189,7 +189,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       betroffen wären nur Verbraucher, die aus dem Nennwert Zeiten rechnen.
       **25.10.2026 nachts, g):** Lesewerkzeug `arbeit/kleinkram-20261025/skripte/panel-histogramm.py` (eigener Code, nicht im Repo), am Gerät nicht gelaufen; Prüfplan im BERICHT f).
       **26.10.2026 am G-EU, g):** das Panel-Histogramm zählt: die 32 Wörter `0x051C0380`-`0x03FC` sind die Fächer, Summe 921 598 = ein Bild 1280x720; `0x0378`/`0x037C` sind laufende Zähler, keine Fächer - das Skript (`arbeit/kleinkram-20261025/skripte/panel-histogramm.py`) liest zwei Wörter zu früh an und muss auf `0x0380` berichtigt werden. Hell/Halb-halb noch nicht geprüft.
-- [ ] 1.11 **v0.97.1-beta: ein Release-Abbild für den L018 allein** (Marco 26.10.2026: "ok" zu "nur der L018, HY310 und G-EU bleiben
+- [x] 1.11 (**erledigt 26.10.2026: veröffentlicht** - https://github.com/well0nez/allwinner-h713-linux/releases/tag/v0.97.1-beta,
+      Vorabversion; `main` 46f87430..18304a1e, Tag `v0.97.1-beta` auf `2b872290`, Quellarchiv aus frischem Klon, Fremdensicht durchgegangen;
+      in den Notizen die Warnung aus 5.26) **v0.97.1-beta: ein Release-Abbild für den L018 allein** (Marco 26.10.2026: "ok" zu "nur der L018, HY310 und G-EU bleiben
       auf v0.97-beta"). **26.10.2026:** `build-all.sh` lässt `vX.Y.Z-beta` zu (`2b872290`); Bau von vorn aus `2b872290` (29 min,
       reproducible: yes, Selbsttest grün, Board-Werte im Rootfs gelesen); auf Marcos L018 über unser Layout installiert und gestartet
       (`doku/223`, `arbeit/l018-release-20261026/`). Offen: Push `main`, Tag `v0.97.1-beta` auf `2b872290`, Release-Seite (ein Archiv,
@@ -1010,6 +1012,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       lehnt ab ("This device is no board we know") - der echte Lauf hätte das Board gelesen. Abhilfe am 26.10.: ein Vollabzug als
       `h713-dump/emmc-full.img` nennt das Board. Richtig wäre: der Probelauf liest `/etc/h713/board` nur lesend (oder verschiebt die
       Testabbild-Entscheidung auf den Lauf, der einhängt). Gemessen ist nur der Fehler, gebaut nichts.
+
+- [ ] 5.26 **Der Installer prüft nicht, für welches Board ein Release-Abbild gebaut ist** (26.10.2026, beim Veröffentlichen von
+      `v0.97.1-beta` aus dem Code gelesen, nicht ausprobiert): `h713-install` vergleicht vor dem Schreiben nur `test_for` (Testabbilder)
+      und die eMMC-Größe (`_image_size_problem`). L018 und HY310 haben dieselbe eMMC (15 269 888 Sektoren) - das L018-Abbild ginge
+      auf einen HY310 und umgekehrt, mit dem Gerätebaum des anderen Boards (L018: twi2 auf PH4/PH5 = Fokusphasen des HY310, PWM0 auf
+      PH17 = dessen Lüftertacho). Vorschlag: `h713-mkimage` schreibt `board` (und `variant`) in die Tabelle, `install` vergleicht mit
+      der Erkennung und verweigert eine Abweichung; alte Tabellen ohne Schlüssel: aus dem Abbildnamen ableiten oder warnen. Bis dahin
+      steht die Warnung in den Notizen von `v0.97.1-beta`.
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 

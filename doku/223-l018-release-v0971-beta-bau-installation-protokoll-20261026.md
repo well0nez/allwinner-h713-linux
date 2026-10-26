@@ -46,3 +46,13 @@ Fokus `homing` N, `focus_steps = 13`; `h713_gate=1`; eine deckende Seite (der La
 Das Abbild ist release-fertig. Doku auf `versuch/l018-release`: `RELEASES.md` (Abschnitt `v0.97.1-beta`, Punkt-Release-Regel),
 README, STATUS, FLASHING, known-issues, Board-Seiten. Push von `main`, Tag `v0.97.1-beta` auf `2b872290` und die Release-Seite
 warten auf Marcos Ja (TODO 1.11).
+
+## 6 Veröffentlicht
+
+Mit Marcos Ja („push main bis 18304a1e, Tag v0.97.1-beta auf 2b872290, Release-Seite als Vorabversion veröffentlichen"):
+`main` `46f87430..18304a1e`, Tag `v0.97.1-beta` (annotiert) auf `2b872290`; Quellarchiv aus einem frischen Klon am Tag (alle vier
+Submodule von GitHub aufgelöst), `SHA256SUMS`; Release-Seite erst als Entwurf, Prüfsummen der hochgeladenen Dateien gegen die lokalen
+verglichen, die verlinkten Seiten auf `main` gelesen, dann als Vorabversion veröffentlicht und abgemeldet gelesen.
+
+**Fund beim Veröffentlichen** (aus dem Code, nicht ausprobiert): `h713-install` prüft bei einem Release-Abbild nur die eMMC-Größe,
+nicht das Board - L018 und HY310 teilen sie. Die Notizen warnen („Take the archive of your own board"), TODO 5.26.
