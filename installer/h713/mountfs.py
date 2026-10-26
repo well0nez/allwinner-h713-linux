@@ -14,7 +14,9 @@ from __future__ import annotations
 
 import collections
 import contextlib
+import fnmatch
 import os
+import stat
 import subprocess
 import sys
 import tempfile
@@ -158,3 +160,46 @@ def copy_out(source, offset, size, paths, log=console):
                 with open(whole, "rb") as f:
                     out[path] = f.read()
     return out
+
+
+def _gather(point, asked, limit):
+    """The regular files `asked` names under the mount point: a file, everything below a
+    directory, or the names in a directory that match a pattern (not below). A link is not
+    followed. None when they hold more than `limit` bytes."""
+    head, name = asked.rstrip("/").rsplit("/", 1)
+    found = []
+    if any(c in name for c in "*?["):
+        base = _inside(point, head or "/")
+        if os.path.isdir(base) and not os.path.islink(base):
+            found = [os.path.join(base, n) for n in sorted(os.listdir(base))
+                     if fnmatch.fnmatch(n, name)]
+    else:
+        whole = _inside(point, asked)
+        if os.path.isdir(whole) and not os.path.islink(whole):
+            for top, dirs, files in os.walk(whole):
+                dirs.sort()
+                found += [os.path.join(top, n) for n in sorted(files)]
+        else:
+            found = [whole]
+    found = [w for w in found if os.path.isfile(w) and not os.path.islink(w)]
+    if sum(os.lstat(w).st_size for w in found) > limit:
+        return None
+    entries = []
+    for whole in found:
+        st, up = os.lstat(whole), os.stat(os.path.dirname(whole))
+        with open(whole, "rb") as f:
+            data = f.read()
+        entries.append(Entry("/" + os.path.relpath(whole, point), data, None,
+                             stat.S_IMODE(st.st_mode), st.st_uid, st.st_gid,
+                             stat.S_IMODE(up.st_mode)))
+    return entries
+
+
+def read_tree(source, offset, size, paths, log=console, limit=16 << 20):
+    """Read files out of the ext4 at `offset`/`size` inside `source`, mounted read-only, with
+    their modes and owners -- the entries copy_in() puts down again as they were (a directory
+    made on the way takes the mode of the file's own). A path is a file, a directory (all of
+    it) or `dir/pattern`. Returns {path asked: [Entry]}: empty where nothing is there, None
+    where it holds more than `limit` bytes -- what to do then is the caller's call."""
+    with mounted(source, offset, size, True, log) as point:
+        return dict((asked, _gather(point, asked, limit)) for asked in paths)

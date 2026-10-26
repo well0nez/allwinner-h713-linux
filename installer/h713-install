@@ -335,6 +335,8 @@ def _dump(args, disk, path):
         console.step(3, "Take the dump (%s)" % size)
         os.makedirs(args.dump_dir, exist_ok=True)
         manifest = dump_small(disk, args.dump_dir, our_layout=args._our_layout)   # always, "full" too
+        if args.command == "install" and args._our_layout:
+            args._kept = keep_copy(disk)      # the environment is the device's in every case (TODO 2.137)
     if size == "full":
         file = in_dump(args.dump_dir, DUMP_FULL)
         # A complete clone in this directory is the way back and is never overwritten by

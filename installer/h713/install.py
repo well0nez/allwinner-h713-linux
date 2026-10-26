@@ -22,6 +22,7 @@ import importlib.machinery
 import importlib.util
 import json
 import os
+import re
 import shutil
 import struct
 import subprocess
@@ -691,6 +692,124 @@ def device_sources(disk, tab, files, log=console):
     return sources, None
 
 
+# ------------------------------------------- the owner's settings (TODO 1.2b)
+# A reinstall over our layout lays down a fresh rootfs, and with it the image's defaults: the
+# device came back as the public access point, with neutral corners, a new SSH host key and no
+# remote paired -- the supervisor put it all back by hand afterwards. What the owner and the
+# device set is read out of the old rootfs before anything is written and goes into the new one
+# with the same mount and the same read-back as the vendor files. Never /root (the owner,
+# 23.10.2026), and in /etc/h713 not what the image owns: its subdirectories (tvconfig is this
+# run's vendor files, labwc and launcher.d the image's), the board file this run writes, and
+# the four files whose newer versions carry entries an old one lacks (an older tv.conf has no
+# `source = auto`, which the desktop image needs) -- a difference there is said, not carried.
+
+STATE_OWNED = ("/etc/h713/wifi.env", "/etc/h713/warp.conf", "/etc/h713/keystone.conf")
+IMAGE_CONFS = ("/etc/h713/tv.conf", "/etc/h713/osd.conf", "/etc/h713/keys.conf",
+               "/etc/h713/power.conf")
+STATE_IMAGE = IMAGE_CONFS + ("/etc/h713/features", BOARD_FILE)
+STATE_TREES = (("/etc/ssh/ssh_host_*", "SSH host keys"),
+               ("/var/lib/bluetooth", "Bluetooth pairings"),
+               ("/var/lib/h713-tv", "h713-tv's state"))
+STATE_READ = ("/etc/h713/*", "/etc/hostname") + tuple(t for t, _w in STATE_TREES)
+IMAGE_READ = ("/etc/h713/*", "/etc/hostname", "/etc/hosts")
+STATE_LIMIT = 16 << 20           # bytes per tree; Bluetooth and h713-tv hold kilobytes
+LEGACY_HOSTNAME = "hy310"        # every board's name before 5.18 (11.10.2026): not the owner's choice
+HOSTNAME_OK = re.compile(r"^[A-Za-z0-9]([A-Za-z0-9-]{0,61}[A-Za-z0-9])?$")
+
+
+def _conf(data):
+    """`key = value` of one of our .conf files; the last line of a key wins, as for h713-tv."""
+    out = {}
+    for line in (data or b"").decode("utf-8", "replace").splitlines():
+        line = line.split("#", 1)[0]
+        if "=" in line:
+            key, value = line.split("=", 1)
+            out[key.strip()] = value.strip()
+    return out
+
+
+def carried_state(device, image, taken=(), log=console):
+    """What of the old rootfs goes into the new one: pure Python on what read_tree() read off
+    the device (`device`, STATE_READ) and out of the image (`image`, IMAGE_READ). Top-level
+    files of /etc/h713 come along when they are the owner's (STATE_OWNED) or when the image has
+    no such file -- keystone-ref, panel.env, lamp.conf, a newer tool's own -- and differ from the
+    image's; the hostname when the owner chose it. Paths in `taken` are this run's own already.
+    Returns [mountfs.Entry]; says what it carries and what it leaves to the image."""
+    out, said, kept = [], [], []
+    mine = dict((e.path, e) for e in image.get("/etc/h713/*") or [])
+    old = dict((e.path, e) for e in device.get("/etc/h713/*") or [])
+    if "/etc/h713/*" in device and device["/etc/h713/*"] is None:
+        log.warn("/etc/h713: more than %d MiB in its files on the device - none of them carried over"
+                 % (STATE_LIMIT >> 20))
+    for path in sorted(old):
+        e = old[path]
+        if path in taken or path in STATE_IMAGE or (path in mine and path not in STATE_OWNED):
+            continue
+        if path in mine and mine[path].data == e.data:
+            continue
+        out.append(e)
+        said.append(path)
+    for path in IMAGE_CONFS:
+        if path not in old or path not in mine:
+            continue
+        a, b = _conf(old[path].data), _conf(mine[path].data)
+        differ = ["%s = %s (image: %s)" % (k, a[k], b.get(k, "-"))
+                  for k in sorted(a) if a[k] != b.get(k)]
+        if differ:
+            kept.append("  %s stays the image's; the device's differs: %s - the settings page "
+                        "sets it again where wanted"
+                        % (path, "; ".join(differ[:6]) + (" ..." if len(differ) > 6 else "")))
+    for tree, what in STATE_TREES:
+        entries = device.get(tree)
+        if entries is None:
+            log.warn("%s: more than %d MiB on the device - not carried over"
+                     % (what, STATE_LIMIT >> 20))
+        elif entries:
+            out += [e for e in entries if e.path not in taken]
+            said.append("%s (%d file(s))" % (what, len(entries)))
+    name, ours = (b"".join(e.data for e in d.get("/etc/hostname") or []).decode("utf-8", "replace")
+                  .strip() for d in (device, image))
+    if name and name != ours and name != LEGACY_HOSTNAME:
+        hosts = image.get("/etc/hosts") or []
+        if not HOSTNAME_OK.match(name) or not hosts:
+            log.warn("hostname %r of the device is not carried over (%s)"
+                     % (name, "not a valid name" if hosts else "the image has no /etc/hosts"))
+        else:
+            lines = hosts[0].data.decode("utf-8", "replace").splitlines()
+            lines = [l for l in lines if not l.startswith("127.0.1.1")]
+            lines.insert(1 if lines else 0, "127.0.1.1\t%s" % name)
+            first = (image.get("/etc/hostname") or hosts)[0]
+            out.append(first._replace(path="/etc/hostname", data=(name + "\n").encode()))
+            out.append(hosts[0]._replace(data=("\n".join(lines) + "\n").encode()))
+            said.append("hostname %s (image: %s)" % (name, ours or "-"))
+    if said:
+        log.ok("carried over from the device: %s" % ", ".join(said))
+    else:
+        log.info("nothing of the owner's settings to carry over from the device")
+    for line in kept:
+        log.info(line)
+    return out
+
+
+def device_state(disk, work, window, taken=(), log=console):
+    """Read the owner's settings out of the device's rootfs and the image's own out of the
+    working copy (`window`: offset and size of the rootfs in it), and say what carries over.
+    Never raises: what cannot be read is said, and the image's defaults stay."""
+    found = gpt_partitions(disk)
+    if ROOTFS_PARTITION not in found:
+        return []
+    _number, lba, sectors = found[ROOTFS_PARTITION]
+    try:
+        device = mountfs.read_tree(disk.path, lba * SECT, sectors * SECT, STATE_READ, Quiet(),
+                                   STATE_LIMIT)
+        image = mountfs.read_tree(work, window[1], window[2], IMAGE_READ, Quiet(), STATE_LIMIT)
+    except (RuntimeError, OSError, subprocess.SubprocessError) as exc:
+        log.warn("the settings of the installed system could not be read (%s) - the new one "
+                 "starts with the image's: Wi-Fi, corners, keystone, host key, pairings" % exc)
+        return []
+    return carried_state(device, image, taken, log)
+
+
 def check_copies(work, windows, plan, log=Quiet):
     """Read the files back out of the working copy and compare byte for byte -- on the PC,
     costs seconds. Returns the paths that differ. Every entry the plan makes carries its
@@ -927,16 +1046,50 @@ def kept_copy(args, name):
     return (getattr(args, "_kept", None) or {}).get(name)
 
 
-def old_env(args):
-    """The environment the device had before this run: out of the small dump when one was
-    taken, else out of the copy read into memory instead. Returns (dict or None, path or
-    None) -- the path is what the user can still look at afterwards."""
+def _day(path):
+    """When a dump file was written, for the sentence that names it."""
+    return time.strftime("%d.%m.%Y %H:%M", time.localtime(os.path.getmtime(path)))
+
+
+def old_env(args, log=console):
+    """The environment the device carries right now: the copy read off it in this run
+    (keep_copy()). The dump's uboot-env.bin is the record of an earlier day -- the dump of the
+    first install is kept and not taken again -- and a gate switched on since then is not in
+    it: on 22./23.10.2026 the G-EU and the HY310 got h713_gate=0 out of a dump of the 20th
+    while the device said 1 (TODO 2.137). So the file only stands in where nothing was read off
+    the device, and where the two disagree on an intent key that is said, loudly.
+
+    Returns (dict or None, path or None) -- the path when the file is what was taken or says
+    the same, i.e. what the user can still look at afterwards."""
     path = os.path.join(args.dump_dir, "uboot-env.bin")
+    dumped = None
     if os.path.isfile(path):
         with open(path, "rb") as f:
-            return env_read(f.read()), path
+            dumped = env_read(f.read())
     raw = kept_copy(args, "uboot-env")
-    return (env_read(raw) if raw else None), None
+    if raw is None:
+        if dumped is not None:
+            log.warn("Environment: not read off the device in this run -- the intent keys come "
+                     "from %s of %s, which can be older than the device's" % (path, _day(path)))
+        return dumped, (path if dumped is not None else None)
+    device = env_read(raw)
+    if dumped is None:
+        return device, None
+    if device is None:
+        said = ", ".join("%s=%s" % (k, dumped[k]) for k in ENV_CARRY_OVER if k in dumped)
+        if said:
+            log.warn("Environment: the device carries none that is valid (its U-Boot ran on its "
+                     "built-in default) -- %s of %s says %s, and that is not taken"
+                     % (path, _day(path), said))
+        return None, None
+    differ = [k for k in ENV_CARRY_OVER if device.get(k) != dumped.get(k)]
+    if not differ:
+        return device, path
+    log.warn("Environment: the device and %s of %s disagree -- %s; the device's value is taken"
+             % (path, _day(path), "; ".join("%s=%s on the device, %s in the dump"
+                                            % (k, device.get(k, "-"), dumped.get(k, "-"))
+                                            for k in differ)))
+    return device, None
 
 
 def carry_env(args, tab, work, part_file, log=console):
@@ -954,7 +1107,7 @@ def carry_env(args, tab, work, part_file, log=console):
     if not block:
         log.info("Environment: this image brings none along (older than 12.09.) -- nothing to carry over")
         return 0
-    old, old_path = old_env(args)
+    old, old_path = old_env(args, log)
     if not old:
         return 0
     part_lba = next((t["lba"] for t in tab["teile"] if t["datei"] == part_file), None)
@@ -985,9 +1138,13 @@ def carry_env(args, tab, work, part_file, log=console):
         if env_read(f.read(ENV_BYTES)) != new:
             log.error("the environment is not as expected after writing")
             return 11
-    log.ok("Environment: carried over from the old one: %s" % "; ".join(taken))
+    log.ok("Environment: carried over from the %s: %s"
+           % ("device" if kept_copy(args, "uboot-env") is not None else "dump", "; ".join(taken)))
     if old_path:
         log.info("  Everything else comes from the image's U-Boot. The old one lies in %s." % old_path)
+    elif os.path.isfile(os.path.join(args.dump_dir, "uboot-env.bin")):
+        log.info("  Everything else comes from the image's U-Boot. The old one was read off the "
+                 "device and not saved; the dump's copy is older.")
     else:
         log.info("  Everything else comes from the image's U-Boot. The old one was read off the "
                  "device and not saved -- --dump keeps a copy.")
@@ -1110,6 +1267,9 @@ def write_package(args, disk, path, directory, tab, here=None):
                            "fills one working copy" % (len(part_files), ", ".join(part_files)))
 
     part_file, work = (part_files[0] if part_files else None), None
+    # The owner's settings go along where the old rootfs is ours and this run writes a new one
+    # (TODO 1.2b); a run that leaves the rootfs alone leaves them where they are.
+    carry = getattr(args, "_our_layout", False) and ROOTFS_PARTITION in windows
     if windows:
         work = args.work_copy or os.path.join(args.dump_dir, WORK_COPY)
         total = sum(len(v) for v in plan.values())
@@ -1119,18 +1279,28 @@ def write_package(args, disk, path, directory, tab, here=None):
             for name, (_f, offset, size) in windows.items():
                 console.info("WOULD: %-13s %2d file(s), mounted at offset %d (%d bytes)"
                              % (name, len(plan.get(name, ())), offset, size))
+            if carry:
+                console.info("WOULD: carry over from the device's %s: %s, the hostname"
+                             % (ROOTFS_PARTITION,
+                                ", ".join(["/etc/h713"] + [w for _t, w in STATE_TREES])))
         else:
             source_part = os.path.join(directory, part_file)
             console.info("Working copy: %s (%.0f MiB)" % (work, mib(os.path.getsize(source_part))))
             os.makedirs(os.path.dirname(os.path.abspath(work)), exist_ok=True)   # N2: no dump made it
             shutil.copyfile(source_part, work)
+            if carry:
+                taken = set(e.path for e in plan.get(ROOTFS_PARTITION, ()))
+                plan.setdefault(ROOTFS_PARTITION, []).extend(
+                    device_state(disk, work, windows[ROOTFS_PARTITION], taken, console))
+                total = sum(len(v) for v in plan.values())
             for name, (_f, offset, size) in windows.items():
                 if plan.get(name):
                     console.info("  %s: %d file(s)" % (name, len(plan[name])))
                     mountfs.copy_in(work, offset, size, plan[name], log=Quiet)
             bad = check_copies(work, windows, plan)
             if bad:
-                console.error("differ after copying: %s" % ", ".join(bad))
+                console.error("differ after copying: %s" % re.sub(   # a pairing's path names its MAC
+                    r"([0-9A-Fa-f]{2}:){5}[0-9A-Fa-f]{2}", "<MAC>", ", ".join(bad)))
                 return 9
             console.ok("%d files copied in and read back -- all equal" % total)
             rc = carry_env(args, tab, work, part_file, console)
