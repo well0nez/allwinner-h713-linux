@@ -14,9 +14,10 @@ the Debian 13 root filesystem; the ext4 inputs; the image; verification; a build
 `--vendor` it ends in `ALL GREEN` - the self-test compared every extracted file against the image -
 or it stops. Without `--vendor` it ends after the structural check, which is a weaker statement.
 
-Roughly 20 minutes from cold (including the kernel tarball download), about 10 with a kernel tree already
-built. Everything runs in a container; **nothing is built on your host**. An abort costs nothing but the step that was
-running: [the same command again](#going-on-after-an-abort) goes on there.
+About 32 minutes for `--profile media,desktop` on 8 cores with the downloads cached (measured 26.10.2026; the
+kernel about 9 of them, the rootfs about 18). Everything runs in a container; **nothing is built on your host**. An abort
+costs nothing but the step that was running: [the same command again](#going-on-after-an-abort) goes on there, and with
+nothing changed it is done in seconds.
 
 ## Prerequisites
 
@@ -61,7 +62,12 @@ each of its results. Run the same command again and a step is taken over when it
 still what the stamp says; the first step that does not fit is built, and so is every step that builds on a result of it.
 The inputs are the sources the step reads (a submodule's files and commit, `mainline/patches/kernel`, `rootfs/`,
 `userspace/` ...), the board and the switches, `release/build-all.sh` itself, the compiler's version, and the results of the
-steps it follows. A step that is built anew and comes out with the same bytes lets the steps after it stand.
+steps it follows. A step that is built anew and comes out with the same bytes lets the steps after it stand: a comment
+changed in a device tree patch builds the kernel again (about 8 minutes) and takes every other step over.
+
+Ctrl-C or a `kill` ends a run within seconds and also stops what its step was running in the container: `podman exec`
+passes no signal on, so the script finds its own processes there by a mark in their environment. A run refuses to start
+while a process of an earlier run of the same checkout still runs there.
 
 Not iterating on the kernel inside one tree: a changed patch is a new tree, built whole (the tree is named after a hash of
 the series, `build/linux-<version>-<hash>/`). What the stamps do not see: a package state of the Debian mirror (a rootfs
