@@ -14,9 +14,13 @@ build powers off through crust too, `doku/190`). Before: 87 patches, tree `34a48
 (10.10.); up to `ecf2ddc`, 80 patches, tree `2df473047ec5` on 09.10.
 
 **Published with `v0.97-beta`** (the release pushes the forks first, `TODO.md` 1.6) as the repository `crust`
-under the same account as this one, branch `h713`, head `54e4a08ab9f3`. There is no submodule
-`mainline/external/crust` yet (`TODO.md` 5.15); `release/build-all.sh` takes the checkout from `CRUST_SRC=<dir>`:
-a clone of the fork, or a checkout made from this mirror:
+under the same account as this one, branch `h713`, head `54e4a08ab9f3`. It is the submodule
+`mainline/external/crust` (`TODO.md` 5.15, `.gitmodules` names branch `h713`), so `git clone --recurse-submodules`
+or `git submodule update --init` brings it and `release/build-all.sh` takes it from there. `build-all` refuses a submodule
+that is not at the head `SERIES.txt` names, so the submodule and this mirror cannot drift apart unseen.
+
+A developer's own crust goes in with `CRUST_SRC=<dir>` instead: a checkout of the fork with changes, or one made from this
+mirror:
 
 ```sh
 git clone https://github.com/crust-firmware/crust crust   # a full clone: the version text needs its tags
@@ -38,7 +42,7 @@ on ([h713-arisc](../docs/tools/h713-arisc.md), `doku/218`, `doku/219`); `release
 into the release FIT, builds BL31 with `SYSTEM_SUSPEND` and lets the rootfs suspend. Three things belong together
 for that: the crust source, the board's device tree naming `hy310-crust.bin` for the arisc node (kernel `0206`,
 `0246`) and the U-Boot patch that stages `scp.bin` for BL31 (`0096`, `SUNXI_SCP_BASE`). Without the source
-`build-all` stops before step 1; without the other two, step 10 refuses the image.
+(the submodule not checked out) `build-all` stops before step 1; without the other two, step 10 refuses the image.
 
 ## What it is
 

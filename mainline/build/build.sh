@@ -25,8 +25,9 @@
 #   BOARDS_DIR      another place for the board directories (BOARDS is read as a fallback)
 #   KCFLAGS         extra kernel compiler flags; kept, behind the path mapping
 #
-# Outputs go to build/out/, downloads to build/cache/. The kernel and aic8800 trees are
-# named after the hash of their inputs and are reused while those do not change.
+# Outputs go to build/out/ (the kernel stage also makes the module tree build/modroot.<hash>), downloads
+# to build/cache/. The kernel and aic8800 trees are named after the hash of their inputs and are
+# reused while those do not change.
 
 set -euo pipefail
 shopt -s inherit_errexit
@@ -398,7 +399,7 @@ EOF
 }
 
 build_kernel() {
-	local suffix='' hash tree its fit image d done_dtbs=' '
+	local suffix='' hash tree its fit image d done_dtbs=' ' modroot
 	[[ -n ${KERNEL_DTB:-} ]] ||
 		die "boards/$BOARD has an empty KERNEL_DTB: no device tree of ours, so no FIT for it" \
 			"(the stages bl31 and uboot still work for this board)"
@@ -418,6 +419,11 @@ build_kernel() {
 		check_fragments_took "$tree/.config"
 	fi
 	"${kmake[@]}" -j"$JOBS" Image dtbs modules
+	# the module tree release/build-all.sh puts into the root file system: build/modroot.<first 8 of the hash>/lib/modules/<release>
+	modroot=$bdir/modroot.${hash:0:8}
+	rm -rf -- "$modroot"
+	"${kmake[@]}" -s INSTALL_MOD_PATH="$modroot" modules_install
+	tell "kernel: build/${modroot##*/}, $(find "$modroot" -name '*.ko' | wc -l) modules"
 
 	image=$tree/arch/$KERNEL_ARCH/boot/Image
 	gzip -9 -n -k -f -- "$image"

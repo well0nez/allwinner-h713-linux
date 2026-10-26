@@ -10,3 +10,7 @@
 	path = mainline/external/u-boot
 	url = ../u-boot.git
 	branch = h713-hy310
+[submodule "mainline/external/crust"]
+	path = mainline/external/crust
+	url = ../crust.git
+	branch = h713

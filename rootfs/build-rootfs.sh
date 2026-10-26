@@ -1117,6 +1117,9 @@ TAR_OUT="$OUT_DIR/hy310-rootfs.tar"
 # same packages: every mtime becomes that instant (overlay files carry checkout
 # times, built parts build times - neither is anyone else's), and the pax headers
 # that --xattrs/--acls bring along drop their atime/ctime records.
+# ldconfig's aux-cache keeps the inode numbers and change times of the libraries it read, never the same in two builds (it
+# was the one member two builds of the same packages differed in, 26.10.2026); ldconfig makes it again on the device.
+rm -f "$TREE/var/cache/ldconfig/aux-cache"
 REPRO_TAR=()
 [[ -n "${SOURCE_DATE_EPOCH:-}" ]] && REPRO_TAR=("--mtime=@$SOURCE_DATE_EPOCH" --pax-option=exthdr.name=%d/PaxHeaders/%f,delete=atime,delete=ctime)
 tar --numeric-owner --xattrs --acls --sort=name "${REPRO_TAR[@]+"${REPRO_TAR[@]}"}" \

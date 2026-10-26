@@ -69,7 +69,7 @@ Klon ohne diesen Ordner — dann fehlen dir die Geräteangaben, und du fragst na
 | `installer/h713-extract` | Herstellerartefakte aus einem Stock-Abbild holen | fasst **nie** HDCP-/DRM-Schlüssel an |
 | `sunxi-fel` | Abbild über FEL laden | `mainline/build/out/sunxi-fel` |
 | `release/tor.sh` | **alle Tore vor einem Commit**, ehrlicher Exit-Status | `release/tor.sh && git commit` - nie eine Pipeline vor dem `&&`; `--tests` nimmt die Installer-, h713-power- und h713-keys-Tests dazu |
-| `git` mit Submodulen und `.githooks` | U-Boot, TF-A und sunxi-tools sind Submodule; crust liegt als Klon neben dem Repo (`CRUST_SRC`), gespiegelt in `crust-h713/` | `git submodule update --init`; `git config core.hooksPath .githooks` (Identität nur `well0nez <8986239+well0nez@users.noreply.github.com>`) |
+| `git` mit Submodulen und `.githooks` | U-Boot, TF-A, sunxi-tools und crust sind Submodule (crust: Zweig `h713`, gespiegelt in `crust-h713/`; `CRUST_SRC=<Ordner>` nimmt ein eigenes crust) | `git submodule update --init`; `git config core.hooksPath .githooks` (Identität nur `well0nez <8986239+well0nez@users.noreply.github.com>`) |
 
 ### Optional — nur für bestimmte Aufgaben
 
