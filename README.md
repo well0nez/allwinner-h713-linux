@@ -32,7 +32,8 @@ https://github.com/user-attachments/assets/75bb0b88-038e-4703-a6f9-def8eb071986
 
 ## What you get
 
-The current release is **v0.97-beta** (built 22.10.2026, installed and measured on the two boards below). What it does,
+The current release is **v0.97-beta** (built 22.10.2026, installed and measured on the HY310 and the HY300PRO-G-EU) and, for
+the L018, **v0.97.1-beta** (26.10.2026: the same system with the L018's own parts, [RELEASES.md](RELEASES.md)). What it does,
 each line measured on a device and dated in [STATUS.md](STATUS.md):
 
 | | |
@@ -80,7 +81,7 @@ the circuit board, and one board is sold in several projectors.
 | [`hy200-qz713-v2`](boards/hy200-qz713-v2/) | "HY300 Pro+" (2025, LPDDR3) | LPDDR3 720 MHz | 1280x720 (0x34) | profile only |
 | [`hy300-t08`](boards/hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280x720 (0x34) | profile only |
 | [`hy350`](boards/hy350/) | HY350 (2024) | DDR3 792 MHz | 1920x1080 (0x30) | profile only |
-| [`l018`](boards/l018/) | L018 (2025) | DDR3 792 MHz | 1920x1080 dual (0x30) | **verified** (26.10.2026, `doku/222`); headphones and HDCP 2.2 not tested |
+| [`l018`](boards/l018/) | L018 (2025) | DDR3 792 MHz | 1920x1080 dual (0x30) | **verified** (26.10.2026, `doku/222`), release image since `v0.97.1-beta`; headphones and HDCP 2.2 not tested |
 | [`losei-x9`](boards/losei-x9/) | LOSEI X9 (2024) | DDR3 744 MHz | 1280x720 (**0x33**) | partial - reported in [issue #3](https://github.com/well0nez/allwinner-h713-linux/issues/3) (25.10.2026), nothing of ours has run on it |
 
 **The rule: no image for a board nobody has tested.** A board becomes *verified* when its owner reports a green run of a

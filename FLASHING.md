@@ -41,7 +41,8 @@ release folder; unpack the one for your board. Keep its files together: the inst
 git clone https://github.com/well0nez/allwinner-h713-linux.git
 #   download your board's archive from the v0.97-beta release page - the HY310's is
 #   h713-hy310-v0.97-beta-media-desktop.tar, the HY300PRO-G-EU's
-#   h713-hy200-qz713df-a1-projector05061226-v0.97-beta-media-desktop.tar - then:
+#   h713-hy200-qz713df-a1-projector05061226-v0.97-beta-media-desktop.tar; the L018's is
+#   h713-l018-v0.97.1-beta-media-desktop.tar on the v0.97.1-beta release page - then:
 cd ~ && tar -xf h713-hy310-v0.97-beta-media-desktop.tar && cd h713-hy310-v0.97-beta-media-desktop
 zstd -d *.img.zst                            # optional, see below - the installer does it too
 sha256sum -c h713-hy310-v0.97-beta-media-desktop.sha256    # lists the unpacked .img parts, so unpack first

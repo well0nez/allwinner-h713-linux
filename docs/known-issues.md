@@ -1,6 +1,6 @@
 # Known issues
 
-What still gets in your way in **v0.97-beta**, and what to do about it. "open" means nobody has fixed it yet; "by design"
+What still gets in your way in **v0.97-beta** and, on the L018, **v0.97.1-beta**, and what to do about it. "open" means nobody has fixed it yet; "by design"
 means it will not change because something else depends on it; "decided" means the owner weighed it and chose. Every
 line names the journal entry or the `TODO.md` line the measurement is in.
 
@@ -82,5 +82,5 @@ that costs against crust, measured in `doku/219` and the audit of 22.10.2026 (`T
 | Path | State |
 |---|---|
 | Installer on Windows | written to run there, never run; `install` is Linux-only in any case (it mounts the image's file systems) |
-| A release image built from `main` | the `v0.97-beta` images came from the `medien` branch at the commit `main` now carries; the last build before the tag repeats it from `main` (`TODO.md` 1.0 (5b)) |
-| The HY300 Pro+ variant `projector09220931`, the HY200 QZ713_V2, the HY300 T08, the HY350, the L018 | nothing of ours has run on them; see [boards](../boards/README.md) |
+| A release image built from `main` | done: `v0.97-beta` was built from `main` `43417440` (23.10.2026), `v0.97.1-beta` from `main` `2b872290` (26.10.2026). *Superseded (26.10.2026):* "the `v0.97-beta` images came from the `medien` branch at the commit `main` now carries; the last build before the tag repeats it from `main`" |
+| The HY300 Pro+ variant `projector09220931`, the HY200 QZ713_V2, the HY300 T08, the HY350 | nothing of ours has run on them; see [boards](../boards/README.md). *Superseded (26.10.2026):* the L018 was in this row; it is verified and has a release image since `v0.97.1-beta` |

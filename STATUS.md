@@ -6,8 +6,10 @@ Snapshot of **23.10.2026**. "Works" means *verified on a projector*, with the da
 The release is **v0.97-beta**, built on 22.10.2026 from the commit the merge into `main` carries (`8da300c2`), for the
 HY310 and for the HY300PRO-G-EU, each as a `media,desktop` image (Kodi, desktop, browser). Both boards run it since 22./23.10.2026:
 installed over FEL with `h713-install`, the acceptance script with 25 of 25 cells passed on the HY300PRO-G-EU, the HY310
-with the owner's eyes on the cells the camera could not judge (`doku/219` §5, TODO 1.0 (2)). The images are not published
-yet; the tag follows the last build from `main` ([RELEASES.md](RELEASES.md)).
+with the owner's eyes on the cells the camera could not judge (`doku/219` §5, TODO 1.0 (2)). Published on 23.10.2026 from the
+last build from `main` (`43417440`). The L018 has its own point release **v0.97.1-beta** (26.10.2026, built from `main`
+`2b872290`, [RELEASES.md](RELEASES.md)); the HY310 and the HY300PRO-G-EU stay on v0.97-beta. *Superseded (26.10.2026):* "The images are not published
+yet; the tag follows the last build from `main`".
 
 ## Summary
 
@@ -38,7 +40,7 @@ below *verified* describes the board; it does not claim anything runs on it.
 | **HY300 Pro** | partial, in test by its owner | [issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1): probe and dump 13.09., test images since 16.09.2026, `test11` of 22.10.2026 with the infrared retrofit; no green run | test images for its owner only; its board directory names what is known and what is not |
 | **HY200 QZ713_V2** (LPDDR3) | profile only, not testable yet | nobody | cstenger's defconfig and device tree, marked untested in his tree too; not in our layout |
 | **HY300 T08**, **HY350** | profile only | nobody | installer profile and DRAM fragment, read out of each stock image |
-| **L018** | **verified** (26.10.2026) | its owner's unit (24.-26.10.2026, `doku/220`, `doku/222`) | its own board files in `main` since 26.10.2026: U-Boot (dark gate, lamp and fan off from the SPL, the key red/blue), kernel `0331`-`0334`, lamp modes, keystone with its own axes and optics, its own volume curve; measured on the owner's unit through a TEST image and quick deploys. Accepted with the test image `v0.97-test3` from `main` (`doku/222`); no release image yet, headphones and HDCP 2.2 not tested. *Superseded (25.10.2026):* "nothing of ours has booted on it" |
+| **L018** | **verified** (26.10.2026) | its owner's unit (24.-26.10.2026, `doku/220`, `doku/222`) | its own board files in `main` since 26.10.2026: U-Boot (dark gate, lamp and fan off from the SPL, the key red/blue), kernel `0331`-`0334`, lamp modes, keystone with its own axes and optics, its own volume curve; measured on the owner's unit through a TEST image and quick deploys. Accepted with the test image `v0.97-test3` from `main` (`doku/222`); the release image since `v0.97.1-beta` (26.10.2026); headphones and HDCP 2.2 not tested. *Superseded (26.10.2026):* "no release image yet". *Superseded (25.10.2026):* "nothing of ours has booted on it" |
 
 `boards/<id>/board.env` carries these states machine-readably; `bash boards/check.sh` holds each one against the
 installer profile. A board below *verified* gets the read-only probe ([h713-probe](docs/tools/h713-probe.md)).

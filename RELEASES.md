@@ -5,17 +5,18 @@ Three different numbers exist in this project, and mixing them up is easy. This 
 ## What a release is
 
 A release is a git tag plus the files a user needs to install without building anything. Tags are named `vX.Y` or
-`vX.Y-beta`, and every file carries the same string. Since `v0.97-beta` a release has one archive per board, `<image>.tar`, holding that
+`vX.Y-beta`, and every file carries the same string; a point release `vX.Y.Z-beta` brings the image of a board verified
+after `vX.Y-beta` and leaves the other boards on that release (`v0.97.1-beta`, the L018). Since `v0.97-beta` a release has one archive per board, `<image>.tar`, holding that
 board's release folder, plus the files every board shares:
 
 | File | What it is |
 |---|---|
-| `<image>-a-bootkette.img`, `<image>-b-system.img`, `<image>-c-gptkopie.img` | the three image parts, uploaded `.zst`-packed; `<image>` is `h713-hy310-vX.Y-media-desktop` for the HY310 and `h713-hy200-qz713df-a1-projector05061226-vX.Y-media-desktop` for the HY300PRO-G-EU |
+| `<image>-a-bootkette.img`, `<image>-b-system.img`, `<image>-c-gptkopie.img` | the three image parts, uploaded `.zst`-packed; `<image>` is `h713-hy310-vX.Y-media-desktop` for the HY310, `h713-hy200-qz713df-a1-projector05061226-vX.Y-media-desktop` for the HY300PRO-G-EU and `h713-l018-vX.Y-media-desktop` for the L018 |
 | `<image>.tabelle.json` | the table: where each part goes, and which of your device's own files the installer copies into which partition |
 | `<image>.sha256` | checksums of the parts and of the table |
 | `<image>-README.txt` | what to do with all of it, next to the files themselves |
 | `<image>.BUILD.txt` | the build stamp - see below |
-| `u-boot-installer.bin`, `sunxi-fel` | in each board's archive: what [`h713-install`](FLASHING.md) needs to expose the eMMC over USB; the installer U-Boot is built for that board (the two boards' differ) |
+| `u-boot-installer.bin`, `sunxi-fel` | in each board's archive: what [`h713-install`](FLASHING.md) needs to expose the eMMC over USB; the installer U-Boot is built for that board (the boards' differ) |
 | `u-boot-h713-probe.bin` | the read-only probe for an H713 board nobody has measured ([docs/tools/h713-probe.md](docs/tools/h713-probe.md)) |
 | `allwinner-h713-linux-vX.Y-with-submodules.tar` | the repository at the tag with its submodules checked out - GitHub's own "Source code" archive has no submodules, and the image's licence file points at this one for the corresponding source |
 
@@ -84,6 +85,39 @@ While working towards a release, images are built and thrown away as `vX.Y-devN`
 occasionally in [STATUS.md](STATUS.md). Test images for boards in test carry the board's name and a number or a `-TEST`
 suffix (`hy300-pro-test11`, 22.10.2026, is the last for the HY300 Pro of issue #1); they are built for one owner and are
 not releases.
+
+## v0.97.1-beta (26.10.2026)
+
+A release image for a third board, the **L018** ([boards/l018](boards/l018/README.md), verified 26.10.2026 on its owner's
+unit), and nothing else: the HY310 and the HY300PRO-G-EU stay on `v0.97-beta`, their images are not rebuilt. The L018's is a
+`media,desktop` image like theirs, built on 26.10.2026 from `main` `2b872290`, the commit the tag `v0.97.1-beta` points at.
+
+**Before you install,** take the full dump of your device ([FLASHING.md](FLASHING.md)), as for `v0.97-beta`. The board was
+verified with the stock firmware `Projector05141211`; the installer reads the L018's own files from your dump, now 45 with
+its volume curve (`audio_config.ini`).
+
+**The L018 in this image** (`doku/220`, `doku/222`): U-Boot's gate dark and silent, lamp and fan off until the start, the
+picture the right way round, the power key red in the gate and blue when running (U-Boot `0103` - `0105`); its NTC and the
+power-off at 51 °C (`0331`, `0333`); the three lamp modes with the fan, on the settings page and in the web panel (`0332`,
+[h713-lamp](docs/tools/h713-lamp.md)); the LSM6DSV tilt sensor (`0334`) with the board's own axes and throw ratio for the
+keystone; its own volume curve from the device's firmware (`h713-tv` `volume_curve = vendor`); the camera and the autofocus;
+the focus motor without a reference run at start (the end switch of the one unit measured is dead) and 13 steps a key press.
+
+**Also in it, from `main` since `v0.97-beta`** - they reach the HY310 and the HY300PRO-G-EU with their next image: the
+autofocus under an open page (`h713-tv ctl bare`, TODO 4.9h); a reinstall takes the U-Boot environment off the device and
+keeps the owner's settings (TODO 2.137, 1.2b); `h713-tv` gives the panel back to the console after a run that took the
+display mode with it (TODO 2.125); the upstream H.264 reference-list fix and the HEVC backport for the video engine (`0277`,
+`0330`); a capped persistent journal; `h713-mic`, the stock remote's microphone, as a prototype.
+
+**Measured:** the contents of this image as `v0.97-test3` (from `f1d2617f`; the release's source differs only in the board's
+status lines and in the build script's version check): installed over our layout, the owner's settings and the remote's
+pairing carried over, the key red then blue, lamp modes, keystone from the front, autofocus over HDMI and over the launcher,
+hardware video 300 of 300 frames, HDMI sound, HDCP 1.4 as a pair of boots (`doku/222`). The release image itself:
+installed on the owner's L018 on 26.10.2026 over our layout over FEL (read back, the secure storage byte-identical to the dump, the HDCP 1.4 key set present; the owner's settings, host keys and the remote's pairing carried over), started from mains and the power key: no failed unit, all four features present, the key blue, the lamp at std with the fan at 3180 rpm, the device's own volume curve, the keystone at 18.9 degrees, the launcher up. Sound, video, HDCP and the autofocus were not repeated on it. **Not tested:** headphones, HDCP 2.2; **not measured:** the thermal mode above 41 °C, the power-off at 51 °C.
+
+**Files:** `h713-l018-v0.97.1-beta-media-desktop.tar` (the L018's release folder with the installer U-Boot built for it and
+`sunxi-fel`), `u-boot-h713-probe.bin`, `allwinner-h713-linux-v0.97.1-beta-with-submodules.tar`, `SHA256SUMS`. The other
+boards' archives are on the `v0.97-beta` release page.
 
 ## v0.97-beta (23.10.2026)
 

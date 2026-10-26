@@ -189,6 +189,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       betroffen wären nur Verbraucher, die aus dem Nennwert Zeiten rechnen.
       **25.10.2026 nachts, g):** Lesewerkzeug `arbeit/kleinkram-20261025/skripte/panel-histogramm.py` (eigener Code, nicht im Repo), am Gerät nicht gelaufen; Prüfplan im BERICHT f).
       **26.10.2026 am G-EU, g):** das Panel-Histogramm zählt: die 32 Wörter `0x051C0380`-`0x03FC` sind die Fächer, Summe 921 598 = ein Bild 1280x720; `0x0378`/`0x037C` sind laufende Zähler, keine Fächer - das Skript (`arbeit/kleinkram-20261025/skripte/panel-histogramm.py`) liest zwei Wörter zu früh an und muss auf `0x0380` berichtigt werden. Hell/Halb-halb noch nicht geprüft.
+- [ ] 1.11 **v0.97.1-beta: ein Release-Abbild für den L018 allein** (Marco 26.10.2026: "ok" zu "nur der L018, HY310 und G-EU bleiben
+      auf v0.97-beta"). **26.10.2026:** `build-all.sh` lässt `vX.Y.Z-beta` zu (`2b872290`); Bau von vorn aus `2b872290` (29 min,
+      reproducible: yes, Selbsttest grün, Board-Werte im Rootfs gelesen); auf Marcos L018 über unser Layout installiert und gestartet
+      (`doku/223`, `arbeit/l018-release-20261026/`). Offen: Push `main`, Tag `v0.97.1-beta` auf `2b872290`, Release-Seite (ein Archiv,
+      Probe-U-Boot, Quellarchiv aus frischem Klon, SHA256SUMS), Fremdensicht - nur mit Marcos Ja für genau diesen Push.
+
 ## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
 
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
@@ -786,7 +792,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `CONFIG_H713_BOARD_L018`): der erste Boot zeigte das Bild gespiegelt und im Gate Lampe (voll) und Lüfter an; jetzt Gate
       dunkel und leise, Bild richtig herum (PH9 low vor dem Panel-Reset), Lampe std 50 %, Lüfter 70 % (3240 U/min). Gemessen am
       Gerät nach Schnell-Deploy (`arbeit/l018-board-20261024/BERICHT.md`). HY310-Code ohne Option byte-gleich. Nicht gepusht
-- [ ] 4.9 **L018 bis zum fertigen Board** (**verified seit 26.10.2026, `doku/222`; offen nur 4.9c Bedienung durch Marco, 4.9d Kopfhörer/HDCP 2.2**) - der Plan: `arbeit/l018-board-20261024/PLAN.md` (25.10.2026). Stock-Werte fest
+- [ ] 4.9 **L018 bis zum fertigen Board** (**verified seit 26.10.2026, `doku/222`; Release-Abbild `v0.97.1-beta` (1.11, `doku/223`); offen nur 4.9c Bedienung durch Marco, 4.9d Kopfhörer/HDCP 2.2**) - der Plan: `arbeit/l018-board-20261024/PLAN.md` (25.10.2026). Stock-Werte fest
       verdrahtet, bis wir selbst messen; alles board-spezifisch (HY310 & Co. byte-gleich). Launcher: am 25.10. per apt auf das
       Gerät gebracht (Profile media,desktop), im nächsten Abbild `--profile media,desktop`.
   - [x] 4.9a Temperatur (**erledigt 25.10.: NTC liest, Abschaltung bei 51 °C scharf wie unter Stock; Thermometer entfällt, Wärmemodus und das Abschalten selbst bleiben ungemessen - Marco**): der L018 hat einen NTC (Stock `ntc_num 1`, GPADC Kanal 1), der HY310 keinen - unser Baum erbt 0. DT
