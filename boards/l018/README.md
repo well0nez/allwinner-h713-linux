@@ -8,8 +8,8 @@ it.
 
 | | |
 |---|---|
-| Status | **profile-only** - a TEST image (`--test-image`) runs on its owner's unit since 25.10.2026; not verified |
-| Verified by | nobody |
+| Status | **verified** (26.10.2026): `h713-l018-v0.97-test3-media-desktop-TEST` from `main`, installed on its owner's unit over our layout and accepted (`doku/222`). **Not tested:** headphones, HDCP 2.2; **not measured:** the thermal mode above 41 °C, the power-off at 51 °C. Verified for the stock firmware `Projector05141211` only; the focus reference run stays off on every L018 until a unit with a working end switch is measured. *Superseded (26.10.2026):* "profile-only - a TEST image [...] not verified" |
+| Verified by | well0nez, L018 (Projector05141211), v0.97-test3, 26.10.2026 |
 | Profile | `installer/h713/profiles/l018.py` |
 | Kernel DTB | `sun50i-h713-l018` (patch 0331): `sun50i-h713-hy310.dts` plus the differences below |
 | U-Boot base | `l018_defconfig` = `hy310_defconfig` (the DRAM block is this board's boot0 word for word) + `CONFIG_H713_BOARD_L018` (fork `0103`): dark gate, stock std mode, PH9 low, PF6 untouched |

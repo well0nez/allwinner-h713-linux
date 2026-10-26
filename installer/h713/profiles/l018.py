@@ -17,11 +17,13 @@ PROFILE = {
     # layout and panel were read from the same image on 24.10.2026 (h713.facts.image_facts). Its boot0
     # (but for the DRAM words boot0 writes back), sunxi package, bootloader_a/_b, vendor_boot, dtbo,
     # vbmeta* and vendor match the eMMC of a running L018 byte for byte (24.10.2026). Nothing of ours
-    # has run on this board, hence still "profile-only".
+    # has run on this board, hence still "profile-only". *Superseded (26.10.2026):* the image
+    # h713-l018-v0.97-test3-media-desktop-TEST was installed on the owner's unit over our layout and
+    # passed the acceptance (arbeit/l018-test3-20261026/ABNAHME.md, doku/222) - "verified".
     # (Until 24.10.2026 this comment said there was no image and no dump of this board on this host,
     # and that the extractor had run over a real L018.)
-    "status": "profile-only",
-    "verified_by": None,
+    "status": "verified",
+    "verified_by": "well0nez, L018 (Projector05141211), v0.97-test3, 26.10.2026",
     "soc": "H713 (sun50iw12)",               # X:162 dtb_compatible "allwinner,tv303"
     "stock": {
         "android": "11",                     # X:166 build_fingerprint ":11/"

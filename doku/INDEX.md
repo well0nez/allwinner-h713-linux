@@ -13,14 +13,15 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `BUILDING.md` | `doku/116`, `doku/121`, `doku/212`, `doku/219`, `doku/50` |
 | `FLASHING.md` | `doku/109`, `doku/110` |
 | `PROVENANCE.md` | `doku/116`, `doku/210`, `doku/213` |
+| `README.md` | `doku/222` |
 | `RELEASES.md` | `doku/107`, `doku/193`, `doku/210`, `doku/211`, `doku/212`, `doku/216`, `doku/218`, `doku/219` |
 | `ROADMAP.md` | `doku/134`, `doku/211`, `doku/213`, `doku/215`, `doku/218` |
-| `STATUS.md` | `doku/114`, `doku/121`, `doku/134`, `doku/152`, `doku/157`, `doku/165`, `doku/174`, `doku/180`, `doku/181`, `doku/184`, `doku/200`, `doku/201`, `doku/203`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/217`, `doku/218`, `doku/219`, `doku/220`, `doku/60`, `doku/94` |
-| `boards/README.md` | `doku/121` |
+| `STATUS.md` | `doku/114`, `doku/121`, `doku/134`, `doku/152`, `doku/157`, `doku/165`, `doku/174`, `doku/180`, `doku/181`, `doku/184`, `doku/200`, `doku/201`, `doku/203`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/217`, `doku/218`, `doku/219`, `doku/220`, `doku/222`, `doku/60`, `doku/94` |
+| `boards/README.md` | `doku/121`, `doku/222` |
 | `boards/hy200-qz713df-a1/README.md` | `doku/136`, `doku/182`, `doku/184`, `doku/185`, `doku/219` |
 | `boards/hy300-t08/README.md` | `doku/121` |
 | `boards/hy310/README.md` | `doku/10`, `doku/121`, `doku/219` |
-| `boards/l018/README.md` | `doku/220` |
+| `boards/l018/README.md` | `doku/220`, `doku/222` |
 | `docs/architecture.md` | `doku/103`, `doku/163`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/177`, `doku/181`, `doku/192`, `doku/193`, `doku/211`, `doku/82`, `doku/83`, `doku/96` |
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
@@ -99,6 +100,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/h713/profiles/hy300_t08.py` | `doku/121` |
 | `installer/h713/profiles/hy310.py` | `doku/109`, `doku/120`, `doku/40` |
 | `installer/h713/profiles/hy350.py` | `doku/121` |
+| `installer/h713/profiles/l018.py` | `doku/222` |
 | `installer/h713/source.py` | `doku/121` |
 | `installer/h713/stock.py` | `doku/121`, `doku/60`, `doku/61` |
 | `installer/h713/vendorfiles.py` | `doku/121`, `doku/40` |
@@ -285,6 +287,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | 5 |
 | [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | 12 |
 | [`220-l018-board-bis-main-validierung-protokoll-20261026.md`](220-l018-board-bis-main-validierung-protokoll-20261026.md) | Protokoll | 2026-10-26 | 220 Der L018 als eigenes Board bis nach main, der Autofokus über offenen Seiten und die Validierung auf drei Geräten - Protokoll | 9 |
+| [`222-l018-test3-installation-abnahme-verified-protokoll-20261026.md`](222-l018-test3-installation-abnahme-verified-protokoll-20261026.md) | Protokoll | 2026-10-26 | 222 Der L018 aus einem Abbild: test3 gebaut, über unser Layout installiert, abgenommen - verified - Protokoll | 5 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -441,7 +444,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-55 von 279 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+55 von 280 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `104-plan-standby-stufe2.md` (ueberholt)
