@@ -287,6 +287,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | 5 |
 | [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | 12 |
 | [`220-l018-board-bis-main-validierung-protokoll-20261026.md`](220-l018-board-bis-main-validierung-protokoll-20261026.md) | Protokoll | 2026-10-26 | 220 Der L018 als eigenes Board bis nach main, der Autofokus über offenen Seiten und die Validierung auf drei Geräten - Protokoll | 9 |
+| [`221-nachtpakete-integration-geu-messung-protokoll-20261026.md`](221-nachtpakete-integration-geu-messung-protokoll-20261026.md) | Protokoll | 2026-10-26 | 221 Die Nachtpakete vom 25./26.10.: zusammengeführt, am HY300PRO-G-EU gemessen und nach main - Protokoll | - |
 | [`222-l018-test3-installation-abnahme-verified-protokoll-20261026.md`](222-l018-test3-installation-abnahme-verified-protokoll-20261026.md) | Protokoll | 2026-10-26 | 222 Der L018 aus einem Abbild: test3 gebaut, über unser Layout installiert, abgenommen - verified - Protokoll | 5 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
@@ -444,7 +445,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-55 von 280 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+56 von 281 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `104-plan-standby-stufe2.md` (ueberholt)
@@ -493,6 +494,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `205-remote-reihe-kaltstart-standby-warmstart-modi-20261012.md`
 * `208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`
 * `209-runde-5x-teil-b-uebernahme-panel-20261013.md`
+* `221-nachtpakete-integration-geu-messung-protokoll-20261026.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)
