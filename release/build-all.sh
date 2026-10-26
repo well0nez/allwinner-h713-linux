@@ -273,15 +273,21 @@ spl_size_ok() {
 # 26.10.2026; so an aborted kernel step once came back as done). Every command of a run carries RUN_MARK in its environment: one that
 # still runs with it once podman is back has failed, and an abort or the end of this script stops whatever has it (trap in step 0).
 RUN_MARK="H713_BUILD_ALL=$ROOT:$$"
-marked() {   # <environment line> [kill]: the container's pids that have it (without kill: lines that contain it); root needs --privileged to read them
+marked() {   # <run|kill|checkout> <environment line>: the container's pids that have it (checkout: a line that contains it), kill sends
+	# them SIGTERM. Root reads another user's environ only with --privileged; a zombie's cannot be read, and it has done its work.
 	podman exec --privileged -u root "$CONTAINER" bash -c 'for e in /proc/[0-9]*/environ; do
-		if [[ $2 == kill ]]; then grep -qzxF "$1" "$e" && kill -TERM "${e//[^0-9]/}" && echo "${e//[^0-9]/}"; else grep -qzF "$1" "$e" && echo "${e//[^0-9]/}"; fi
+		if [[ $1 == checkout ]]; then grep -qzF "$2" "$e"; else grep -qzxF "$2" "$e"; fi && echo "${e//[^0-9]/}" && [[ $1 == kill ]] && kill -TERM "${e//[^0-9]/}"
 	done 2>/dev/null; true' - "$@"
+}
+stop_run() {   # SIGTERM to what still runs with this run's mark, then up to 30 s until it has cleaned up and is gone; says the pids
+	local left n=0; left=$(marked kill "$RUN_MARK" | tr '\n' ' ')
+	while [[ -n $left ]] && ((n++ < 30)) && [[ -n $(marked run "$RUN_MARK") ]]; do sleep 1; done
+	printf '%s' "${left% }"
 }
 run_in() {   # podman in the background: wait gives way to a trapped signal at once
 	local rc=0 left; podman exec -e "$RUN_MARK" -e JOBS="$JOBS" -e SOURCE_DATE_EPOCH="$SOURCE_DATE_EPOCH" "$@" & wait $! || rc=$?
-	left=$(marked "$RUN_MARK" kill | tr '\n' ' '); [[ -z $left ]] && return $rc
-	echo "error: podman exec came back ($rc) while its command still ran in the container (pids ${left% }, stopped now)" >&2; return 1
+	left=$(stop_run); [[ -z $left ]] && return $rc
+	echo "error: podman exec came back ($rc) while its command still ran in the container (pids $left, stopped now)" >&2; return 1
 }
 in_container()      { run_in "$CONTAINER" bash -lc "$*"; }
 in_container_root() { run_in -u root "$CONTAINER" bash -lc "$*"; }
@@ -359,11 +365,11 @@ case "$st" in
 	*) die "container $CONTAINER is missing -- recipe in doku/50-befehle.md §Bauen" ;;
 esac
 if ((!DRY)); then
-	left=$(marked "H713_BUILD_ALL=$ROOT:" | tr '\n' ' ')
+	left=$(marked checkout "H713_BUILD_ALL=$ROOT:" | tr '\n' ' ')
 	[[ -z $left ]] || die "an earlier run of this checkout still runs in the container (pids ${left% }): let it end, or stop it with: podman exec -u root $CONTAINER kill ${left% }"
 	exec 3>&2   # a trap runs under the redirection of the step at hand: the line goes to the script's own stderr
 	stopped() { printf '\nstopped (%s): the steps with a stamp stay, the same command again goes on from there\n' "$1" >&3; exit "$2"; }
-	trap 'stopped SIGINT 130' INT; trap 'stopped SIGTERM 143' TERM; trap 'marked "$RUN_MARK" kill >/dev/null 2>&1 || true' EXIT
+	trap 'stopped SIGINT 130' INT; trap 'stopped SIGTERM 143' TERM; trap 'stop_run >/dev/null 2>&1 || true' EXIT
 fi
 ((DRY)) || { TOOLS=$(in_container 'clang --version | head -1; command -v mmdebstrap mke2fs depmod dtc >/dev/null || exit 1') \
 	|| die "tools are missing in the container (mmdebstrap/mke2fs/depmod/dtc)"; sed 's/^/    /' <<< "$TOOLS"; }   # TOOLS is an input of every step
