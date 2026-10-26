@@ -87,7 +87,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - 11.10. nachts: der G-EU startete um 04:57 neu, das Journal davor war weg - es war Marco (vor dem Schlafen); ohne ihn
         wäre die Ursache nicht feststellbar gewesen (`doku/196` §3), ein weiterer Grund für das persistente Journal
       - **25.10.2026 nachts, im Code (`versuch/kleinkram` 920d1b0f, `arbeit/kleinkram-20261025/`):** `Storage=persistent`, 32 MiB in 4-MiB-Dateien, `MaxLevelStore=info`, `/var/log/journal` im Abbild, Abnahme in `build-rootfs.sh` angepasst. Nicht gemessen: kein Abbild gebaut, am Gerät nichts gesehen; offen die fünf Kaltstarts. pstore/ramoops ist nicht konfiguriert (kein Defconfig-Eintrag, kein Reserved-Memory-Knoten).
-- [ ] 1.2b **Reinstall über unser Layout verwirft `/etc/h713`** (wifi.env → AP-Modus, warp.conf, keystone,
+      - **26.10.2026 am G-EU:** das Journal ist dauerhaft (in `main` 8471a26b): nach drei Warmstarts vier Boots in `--list-boots`, der vorige bis "Journal stopped" lesbar, 6 MB. Offen bleibt der eigentliche Punkt (Z4 zweiter Boot: Kaltstarte beobachten); pstore/ramoops ist nicht konfiguriert.
+- [x] 1.2b (erledigt 26.10.2026: in `main` 36586276, am G-EU neu installiert und gemessen) **Reinstall über unser Layout verwirft `/etc/h713`** (wifi.env → AP-Modus, warp.conf, keystone,
       tvconfig): der Installer soll die Nutzer-Einstellungen wie die 44 Herstellerdateien zurücklesen und
       übernehmen — oder `build-all.sh --wifi-env` ist Pflicht. Bis dahin: Sicherung vorher (`/root/pre-v096`)
       - 12.10. aus 5.18: dazu einen vom Nutzer geänderten Hostnamen (`/etc/hostname`) mitnehmen
@@ -95,6 +96,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `versuch/installer-nutzerstand` beachten; aus `/etc/h713` auch `lamp.conf` und, nur auf Marcos L018, das experimentelle
         `focus.conf` übernehmen; `tv.conf`/`keys.conf` des L018 schreibt das Abbild mit seinen Board-Werten (`VOLUME_CURVE`, `FOCUS_STEPS`)
       - **25.10.2026 nachts, im Code (`versuch/installer-nutzerstand` 9a8c324f, `arbeit/installer-nutzerstand-20261025/`):** über unserem Layout übernimmt der Installer `/etc/h713` (ohne `tv/osd/keys/power.conf`, `features`, `board` und Unterordner - deren Abweichungen meldet er), die Hostschlüssel, `/var/lib/bluetooth`, `/var/lib/h713-tv` und einen gewählten Hostnamen; kein neuer Parameter. 495 Tests grün, Ende-zu-Ende gegen eine eMMC-Datei 19 von 19 (alter Code 6 von 19). Am Gerät nicht gemessen - Messplan BERICHT §5 (HY310, dann G-EU), danach nach `main`.
+      - **26.10.2026 am G-EU (`arbeit/nacht-20261026/PLAN.md` Phase C):** Neuinstallation mit dem Installer aus dem Zweig über v0.97-beta: übernommen keystone.conf, mediathek.conf, panel.env, warp.conf, wifi.env, die Hostschlüssel, Bluetooth, der h713-tv-Zustand; nach dem Neustart im WLAN (kein AP), Hostschlüssel `vKJyT…` gleich, Fernbedienung ohne neues Koppeln, Keystone gleich, Prüfsummenliste vorher/nachher gleich bis auf `tv.conf` (Datei des Abbilds, Marcos Werte waren die Vorgabe). HY310: 2.147.
 - [x] 1.3 (erledigt: `TimeoutStopSec=10` steckt in `h713-wifi.service` im Abbild v0.97-beta; WLAN-Check nach den Installationen am 22./23.10.2026 an beiden Boxen bestanden) **WLAN-Timeouts verifizieren** (`82cb57e`): im Abbild drin, 5 Boots je ~9 s bis Finished — der Hängefall
       (Funk absichtlich verklemmen) ist noch nicht provoziert
       - **12.10. provoziert** (G-EU, ein `install`-Hänger in modprobe.d, `arbeit/remote-reihe-20261012/` H): `timeout 30` greift, aber
@@ -186,6 +188,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Wissen: der 32-kHz-Takt der RTC ist 24 MHz/750 = 32 000 Hz, `0320` meldet 32 768 - die Uhrzeit ist gemessen richtig (doku/213 §5),
       betroffen wären nur Verbraucher, die aus dem Nennwert Zeiten rechnen.
       **25.10.2026 nachts, g):** Lesewerkzeug `arbeit/kleinkram-20261025/skripte/panel-histogramm.py` (eigener Code, nicht im Repo), am Gerät nicht gelaufen; Prüfplan im BERICHT f).
+      **26.10.2026 am G-EU, g):** das Panel-Histogramm zählt: die 32 Wörter `0x051C0380`-`0x03FC` sind die Fächer, Summe 921 598 = ein Bild 1280x720; `0x0378`/`0x037C` sind laufende Zähler, keine Fächer - das Skript (`arbeit/kleinkram-20261025/skripte/panel-histogramm.py`) liest zwei Wörter zu früh an und muss auf `0x0380` berichtigt werden. Hell/Halb-halb noch nicht geprüft.
 ## 2 Am Gerät offen (keine Blocker, aus `144` §2 und known-issues)
 
 - [ ] 2.4b **Warp kennt kein Seitenverhältnis:** zieht jede Quelle auf das Quad; 4:3-Quellen
@@ -213,6 +216,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         gefenct (afbd nutzt `drm_atomic_helper_commit`). Offen: Inhalt des ersten Warp-Puffers (nicht über `/dev/mem` lesbar), die
         Konsolen-Streifen (`/dev/fb0` direkt nach dem Wecken). Die Box-Kamera sieht den Rand nicht - kein Messmittel dafür
       - **25.10.2026 nachts (`arbeit/rgb-ebene-20261025/`):** vermutlich dieselbe Wurzel wie 2.126 - die Lage der RGB-Daten (`0x051C01A8`) wandert unter uns zwischen Boots (HY310 103/104 bei gleichem Registerstand); mit 2.126 messen (BERICHT §5 Schritt 7).
+      - **26.10.2026:** am G-EU in zehn Boots kein Versatz (2.126); mit 2.126 weiter offen.
 - [ ] 2.42 (**Stand 22.10.2026: das Release läuft ohne Standby mit der Hersteller-ARISC, Aus = Gate, still (1.0 (0), `doku/218`); das Summen betrifft nur noch crust, das experimentell im Abbild bleibt**) **Netzteil summt/fiept im Standby (2,4 W) und im Aus über crust (0,3 W), im Gate (2,9 W) nicht** (Marco 09./10.10., HY310;
       Marco 20.10.: "das spricht dafür, dass wir irgendwas falsch machen"; Stock ist bei denselben 0,3 W still). Hypothesen und Testplan:
       `arbeit/medien/standby-summen/` (Mythos 20.10.2026, HYPOTHESEN.md mit Nachtrag H0a-e, TESTPLAN.md). **Hörtest 21.10.2026 abends am G-EU (Marco): T5c lief nicht wie gedacht** - im ersten B-Standby `slow_gestoppt=ja`
@@ -260,7 +264,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Warnung). Braucht Marco vor Ort (IR)
       - 12.10.: IR weckt aus dem Aus über crust (Marco, `doku/204`). **Offen, Marcos eigentliche Frage:** IR nach einem Kaltstart,
         wenn das Gate (`h713_gate=1`) auf die Taste wartet - der G-EU steht derzeit auf Gate 0, HY310 auf 1
-- [ ] 2.51 **Mikrofon der Fernbedienung hörbar machen** (11.10., `doku/193` §3): per Bluetooth kommt beim Halten ein Tonstrom
+- [x] 2.51 (erledigt 26.10.2026: Format belegt, `h713-mic` in `main` 725ebbc5, live am G-EU aufgenommen; Einbau ins Abbild offen, 2.147) **Mikrofon der Fernbedienung hörbar machen** (11.10., `doku/193` §3): per Bluetooth kommt beim Halten ein Tonstrom
       (60-Byte-HID-Berichte, ~63/s, ~3,8 kB/s), Format unbekannt - kein IMA-ADPCM, kein fester Kopf, komprimiert. Codec aus der
       Sprach-App/dem Audio-HAL der Stock-Firmware bestimmen, dann `CONFIG_HIDRAW` und ein Dekoder in Userspace. Nicht dringend
       - 11.10. G-EU (`doku/195`): ~125 Pakete/s (≈7,5 kB/s), doppelt so viele wie am HY310 - vielleicht eine andere Abtastrate;
@@ -274,6 +278,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Werte und wandert langsam (Kopf-/Parameterbyte). Nächster Schritt: die Sprachkomponente aus dem Stock-`super` lösen
         (Marco: lesend erlaubt) und den Codec dort nachlesen
       - **26.10.2026 nachts, Format belegt (`arbeit/fb-mikro-20261026/`; Prototyp `versuch/fb-mikro` 79634d22 `h713-mic` + 5c9a5a95 `CONFIG_HIDRAW`, am Gerät nicht gemessen):** jeder 60-Byte-Bericht (Report-ID `0x1E`) ist ein SBC-Rahmen ohne seinen 4-Byte-Kopf (mono, 16 kHz, 16 Blöcke, 8 Subbänder, Loudness, Bitpool 28), in drei 20-Byte-Stücken verwürfelt; das Verfahren steht in der Stock-Bibliothek `libhbgdecode.so` (nur gelesen). Prüfung: der für SBC verbotene Code kommt entwürfelt 0-mal in 122 096 Werten vor, sonst in 4-9 %. Marco hat die WAVs gehört: Stimme erkennbar (26.10. 00:35). Offen: Gerätetest mit dem HIDRAW-Kernel.
+      - **26.10.2026 am G-EU:** mit `CONFIG_HIDRAW=y` (Testabbild) live `h713-mic record` über `/dev/hidraw0`: 332 Rahmen = 2,66 s, ffmpeg -> WAV 16 kHz, Sprache im Pegel (`arbeit/nacht-20261026/d7-mikro/`). `h713-mic` ist ein Prototyp und nicht im Abbild (`install-projekt.sh`).
 - [ ] 2.52 **Tasten, Reste aus 2.46** (11.10.): welche Taste die Eingangsumschaltung HDMI/Konsole bekommt (Marco; `keys.conf`
       `input_keys`, leer); welche Richtung "Fokus hoch" an der Wand fährt (beide Lesarten gesehen); ob die BLE-Fernbedienung beim
       Halten wiederholt (dann fährt der Fokus durch wie per IR)
@@ -515,11 +520,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Settings -> Back -> Launcher -> vier Züge, je ein `ebenen.py`-Bild gegen das Ganzbild (`loch.py`, Skripte `arbeit/medien/osd-loch/skripte/`);
       einmal Ecken ändern bei offener Settings-Seite. `make test` von h713-osd dauert seit test_wall ~4 min (Kürzung später möglich).
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** bei Turn to wall 24: a5..a2-zug gegen w5..w2 **0 Löcher**, Alpha 255 an drei Proben; einzige Abweichung die Uhr (Minute dazwischen). Offen: Ecken ändern bei offener Settings-Seite.
-- [ ] 2.108 Klein, aus iio-puffer (Mythos 19.10.): `average_samples` als Vorgabe 20 statt 10 (Puffer-Tripel streuen in z doppelt so stark; Winkel
+- [x] 2.108 (erledigt 26.10.2026: in `main` 8471a26b) Klein, aus iio-puffer (Mythos 19.10.): `average_samples` als Vorgabe 20 statt 10 (Puffer-Tripel streuen in z doppelt so stark; Winkel
       0,25 statt 0,19 Grad, +0,1 s; Marcos Wert 10 nicht ändern); `in_timestamp_en` auf 0 setzen; `once --apply` 0,74 s -> ~0,4 s nur, wenn
       Marcos Augentest (2.103) das Nachlaufen stört: ein Warp-Aufruf statt acht, Modellsuche cachen. GERAETESTAND: der HY310 trägt seit 19.10.
       einen gemischten Modulbaum (rend6 + vier IIO-Module zum FIT e8c68904) - rend7 aus build-all von vorn.
       - **25.10.2026 nachts, im Code (`versuch/kleinkram` e90f085f):** Vorgabe `average_samples` 20, `in_timestamp_en` 0; ein vorhandenes `/etc/h713/keystone.conf` behält seinen Wert (Marcos 10 bleibt). 229 Tests grün, am Gerät nicht gemessen.
+      - **26.10.2026 am G-EU:** nach der Neuinstallation steht Marcos `average_samples = 10` (über 1.2b übernommen); die Vorgabe 20 gilt nur für eine neue `keystone.conf`.
 - [x] 2.109 **IIO-Puffer am HY300PRO-G-EU nachmessen** (nur am HY310 gemessen): Kernel mit 5d32cbc, `h713-keystone read`/`once --apply`-Zeiten,
       Journal ohne sysfs-Rückfall, `watch` nach einer Bewegung; ohne Beschleunigungssensor dort (falls keiner): Einheit übersprungen, nichts geändert.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** sc7a20 als iio:device2, keystone-auto "a reading every ~0.66 s through the IIO buffer", 0 sysfs-Zeilen; read 0,51-0,60 s, once --apply 0,65-0,74 s. Kippen: **Marco 20.10.2026: selbst getestet, das Trapez folgt** (vor dem Boot 21:23 UTC; das Journal ist flüchtig, kein Protokollbeleg; heute steht `after_move = off`, Marcos Vorgabe).
@@ -535,11 +541,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Wce im Fenster steht, ist nicht gemessen); den Break in `h713-tv ctl status` zeigen. G-EU: 0326 nachmessen - dort steht bei +0x37100 der PWM-Block,
       Info-Zeile im dmesg, keine Warnung, PWM-Schritt läuft.
       **G-EU 20.10.2026 (Abbild geu3 = medien 306a2a2, Aufsicht, AUFSICHT.md ab 10:30):** G-EU-Teil bestanden: "allocator ends at +0x33000 ..., lowest place of this driver is at +0x36000", PWM-Schritt gelaufen, keine skipped-Warnung.
-- [ ] 2.113 Klein, aus panel-farbe (Mythos 19.10.): die Abbildung der zwei Weißabgleich-Schieber gehört in h713-tv (`ctl wb sliders COOL MAGENTA`,
+- [x] 2.113 (erledigt 26.10.2026: in `main` 8471a26b, am G-EU gemessen) Klein, aus panel-farbe (Mythos 19.10.): die Abbildung der zwei Weißabgleich-Schieber gehört in h713-tv (`ctl wb sliders COOL MAGENTA`,
       Stellungen in der Antwort von `ctl wb`), dann fallen die Kopien in h713-settings (rows.c) und h713-panel (Python) weg und die Offset-Lücke
       (Offsets lesen, sechs Zahlen schreiben) ist zu - beim nächsten Anfassen von color.c. Marcos Blick auf den Reiter Colour im Panel (:8080, Handy
       und PC); G-EU: Reiter Colour nachmessen (Zeile in panel-farbe/BERICHT §6).
       - **25.10.2026 nachts, im Code (`versuch/kleinkram` be6a7101):** `ctl wb sliders COOL MAGENTA` in h713-tv, die Kopien in h713-settings und h713-panel sind weg (49 Zeilen weniger), Tests aller drei grün. Am Gerät nicht gemessen; h713-tv, -settings und -panel nur zusammen ausspielen.
+      - **26.10.2026 am G-EU:** Marco "white balance funktioniert, das weiß passt sich an"; `ctl wb sliders 10 -6` -> Gewinne R 480 / B 500, Antwort nennt die Stellungen, zurück auf neutral.
 - [x] 2.114 (erledigt 20.10.2026, cbfdb4d, Mythos go; am Gerät nicht nachgestellt) **Launcher öffnet sich nach einem Neustart von h713-osd beim nächsten Signalwechsel von selbst** (Mythos 19.10., aus countdown-b, Ursache
       gelesen): header_follow() in h713-keys definiert den Launcher bei einem Signalwechsel neu, solange h713-keys ihn für offen hält; nach einem
       h713-osd-Neustart (Deploy, Absturz) steht dort "closed" -> h713-osd öffnet ihn. Fix ~5 Zeilen: vor dem Neudefinieren `ctl status` lesen, bei
@@ -584,7 +591,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [x] 2.124 (erledigt 20.10.2026 am G-EU, `arbeit/medien/launcher-rand/`, Mythos go mit Auflagen A/B, eingebaut 9c7b53b: Kodi -> HDMI vorher 3/3 bzw. 5/5 mit Stumm-Zeichen Konsole, nachher 0/7 und 0/3 schwarz 84-117 ms; dazu Launcher-Schließen mit bleibendem Zeichen 5/5 -> 0/14; HY310 nicht gemessen) Klein (wach-wand §9, Mythos 20.10.2026): **Wechsel Kodi -> HDMI ohne Trapez zeigt 0,15-0,17 s Konsole** ("console back with the
       warp's release", dann der Ring; G-EU 2x gesehen) - derselbe Mechanismus wie die Seite in wach-wand Commit 2, über die Freigabe des
       Client-Claims; die Wand bis zum Commit des Rings halten. Test fällt heute, besteht danach.
-- [ ] 2.125 Klein (**Marco 22.10.2026: für jetzt egal, nicht vor dem Release (nicht generell); bis dahin bekannter Fehler in der Doku**; wach-wand §5.1/§9, Mythos 20.10.2026): **schlägt h713-tvs Commit beim Weg hinaus fehl, bleibt die CRTC ohne Ebene und kein
+- [x] 2.125 (erledigt 26.10.2026: in `main` 24d2b6cc, am G-EU gemessen) Klein (**Marco 22.10.2026: für jetzt egal, nicht vor dem Release (nicht generell); bis dahin bekannter Fehler in der Doku**; wach-wand §5.1/§9, Mythos 20.10.2026): **schlägt h713-tvs Commit beim Weg hinaus fehl, bleibt die CRTC ohne Ebene und kein
       **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       h713-tv startet mehr** (`no CRTC drives a mode`, bis jemand fbcon entblankt). Beim Start den Kernel-Zustand wiederherstellen
       (console_restore(), dann noch einmal suchen) - Wiederherstellung, kein Netz (Mythos).
@@ -592,6 +599,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       ein Zähler ohne Zeit) und h713-tv endet mit "no CRTC drives a mode" - Vorschlag (i) ExecCondition "letzte Rettung länger als 5 min her",
       (ii) der Start stellt bei "no CRTC" die Konsole selbst her.
       - **26.10.2026 nachts, im Code (`versuch/tv-rettung` f7360f98, `arbeit/tv-rettung-20261026/`):** an der Wurzel - findet der Start keine CRTC mit Modus, gibt er den Master ab, stellt die Konsole her und sucht noch einmal (der Kernel gibt den Modus nur beim letzten close der Karte oder einem Unblank ohne Master zurück; eine andere offene Datei auf der Karte verhinderte den letzten close). (i) ExecCondition ist damit nicht nötig. 12 neue Host-Prüfungen, der alte Code fällt in 8, Kreuzbau ohne Warnung. Am Gerät nicht gemessen - Messplan BERICHT §7, nur mit Marcos Ja (Absturztests stören die Wand).
+      - **26.10.2026 am G-EU (Marcos Ja, `arbeit/nacht-20261026/PLAN.md` D2):** Auslöser gemessen: nur ein Tod von h713-tv, während eine Einblendung (Launcher) auf der Hauptebene liegt; mit reinem Kodi-Bild (Warp auf der Videoebene) bleibt der Modus. Alte Fassung, Launcher offen, Kartenhalter, SIGKILL: 3 x "no CRTC drives a mode", `failed` (das Bild vom 20.10.). Neue Fassung aus genau diesem Zustand und nach drei weiteren Abbrüchen: "none drives a mode … -- the console first", "crtc 36", Bild ohne Handgriff. Falle beim Messen: `StartLimitBurst=3` in 1 min - Abbrüche mit mehr als 20 s Abstand. HY310: 2.147.
 - [ ] 2.126 **G-EU: Strich in den ersten zwei Panelspalten, sobald die Videoebene aus ist** (Marco 20.10.2026, Fotos in `arbeit/medien/launcher-rand/`):
       **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       bei offenem Launcher, unter Seiten und unter der Konsole, nicht im HDMI-Bild. Gemessen (launcher-rand §13): die RGB-Ebene liegt 2 Bildpunkte
@@ -612,6 +620,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       mit offenem Launcher, neue Kamera-Zelle "Licht bei offenem Launcher 30 s". Verwandt: known-issues "green stripe on the console" (2.34) -
       vermutlich dieselbe Wurzel (Spalten 48-49 zeigen Ebene 0).
       - **25.10.2026 nachts, RE (`arbeit/rgb-ebene-20261025/`; Kandidat `versuch/rgb-ebene` 692abd08 + 6071f145, Kernel `0345`, gebaut, nicht gemessen):** die Display-Firmware legt die RGB-Ebene nicht; X ist bei Stock am G-EU ebenfalls 0 (Stock-U-Boot: max(hsync+hbp-77, 0)). Stock und wir unterscheiden sich im Panelblock nur in den Wörtern, die Stocks `ge2d_dev.ko` beim Probe schreibt: `0x051C0014/24/28` und ein Puls auf `0x051C0010` mit dem Wert aus `0x051C001C` - danach steht dort 0 statt der `0x45` der Firmware. Genau das wurde am 20.10. nicht probiert. Nächster Schritt am G-EU: `skripte/stockwoerter.py a/a2/b/c` (nur Rückleseworte, BERICHT §5), dann der Kernel-Kandidat; am HY310 prüfen, dass `01A8` stehen bleibt. Trifft es: Abdeckung b63044e zurück.
+      - **26.10.2026 am G-EU (`arbeit/nacht-20261026/PLAN.md` A3, D1):** in zehn Boots (sechs mit v0.97-beta, vier mit dem Testabbild) **kein Versatz**: jedes Mal `01A8 = 0180 = 00300530` (L = 48 wie Stock), am 20.10. (geu3, damals crust) 50 - der Fehler ist bootabhängig und heute nicht auslösbar. Auf einem guten Boot verschieben die Stock-Schritte a/b/c nichts, mit b nehmen `0168`/`016C` genau die Stock-Werte an; Kandidat `0345` läuft in jedem Boot und schadet nicht. Ob er einen schlechten Boot heilt: nicht gemessen - **0345 bleibt auf `versuch/rgb-ebene`**, bis ein Boot mit Versatz kommt (dann `stockwoerter.py a/b/c`, BERICHT §5). Verdacht: seit 22.10. Hersteller-ARISC statt crust.
 - [x] 2.127 **MAC-Adressen im Repo maskieren und sperr-scan um eine MAC-Regel ergänzen** (Mythos 20.10.2026, Prüfung bt-neukoppeln; vor dem
       nächsten Push): die Adresse von Marcos Fernbedienung steht in doku/134 (3x), 135, 140 (nur lokal, nicht auf GitHub); auf GitHub (`origin/main`)
       stehen schon zwei Client-Adressen in den Beschreibungen von aic8800-0008/-0010 und eine eth-Adresse in vier Boot-Mitschnitten unter analyse/boot/
@@ -652,14 +661,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       nicht / anderer Code / Regel greift nicht). **22.10.2026:** Nachrüstsatz test11 (`arbeit/medien/test11-ir-nachruest/`: PL9 nach dem ARISC-Start zurück, Tastentabelle der originalen HY300-Fernbedienung) gebaut, am G-EU geprüft und für den Tester hochgeladen; seine Rückmeldung steht aus. **23.10.2026: Testabbild `hy300-pro-test12`** (Vorabversion auf GitHub, aus 679c72ae: 0328/0329 und U-Boot 0102 fest eingebaut, der Nachrüstsatz entfällt); Rückfragen an ihn in den Release-Notes (Tasten, Power aus dem Gate, drei Befehle).
 - [ ] 2.135 Klein (arisc-default, Mythos 22.10.2026): unter der Hersteller-ARISC meldet ein Dienst "status brief timed out" nach ~17 s -
       Ursache finden (Abfrage an die Firmware, die das Herstellerbild nicht beantwortet?); Belege `arbeit/medien/arisc-default/laeufe/`.
-- [ ] 2.136 Klein: **libva-Tar nicht reproduzierbar über verschiedene Baupfade** (Release-Bau 22.10.2026: gleicher Commit, Tar 7c0fdc55 in
+- [x] 2.136 (erledigt 26.10.2026: in `main` cac846a1, `-ffile-prefix-map` in `build-libva.sh`) Klein: **libva-Tar nicht reproduzierbar über verschiedene Baupfade** (Release-Bau 22.10.2026: gleicher Commit, Tar 7c0fdc55 in
       `R-rel/repo-hy310`, 237ec304 in `R-rel/repo-geu`; mesa gleich). Vermutlich Pfade im Ergebnis (`-ffile-prefix-map` in `build-libva.sh`); prüfen.
       - **26.10.2026 nachts, behoben im Code (`versuch/libva-repro` 86746d24, `arbeit/libva-repro-20261026/`):** der einzige Unterschied war die ELF-Build-ID der `.so` (lld hasht vor `--strip`, die Debuginfo trug die Pfade); `-ffile-prefix-map` in `build-libva.sh` (4 Zeilen), dasselbe Tar `aa3d52a3...` aus drei Pfaden, Code und Symbole gleich. Die anderen Querbau-Schritte nur gelesen (sie bilden ihre Pfade schon ab), nicht doppelt gebaut.
-- [ ] 2.137 **Installer: `--keep-env` übernahm `h713_gate=0` aus der Sicherung im Abzug, nicht den Wert vom Gerät** (G-EU 22.10.2026: auf
+      - **26.10.2026:** im G-EU-Testabbild `vainfo` H.264 High und HEVC Main, die Abnahme mit Kodi grün; der Builder-Bericht beantwortet 2.136b nebenbei: über zwei Baupfade ist das libva-`.so` das einzige andere Mitglied des Rootfs (U-Boot, crust, Kernel, aic8800, mesa, Warp, userspace gleich).
+- [x] 2.137 (erledigt 26.10.2026: in `main` 36586276, am G-EU gemessen) **Installer: `--keep-env` übernahm `h713_gate=0` aus der Sicherung im Abzug, nicht den Wert vom Gerät** (G-EU 22.10.2026: auf
       **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       dem Gerät stand 1, "carried over from the old one: h713_gate=0 (image: 1)"; `install-dump/uboot-env.bin` vom 20.10. trug 0). Am HY310 23.10.2026 genauso. Der Installer
       soll die Umgebung vom Gerät lesen, wie er es für Secure Storage tut, oder den Unterschied laut melden. Danach `fw_setenv h713_gate 1` von Hand.
       - **25.10.2026 nachts, im Code (`versuch/installer-nutzerstand` 9a8c324f):** die Umgebung kommt immer vom Gerät, eine abweichende `uboot-env.bin` im Abzug wird als Warnung gemeldet; der Fall vom 22./23.10. ist als Test nachgestellt. Am Gerät nicht gemessen (Messplan wie 1.2b).
+      - **26.10.2026 am G-EU:** mit dem Abzug vom 20.10. (`uboot-env.bin` `h713_gate=0`) meldet der Installer "the device and …/uboot-env.bin of 20.10.2026 disagree -- h713_gate=1 on the device, 0 in the dump; the device's value is taken"; nach dem Neustart `h713_gate=1` ohne Handgriff. Die known-issues-Zeile ist im Zweig schon raus.
 - [x] 2.139 (**behoben 22.10.2026, medien f711ffc9**: Kernel 0328 setzt PL9 nach dem ARISC-Bind zurück, 0329 Tabelle der originalen HY300-
       Fernbedienung NEC 0x00; am G-EU mit Marco alle Tasten der originalen erkannt, Tabelle für beide gelesen; Mythos go. HY310 und Kaltstart mit
       dem Release-Neubau prüfen) **RELEASE-BLOCKER: unter der Hersteller-ARISC kommt bei Linux kein IR an** (G-EU v0.97-beta, 22.10.2026 ~19:10, Marco): HY310-
@@ -689,9 +700,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       REL_Y? Im zweiten Fall bewegt sich der Launcher im Mausmodus nicht; dann REL in Auswahlschritte übersetzen (Mythos 21.10.2026).
 - [ ] 2.130b **Wecken-Lücke der Fernbedienung messen** (btmon am G-EU): wie lange nach dem Wecken bis Bluetooth steht, wo die Zeit bleibt
       (Werbung, Verbindung, Diensterkennung); bis dahin nur IR, keine Maus. Gehört zu Bluetooth, nicht zu h713-keys.
-- [ ] 2.130c Klein: **Journalrauschen** - h713-keys setzt EVIOCSREP auf jeden Knoten der Fernbedienung, auch auf den Mausknoten (kein EV_REP,
+- [x] 2.130c (erledigt 26.10.2026: in `main` 8471a26b; am G-EU nicht auslösbar) Klein: **Journalrauschen** - h713-keys setzt EVIOCSREP auf jeden Knoten der Fernbedienung, auch auf den Mausknoten (kein EV_REP,
       ENOSYS -> eine Warnzeile je Öffnung); EVIOCSREP nur bei EV_REP (Mythos 21.10.2026).
       - **25.10.2026 nachts, im Code (`versuch/kleinkram` f2a0ddf3):** EVIOCSREP nur, wenn der Knoten EV_REP meldet; 85 Tests grün. Ob die Warnzeile am Gerät verschwindet: nicht gesehen.
+      - **26.10.2026 am G-EU:** die Fernbedienung hat dort nur einen Knoten (`Bluetooth remote`, EV_REP und REL in einem), ein Mausknoten ohne EV_REP entsteht nicht - keine Warnzeile, der Fix greift hier nie. Am HY310 nachsehen, ob es dort einen eigenen Mausknoten gibt (2.147).
 - [ ] 2.131 (**Marco 22.10.2026: für jetzt egal, nicht vor dem Release (nicht generell); bis dahin bekannter Fehler**) **G-EU: schwarzer Block unten im Launcher bei jedem zweiten Zug, nur ab und zu** (Marco 20.10.2026, Foto
       **Doku-Runde 23.10.2026:** als bekannter Fehler in `docs/known-issues.md` (v0.97-beta).
       `arbeit/medien/launcher-rand/foto-box-schatten.webp`, 18:06 und 21:01 bei Zügen über die uhid-Fernbedienung, nicht bei Marcos eigenem Aufruf).
@@ -722,10 +734,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.145 Klein: fünf Patchtexte sagen "not yet tested", obwohl später gemessen (`0136w`, `0072`, `0074`, `0076`, `0077`; Mythos 23.10.2026) - Texte
       nachziehen (mit dem Beleg), spätestens bevor einer davon upstream geht.
       - **25.10.2026 nachts (`versuch/kleinkram` 053824f9):** `0136w` nachgezogen (doku/128, dev22). `0072`, `0074`, `0076`, `0077` (und `0073`) sind U-Boot-Patches der IDMA-Serie im Fork und im Spiegel `uboot-h713/` - nur dort zu ändern; Textvorschläge mit Belegen aus doku/125 in `arbeit/kleinkram-20261025/BERICHT.md` d); bei `0077` hat der PIO-Rückfall am Gerät nie ausgelöst.
+      - **26.10.2026:** `0136w` ist mit 8471a26b in `main`; offen die U-Boot-Texte 0072-0077 im Fork und Spiegel.
 - [ ] 2.146 **Upstream-Einreichungen** (Marco 23.10.2026 gefragt; Liste `arbeit/upstream-kandidaten-20261023/KANDIDATEN.md`, Bewertung `MYTHOS-PRUEFUNG.md`):
       einreichen: U-Boot `0022`, Kernel `0136w`, `0127`, U-Boot `0027`, libva `0017`/`0016`; erst umbauen: cedrus `0309`/`0316` (Upstream überspringt statt
       abzulehnen), U-Boot `0071` (Autor "Claude", RFC), IDMA-Serie (nur H713 gemessen). Vorher Marco: eigene Durchsicht, Signed-off-by, erreichbare
       Mailadresse, `Assisted-by` statt `Co-Authored-By`, Texte ohne `doku/`-Verweise, lore selbst durchsuchen. Nichts geht ohne Marcos Ja je Patch raus.
+- [ ] 2.147 **HY310-Nachmessung der Nachtpakete vom 26.10.2026** (alle nur am G-EU gemessen, `arbeit/nacht-20261026/PLAN.md`): ein HY310-Abbild aus `main` mit dem neuen Installer über den laufenden Stand (1.2b/2.137: Nutzerstand, Gate, Hostschlüssel; Sonoff für die Stromzyklen); 2.125 mit offenem Launcher alt/neu (Abbrüche mehr als 20 s auseinander); 2.113 Reiter Colour; 1.2a Journal über Boots; 2.130c - hat der HY310 einen eigenen Mausknoten?; 2.51 `h713-mic` (HIDRAW) und ob es ins Abbild soll (Marco); die Abnahme.
+- [ ] 2.148 Klein: **`test_mkimage_selftest` urteilt über das Abbild, das gerade in `installer/out` liegt** - am 26.10.2026 war das im Haupt-Checkout noch v0.96-beta (05.10.), dessen Tabelle `pq/audio_config.ini` nicht kennt: falsches Rot in `tor.sh --tests` (beiseite nach `arbeit/nacht-20261026/alt-installer-out/`, danach übersprungen). Vorschlag: ein Abbild, dessen Stempel einen anderen Commit nennt als HEAD, mit Hinweis überspringen statt urteilen.
+- [ ] 2.149 Klein: **Container `h713-build` neu mit `podman run --init`** (Builder-Bericht 26.10.2026: PID 1 ist `sleep infinity`, 130 Zombies aller Sitzungen; harmlos für die Bauten). Rezept `docs/build-container.md` - beim nächsten Neubau des Containers, mit Marco.
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -919,10 +935,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         Teil A und B am HY310 bestanden (`doku/209`). **Offen bleiben nur die Punkte nach dem Release:** CC-4, CC-5, U4, CR-3, KM-3.
         Gelernt (B2): der zweite Tastendruck beim Einschlafen landet bei crust und weckt sofort (860 ms) - ein Abbruch entsteht am
         HY310 so nicht; U2 bleibt die Absicherung für andere Weck-Interrupts
-- [ ] 5.15 **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
+- [x] 5.15 (erledigt 26.10.2026: crust ist das Submodul `mainline/external/crust`, in `main` 0ce66773; ein frischer GitHub-Klon baut ohne `CRUST_SRC`) **crust als Submodul** (`mainline/external/crust`) statt `CRUST_SRC`: sonst kann niemand außer uns ein HY310-Abbild bauen;
       braucht den veröffentlichten Fork (1.6)
       - 12.10. geprüft: `build-all.sh` sucht schon in `mainline/external/crust` (Z. 181), es fehlt nur das Submodul; `well0nez/crust`
         gibt es auf GitHub noch nicht. Vorschlag: vorbereiten, Commit erst mit dem Push 1.6 - **Entscheidung Marco offen**
+      - **26.10.2026:** der Klon für M5 holte crust von `github.com/well0nez/crust` mit Tags (`v0.6-89-g54e4a08`), das scp.bin bytegleich zur Arbeitskopie. Im Haupt-Checkout `git submodule update --init mainline/external/crust` nötig (am 26.10. gemacht).
 - [x] 5.16 (erledigt 23.10.2026, Doku-Runde: `docs/uboot/README.md` nennt 0096-0102 als mit v0.97-beta veröffentlicht, das R_WDOG-Netz steht in `standby.md`, Drehzahl und ARISC-Größe waren seit dem 11.10. gleich; die Commit-Texte 0231/0240/0243 bleiben (kein Serienumbau) und sind in `mips.md`, `hdmi-in.md`, `audio.md` richtiggestellt; der msp-Abbruchfall gehört zu 5.14) **Reste der Doku-Runde 09.10.** (`2f7875f`, Entwürfe und Notizen in `arbeit/doku-r2-20261009/*/NOTIZEN.md`):
       Commit-Texte beim nächsten Serienumbau - `0231` nennt V10 "three times in a row" (nicht belegt, `doku/176` §1), `0240`
       sagt "not yet measured" (gemessen, `doku/173`), `0243` sagt "until a reboot" (siehe 3.3); Lüfterdrehzahl 4860
@@ -938,7 +955,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
         `docs/uboot/README.md` Z. 65-66 (nennt noch den Kopf `7b1ea388da0d`, heute `61ea018712c8`, und "unveröffentlicht") nach 1.6
       - **12.10. nachts:** die drei Commit-Texte auf `versuch/kernel` (96a92a3); `docs/uboot/README.md` bleibt für nach 1.6
       - **13.10.:** die Patch-Texte 0231/0240/0243 sind in `main`; offen nur `docs/uboot/README.md` nach 1.6
-- [ ] 5.17 **`build-all.sh` muss nach einem Abbruch weiterbauen können** (Marco 09.10.: "nicht entwicklerfreundlich"). Anlass:
+- [x] 5.17 (erledigt 26.10.2026: in `main` 0ce66773, M1-M5 am PC, G-EU-Abbild mit `--variant` gebaut und installiert) **`build-all.sh` muss nach einem Abbruch weiterbauen können** (Marco 09.10.: "nicht entwicklerfreundlich"). Anlass:
       G-EU-Testbau 09.10. stieg in Schritt 7 (Rootfs) aus, nach ~25 min Kernel/Mesa/Sysroot; danach lief alles von vorn, und
       eine Kommentaränderung im Gerätebaum-Patch kostete den Kernel noch einmal. Heute gibt es `--skip-bl31/-uboot/-kernel/
       -rootfs`, die nur "wenn vorhanden" prüfen, nicht ob es zum Stand passt. Vorschlag: jeder Schritt schreibt einen
@@ -971,6 +988,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       - **12.10. (Marco, Durchsicht 5.x): nach dem Release, aber unbedingt.** Geprüft: noch nicht angefangen (die vier `--skip-*`
         stehen, kein `stempel/`). Vorschlag dazu: Punkt 5 (Kernel teilweise inkrementell) zurückstellen - der riskante Teil, und den
         häufigsten Fall fängt der Kernel-Cache über den Eingabe-Hash schon ab
+      - **26.10.2026 (Integration, `arbeit/nacht-20261026/PLAN.md`):** das G-EU-Testabbild `v0.0-nacht` aus `versuch/nacht-integration` frisch gebaut (37 min 39 s, `steps: built` alle 15, `reproducible: yes`, Board `hy200-qz713df-a1/projector05061226`) - damit ist auch `--variant` gemessen; installiert, bootet, Abnahme 25/0/5. Offen aus dem Bericht: `--standby`, `--test-image`, Board-Wechsel in einer Kopie; Punkt 5 (Kernel inkrementell) bleibt zurückgestellt.
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
