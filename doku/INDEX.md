@@ -54,7 +54,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/tools/h713-extract.md` | `doku/108`, `doku/121`, `doku/nachtlog/S42-r2-extract` |
 | `docs/tools/h713-fel.md` | `doku/20`, `doku/nachtlog/S48-fel-aus-uboot` |
 | `docs/tools/h713-focus.md` | `doku/220`, `doku/94` |
-| `docs/tools/h713-install.md` | `doku/110`, `doku/121` |
+| `docs/tools/h713-install.md` | `doku/110`, `doku/121`, `doku/224` |
 | `docs/tools/h713-keys.md` | `doku/138`, `doku/195`, `doku/212`, `doku/213`, `doku/214`, `doku/94` |
 | `docs/tools/h713-keystone.md` | `doku/134` |
 | `docs/tools/h713-lamp.md` | `doku/220` |
@@ -126,6 +126,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/tests/test_layout_v4.py` | `doku/109` |
 | `installer/tests/test_o1b_followups.py` | `doku/61` |
 | `installer/tests/test_py39_syntax.py` | `doku/61` |
+| `installer/tests/test_release_board.py` | `doku/223` |
 | `installer/tests/test_sperrscan_mac.py` | `doku/1`, `doku/2`, `doku/3` |
 | `installer/tests/test_sperrscan_spdx.py` | `doku/210` |
 | `installer/tests/test_stock_gpt_crosscheck.py` | `doku/60`, `doku/61` |
@@ -289,7 +290,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`220-l018-board-bis-main-validierung-protokoll-20261026.md`](220-l018-board-bis-main-validierung-protokoll-20261026.md) | Protokoll | 2026-10-26 | 220 Der L018 als eigenes Board bis nach main, der Autofokus über offenen Seiten und die Validierung auf drei Geräten - Protokoll | 10 |
 | [`221-nachtpakete-integration-geu-messung-protokoll-20261026.md`](221-nachtpakete-integration-geu-messung-protokoll-20261026.md) | Protokoll | 2026-10-26 | 221 Die Nachtpakete vom 25./26.10.: zusammengeführt, am HY300PRO-G-EU gemessen und nach main - Protokoll | - |
 | [`222-l018-test3-installation-abnahme-verified-protokoll-20261026.md`](222-l018-test3-installation-abnahme-verified-protokoll-20261026.md) | Protokoll | 2026-10-26 | 222 Der L018 aus einem Abbild: test3 gebaut, über unser Layout installiert, abgenommen - verified - Protokoll | 6 |
-| [`223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md`](223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md) | Protokoll | 2026-10-26 | 223 v0.97.1-beta: das Release-Abbild des L018 - Bau von vorn, Installation, Start - Protokoll | - |
+| [`223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md`](223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md) | Protokoll | 2026-10-26 | 223 v0.97.1-beta: das Release-Abbild des L018 - Bau von vorn, Installation, Start - Protokoll | 1 |
+| [`224-installer-board-pruefung-release-abbild-protokoll-20261026.md`](224-installer-board-pruefung-release-abbild-protokoll-20261026.md) | Protokoll | 2026-10-26 | 224 Der Installer schreibt ein Release-Abbild nur auf sein Board - Protokoll | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -446,7 +448,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-57 von 282 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+56 von 283 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `104-plan-standby-stufe2.md` (ueberholt)
@@ -496,7 +498,6 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`
 * `209-runde-5x-teil-b-uebernahme-panel-20261013.md`
 * `221-nachtpakete-integration-geu-messung-protokoll-20261026.md`
-* `223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)

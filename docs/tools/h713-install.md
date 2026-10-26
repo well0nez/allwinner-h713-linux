@@ -63,6 +63,22 @@ nothing is written. `--yes` answers the confirmation in advance, for scripted ru
 Both belong to the common set, which every subcommand but `extract` takes - `extract` hands its whole
 tail on. Exit codes are listed in `h713-install --help`.
 
+## Which board an image is for
+
+A release image goes only onto the board it was built for. Since 26.10.2026 `h713-mkimage` writes that board
+into the table (`board: "<profile>"`, `<profile>/<variant>` on a board with firmware variants; `release/build-all.sh`
+passes it); an older table names it in its image name (`h713-<board>[-<variant>]-v<version>…`, so the published
+`v0.97-beta` and `v0.97.1-beta` tables are covered too). `install` compares it with the board the identification
+found and stops before anything is written when they differ - in a `--no-write` rehearsal as well, exit code 1.
+Until then only the eMMC's size was compared, and the L018 and the HY310 share it (TODO 5.26, `doku/224`).
+
+Over our own layout the board comes from the installed system's `/etc/h713/board` when the run writes. A rehearsal
+mounts nothing, so there it comes from the full dump of the first install, if `--dump` points at one (as for a
+test image, below); without it the rehearsal says what it would compare. A device whose board cannot be read at
+all - an install by an installer older than 22.09.2026 wrote no `/etc/h713/board` - gets a warning and is written
+as before. `--skip-identify` compares nothing and says so. An image whose name and table name no board is not
+compared.
+
 ## Test images
 
 A board nobody has run gets no release image - that rule has not moved. What it does get, once it
@@ -213,6 +229,8 @@ copy through a mount - was installed and cold-started on the HY310 on 16.09.2026
 `extract` are written for it and refuse nothing, `install` says in one sentence that it needs Linux, and
 nobody has run any of it there. Every German switch of v0.5-beta
 (`--abbild`, `--abzug`, `--nur-abzug`, `--dry-run` and the rest) is still accepted and prints one line with
-its new name.
+its new name. The board check of a release image (26.10.2026) is proven on the test suite's fake disks - the
+HY310's stock firmware, the hy300-t08's, our layout with and without the first install's dump - and not yet
+on a device.
 
 Details: doku/110-plan-installationsweg.md, doku/121-plan-werkzeug-umbau.md.

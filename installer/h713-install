@@ -52,8 +52,9 @@ from h713.fel import expose_drive                                           # no
 from h713.identify import identify, report_device                           # noqa: E402
 from h713.install import (BOARD_FILE, board_from_device, DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # noqa: E402
                           WRITES, beta_warning, confirm, image_package, in_dump,
-                          release_beside, release_files, run_extractor, table_test_for,
-                          test_image_allowed, translate, unpack_parts, write_package)
+                          release_beside, release_board_allowed, release_files, run_extractor,
+                          table_board, table_test_for, test_image_allowed, translate,
+                          unpack_parts, write_package)
 from h713.log import console                                                # noqa: E402
 from h713.profiles import get as profile_of                                 # noqa: E402
 from h713.stock import check_stock_gpt, restore_stock                       # noqa: E402
@@ -449,10 +450,12 @@ def _board_from_dump(args, ident, disk=None):
     "no board we know"). The board is known all the same: the full dump of the first
     install identifies it, the same way `h713-install identify <clone>` does. So when the
     device is ours, the image names a board and the run names a dump directory with that
-    clone, the clone's identification stands in for the device's."""
+    clone, the clone's identification stands in for the device's. A release image names its
+    board too (TODO 5.26), and there the dump's answer stands whatever it is: it is this device's."""
     test_for = getattr(args, "_test_for", None)
+    wanted = test_for or getattr(args, "_image_board", None)
     dump_dir = getattr(args, "dump_dir", None)
-    if not test_for or ident.get("profile") or ident.get("kind") != "ours" or not dump_dir:
+    if not wanted or ident.get("profile") or ident.get("kind") != "ours" or not dump_dir:
         return
     clone = in_dump(dump_dir, DUMP_FULL)
     if not os.path.isfile(clone):
@@ -482,10 +485,11 @@ def _board_from_dump(args, ident, disk=None):
         console.warn("%s: the dump could not be identified (%s)" % (dump_dir, exc))
         return
     found = from_dump.get("profile")
-    if found != test_for:
+    if found != wanted:
         console.info("the dump in %s identifies as %s, not '%s'"
-                     % (dump_dir, "'%s'" % found if found else "no board we know", test_for))
-        return
+                     % (dump_dir, "'%s'" % found if found else "no board we know", wanted))
+        if test_for or not found:
+            return
     console.ok("our layout on the device -- the board is known from the dump of the first "
                "install in %s: %s" % (dump_dir, (profile_of(found) or {}).get("name", found)))
     ident["profile"], ident["status"] = found, from_dump.get("status")
@@ -610,8 +614,11 @@ def _work(args, path):
                 code = _test_image_refused(args, ident)
                 if code is not None:
                     return code
-            elif not report_device(ident, writing=writing) and writing:
-                return 10
+            else:
+                if not writing:     # a rehearsal mounts nothing: the first install's dump names the board
+                    _board_from_dump(args, ident, disk)
+                if not report_device(ident, writing=writing) and writing:
+                    return 10
             # the profile of the unit (a variant resolved), and its board id for /etc/h713/board
             args._profile = profile_of(ident.get("profile"))
             args._board = (args._profile or {}).get("id")
@@ -619,13 +626,22 @@ def _work(args, path):
             if not project and getattr(args, "_board_project", None):
                 project = "0x%02x" % args._board_project     # from the device's own board file
             args._env_keys = {"h713_project": project} if project else {}
+            device = ident.get("profile")
             if args._profile is None and ident.get("kind") == "ours" and \
                     args.command == "install":
                 if writing:
-                    _board_from_device(args, disk)
+                    device = _board_from_device(args, disk)
+                    if not device:   # no board file (an install before 22.09.2026): the dump, if any
+                        _board_from_dump(args, ident, disk)
+                        device = ident.get("profile")
                 else:       # a rehearsal mounts nothing (test_install_readback)
                     console.info("  WOULD: take the board from the installed system's %s, "
                                  "and h713_project with it" % BOARD_FILE)
+            if args.command == "install" and not getattr(args, "_test_for", None) and \
+                    not release_board_allowed(device, getattr(args, "_image_board", None),
+                                              getattr(args, "_image_board_how", None), writing,
+                                              console):
+                return 1
             if args.command == "restore-stock" and ident["region_sources"].get("private") == "gpt":
                 # The vendor image never brings 'private'; the restore promises not to touch
                 # it, and the lock makes that promise hard (stage 2 C8). Only a `private` this
@@ -637,6 +653,9 @@ def _work(args, path):
             code = _test_image_refused(args, None)
             if code is not None:
                 return code
+            if args.command == "install" and getattr(args, "_image_board", None):
+                console.warn("This image is for '%s'; with --skip-identify nothing compares that "
+                             "with this device." % args._image_board)
         allowed = _sizes_allowed(args, ident)
         if disk.sectors not in allowed:
             console.error("%s has %d sectors, expected %s -- wrong drive?"
@@ -763,6 +782,7 @@ def main(argv=None):
         # Read before the device is touched: is this an image built for one untested
         # board? The decision needs it early -- the identification is step 1b.
         args._test_for = table_test_for(args.image, args.table)
+        args._image_board, args._image_board_how = table_board(args.image, args.table)
         if args.test_image and not args._test_for:
             console.warn("--test-image: this table carries no test_for -- it is an ordinary "
                          "image and the flag changes nothing.")

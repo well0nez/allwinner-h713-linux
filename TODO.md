@@ -1013,13 +1013,21 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `h713-dump/emmc-full.img` nennt das Board. Richtig wäre: der Probelauf liest `/etc/h713/board` nur lesend (oder verschiebt die
       Testabbild-Entscheidung auf den Lauf, der einhängt). Gemessen ist nur der Fehler, gebaut nichts.
 
-- [ ] 5.26 **Der Installer prüft nicht, für welches Board ein Release-Abbild gebaut ist** (26.10.2026, beim Veröffentlichen von
+- [x] 5.26 (**erledigt 26.10.2026, `doku/224`:** `h713-mkimage` schreibt `board`, `h713-install` vergleicht es - bei alten Tabellen den
+      Board-Teil des Abbildnamens - mit der Erkennung und verweigert eine Abweichung, auch im Probelauf (Exit 1); Board unlesbar = Warnung wie
+      bisher; 17 neue Tests auf den Fake-Platten, am Gerät nicht gelaufen. Nebenbei: `test_installer_dryrun` `test_backup_only`/
+      `test_restore_stock` schlagen mit den lokalen Fixtures auch ohne die Änderung fehl - 5.27) **Der Installer prüft nicht, für welches Board ein Release-Abbild gebaut ist** (26.10.2026, beim Veröffentlichen von
       `v0.97.1-beta` aus dem Code gelesen, nicht ausprobiert): `h713-install` vergleicht vor dem Schreiben nur `test_for` (Testabbilder)
       und die eMMC-Größe (`_image_size_problem`). L018 und HY310 haben dieselbe eMMC (15 269 888 Sektoren) - das L018-Abbild ginge
       auf einen HY310 und umgekehrt, mit dem Gerätebaum des anderen Boards (L018: twi2 auf PH4/PH5 = Fokusphasen des HY310, PWM0 auf
       PH17 = dessen Lüftertacho). Vorschlag: `h713-mkimage` schreibt `board` (und `variant`) in die Tabelle, `install` vergleicht mit
       der Erkennung und verweigert eine Abweichung; alte Tabellen ohne Schlüssel: aus dem Abbildnamen ableiten oder warnen. Bis dahin
       steht die Warnung in den Notizen von `v0.97.1-beta`.
+
+- [ ] 5.27 **Zwei Golden-Tests der Installer-Suite sind veraltet** (26.10.2026, gefunden bei 5.26): mit den lokalen Fixtures
+      (`H713_FIXTURES_LOCAL`, der Ort steht in `referenz/werkzeuge.md`) schlagen `test_installer_dryrun` `test_backup_only` und
+      `test_restore_stock` fehl - der Digest der Ausgabe stimmt nicht mehr, auf `main` `18304a1e` genauso. Ohne die Fixtures werden sie
+      übersprungen, darum fiel es in `tor.sh --tests` nicht auf. Ausgabe ansehen, prüfen ob gewollt, Digest erneuern.
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 

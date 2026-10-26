@@ -463,6 +463,11 @@ def build(args, here=None):
     # table, and the table is byte for byte the one built before.
     if test_for:
         data["test_for"] = test_for
+    # The board this image is for, in the installer's own name for it (<board>/<variant> for a board with
+    # variants), so that h713-install writes a release image only onto that board (TODO 5.26). Without
+    # --board the key stays out, as before; an older table is matched by its image name instead.
+    if getattr(args, "board", None):
+        data["board"] = args.board
     # Which firmware the ARISC runs on this image, for h713-install's last lines (TODO 5.20). Without
     # --arisc the key stays out, as before, and an older installer never sees it.
     if getattr(args, "arisc", None):
@@ -553,6 +558,8 @@ def check(table_file, log=console):
     if d.get("test_for"):
         log.warn("TEST IMAGE for the board profile '%s' -- built for one board that nobody has "
                  "run this system on." % d["test_for"])
+    if d.get("board"):
+        log.info("for the board profile '%s' -- h713-install writes it onto no other board" % d["board"])
         log.info("  Only its owner flashes it, with a full dump as the way back: "
                  "h713-install install ... --test-image")
     bad = 0

@@ -370,6 +370,76 @@ def table_test_for(image, table=None):
     return None
 
 
+def board_of_name(name):
+    """The board an image is for, read off its name, for a table without the key "board" (every
+    table before 26.10.2026, among them v0.97-beta's and v0.97.1-beta's): build-all names an image
+    h713-<board id>[-<variant>]-<version>..., and the version starts with "v" and a digit. The
+    longest unit whose name fits wins, so a variant beats its bare board. None when none fits."""
+    from .profiles import units
+    best = None
+    for unit in units():
+        board, _, variant = unit.partition("/")
+        stem = "h713-" + board.replace("_", "-") + ("-" + variant if variant else "") + "-v"
+        if (name or "").startswith(stem) and len(name) > len(stem) and name[len(stem)].isdigit():
+            if best is None or len(stem) > best[1]:
+                best = (unit, len(stem))
+    return best[0] if best else None
+
+
+def table_board(image, table=None):
+    """(board, how) of the image's table, read before the device is touched (TODO 5.26): the key
+    "board" that h713-mkimage writes since 26.10.2026 (how = "table"), else the board in the image's
+    name (how = "name"). (None, None) for a single .img without a table and for a table that names
+    no board we know."""
+    for candidate in (image, table):
+        if not candidate:
+            continue
+        try:
+            _directory, d = image_package(candidate)
+        except (RuntimeError, OSError, ValueError):
+            continue
+        if not d:
+            continue
+        if d.get("board"):
+            return d["board"], "table"
+        found = board_of_name(d.get("abbild"))
+        return (found, "name") if found else (None, None)
+    return None, None
+
+
+def release_board_allowed(device, image_board, how, writing, log=console):
+    """TODO 5.26: may this release image go onto this device? Only onto the board it was built for.
+    Before this check h713-install compared the eMMC's size alone, and the L018 and the HY310 share
+    it: the one's image went onto the other with a foreign device tree (found 26.10.2026 when
+    v0.97.1-beta was published). `device` is the unit the identification settled on, or None.
+
+    A device whose board could not be read (our layout from an installer older than 22.09.2026
+    wrote no /etc/h713/board, and a rehearsal mounts nothing) is a warning, not a stop -- the old
+    behaviour, so that such a device can still be reinstalled. A known board that is not the
+    image's is a stop, in a rehearsal too."""
+    if not image_board:
+        return True
+    source = "its table" if how == "table" else "its name"
+    if not device:
+        if writing:
+            log.warn("This image is for '%s' (%s). Which board this device is could not be read, "
+                     "so that is not compared." % (image_board, source))
+            log.info("  Make sure it is that board. A full dump of the first install in --dump names it.")
+        else:
+            log.info("  WOULD: compare the board of this device with the image's '%s' (%s)"
+                     % (image_board, source))
+        return True
+    if device != image_board:
+        log.error("This image is for the board '%s' (%s). This device is '%s', so nothing is "
+                  "written." % (image_board, source, device))
+        log.info("  An image carries the device tree, the U-Boot and the panel settings of one")
+        log.info("  board; on another board with the same eMMC it would start with the wrong pins.")
+        log.info("  Take the release archive of your own board.")
+        return False
+    log.ok("the image is for '%s' (%s) -- this device is that board" % (image_board, source))
+    return True
+
+
 def test_image_allowed(ident, test_for, asked, log=console):
     """Stage 5: may this TEST IMAGE be written onto the device in front of us?
 
