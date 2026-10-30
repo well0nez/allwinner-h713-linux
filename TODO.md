@@ -912,8 +912,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Firmware treibt `motor_ctr`, `variant.env`). Sein Bericht ist eine KI-Zusammenfassung seiner Chatverläufe und passt nicht
       überall zum Profil: Panel "ProjectID 0x33" (Profil 0x34; 0x33 kennt unser U-Boot nicht, 4.10 - er hat aber Bild),
       `dram_tpr0` 0x00482151 (Profil 0x004A2195), tpr12-15 gegen das Profil verschoben; `dram_clk` 624 stimmt. Nicht übernommen.
-      Offen: kurze Antwort im Issue (Dank; was geht: Bild, Ton, WLAN, BT, Fernbedienung, Lüfter; der Wert aus `/etc/h713/board`;
-      woran es beim Installieren hing - 5.28); bei grünem Bericht `VERIFIED_BY`/`STATUS` der Variante und die Board-Zeile im
+      **30.10.2026 Antwort im Issue gepostet** (Marco; Text `arbeit/issue4-hy300-pro-plus-20261030/ANTWORT-TEXT.md`): gefragt, was
+      geht (Bild, Ton, WLAN, BT, Fernbedienung, Lüfter, Power-Taste), `cat /etc/h713/board`, woran es beim Installieren hing (5.28).
+      Offen: seine Antwort; bei grünem Bericht `VERIFIED_BY`/`STATUS` der Variante und die Board-Zeile im
       README. Nebenbei: `HIDRAW` braucht auch `h713-mic` (2.51) - Gamepads (`HID_SONY` u. a.) als Module ins Abbild?
 
 ## 5 Installer und Werkzeuge
@@ -1047,6 +1048,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `h713-install` mit sudo. Das Installer-Protokoll gibt es nur auf dem Bildschirm, eine Issue-Vorlage gibt es nicht, und
       FLASHING.md sagt nicht, was man uns zurückschickt. Ideen, **nichts entschieden, nichts gebaut**:
       (a) zuerst fragen: im Issue #4 die Schritte, an denen er hing, und die "alternate method" - das ist die eigentliche Eingabe
+      (**gefragt 30.10.2026**, 4.16; wartet auf seine Antwort)
       (b) Issue-Vorlagen (`.github/ISSUE_TEMPLATE/`): "Board melden" (Platinenaufdruck, `h713-install identify`) und
       "Installationsbericht" (Abbild, was geht: Bild, Ton, WLAN, BT, Fernbedienung, Lüfter, Fokus)
       (c) `h713-install` schreibt sein Protokoll zusätzlich in eine Datei im Abzugsordner, die man anhängt (ohne Seriennummer/MAC)
