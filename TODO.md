@@ -919,8 +919,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       die KI). Neu: **Plopp beim Ausschalten, auch bei Lautstärke 0** (9.11). Sein Bau (`build-all.log` im Issue): `main` `591d0d3`
       mit 3 lokalen Änderungen, darunter der crust-Takt 624 (5.29), ARISC = Hersteller-Firmware aus seinem Abzug, crust nur im
       Rootfs; `reproducible: no`. Woran es hing: 5.28. Offen: **`verified` für die Variante - Entscheidung Marco** (sein Lauf ist
-      `main` plus seine crust-Änderung, die ohne 5.29 nötig war; danach `VERIFIED_BY`/`STATUS`, Board-Zeile im README); kurze
-      Antwort (Dank, die zwei Fehler sind behoben). Nebenbei: `HIDRAW` braucht auch `h713-mic` (2.51) - Gamepads (`HID_SONY` u. a.)
+      `main` plus seine crust-Änderung, die ohne 5.29 nötig war; danach `VERIFIED_BY`/`STATUS`, Board-Zeile im README).
+      **30.10.2026 zweite Antwort gepostet** (Marco; `arbeit/issue4-hy300-pro-plus-20261030/ANTWORT2-TEXT.md`): 5.29/5.30 in `main`,
+      kein Neuinstallieren nötig; erbeten `h713-dump/extract/REPORT.txt` (Abgleich mit dem Profil: Fingerprint, `display.bin`-Revision,
+      ProjectID) und `git status --short`/`git diff --stat` (die übrigen zwei der "3 local changes", gezählt mit `git status --short`,
+      also auch Ungetracktes). Wartet auf ihn; danach `verified`. Noch einzutragen, sobald es so weit ist: kein Fokusmotor
+      (`variant.env`), Platinenaufdruck (`boards/hy200-qz713df-a1/README.md`); `dram_tpr0` seiner KI-Zusammenfassung klärt erst sein
+      boot0, nicht der REPORT. Nebenbei: `HIDRAW` braucht auch `h713-mic` (2.51) - Gamepads (`HID_SONY` u. a.)
       als Module ins Abbild?
 
 ## 5 Installer und Werkzeuge
