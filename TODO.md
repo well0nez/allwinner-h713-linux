@@ -904,6 +904,17 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       gebaut; `BERICHT.md`): sein DRAM-Takt 744 MHz mit dem bewährten Rest des Probe-Satzes, kein Pin getrieben. Nach seiner
       Ausgabe: DRAM bei 744 bestätigt oder nicht; die fünf Panel-Register (über `sunxi_dump` am Stock) in `losei_x9.py` und
       die Panel-Zeile, dann Phase 3 (Gerätebaum). **Nicht in die Spiegel vor einer Messung an diesem Panel**
+- [ ] 4.16 **HY300 Pro+ (Issue #4, Melder GitHub `jo--`, 30.10.2026): unser TEST-Abbild läuft auf `hy200-qz713df-a1/projector09220931`**
+      - der erste Lauf unserer Firmware auf dieser Variante (`variant.env` sagt noch `profile-only`). Er hat
+      `h713-hy200-qz713df-a1-projector09220931-v0.97-beta-media-desktop-TEST` selbst mit `build-all.sh` gebaut und installiert,
+      Debian bootet; danach eigener Kernel mit `HIDRAW`/`HID_SONY` (PS3-Pads), RetroArch, ES-DE unter cage. Platine
+      "CGDD011190-HY200F 25.08.06A", "DW1G+8G+20800D4"; **kein Fokusmotor, keine Klinke, keine Kamera** (der Stock-Baum dieser
+      Firmware treibt `motor_ctr`, `variant.env`). Sein Bericht ist eine KI-Zusammenfassung seiner Chatverläufe und passt nicht
+      überall zum Profil: Panel "ProjectID 0x33" (Profil 0x34; 0x33 kennt unser U-Boot nicht, 4.10 - er hat aber Bild),
+      `dram_tpr0` 0x00482151 (Profil 0x004A2195), tpr12-15 gegen das Profil verschoben; `dram_clk` 624 stimmt. Nicht übernommen.
+      Offen: kurze Antwort im Issue (Dank; was geht: Bild, Ton, WLAN, BT, Fernbedienung, Lüfter; der Wert aus `/etc/h713/board`;
+      woran es beim Installieren hing - 5.28); bei grünem Bericht `VERIFIED_BY`/`STATUS` der Variante und die Board-Zeile im
+      README. Nebenbei: `HIDRAW` braucht auch `h713-mic` (2.51) - Gamepads (`HID_SONY` u. a.) als Module ins Abbild?
 
 ## 5 Installer und Werkzeuge
 
@@ -1028,6 +1039,21 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (`H713_FIXTURES_LOCAL`, der Ort steht in `referenz/werkzeuge.md`) schlagen `test_installer_dryrun` `test_backup_only` und
       `test_restore_stock` fehl - der Digest der Ausgabe stimmt nicht mehr, auf `main` `18304a1e` genauso. Ohne die Fixtures werden sie
       übersprungen, darum fiel es in `tor.sh --tests` nicht auf. Ausgabe ansehen, prüfen ob gewollt, Digest erneuern.
+
+- [ ] 5.28 **Der Weg für fremde Besitzer ist zu schwer - einfacher machen** (Marco 30.10.2026, Anlass Issue #4, 4.16): der Melder
+      kam nach eigenen Worten nur "in a back and forth between chatgpt, perplexity and duck_ai" ans Ziel, und sein Bericht sagt
+      kaum, *woran* es hing (der Abzug lief "using alternate method" - welcher?). Wer heute ein profile-only-Board hat, muss den
+      Bau-Container einrichten, das TEST-Abbild selbst bauen (`build-all.sh --test-image`, 20-40 min), FEL, A-A-Kabel,
+      `h713-install` mit sudo. Das Installer-Protokoll gibt es nur auf dem Bildschirm, eine Issue-Vorlage gibt es nicht, und
+      FLASHING.md sagt nicht, was man uns zurückschickt. Ideen, **nichts entschieden, nichts gebaut**:
+      (a) zuerst fragen: im Issue #4 die Schritte, an denen er hing, und die "alternate method" - das ist die eigentliche Eingabe
+      (b) Issue-Vorlagen (`.github/ISSUE_TEMPLATE/`): "Board melden" (Platinenaufdruck, `h713-install identify`) und
+      "Installationsbericht" (Abbild, was geht: Bild, Ton, WLAN, BT, Fernbedienung, Lüfter, Fokus)
+      (c) `h713-install` schreibt sein Protokoll zusätzlich in eine Datei im Abzugsordner, die man anhängt (ohne Seriennummer/MAC)
+      (d) ein Abschnitt "What to send us" in FLASHING.md, oder ein `h713-report` auf dem Gerät, das den Bericht in einem Befehl sammelt
+      (e) fertige TEST-Abbilder für profile-only-Varianten als Pre-Release (wie `hy300-pro-testN` für Issue #1), dann entfällt
+      der Bau - **Entscheidung Marco** (Regel: Testabbild nur für seinen Besitzer, `doku/121` §5)
+      Vorschlag: (a) sofort, (b)-(d) klein und ohne Gerät, (e) nach Entscheidung.
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
