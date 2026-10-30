@@ -1075,8 +1075,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       für beide Varianten; die Konfig setzt keinen Takt, crust nimmt den Kconfig-Standard 792 MHz (G-EU). U-Boot baut die Variante mit
       `DRAM_CLK=624`, und `check-crust.py` lehnt ab ("crust/U-Boot DRAM differ"). Der Melder hat dafür den Standard in
       `platform/h713/Kconfig` auf 624 gepatcht. Entschieden war es anders (1.1b, 10.10.): Boards ohne gemessene crust-Konfiguration -
-      ausdrücklich `projector09220931` - laufen mit der Hersteller-Firmware, keine geliehene Konfiguration. Abhilfe: die Variante
-      setzt `CRUST_DEFCONFIG=` in ihrer `variant.env` (ein Schlüssel dort gewinnt).
+      ausdrücklich `projector09220931` - laufen mit der Hersteller-Firmware, keine geliehene Konfiguration.
+      **30.10.2026 behoben auf `versuch/issue4-fixes` `1278ed9a`** (`arbeit/issue4-hy300-pro-plus-20261030/BERICHT.md`): `build-all.sh`
+      schreibt den `DRAM_CLK` einer Variante in crusts `.config` und prüft ihn; die Hersteller-Firmware bleibt Vorgabe, crust nur im
+      Rootfs, kein Standby angeboten. Am PC gemessen: Testabbild der Variante frisch gebaut (28 min, `reproducible: yes`), crust 624 =
+      U-Boot 624, Gate grün; Gegenprobe mit der crust-Konfig von `main`: "CLK 792/624", Exit 1; G-EU-crust bytegleich wie vorher.
+      Offen: Merge nach `main` (Marco). *Überholt:* "Abhilfe: die Variante setzt `CRUST_DEFCONFIG=` in ihrer `variant.env`" - geht
+      nicht, der gemeinsame Gerätebaum nennt `hy200-qz713df-a1-crust.bin`, und `check-crust.py --dtb` lehnt ein Abbild ohne crust ab.
 
 - [ ] 5.30 **Neben einem selbstgebauten Abbild fehlen `sunxi-fel` und `u-boot-installer.bin`** (Issue #4, 30.10.2026): `build-all.sh`
       legt Abbild und Tabelle nach `installer/out/`, beide Werkzeuge bleiben in `mainline/build/out/`. Der Installer sucht sie im
@@ -1084,6 +1089,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       nicht lädt. Der Melder holte sich darauf beide aus `hy300-pro-test12`, also das Installer-U-Boot eines anderen Boards
       (flüchtig, ging gut). Abhilfe: das Abbild bekommt seine eigenen Werkzeuge neben sich, und der Installer lehnt ein `sunxi-fel`
       ohne die H713-Falltür mit einem Satz ab, der sagt, wo das richtige liegt.
+      **30.10.2026 behoben auf `versuch/issue4-fixes` `1278ed9a`** (Bericht wie 5.29): `build-all.sh` legt `<abbild>.u-boot-installer.bin`
+      und `sunxi-fel` nach `installer/out/`; der Installer nimmt sie für eine dort genannte Tabelle (oder einen Ordner mit einer); ein
+      `sunxi-fel` ohne H713-Namen und ohne Falltür stoppt Schritt 1 mit Pfad und Hinweis. Gemessen am PC mit dem Bau aus 5.29: beide
+      Dateien liegen bytegleich daneben, `install <Tabelle> --no-write` (FEL ersetzt) nimmt sie - `main` nimmt keine; 9 Tests, Suite
+      grün. Am Gerät nicht gelaufen. Offen: Merge nach `main` (Marco).
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
