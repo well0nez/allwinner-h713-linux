@@ -85,7 +85,7 @@ has `variants/<name>/variant.env`, sourced after `board.env`; what it sets wins:
 | `VARIANT` | the directory name, repeated |
 | `STATUS`, `VERIFIED_BY` | as above, for this firmware: a green run on one variant verifies that one |
 | `IMAGE_NAME` | its own, so that images of two variants never share a name |
-| `DRAM_CLK` | the clock of this firmware's boot0 in MHz; the U-Boot builds merge it over the base (`build/uboot-build.sh`). It may not be below the base's, so a build without a variant never runs faster than a firmware does |
+| `DRAM_CLK` | the clock of this firmware's boot0 in MHz; the U-Boot builds merge it over the base (`build/uboot-build.sh`), and `release/build-all.sh` writes it into the board's crust `.config` as well, because crust's DRAM values must be U-Boot's (`release/check-crust.py`). It may not be below the base's, so a build without a variant never runs faster than a firmware does |
 | `FEATURES` | optional, what was measured on a unit with this firmware; `build-rootfs.sh --variant` (from `release/build-all.sh --variant`) writes it into `/etc/h713/features` |
 | `HOSTNAME_BOARD` | optional, wins over the board's (`hy300pro` for the HY300PRO-G-EU, `hy300proplus` for the Pro+) |
 

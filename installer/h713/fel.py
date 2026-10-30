@@ -41,6 +41,16 @@ def fel_tool(given=None, search_dir=None):
         "sunxi-fel not found. It belongs next to this script or in the PATH.")
 
 
+def fel_is_ours(fel):
+    """Is this the sunxi-fel of this project? Ours carries the EL3 trap door the H713 needs to
+    return to FEL (sunxi-tools fork, 269dfa2), and with it the text release/build-all.sh checks for."""
+    try:
+        with open(fel, "rb") as f:
+            return b"FEL trap door" in f.read()
+    except OSError:
+        return False
+
+
 def fel_present(fel):
     try:
         p = subprocess.run([fel, "version"], capture_output=True, timeout=15)
@@ -123,6 +133,14 @@ def expose_drive(args, here):
         console.error("This is no H713 (SoC id 0x1860 not found). Aborted.")
         return None, 1
     if "1860(H713)" not in banner and "(sun50iw12" not in banner:
+        if not fel_is_ours(fel):
+            # issue #4: the distribution's sunxi-fel from the PATH, beside a self-built image
+            # that had none of its own (TODO 5.30). Loading U-Boot with it fails; say so first.
+            console.error("%s does not know the H713 and is not the sunxi-fel of this project "
+                          "(it lacks the FEL trap door). Take the one from the release folder, "
+                          "or the one release/build-all.sh puts beside its image in installer/out/, "
+                          "or name it with --sunxi-fel." % fel)
+            return None, 1
         console.warn("sunxi-fel does not know this SoC by name -- take the sunxi-fel from "
                      "the release, otherwise the next step fails.")
 

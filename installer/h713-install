@@ -52,7 +52,7 @@ from h713.fel import expose_drive                                           # no
 from h713.identify import identify, report_device                           # noqa: E402
 from h713.install import (BOARD_FILE, board_from_device, DUMP_DEFAULT, DUMP_FULL, EXTRACT_DIR, WORK_COPY,   # noqa: E402
                           WRITES, beta_warning, confirm, image_package, in_dump,
-                          release_beside, release_board_allowed, release_files, run_extractor,
+                          release_beside, release_board_allowed, release_files, release_place, run_extractor,
                           table_board, table_test_for, test_image_allowed, translate,
                           unpack_parts, write_package)
 from h713.log import console                                                # noqa: E402
@@ -786,8 +786,11 @@ def main(argv=None):
         if args.test_image and not args._test_for:
             console.warn("--test-image: this table carries no test_for -- it is an ordinary "
                          "image and the flag changes nothing.")
-        if os.path.isdir(args.image):
-            found = release_files(args.image)     # a release folder brings both along
+        where, name = release_place(args.image)
+        if where:
+            # a release folder brings both along, and so does a table in the delivery
+            # directory of release/build-all.sh (TODO 5.30)
+            found = release_files(where, name)
             args.uboot = args.uboot or found.get("uboot")
             args.fel = args.fel or found.get("fel")
     roots = output_roots(args)

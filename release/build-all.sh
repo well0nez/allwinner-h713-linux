@@ -414,6 +414,10 @@ else
 	say "1b/11 crust $CRUST_DEFCONFIG (${CRUST_HEAD:0:12})"
 	OR1K_STAMP=$(sh "$MAINLINE/tools/or1k-toolchain/build-or1k-toolchain.sh" --stamp)
 	in_common; git_in crust "$CRUST_SRC"; inp "crust $CRUST_DEFCONFIG"; inp "or1k $OR1K_STAMP"
+	# A board with firmware variants shares one crust defconfig, which names no DRAM clock (crust's Kconfig
+	# default is 792 MHz); the variant's DRAM_CLK, the clock U-Boot trains the DRAM with, goes into crust's
+	# .config too, or step 10 refuses the pair (TODO 5.29, issue #4: projector09220931 at 624 MHz).
+	[[ -z "$DRAM_CLK" ]] || inp "crust DRAM_CLK=$DRAM_CLK"
 	# crust's version text counts from the tag (scripts/version.sh): scp.bin of a checkout without tags says v0.6.10000 and step 10 refuses it,
 	# so the tags a later fetch brings must not leave that scp.bin standing
 	inp "crust version $(git -C "$CRUST_SRC" describe --dirty --long --match 'v[0-9]*' 2>/dev/null || true)"
@@ -437,15 +441,19 @@ else
 				a=$(container_path "$a") || die "an alternate object store of $CRUST_SRC is in no mount of the container"; ca+=${ca:+:}$a; done < "$alt"
 			CR_GIT+=" GIT_ALTERNATE_OBJECT_DIRECTORIES=$ca"
 		fi
-		in_container "export PATH=$(c "$OR1K")/bin:\$PATH $CR_GIT; cd $CS && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") $CRUST_DEFCONFIG && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") scp" > "$OUT/crust-build.log" 2>&1 \
+		CR_CLK=${DRAM_CLK:+" && sed -i 's/^CONFIG_H713_DRAM_CLK=.*/CONFIG_H713_DRAM_CLK=$DRAM_CLK/' .config"}
+		in_container "export PATH=$(c "$OR1K")/bin:\$PATH $CR_GIT; cd $CS && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") $CRUST_DEFCONFIG$CR_CLK && make -s CROSS_COMPILE=or1k-elf- OBJ=$(c "$CR_O") scp" > "$OUT/crust-build.log" 2>&1 \
 			|| { tail -20 "$OUT/crust-build.log"; die "crust failed (log: $OUT/crust-build.log)"; }
 		install -m 0644 "$CR_O/scp/scp.bin" "$OUT/scp.bin"
 		install -m 0644 "$CRUST_SRC/.config" "$OUT/crust.config"
+		if [[ -n "$DRAM_CLK" ]] && grep -q '^CONFIG_H713_DRAM_CLK=' "$OUT/crust.config" && ! grep -qx "CONFIG_H713_DRAM_CLK=$DRAM_CLK" "$OUT/crust.config"; then
+			die "crust's .config is not at the variant's $DRAM_CLK MHz: $(grep '^CONFIG_H713_DRAM_CLK=' "$OUT/crust.config")"
+		fi
 		CRUST_VERSION=$(sed -n 's/^#define VERSION_STRING "\(.*\)"$/\1/p' "$CR_O/include/version.h")
 		CRUST_HASH=$(sed -n 's/^#define VERSION_HASH "\(.*\)"$/\1/p' "$CR_O/include/version.h")   # contract v5 on
 		[[ -z "$CRUST_HASH" || "$CRUST_HASH" == "g${CRUST_HEAD:0:12}"* ]] \
 			|| die "crust's notify text names the commit '$CRUST_HASH', the checkout is at ${CRUST_HEAD:0:12}: git did not see it in the container"
-		info "crust $CRUST_VERSION${CRUST_HASH:+-$CRUST_HASH}, $(stat -c %s "$OUT/scp.bin") bytes, sha256 $(sha256sum "$OUT/scp.bin" | cut -c1-16)"
+		info "crust $CRUST_VERSION${CRUST_HASH:+-$CRUST_HASH}${DRAM_CLK:+ at DRAM $DRAM_CLK MHz}, $(stat -c %s "$OUT/scp.bin") bytes, sha256 $(sha256sum "$OUT/scp.bin" | cut -c1-16)"
 		# its notices, as for BL31; the kconfig of the build is a host program and not in scp.bin
 		mkdir -p "$NOTICE/crust"
 		install -m 0644 "$CRUST_SRC/LICENSE.md" "$NOTICE/crust/LICENSE.md"
@@ -768,6 +776,13 @@ if ! stamp_fits image; then
 	grep -E "environment:|OK   $NAME|placeholders for|in all" "$OUT/mkimage.log" | sed 's/^/    /'
 	stamp_write image -- "$DELIVERY/$NAME.tabelle.json" "$DELIVERY/$NAME.sha256" "$DELIVERY/$NAME-README.txt" "$DELIVERY/$NAME"-{a-bootkette,b-system,c-gptkopie}.img
 fi
+# Beside the image, what h713-install needs to reach the device, as in a release folder (TODO 5.30, issue #4: the
+# installer found neither here, took the distribution's sunxi-fel from the PATH, and its owner the installer U-Boot
+# of another board). The U-Boot is this board's and carries the image's name, since installer/out holds the images
+# of several boards side by side; sunxi-fel is the same for every board.
+install -m 0644 "$OUT/u-boot-installer.bin" "$DELIVERY/$NAME.u-boot-installer.bin"
+install -m 0755 "$OUT/sunxi-fel" "$DELIVERY/sunxi-fel"
+info "beside it: $NAME.u-boot-installer.bin (this board's), sunxi-fel"
 
 # --- 10. check --------------------------------------------------------------
 say "10/11 check"
