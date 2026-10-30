@@ -1070,7 +1070,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `rootfs/build-rootfs.sh` meldet es schon, die Doku nicht)
       Vorschlag: (a) sofort, (b)-(d), (f), (g) klein und ohne Gerät, (e) nach Entscheidung.
 
-- [ ] 5.29 **`projector09220931` lässt sich aus `main` nicht bauen: die Variante erbt die crust-Konfiguration des G-EU** (Issue #4,
+- [x] 5.29 (erledigt 30.10.2026, in `main` mit dem Merge `364d0342`) **`projector09220931` lässt sich aus `main` nicht bauen: die Variante erbt die crust-Konfiguration des G-EU** (Issue #4,
       30.10.2026, aus dem Code gelesen): `boards/hy200-qz713df-a1/board.env` nennt `CRUST_DEFCONFIG=h713_hy200_qz713df_a1_sr_defconfig`
       für beide Varianten; die Konfig setzt keinen Takt, crust nimmt den Kconfig-Standard 792 MHz (G-EU). U-Boot baut die Variante mit
       `DRAM_CLK=624`, und `check-crust.py` lehnt ab ("crust/U-Boot DRAM differ"). Der Melder hat dafür den Standard in
@@ -1080,10 +1080,10 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       schreibt den `DRAM_CLK` einer Variante in crusts `.config` und prüft ihn; die Hersteller-Firmware bleibt Vorgabe, crust nur im
       Rootfs, kein Standby angeboten. Am PC gemessen: Testabbild der Variante frisch gebaut (28 min, `reproducible: yes`), crust 624 =
       U-Boot 624, Gate grün; Gegenprobe mit der crust-Konfig von `main`: "CLK 792/624", Exit 1; G-EU-crust bytegleich wie vorher.
-      Offen: Merge nach `main` (Marco). *Überholt:* "Abhilfe: die Variante setzt `CRUST_DEFCONFIG=` in ihrer `variant.env`" - geht
+      In `main` seit `364d0342`. *Überholt:* "Abhilfe: die Variante setzt `CRUST_DEFCONFIG=` in ihrer `variant.env`" - geht
       nicht, der gemeinsame Gerätebaum nennt `hy200-qz713df-a1-crust.bin`, und `check-crust.py --dtb` lehnt ein Abbild ohne crust ab.
 
-- [ ] 5.30 **Neben einem selbstgebauten Abbild fehlen `sunxi-fel` und `u-boot-installer.bin`** (Issue #4, 30.10.2026): `build-all.sh`
+- [x] 5.30 (erledigt 30.10.2026, in `main` mit dem Merge `364d0342`; am Gerät nicht gelaufen) **Neben einem selbstgebauten Abbild fehlen `sunxi-fel` und `u-boot-installer.bin`** (Issue #4, 30.10.2026): `build-all.sh`
       legt Abbild und Tabelle nach `installer/out/`, beide Werkzeuge bleiben in `mainline/build/out/`. Der Installer sucht sie im
       Abbildordner (wie im Release-Tar), dann neben sich, dann im PATH - und nimmt so das `sunxi-fel` der Distribution, das den H713
       nicht lädt. Der Melder holte sich darauf beide aus `hy300-pro-test12`, also das Installer-U-Boot eines anderen Boards
@@ -1093,7 +1093,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       und `sunxi-fel` nach `installer/out/`; der Installer nimmt sie für eine dort genannte Tabelle (oder einen Ordner mit einer); ein
       `sunxi-fel` ohne H713-Namen und ohne Falltür stoppt Schritt 1 mit Pfad und Hinweis. Gemessen am PC mit dem Bau aus 5.29: beide
       Dateien liegen bytegleich daneben, `install <Tabelle> --no-write` (FEL ersetzt) nimmt sie - `main` nimmt keine; 9 Tests, Suite
-      grün. Am Gerät nicht gelaufen. Offen: Merge nach `main` (Marco).
+      grün. Am Gerät nicht gelaufen. In `main` seit `364d0342`.
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
