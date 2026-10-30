@@ -914,8 +914,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `dram_tpr0` 0x00482151 (Profil 0x004A2195), tpr12-15 gegen das Profil verschoben; `dram_clk` 624 stimmt. Nicht übernommen.
       **30.10.2026 Antwort im Issue gepostet** (Marco; Text `arbeit/issue4-hy300-pro-plus-20261030/ANTWORT-TEXT.md`): gefragt, was
       geht (Bild, Ton, WLAN, BT, Fernbedienung, Lüfter, Power-Taste), `cat /etc/h713/board`, woran es beim Installieren hing (5.28).
-      Offen: seine Antwort; bei grünem Bericht `VERIFIED_BY`/`STATUS` der Variante und die Board-Zeile im
-      README. Nebenbei: `HIDRAW` braucht auch `h713-mic` (2.51) - Gamepads (`HID_SONY` u. a.) als Module ins Abbild?
+      **Seine Antwort 30.10.2026 15:26:** Bild, Ton, WLAN, BT, Fernbedienung, Lüfter, Power-Taste, Aus und wieder an - **alles geht**;
+      `/etc/h713/board`: `board = hy200-qz713df-a1`, `project_id = 0x34`, `variant = projector09220931` (= Profil; die 0x33 war
+      die KI). Neu: **Plopp beim Ausschalten, auch bei Lautstärke 0** (9.11). Sein Bau (`build-all.log` im Issue): `main` `591d0d3`
+      mit 3 lokalen Änderungen, darunter der crust-Takt 624 (5.29), ARISC = Hersteller-Firmware aus seinem Abzug, crust nur im
+      Rootfs; `reproducible: no`. Woran es hing: 5.28. Offen: **`verified` für die Variante - Entscheidung Marco** (sein Lauf ist
+      `main` plus seine crust-Änderung, die ohne 5.29 nötig war; danach `VERIFIED_BY`/`STATUS`, Board-Zeile im README); kurze
+      Antwort (Dank, die zwei Fehler sind behoben). Nebenbei: `HIDRAW` braucht auch `h713-mic` (2.51) - Gamepads (`HID_SONY` u. a.)
+      als Module ins Abbild?
 
 ## 5 Installer und Werkzeuge
 
@@ -1048,14 +1054,36 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `h713-install` mit sudo. Das Installer-Protokoll gibt es nur auf dem Bildschirm, eine Issue-Vorlage gibt es nicht, und
       FLASHING.md sagt nicht, was man uns zurückschickt. Ideen, **nichts entschieden, nichts gebaut**:
       (a) zuerst fragen: im Issue #4 die Schritte, an denen er hing, und die "alternate method" - das ist die eigentliche Eingabe
-      (**gefragt 30.10.2026**, 4.16; wartet auf seine Antwort)
+      (**gefragt 30.10.2026**, 4.16; **beantwortet 30.10. 15:26**, die "alternate method" hat er am Ende nicht gebraucht). Was ihn
+      aufhielt: (1) das `sunxi-fel` seiner Distribution (5.30); daraufhin nahm er `sunxi-fel` und `u-boot-installer.bin` aus
+      `hy300-pro-test12` - das Installer-U-Boot eines anderen Boards; (2) "No drive has appeared" am USB-Hub (dmesg "Cannot enable.
+      Maybe the USB cable is bad?"), am Port des PCs ging es; (3) der crust-Takt (5.29); (4) der Rootfs-Schritt braucht die
+      arm64-Emulation (binfmt) des Hosts, `qemu-user-binfmt` wollte ganz qemu nachziehen - er hat sie per Container registriert
       (b) Issue-Vorlagen (`.github/ISSUE_TEMPLATE/`): "Board melden" (Platinenaufdruck, `h713-install identify`) und
       "Installationsbericht" (Abbild, was geht: Bild, Ton, WLAN, BT, Fernbedienung, Lüfter, Fokus)
       (c) `h713-install` schreibt sein Protokoll zusätzlich in eine Datei im Abzugsordner, die man anhängt (ohne Seriennummer/MAC)
       (d) ein Abschnitt "What to send us" in FLASHING.md, oder ein `h713-report` auf dem Gerät, das den Bericht in einem Befehl sammelt
       (e) fertige TEST-Abbilder für profile-only-Varianten als Pre-Release (wie `hy300-pro-testN` für Issue #1), dann entfällt
       der Bau - **Entscheidung Marco** (Regel: Testabbild nur für seinen Besitzer, `doku/121` §5)
-      Vorschlag: (a) sofort, (b)-(d) klein und ohne Gerät, (e) nach Entscheidung.
+      (f) "No drive has appeared" nennt den Hub/direkten Port, und FLASHING "If something goes wrong" auch (aus (2))
+      (g) `BUILDING.md`/`docs/build-container.md` sagen, dass der Host arm64-binfmt mit Flag F braucht und wie man prüft (aus (4);
+      `rootfs/build-rootfs.sh` meldet es schon, die Doku nicht)
+      Vorschlag: (a) sofort, (b)-(d), (f), (g) klein und ohne Gerät, (e) nach Entscheidung.
+
+- [ ] 5.29 **`projector09220931` lässt sich aus `main` nicht bauen: die Variante erbt die crust-Konfiguration des G-EU** (Issue #4,
+      30.10.2026, aus dem Code gelesen): `boards/hy200-qz713df-a1/board.env` nennt `CRUST_DEFCONFIG=h713_hy200_qz713df_a1_sr_defconfig`
+      für beide Varianten; die Konfig setzt keinen Takt, crust nimmt den Kconfig-Standard 792 MHz (G-EU). U-Boot baut die Variante mit
+      `DRAM_CLK=624`, und `check-crust.py` lehnt ab ("crust/U-Boot DRAM differ"). Der Melder hat dafür den Standard in
+      `platform/h713/Kconfig` auf 624 gepatcht. Entschieden war es anders (1.1b, 10.10.): Boards ohne gemessene crust-Konfiguration -
+      ausdrücklich `projector09220931` - laufen mit der Hersteller-Firmware, keine geliehene Konfiguration. Abhilfe: die Variante
+      setzt `CRUST_DEFCONFIG=` in ihrer `variant.env` (ein Schlüssel dort gewinnt).
+
+- [ ] 5.30 **Neben einem selbstgebauten Abbild fehlen `sunxi-fel` und `u-boot-installer.bin`** (Issue #4, 30.10.2026): `build-all.sh`
+      legt Abbild und Tabelle nach `installer/out/`, beide Werkzeuge bleiben in `mainline/build/out/`. Der Installer sucht sie im
+      Abbildordner (wie im Release-Tar), dann neben sich, dann im PATH - und nimmt so das `sunxi-fel` der Distribution, das den H713
+      nicht lädt. Der Melder holte sich darauf beide aus `hy300-pro-test12`, also das Installer-U-Boot eines anderen Boards
+      (flüchtig, ging gut). Abhilfe: das Abbild bekommt seine eigenen Werkzeuge neben sich, und der Installer lehnt ein `sunxi-fel`
+      ohne die H713-Falltür mit einem Satz ab, der sagt, wo das richtige liegt.
 
 ## 6 HDCP-Härtung — Einbau mit dem Release-Neubau 1.1a (`doku/144` TEE-1…5, `doku/161`)
 
@@ -1216,6 +1244,8 @@ ohne Schreibung. Die eMMC der Box trägt es mit dem nächsten Abbild (1.1a). T5 
       Verstaerker haengt nicht (nur) an PB5/PL3, oder der Knall kommt nicht von PL2, sondern vom Zusammenbruch
       der Codec-Versorgung beim Reset. Naechster Schritt braucht Oszilloskop/Schaltplan: welche Schiene
       versorgt den Verstaerker, was tut der Reset mit ihr. Bis dahin: so lassen
+      - **30.10.2026:** auch der HY300 Pro+ aus Issue #4 (`hy200-qz713df-a1/projector09220931`) ploppt beim Ausschalten, "even with
+        volume on 0" (Melder, nicht gemessen) - also nicht nur der HY310. `docs/known-issues.md` nennt den Plopp nicht
 - [ ] 9.12 **Bluetooth-Ursache A nach dem Release messen** (aus 2.3, Marco 06.10.): warum der erste HCI-Befehl nach
       einem warmen Reboot ohne den Reset vorab manchmal unbeantwortet bleibt (FB-BTRESET 9.1). Verdacht: `hciattach any`
       öffnet die UART erst mit 115200 und schaltet dann auf 1500000; seit dem Fix öffnet `h713-bt-reset` sie als Erster.
