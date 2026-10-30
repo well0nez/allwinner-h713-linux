@@ -54,8 +54,10 @@ The folder then holds the three `.img` parts, `h713-hy310-v0.97-beta-media-deskt
 the stock `sunxi-fel` from your distribution does **not** work here). `sunxi-fel` needs `libusb-1.0` on your
 PC; on Debian and Ubuntu that is `apt install libusb-1.0-0`.
 
-If you built the image yourself with `release/build-all.sh`, the same files are in `installer/out/` and
-`mainline/build/out/`.
+If you built the image yourself with `release/build-all.sh`, the same files are in `installer/out/`: the
+parts, the table, `<image>.u-boot-installer.bin` (that image's own installer U-Boot - the folder holds every
+image you have built, of any board) and `sunxi-fel`. Name the table there, `installer/out/<image>.tabelle.json`,
+and the installer takes the two beside it; the folder alone does too, while it holds a single image.
 
 ## The four steps
 

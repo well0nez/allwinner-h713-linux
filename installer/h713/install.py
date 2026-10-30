@@ -255,21 +255,42 @@ def in_dump(dump_dir, name, log=console):
     return new
 
 
-def release_files(directory):
+def release_files(directory, image=None):
     """What a release folder brings along besides the table: {"uboot": path, "fel": path}.
 
     Stage 3 (api-stufe3.md): `install RELEASE-DIR` finds u-boot-installer.bin and
     sunxi-fel next to the table, so that nobody has to name six paths by hand.
     --uboot/--sunxi-fel keep precedence; what is not there is simply not in the dict.
+    `image`, the name of the table without .tabelle.json: the delivery directory of
+    release/build-all.sh (installer/out) holds the images of several boards side by side,
+    each with its own U-Boot as <image>.u-boot-installer.bin (TODO 5.30), which comes first.
     """
     found = {}
     for key, names in RELEASE_FILES.items():
+        if image:
+            names = tuple("%s.%s" % (image, name) for name in names) + names
         for name in names:
             path = os.path.join(directory, name)
             if os.path.isfile(path):
                 found[key] = path
                 break
     return found
+
+
+def release_place(image):
+    """(directory, image name) of what `install` was given, for release_files(): a release
+    folder or a build's delivery directory (the name only when it holds one table), or one
+    table in it. (None, None) for a single .img - it brings nothing along."""
+    suffix = ".tabelle.json"
+    if os.path.isdir(image):
+        try:
+            tables = sorted(x for x in os.listdir(image) if x.endswith(suffix))
+        except OSError:
+            return None, None
+        return image, (tables[0][:-len(suffix)] if len(tables) == 1 else None)
+    if image.endswith(suffix):
+        return os.path.dirname(os.path.abspath(image)), os.path.basename(image)[:-len(suffix)]
+    return None, None
 
 
 def release_beside(here):

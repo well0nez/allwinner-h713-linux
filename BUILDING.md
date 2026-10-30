@@ -137,8 +137,11 @@ calls such an image "not a release image" (the 500 MiB rule of the base image); 
 mainline/build/out/     bl31.bin, spl-release.bin, uboot-proper-release.bin, hy310-env-release.bin,
                         u-boot-installer.bin, u-boot-h713-probe.bin, sunxi-fel, h713-kernel.fit, modules/
 installer/out/          <name>-{a-bootkette,b-system,c-gptkopie}.img, .tabelle.json,
-                        .sha256, -README.txt, .BUILD.txt
+                        .sha256, -README.txt, .BUILD.txt, .u-boot-installer.bin; sunxi-fel
 ```
+
+`installer/out/` is what `h713-install install installer/out/<name>.tabelle.json` needs: the image, its
+board's installer U-Boot under the image's name, and the project's `sunxi-fel` (FLASHING.md).
 
 The `.BUILD.txt` stamp records the series hash, the defconfig hash, the kernel tree digest, the
 submodule commits, the source date and a sha256 for each component. Quote it when you report a problem.
