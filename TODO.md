@@ -927,6 +927,21 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       (`variant.env`), Platinenaufdruck (`boards/hy200-qz713df-a1/README.md`); `dram_tpr0` seiner KI-Zusammenfassung klärt erst sein
       boot0, nicht der REPORT. Nebenbei: `HIDRAW` braucht auch `h713-mic` (2.51) - Gamepads (`HID_SONY` u. a.)
       als Module ins Abbild?
+- [ ] 4.17 **HY300 T08 (Issue #7, Melder GitHub `smj-0712`, 31.10.2026): erster Besitzer von `hy300-t08`** (`profile-only`).
+      Platine "HY300_T08_QZ713_V3", 720p, WLAN-Modul "AW869A Wi-Fi6", ein USB-A, FEL per Pinhole. Stock **neuer als das Profil**:
+      Android 11, `ADT-3/adt3/adt3:11/RP1A.201005.006/eng.projector.20240722.121001` (Profil: Android 10, Build 6245789,
+      OTA 2024-04-19), per OTA mehrfach aktualisiert. Abzug über ADB (`mmcblk0` lesbar ohne Root), nur Kopf (LBA 0-599039)
+      und Schwanz (LBA 6890496-7095295): **DRAM-Block bei LBA 16 Wort für Wort = `hy300_t08.py`**, GPT = Profil (25, ein
+      `Reserve0`). Dort `para2`/`tpr13` = `0`/`0x34010100`. Gegenstück, am 31.10. gelesen: im L018-Vollabzug tragen
+      **beide** boot0-Kopien `0x04000000`/`0xb4016103`, beim HY320 (#5) die bei LBA 256 (`doku/120` §4.1 hielt die Herkunft
+      für ungeklärt; die Abzüge von HY310 und HY300 Pro sind root-only, nicht gelesen). Unser T08-Stockabbild bringt die
+      AIC8800D80-Firmware (11 Dateien) - "AW869A" vermutlich ein Modulname dafür, nicht gemessen.
+      **31.10.2026 Antwort gepostet** (Marco; `arbeit/issue7-hy300-t08-20261031/ANTWORT-TEXT.md`): erbeten Vollabzug über ADB,
+      `identify` + `h713-extract` darauf (`REPORT.txt`), die boot0-Kopie bei LBA 256, die SDIO-ID; kein Probe-Lauf (braucht UART),
+      kein fremdes U-Boot (es gibt noch keins für das Board). Danach: Profil um seine Firmware ergänzen (Bootpaket-Digests),
+      `uboot.config` ohne geliehene Werte, falls LBA 256 das Paar trägt; Gerätebaum aus seinem Stock-DTB (gleicher `dtb`-Digest
+      wie das Abbild `fb6f39ee...`?), dann Testabbild über FEL. Vorab gesagt: "ADT-3 2024"-`display.bin` = die des HY320,
+      dort ist die Video-Ebene dunkel (#5).
 
 ## 5 Installer und Werkzeuge
 
