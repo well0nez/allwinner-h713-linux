@@ -80,6 +80,7 @@ the circuit board, and one board is sold in several projectors.
 | [`hy300-pro`](boards/hy300-pro/) | MagCubic HY300 Pro (2024) | DDR3 636 MHz | 1280x720 (0x34) | in test by its owner ([issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1)), test images only |
 | [`hy200-qz713-v2`](boards/hy200-qz713-v2/) | "HY300 Pro+" (2025, LPDDR3) | LPDDR3 720 MHz | 1280x720 (0x34) | profile only |
 | [`hy300-t08`](boards/hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280x720 (0x34) | profile only |
+| [`hy320`](boards/hy320/) | MagCubic HY320 (2024) | DDR3 792 MHz | 1920x1080 dual (0x30) | partial - TEST image boots on its owner's unit (31.10.2026): U-Boot logo, Linux, Wi-Fi, the RGB plane; the video plane stays dark with its display firmware |
 | [`hy350`](boards/hy350/) | HY350 (2024) | DDR3 792 MHz | 1920x1080 (0x30) | profile only |
 | [`l018`](boards/l018/) | L018 (2025) | DDR3 792 MHz | 1920x1080 dual (0x30) | **verified** (26.10.2026, `doku/222`), release image since `v0.97.1-beta`; headphones and HDCP 2.2 not tested |
 | [`losei-x9`](boards/losei-x9/) | LOSEI X9 (2024) | DDR3 744 MHz | 1280x720 (**0x33**) | partial - reported in [issue #3](https://github.com/well0nez/allwinner-h713-linux/issues/3) (25.10.2026), nothing of ours has run on it |

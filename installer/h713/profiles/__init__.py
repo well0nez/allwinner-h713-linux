@@ -16,7 +16,7 @@ from the profiles so that the moved extractor code keeps behaving byte for byte 
 
 from __future__ import annotations
 
-from . import hy200_qz713_v2, hy200_qz713df_a1, hy300_pro, hy300_t08, hy310, hy350, l018, losei_x9
+from . import hy200_qz713_v2, hy200_qz713df_a1, hy300_pro, hy300_t08, hy310, hy320, hy350, l018, losei_x9
 
 #: board id -> profile dict. The id is also the module name.
 PROFILES = {
@@ -25,6 +25,7 @@ PROFILES = {
     "hy300_t08": hy300_t08.PROFILE,
     "hy350": hy350.PROFILE,
     "hy300_pro": hy300_pro.PROFILE,
+    "hy320": hy320.PROFILE,
     "hy200_qz713df_a1": hy200_qz713df_a1.PROFILE,
     "hy200_qz713_v2": hy200_qz713_v2.PROFILE,
     "losei_x9": losei_x9.PROFILE,

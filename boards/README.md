@@ -19,6 +19,7 @@ for instance, lives under `hy200-qz713df-a1`.
 | [`hy200-qz713df-a1`](hy200-qz713df-a1/) | HY300PRO-G-EU · "HY300 Pro+" (2025) · cstenger's bench board | DDR3 792 / 624 MHz | 1280×720 (0x34) | **verified** for the HY300PRO-G-EU's firmware `projector05061226` (11.10.2026; a release image since `v0.97-beta`); the 2025-09 firmware profile only |
 | [`hy200-qz713-v2`](hy200-qz713-v2/) | "HY300 Pro+" (2025, LPDDR3) | LPDDR3 720 MHz | 1280×720 (0x34) | profile only |
 | [`hy300-t08`](hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280×720 (0x34) | profile only |
+| [`hy320`](hy320/) | MagCubic HY320 (2024) | DDR3 792 MHz | 1920×1080 dual (0x30) | partial - TEST image boots on its owner's unit (31.10.2026): U-Boot logo, Linux, Wi-Fi, the RGB plane; the video plane stays dark with its display firmware |
 | [`hy350`](hy350/) | HY350 (2024) | DDR3 792 MHz | 1920×1080 (0x30) | profile only |
 | [`l018`](l018/) | L018 (2025) | DDR3 792 MHz | 1920×1080 dual (0x30) | **verified** (26.10.2026, `doku/222`; a release image since `v0.97.1-beta`); headphones and HDCP 2.2 not tested |
 | [`losei-x9`](losei-x9/) | LOSEI X9 (2024) | DDR3 744 MHz | 1280×720 (**0x33**) | partial - reported in [issue #3](https://github.com/well0nez/allwinner-h713-linux/issues/3) (25.10.2026), nothing of ours has run on it |
