@@ -424,3 +424,6 @@
 0332-misc-hy310-board-mgr-the-lamp-as-bl0-with-the-fan-s-modes.patch
 0333-misc-hy310-board-mgr-thermal-shutdown-per-board-and-orderly.patch
 0334-iio-imu-st-lsm6dsx-the-l018-lsm6dsv-answers-0x71.patch
+
+# --- section 27 One more board: the HY320 (31.10.2026).
+0335-arm64-dts-h713-add-the-hy320-board-dts.patch

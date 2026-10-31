@@ -1,0 +1,220 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: add the HY320 board dts
+
+The MagCubic HY320 (stock Android 11 userland on the ADT-3 vendor build
+6245789, kernel 5.4.99, vendor U-Boot and ARISC of 2024-04-19) has the
+HY350's DRAM words and display firmware ("ADT-3 2024", 1252128 bytes) and
+a 1080p dual-port panel at project 0x30. Its tree is the HY310's, held
+against this board's own stock device trees (vendor_boot_a and the sunxi
+package of the owner's eMMC dump), with the HY300 Pro's choices where the
+stock tree is ambiguous - the same vendor family, and the board has no
+serial console:
+
+- The lamp: the display firmware's PWM 5 words from this board's
+  panel_config.ini [PWMSetting] (channel 5, polarity 1, 40 kHz, vsync
+  lock 1, duty 1..100), as on the HY300 Pro (0166a), no pin group.
+  pwm-backlight off: the stock tree disables pwm2 (PB4) and pwm3 (PB5)
+  and names PB5 only as tvtop panel_bl_en, a plain GPIO.
+- The fan: the stock "fan" node claims PH17 as PWM0's pin and as
+  fan1-fg-gpio, U-Boot's fan_ctrl names it once more - the HY310's and
+  the HY300 Pro's pattern, where PH17 is the tacho (measured on the
+  HY310, counted on the HY300 Pro). So the dtsi's fan0 stays: tacho PH17,
+  no PWM. PB5 stays the dtsi's hog, as on the HY300 Pro.
+- No NTC evaluation: the stock node reads one on GPADC channel 1, with
+  tables of another driver whose units are not known here; ntc_num stays
+  0 and no power-off hangs on an unproven conversion.
+- The focus motor off: the stock motor_ctr is disabled.
+- The accelerometer node off: the chip at 0x18 on twi1 is an STK8BA58
+  (stock "stk,stk83xx"), not the HY310's SC7A20, and no driver here is
+  shown to fit it.
+- The display firmware's elog addresses: ring 0x8b271d9c and write cell
+  0x8b48b2a8 of U-Boot's "ADT-3 2024" row, the control block 0x4a8 below
+  the write cell as on the HY310 and the HY300 Pro: <0x4b48ae00
+  0x4b271d9c> in ARM view.
+- The vendor ARISC firmware and no display MIPS restart, as on the
+  HY300 Pro.
+
+Power key PL4 and IR on PL9 are the HY310's by the stock tree, and its IR
+address list holds the 0xfd02 and 0xff00 remotes rc-h713-fd02 maps.
+
+Built (dtc, against the series applied to 6.18.38); not booted. The image
+built from it is a TEST image for the board's owner.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -60,6 +60,7 @@
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy310.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300-pro.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-l018.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy320.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-a527-cubie-a5e.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-h728-x96qpro+.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-t527-avaota-a1.dtb
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+--- /dev/null
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -0,0 +1,163 @@
++// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++/*
++ * MagCubic HY320 projector (stock Android 11 userland on the ADT-3 vendor
++ * build 6245789, kernel 5.4.99; vendor U-Boot and ARISC of 2024-04-19).
++ *
++ * The HY310's tree, held against this board's own stock device trees (the
++ * kernel's in vendor_boot_a and U-Boot's in the sunxi package, read off the
++ * owner's eMMC dump). The panel is project 0x30, 1920x1080 dual port, as on
++ * the HY310 and the HY350; the display firmware is the "ADT-3 2024"
++ * revision (1252128 bytes, the HY350's and the HY300 T08's), not the
++ * HY310's. Nothing on this board has been measured by us and there is no
++ * serial console on it: where its stock tree is silent or ambiguous, this
++ * file keeps what the HY300 Pro, the nearest board of the same vendor
++ * family, runs with. What differs, and what this file does about it:
++ *
++ *  - The lamp: panel_config.ini [PWMSetting] says hardware channel 5,
++ *    polarity 1, 40 kHz, vsync lock 1, duty 1..100 - the HY300 Pro's six
++ *    words, handed to the display firmware. PB4 (pwm2) and PB5 (pwm3) carry
++ *    no PWM under stock (both nodes disabled; PB5 is tvtop panel_bl_en as a
++ *    plain GPIO), so pwm-backlight is off.
++ *  - The fan: the stock "fan" node claims PH17 twice, as PWM0's pin and as
++ *    fan1-fg-gpio, and U-Boot's fan_ctrl names PH17 again - the pattern the
++ *    HY310's and the HY300 Pro's stock trees have, where PH17 is the tacho
++ *    (measured on the HY310; counted on the HY300 Pro). So the dtsi's fan0
++ *    stays: tacho PH17, no PWM, the fan on PB5. PB5 stays the dtsi's hog,
++ *    as on the HY300 Pro.
++ *  - No NTC evaluation: the stock fan node reads one (temp_det_source 1,
++ *    GPADC channel 1 by its gpadc node's channel_select), but with tables
++ *    of another driver whose conversion is not known here.
++ *  - The focus motor is disabled under stock: off here.
++ *  - The accelerometer at 0x18 on twi1 is an STK8BA58 (stk,stk83xx), not
++ *    the HY310's SC7A20: its node is off here.
++ *  - The display firmware's elog addresses, the vendor ARISC image, and no
++ *    display MIPS restart (measured on the HY310 only).
++ *
++ * The same as the HY310 by its stock tree: power key PL4 (standby_param,
++ * keyboard power-gpio), IR on PL9 (cir_param; its address list holds the
++ * 0xfd02 and 0xff00 remotes the dtsi's rc-h713-fd02 maps).
++ */
++
++#include "sun50i-h713-hy310.dts"
++
++/ {
++	model = "MagCubic HY320";
++	compatible = "magcubic,hy320", "allwinner,sun50i-h713";
++};
++
++/*
++ * Nothing on this board is driven by the dtsi's pwm-backlight (PWM2/PB4):
++ * the stock tree disables pwm2@2000c12 (PB4) and pwm3@2000c13 (PB5) and
++ * names PB5 only as tvtop panel_bl_en, a plain GPIO high - the HY300 Pro's
++ * state (0161a). A live /sys/class/backlight is what systemd-backlight
++ * writes to at boot; there is none here.
++ */
++&backlight {
++	status = "disabled";
++};
++
++/* The vendor ARISC image, as on the HY300 Pro: crust has run on the HY310 only. */
++&arisc {
++	firmware-name = "h713-arisc.bin", "hy310-edid.bin";
++};
++
++/* The display MIPS restart is measured on the HY310 only. */
++&mips {
++	status = "disabled";
++};
++
++/*
++ * PB5 enables the LED boost and the fan rail (stock tvtop panel_bl_en, a
++ * GPIO): the dtsi's hog holds it high, not the board manager - as on the
++ * HY300 Pro, so nothing in Linux ever drives it low.
++ */
++&fan_power_hog {
++	status = "okay";
++};
++
++/*
++ * The fan. The stock kernel's "fan" node (pwm-fan, the vendor's driver)
++ * names pwms = PWM0, whose stock pin group pwm0@0 is PH17, and
++ * fan1-fg-gpio = PH17 as well; U-Boot's tree enables fan_ctrl with
++ * fanctrl-gpios = PH17. The HY310's stock node claimed PH17 the same two
++ * ways and PH17 is its tacho (the dtsi's board manager comment); on the
++ * HY300 Pro, of this board's vendor family, our tacho counted on PH17
++ * (boards/hy300-pro). So fan0 keeps the dtsi's tacho on PH17 and no PWM:
++ * a PWM0 output on PH17 would drive against the tacho line. The board
++ * manager powers off when the tacho counts below 1000 RPM for 8 s, so this
++ * pin decides whether the board stays up.
++ *
++ * No temperature: the stock node evaluates an NTC (temp_det_enable 1,
++ * temp_det_source 1 = GPADC; the gpadc node's channel_select 0x02 is
++ * channel 1) with its own tables (gpadc-temp 0..90 C against gpadc-adc
++ * 0x553..0xcc) and fan speeds above 60/68/72/76 C, no power-off. Those
++ * tables belong to another driver, and whether their numbers are mV, as
++ * this driver's gpadc-table is, or raw counts is not known here; the
++ * L018's table is not this board's. So ntc_num stays the HY310's 0, and
++ * nothing hangs a power-off on an unproven conversion.
++ */
++&board_mgr {
++	fan0 {
++		/delete-property/ fan-power-gpio;
++	};
++};
++
++/*
++ * This board's display firmware ("ADT-3 2024", U-Boot's h713_mips_fw_revs[]
++ * row) keeps its event log 0x1000 below the HY310's: mode-1 ring
++ * 0x8b271d9c and write cell 0x8b48b2a8 in MIPS view. The control block is
++ * the write cell less 0x4a8, as on the HY310 (0x8b48c2a8 -> 0x4b48be00)
++ * and the HY300 Pro (0x8b48b6a8 -> 0x4b48b200, 0161b): 0x4b48ae00 in ARM
++ * view. Read on the unit (31.10.2026): cpu_comm's dump at boot shows the
++ * firmware's own lines (HdmiRx_HDCP14_LoadKey time-outs).
++ */
++&cpu_comm {
++	allwinner,elog = <0x4b48ae00 0x4b271d9c>;
++};
++
++/*
++ * The display state this board's boot loader hands over. Our U-Boot ran the
++ * whole display init on the unit (31.10.2026, its console recorded to the
++ * eMMC: "boot logo up ... with the firmware running", the logo seen on the
++ * wall), and the AFBD then read CTRL 0x03001901 - the HY310's - but
++ * VIDEO_CTRL 0x03000200 and an LVDS selector of 0 where the HY310's
++ * firmware leaves 0x03000010 and 0x29000000. The "ADT-3 2024" firmware
++ * leaves the video channel and the selector as it does; with the HY310's
++ * defaults the driver refused to probe and the wall went black after the
++ * logo. These are the words this board's handoff consists of, and the ones
++ * the driver puts back when the video plane goes away.
++ */
++&display {
++	allwinner,handoff-state = <0x03001901 0x03000200 0x00000000>;
++};
++
++/*
++ * The lamp's dimmer is a PWM the display firmware owns. This board's
++ * panel_config.ini [PWMSetting]: pwm_channel 5, polarity 1 (low active),
++ * 40000 Hz, vs_lock 1, min 1, max 100 - the HY300 Pro's words (0166a),
++ * which the vendor's PanelControl hands to the firmware at start. No pin
++ * group: the stock pwm5@2000c15 node names no pins (0166a).
++ */
++&hdmirx {
++	allwinner,backlight-pwm-info = <5 1 40000 1 1 100>;
++};
++
++/*
++ * The stock motor_ctr is status "disabled" (pins PH4..PH7, limiter PH14,
++ * as on the HY310), so the driver neither homes nor drives a motor here.
++ */
++&motor_ctr {
++	status = "disabled";
++};
++
++/*
++ * twi1 stays on as under stock (PH2/PH3, 100 kHz). Its chip at 0x18 is an
++ * STK8BA58 (stock "stk,stk83xx", irq PB0); mainline's stk8ba50 driver is
++ * for the STK8BA50, and nothing here shows the two share a register map,
++ * so the dtsi's SC7A20 node is off rather than bound to the wrong chip.
++ */
++&twi1 {
++	accelerometer@18 {
++		status = "disabled";
++	};
++};
