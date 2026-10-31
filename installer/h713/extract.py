@@ -84,6 +84,7 @@ class Run:
         self.artefacts: List[dict] = []
         self.observations: Dict[str, object] = {}
         self.input_facts: Dict[str, object] = {}
+        self.fat_root_only: Dict[str, tuple] = {}   # origin -> (root files, 8.3 names) of a FAT without mips/
         self.device: Optional[str] = None     # profile key: hy310 / l018 / None (unknown)
         self.device_fixed = False             # True: recognised by the image fingerprint (sha256), not revisable
         self.detection: Dict[str, object] = {"via": None, "features": [], "notes": []}
@@ -661,6 +662,16 @@ class Run:
         if entries is None:
             self.log.warn(f"{origin}: no directory '{MIPS_SOURCE_DIR}/' in the {fs.type} "
                           f"(root: {', '.join(sorted(e['name'] for e in fs.entries(0))) or 'empty'})")
+            # The boot logo still lies at the root of such a FAT: the ADT-3 firmwares (HY320,
+            # 31.10.2026) keep mips/ in the vendor partition only and the logo here only.
+            for e in fs.entries(0):
+                if not e["verzeichnis"] and e["name"] in BOOT_ROOT_FILES:
+                    try:
+                        self.fat_root_only.setdefault(origin, ({}, {}))
+                        self.fat_root_only[origin][0][e["name"]] = fs.read(e)
+                        self.fat_root_only[origin][1][e["name"]] = e["kurz"]
+                    except Abort as ex:
+                        self.log.warn(str(ex))
             return None
         files: Dict[str, bytes] = {}
         problems: List[str] = list(fs.problems)
@@ -739,6 +750,7 @@ class Run:
         order = self.mips_source_order()
         self.log.info("MIPS sources in profile order: " + ", ".join(order))
         sets, notes, taken = [], [], {}
+        self.fat_root_only = {}           # origin -> (root files, 8.3 names) of a FAT without mips/
 
         def take(key, origin, reader):
             if origin in taken:      # bootloader_a and bootloader_b are one boot-resource.fex in an image
@@ -980,18 +992,23 @@ class Run:
         if not found_ids:
             self.log.warn("not a single ProjectID_0x*.TSE found in mips/")
             self.not_extracted.append(f"{MIPS_OUTPUT_DIR}/ProjectID_0x*.TSE (none found)")
-        # The boot logo lies at the ROOT of the same FAT, not under mips/ -- and only there: the
-        # vendor copy inside super has none, so a source without a bootloader FAT yields a warning.
+        # The boot logo lies at the ROOT of the same FAT, not under mips/. The vendor copy inside
+        # super has none; then a bootloader FAT without mips/ (the ADT-3 firmwares) is the source.
         root_files = main_set.get("root_files") or {}
+        short_names, logo_origin = main_set["short_names"], main_set["origin"]
+        if not root_files:
+            for origin, (files_, names_) in self.fat_root_only.items():
+                root_files, short_names, logo_origin = files_, names_, origin
+                break
         panel = ((PROFILES.get(self.device) or {}).get("panel") if self.device else None)
         for n in BOOT_ROOT_FILES:
             d = root_files.get(n)
             if d is None:
-                self.log.warn(f"no boot logo in the source ({n} is not at the root of {main_set['origin']})")
-                self.not_extracted.append(f"{BOOT_ROOT_OUTPUT_DIR}/{n} (not at the root of {main_set['origin']})")
+                self.log.warn(f"no boot logo in the source ({n} is not at the root of {logo_origin})")
+                self.not_extracted.append(f"{BOOT_ROOT_OUTPUT_DIR}/{n} (not at the root of {logo_origin})")
                 continue
-            checks = [f"from {main_set['origin']}, /{n} "
-                      f"(8.3 short name '{main_set['short_names'].get(n, '?')}')"]
+            checks = [f"from {logo_origin}, /{n} "
+                      f"(8.3 short name '{short_names.get(n, '?')}')"]
             problems = check_bootlogo(d, panel)
             for x in problems:
                 self.log.warn(f"{n}: {x}")
@@ -999,7 +1016,7 @@ class Run:
                                    + (f", {panel['width']}x{panel['height']} = the panel of this board"
                                       if panel and panel.get("width") else "")]
             self.store(f"{BOOT_ROOT_OUTPUT_DIR}/{n}", d,
-                       origin=f"{main_set['origin']}: /{n} ({len(d)} B, FAT long name)",
+                       origin=f"{logo_origin}: /{n} ({len(d)} B, FAT long name)",
                        checks=checks, error=False)
 
     def observe(self):
