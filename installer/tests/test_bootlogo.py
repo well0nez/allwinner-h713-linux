@@ -188,6 +188,33 @@ class ASourceWithoutALogo(unittest.TestCase):
         self.assertEqual([a["path"] for a in run.artefacts], ["boot/mips/display.bin"])
 
 
+class ALogoBesideNoMips(unittest.TestCase):
+    """The ADT-3 firmwares (HY320, 31.10.2026): mips/ lives in the vendor partition only, and the
+    bootloader FAT holds the logo at its root without a mips/ beside it. The logo comes out of
+    that FAT all the same; before, the unit was installed without one and U-Boot published none."""
+
+    def test_the_logo_comes_from_the_fat_without_mips(self):
+        out = support.workdir(self)
+        args = argparse.Namespace(out=out, tmp=os.path.join(out, "tmp"), use_debugfs=False)
+        run = extract.Run(args, log.Log(True))
+        read_set = {"origin": "vendor:/etc/display/mips/", "fs": "ext4 (synthetic)",
+                    "type": "ext4", "kind": "vendor", "files": {"display.bin": b"not a revision"},
+                    "root_files": {}, "short_names": {}, "problems": [], "leftover": [],
+                    "others": []}
+        fat = "dump: partition bootloader_b (synthetic)"
+        run.mips_read_sets = lambda: ([read_set], [{"source": "vendor:/etc/display/mips",
+                                                    "origin": read_set["origin"], "files": 1,
+                                                    "role": None}])
+        logo = os.path.basename(NAME)        # the name at the FAT root
+        run.fat_root_only = {fat: ({logo: bmp()}, {logo: "BOOTLOGO.BMP"})}
+        run.declared_project_id = lambda: {"id": None, "source": None, "note": "synthetic input"}
+        run.extract_mips()
+        self.assertEqual([a["path"] for a in run.artefacts], ["boot/mips/display.bin", NAME])
+        self.assertEqual([p for p in run.not_extracted if logo in p], [])
+        with open(os.path.join(out, NAME), "rb") as fh:
+            self.assertEqual(fh.read(), bmp())
+
+
 class OutOfTheStockFat(unittest.TestCase):
     """The real tool over the real stock bootloader FAT (H713_FIXTURES_LOCAL): the logo comes out
     as boot/bootlogo.bmp, matches the hy310 reference, and is no longer reported as left behind."""
