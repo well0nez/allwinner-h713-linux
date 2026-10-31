@@ -61,6 +61,15 @@ fault, not for a normal boot.
 => h713_mips status
 ```
 
+## h713_conlog - hand U-Boot's console to Linux on a board without a UART
+
+Built where the base sets `CONFIG_CONSOLE_RECORD` (today `hy320_defconfig`). `h713_conlog <addr>` copies
+what U-Boot has printed since relocation to `<addr>` behind a 16-byte header - `H713CLOG`, u32 length,
+u32 flags (bit 0: the record overflowed) - and sets `${filesize}`. Put into `bootcmd` after `h713_disp init`
+and followed by `mmc dev 1; mmc write <addr> 0x2800 0x400`, it leaves every boot's log in the unused tail
+of `hy310-uboot` (LBA 10240..11263), where Linux reads it with `dd` (boards/hy320/README.md, measured on
+the HY320 on 31.10.2026: 69 lines from `Core:` to "display initialised").
+
 ## h713_logo - replay the vendor boot-logo register table (diagnostic)
 
 Stock U-Boot draws its own boot logo by walking `LogoRegData.bin`, a container of 16-byte
