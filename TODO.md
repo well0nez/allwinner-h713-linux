@@ -935,13 +935,34 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `Reserve0`). Dort `para2`/`tpr13` = `0`/`0x34010100`. Gegenstück, am 31.10. gelesen: im L018-Vollabzug tragen
       **beide** boot0-Kopien `0x04000000`/`0xb4016103`, beim HY320 (#5) die bei LBA 256 (`doku/120` §4.1 hielt die Herkunft
       für ungeklärt; die Abzüge von HY310 und HY300 Pro sind root-only, nicht gelesen). Unser T08-Stockabbild bringt die
-      AIC8800D80-Firmware (11 Dateien) - "AW869A" vermutlich ein Modulname dafür, nicht gemessen.
+      AIC8800D80-Firmware (11 Dateien) - "AW869A" vermutlich ein Modulname dafür, nicht gemessen (widerlegt 01.11.: AIC8801, unten).
       **31.10.2026 Antwort gepostet** (Marco; `arbeit/issue7-hy300-t08-20261031/ANTWORT-TEXT.md`): erbeten Vollabzug über ADB,
       `identify` + `h713-extract` darauf (`REPORT.txt`), die boot0-Kopie bei LBA 256, die SDIO-ID; kein Probe-Lauf (braucht UART),
       kein fremdes U-Boot (es gibt noch keins für das Board). Danach: Profil um seine Firmware ergänzen (Bootpaket-Digests),
       `uboot.config` ohne geliehene Werte, falls LBA 256 das Paar trägt; Gerätebaum aus seinem Stock-DTB (gleicher `dtb`-Digest
       wie das Abbild `fb6f39ee...`?), dann Testabbild über FEL. Vorab gesagt: "ADT-3 2024"-`display.bin` = die des HY320,
       dort ist die Video-Ebene dunkel (#5).
+      **Seine Lieferung 31.10.2026 13:01, bewertet 01.11.** (`arbeit/issue7-hy300-t08-20261031/BEWERTUNG-ANTWORT2.md`, sein
+      `REPORT.txt` in `melder-20261031/`): Vollabzug 7 818 182 656 B (nicht hochgeladen), `identify` unter Windows (läuft),
+      `h713-extract` Exit 1 wie gebaut (vergleicht nur gegen verifizierte Boards).
+      (1) **Bootpaket älter als das Profil:** U-Boot `2018.05-00014-gbbed928` (18.11.2023), ARISC 23.11.2023 (`scp`
+      `8cbc0706...`), `dtb` `7db0a4d3...` statt `fb6f39ee...`; `monitor` und `optee` gleich. `identify` erkennt ihn zu Recht
+      nicht, das Profil braucht eine zweite Stock-Variante. Das zweite Paket bei LBA 32800 hat einen anderen `monitor`
+      (66 060 B) und `scp` (`21aebbde...`); der Extraktor wertet es nicht aus.
+      (2) **Display-Daten gleich:** alle 19 Dateien aus `vendor:/etc/display/mips/` bytegleich mit `facts.json` des OTA.
+      (3) **boot0 bei LBA 256 = 792 MHz** mit `0x04000000`/`0xb4016103`, sonst wortgleich mit dem Block des HY350-Profils;
+      LBA 16 = Profil (640 MHz). Der BROM nimmt LBA 16, solange sie gültig ist (`doku/90`, `doku/nachtlog/S48`), also
+      trainiert das Gerät mit 640 MHz - an seinem Gerät nicht gemessen. Das Paar steht nur in der Kopie, die nicht läuft:
+      ein Hinweis für `uboot.config`, kein Messwert.
+      (4) **WLAN = AIC8801:** SDIO `5449:0145` ist im AIC-Treiber `SDIO_DEVICE_ID_AIC8801` (der D80 meldet `c8a1:0082`).
+      Der Stock-Vendor trägt den 8801-Satz (`/etc/firmware/fmacfw.bin` usw.); unser `aic8800_bsp` sucht unter
+      `/lib/firmware/aic8800_fw/SDIO/aic8800D80`, Extraktor und `installer/h713/layout.py` nehmen nur den D80-Satz - auf
+      seinem Gerät käme kein WLAN.
+      (5) Das fehlende Boot-Logo ist der Fall, den der Extraktor-Fix aus PR #6 (`848e0f2f`) behebt.
+      **01.11.2026 Antwort gepostet** (Marco; `ANTWORT2-TEXT.md`): BROM-Frage beantwortet, 8801 richtiggestellt; erbeten sein
+      `dtb` aus dem Paket bei LBA 24576 (Python-Einzeiler, sha256 muss mit `7db0a4d3` beginnen), freiwillig U-Boot- und
+      ARISC-Kennung des Pakets bei LBA 32800. Danach, ohne Termin: Profil-Variante, 8801-Firmware in Extraktor, `layout.py`
+      und Treiberpfad, Gerätebaum aus seinem `dtb`, Testabbild über FEL.
 
 ## 5 Installer und Werkzeuge
 
