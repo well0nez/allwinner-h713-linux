@@ -1,0 +1,403 @@
+From 49d7c225f8bbff52359c9ff4cfae8cc64bff92e1 Mon Sep 17 00:00:00 2001
+From: minpeter <62207008+minpeter@users.noreply.github.com>
+Date: Sat, 31 Oct 2026 14:23:28 +0900
+Subject: [PATCH 106/110] sunxi: h713: the HY320 - its DRAM block, its 0x30
+ panel row and panel lines (CONFIG_H713_BOARD_HY320)
+
+The MagCubic HY320 (one unit, its owner's full eMMC dump of 31.10.2026):
+DDR3 at 792 MHz with the HY350 image's 24 boot0 words, the "ADT-3 2024"
+display firmware, and a 1920x1080 dual-port panel that declares project
+0x30 like the HY310 but asks for the HY350's raster (2200x1125) at 164 MHz.
+
+- hy320_defconfig: the hy300_pro base shape with this board's DRAM block
+  (para2/tpr13 0x04000000/0xb4016103: its boot0 at LBA 16 carries 0 and
+  0x34010100, the copy at LBA 256 these), no HS200.
+- h713_panel_cfg_hy320 for project 0x30 under CONFIG_H713_BOARD_HY320:
+  the totals from its panel_config.ini, the porches and layer origin from
+  its own LogoRegData.bin (its stock U-Boot never writes a porch), PLL n 47
+  and SSC 0xca1026d3 by its stock U-Boot's own formula for 164 MHz.
+- The panel lines as its stock tvtop node names them: PH16 pulsed, PH19 and
+  PH15 high, PF6 (its SD card detect) and PH8/PH9 left alone.
+
+On the unit: the vendor logo on the wall, "firmware left 1920x1080 active,
+2200x1125 total", Linux boots.
+---
+ arch/arm/mach-sunxi/Kconfig                   |  16 +++
+ arch/arm/mach-sunxi/h713_mips.c               | 132 +++++++++++++++++-
+ configs/hy320_defconfig                       | 120 ++++++++++++++++
+ .../src/arm64/allwinner/sun50i-h713-hy320.dts |  26 ++++
+ 4 files changed, 290 insertions(+), 4 deletions(-)
+ create mode 100644 configs/hy320_defconfig
+ create mode 100644 dts/upstream/src/arm64/allwinner/sun50i-h713-hy320.dts
+
+diff --git a/arch/arm/mach-sunxi/Kconfig b/arch/arm/mach-sunxi/Kconfig
+index 11de5aead1c..6b7237b2f01 100644
+--- a/arch/arm/mach-sunxi/Kconfig
++++ b/arch/arm/mach-sunxi/Kconfig
+@@ -121,6 +121,22 @@ config H713_BOARD_L018
+ 	  stock and PF6 is not driven. With this option the gate holds lamp
+ 	  and fan off, the board comes up at the stock std mode, and the
+ 	  HY310 panel sequence leaves PF6 alone and keeps PH9 low.
++
++config H713_BOARD_HY320
++	bool "H713: the HY320's panel row and panel lines"
++	depends on MACH_SUN50I_H713 && !H713_BOARD_L018
++	help
++	  The HY320 declares project 0x30 like the HY310 but its own
++	  panel_config.ini asks for another raster: 2200x1125 at 164 MHz
++	  where the HY310's is 2128x1120 at 143 MHz. With this option
++	  project 0x30 takes the HY320's row in h713_mips.c (display PLL
++	  and spread spectrum as its own stock U-Boot computes them, the
++	  mixer records as its own LogoRegData.bin carries them), and the
++	  panel sequence drives only the lines its stock tree names --
++	  panel_power_en PH19, panel_gpio_0 PH16, panel_gpio_1 PH15. PF6
++	  (on this board the SD card detect) and PH8/PH9 (no panel_gpio_2/3
++	  in its tree) are left alone. Everything else is the HY310 path.
++
+ config DRAM_SUN50I_A133
+ 	bool
+ 	help
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index ba6bcc8f1d4..95e8eaa16e5 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -386,8 +386,11 @@ static const struct h713_panel_cfg h713_panel_cfg_board_b = {
+  * is carried rather than left at the vendor default.
+  *
+  * dual_port is 1 here where board B has 0.
++ *
++ * An HY320 build maps 0x30 to its own row below, and nothing else names
++ * this one there; __maybe_unused keeps that build quiet.
+  */
+-static const struct h713_panel_cfg h713_panel_cfg_hy310 = {
++static const struct h713_panel_cfg h713_panel_cfg_hy310 __maybe_unused = {
+ 	.mapping = 0, .color_depth = 8, .odd_even = 0,
+ 	.dual_port = 1, .mirror_mode = 0,
+ 	.inv_de = 0, .inv_hsync = 0, .inv_vsync = 0, .inv_dclk = 1,
+@@ -410,6 +413,98 @@ static const struct h713_panel_cfg h713_panel_cfg_hy310 = {
+ 	.layer_h_mask = 0xffff,
+ };
+ 
++#ifdef CONFIG_H713_BOARD_HY320
++/*
++ * The HY320's panel: 1920x1080 dual port, project ID 0x30 like the HY310's,
++ * and a raster of its own. Nothing here has been read off a running unit:
++ * the board has no UART and has never run our firmware. The row is what the
++ * board's own stock U-Boot (2018.05-00018-gd7a124a, Apr 19 2024; the u-boot
++ * item of the sunxi-package at LBA 24576 of the owner's dump) does with the
++ * board's own two files, the LogoRegData.bin it ships and its Reserve0
++ * panel_config.ini. Where our patch table writes a site stock leaves alone,
++ * the row carries the value the file already holds there, so the write
++ * changes nothing.
++ *
++ * What stock patches, read out of its patch function (0x4a023cdc, thumb):
++ * 0x05800000 (mapping, depth, swap, inversions), 0x058c0020/24 (currents),
++ * 0x0588000c (port count), 0x058c0014 (PLL), 0x058c0018 (spread spectrum),
++ * 0x05600140 (mirror) and the two totals. Not one porch: 0x0525c004/1c/20/30
++ * /34, 0x0524c004/14 and 0x0528008c/84/88 appear in no patch in that binary.
++ * The ini says the same about itself -- PanelHsync/Vsync/HBP/VBP stand under
++ * "LVDS checkboard timing. Only for debug", and stock reads them only in its
++ * checkerboard TCON writer (0x4a024380).
++ *
++ * PLL. Stock's code (0x4a023e64..0x4a023ece) takes PanelDCLK, multiplies by
++ * 7 and, for a single port, by 2, and searches a post-divider p = 8..1 for
++ * an exact multiple of 24 MHz; with none it falls to p = 1 and the FLOOR of
++ * the quotient. It writes (n - 1) << 8 | (p - 1) << 2 into the record:
++ *
++ *	HY310   143001600 * 7      / 24e6 = 41.71 -> 41   its log: "n:41"
++ *	board B  62000000 * 7 * 2  / 24e6 = 36.17 -> 36   A10's PLL sweep
++ *	HY320   164000000 * 7      / 24e6 = 47.83 -> 47
++ *
++ * So 24 MHz * 47 = 1128 MHz and, through the /7 of a dual link, 161.14 MHz
++ * of DCLK -- 1.74 % below the ini's 164 MHz, which is how stock runs this
++ * board too. installer/h713/panelrow.py derives the same 47.
++ *
++ * Spread spectrum. Stock's code (0x4a023f42..0x4a024172) recentres the
++ * waveform the file's record already describes: bottom 0x311e and step 0x95
++ * of this file's 0xc950311e give the old centre, SpreadSpectrumStep 10 (1 %)
++ * and SpreadSpectrumSpan 0 (31.5 kHz) the new band, clamped into
++ * [24 MHz * n, 24 MHz * (n + 1) - 10 Hz]. Run with the HY310's n = 41 it
++ * yields exactly that board's logged "wave bottom:0x362f, wave step:0x8d
++ * ... reg_value:0xc8d0362f"; run with n = 47 it yields 0xca1026d3 (bottom
++ * 0x26d3, step 0xa1).
++ *
++ * The mixer and DE porches below are therefore NOT the ini's 2/8/148/12
++ * but the file's own records for this project (timing group 2, DE group
++ * 0): 0525c004 = 00001003 (hsync 16, vsync 3), 0525c01c = 07800054
++ * (16 + 68 = 84), 0525c020 = 04380010 (3 + 13 = 16), 05280088 = 00000010,
++ * 0528008c = 00000010 (layer X 16). Two sites stay where our table acts and
++ * stock does not, as on every board: 0x0524c004[31:16] takes the width and
++ * 0x0524c014[15:8] the vsync (3; the file holds 2).
++ *
++ * The totals are the ini's raw 2200/1125, so the minus-one convention of the
++ * patch table writes 04640897 -- which is the file's own record. Stock's
++ * own patch writes the raw 2200/1125 (04650898) there; this tree's
++ * convention is the one the HY310 and board B were repaired to, and on this
++ * board it amounts to leaving the record alone.
++ */
++static const struct h713_panel_cfg h713_panel_cfg_hy320 = {
++	/* panel_config.ini; equal to the file's 05800000 = 01e0a40c */
++	.mapping = 0, .color_depth = 8, .odd_even = 0,
++	.dual_port = 1, .mirror_mode = 0,
++	/*
++	 * PanelInvHSync is 2 in the ini. Stock's field insert (0x4a023c7c)
++	 * and ours both keep (value & 1), so bit 16 gets 0; the row says what
++	 * reaches the register.
++	 */
++	.inv_de = 0, .inv_hsync = 0, .inv_vsync = 0, .inv_dclk = 1,
++	/* ini; equal to the file's 058c0020/24 = 6f0f007f */
++	.de_current = 47, .odd_current = 7, .even_current = 7,
++	.ssc_en = 1,
++	.pll_n_plus_1 = 47,
++	.htotal = 2200, .vtotal = 1125,
++	/* the file's records, not the ini's checkerboard 2/8/148/12 */
++	.hsync = 16, .vsync = 3, .hbp = 68, .vbp = 13,
++	.width = 1920, .height = 1080,
++	/* panel_config.ini: PanelHsyncPol 1, PanelVsyncPol 1. */
++	.hsync_pol = 1, .vsync_pol = 1,
++	/* the file's 05800000[4:3]; ColorDepth 8 */
++	.lvds_bitsel = 1,
++	/* the file's 0528008c; stock never patches it */
++	.layer_x = 16,
++	.ssc_mask = 0xffffffff, .ssc_reg = 0xca1026d3,
++	/* writes 1080, which is what the file's 05280084 = 04380780 holds */
++	.layer_h_mask = 0xffff,
++};
++
++/* The HY320 build's project 0x30 is the HY320's panel, not the HY310's. */
++#define H713_PANEL_CFG_0X30	h713_panel_cfg_hy320
++#else
++#define H713_PANEL_CFG_0X30	h713_panel_cfg_hy310
++#endif
++
+ /*
+  * The panel, by declared project ID.
+  *
+@@ -433,13 +528,15 @@ static const struct h713_panel_cfg h713_panel_cfg_hy310 = {
+  * boards: the HY350 declares 0x30 as well, and its panel_config.ini asks for
+  * 2200x1125 at 148.5 MHz where the HY310 asks for 2128x1120 at 143.0 MHz.
+  * Same resolution, same port count, different blanking. A board we have never
+- * driven gets a profile of its own before it gets an entry here.
++ * driven gets a profile of its own before it gets an entry here. The HY320 is
++ * that case and has one: an HY320 build (CONFIG_H713_BOARD_HY320) maps 0x30
++ * to its own row above.
+  */
+ static const struct {
+ 	u32 project;
+ 	const struct h713_panel_cfg *panel;
+ } h713_disp_panels[] = {
+-	{ 0x30, &h713_panel_cfg_hy310 },
++	{ 0x30, &H713_PANEL_CFG_0X30 },
+ 	{ 0x34, &h713_panel_cfg_board_b },
+ };
+ 
+@@ -5661,6 +5758,16 @@ static int h713_disp_stock_panel_power(void)
+ 	clrbits_le32((void *)H713_PH_DATA, BIT(9));
+ 	sunxi_gpio_set_cfgpin(SUNXI_GPH(9), SUNXI_GPIO_OUTPUT);
+ 	printf("H713 panel: L018 - PF6 left alone, PH9 low\n");
++#elif defined(CONFIG_H713_BOARD_HY320)
++	/*
++	 * The HY320: PF6 is not a panel line here but the SD card detect
++	 * (stock trees: sdmmc cd-gpios = <&pio 5 6 0x11>, PF6 active low with
++	 * a pull-up), and its panel_power_en is PH19, driven below. Driving
++	 * PF6 high as an output would fight the card switch. Left alone, as
++	 * its stock firmware leaves it.
++	 */
++	sunxi_gpio_set_pull(reset, SUNXI_GPIO_PULL_DOWN);
++	printf("H713 panel: HY320 - PF6 left alone (its SD card detect)\n");
+ #else
+ 	sunxi_gpio_set_pull(power, SUNXI_GPIO_PULL_DOWN);
+ 	sunxi_gpio_set_pull(reset, SUNXI_GPIO_PULL_DOWN);
+@@ -5694,9 +5801,23 @@ static int h713_disp_stock_panel_power(void)
+ 	 * at all, and the image came up minutes late and then flickered away.
+ 	 * Panel power is not something to leave to a pin's reset default.
+ 	 */
+-	if (h713_disp_panel == &h713_panel_cfg_hy310) {
++	if (h713_disp_panel == &H713_PANEL_CFG_0X30) {
+ #ifdef CONFIG_H713_BOARD_L018
+ 		static const u8 pins[] = { 19, 15, 8 };	/* PH9 stays low */
++#elif defined(CONFIG_H713_BOARD_HY320)
++		/*
++		 * The HY320's stock trees (U-Boot's and the kernel's, tvtop@
++		 * 5700000) name four lines, <&pio bank pin flags>:
++		 *	panel_power_en = <0x02 0x07 0x13 0x20>	PH19
++		 *	panel_bl_en    = <0x02 0x01 0x05 0x00>	PB5
++		 *	panel_gpio_0   = <0x02 0x07 0x10 0x20>	PH16
++		 *	panel_gpio_1   = <0x02 0x07 0x0f 0x20>	PH15
++		 * and no panel_gpio_2/3. Its stock U-Boot asks for exactly
++		 * panel_power_en, panel_gpio_0..3 and panel_bl_en (0x4a022ea6
++		 * ..0x4a022f1e) and drops the ones the tree lacks, so PH8 and
++		 * PH9 are never driven under stock. Here neither.
++		 */
++		static const u8 pins[] = { 19, 15 };
+ #else
+ 		static const u8 pins[] = { 19, 15, 8, 9 };
+ #endif
+@@ -5711,6 +5832,9 @@ static int h713_disp_stock_panel_power(void)
+ #ifdef CONFIG_H713_BOARD_L018
+ 		printf("H713 panel: vendor panel lines PH19/PH15/PH8 "
+ 		       "driven high, PH9 low (PH_DAT=%08x)\n", readl(H713_PH_DATA));
++#elif defined(CONFIG_H713_BOARD_HY320)
++		printf("H713 panel: vendor panel lines PH19/PH15 driven high, "
++		       "PH8/PH9 left alone (PH_DAT=%08x)\n", readl(H713_PH_DATA));
+ #else
+ 		printf("H713 panel: vendor panel lines PH19/PH15/PH8/PH9 "
+ 		       "driven high (PH_DAT=%08x)\n", readl(H713_PH_DATA));
+diff --git a/configs/hy320_defconfig b/configs/hy320_defconfig
+new file mode 100644
+index 00000000000..d14ba9d9377
+--- /dev/null
++++ b/configs/hy320_defconfig
+@@ -0,0 +1,120 @@
++# HY320 (MagCubic) -- board base. One unit, its owner's, dumped in full over
++# ADB on 31.10.2026; nothing of ours has run on it yet.
++#
++# Same shape as hy310_defconfig and hy300_pro_defconfig: this file says what
++# the hardware is, a role fragment in configs/fragments/ says what a build is
++# for, and build/uboot-build.sh merges the two (docs/uboot/README.md, "Which
++# defconfig"). Everything outside the DRAM block, the device tree name, the
++# identification string and CONFIG_H713_BOARD_HY320 is the HY300 Pro's base,
++# which is the HY310's minus HS200 -- see below.
++#
++# **No image is shipped for this board.** It is below `verified`
++# (boards/hy320, boards/README.md honesty rule). The only build this base is
++# meant for is the stage 5 *test image*, built on purpose (`--test-image`),
++# named `-TEST`, and flashed by that owner alone. The unit has no UART, so
++# every choice below takes the stock behaviour over a guess.
++#
++# Where the values come from:
++#   - the DRAM block is this board's own: the 24 words of the vendor boot0 at
++#     LBA 16 of the owner's dump (installer/h713/profiles/hy320.py, "dram"),
++#     equal to the HY350 image's word for word. Nothing in it is borrowed,
++#     with one deliberate exception, para2 and tpr13: the boot0 at LBA 16
++#     says 0x00000000 / 0x34010100, the second boot0 copy at LBA 256 of the
++#     same eMMC says 0x04000000 / 0xb4016103 -- the pair the vendor flash
++#     tool writes, and the pair every working base in this fork runs
++#     (hy310, l018, hy300_pro). This file takes the LBA 256 pair.
++#   - CONFIG_DRAM_CLK=792 is the boot0's own clock, and the HY310's. At 792
++#     the DDR3 path takes the same branches as on the HY310 (below the
++#     800 MHz speed-bin split, above the clk > 672 PHY arm of
++#     iw12_phy_train()), so nothing in it is new.
++#   - tpr11/tpr12 0x44440000/0x00005555 are this board's (and the HY350's,
++#     HY300 T08's and HY300 Pro's); the HY310 runs 0x44340000/0x00006666.
++#   - tpr0..tpr2 are in the file for completeness only: the DDR3 arm of
++#     iw12_set_timing() in arch/arm/mach-sunxi/dram_sun50iw12.c never reads
++#     them; only the LPDDR3 arm unpacks them.
++#   - DX_ODT, DX_DRI and CA_DRI are not part of the 24-word boot0 block: not
++#     this board's, the values every H713 base in the fork carries.
++#   - no CONFIG_MMC_HS200_SUPPORT. The stock eMMC node does offer
++#     mmc-hs200-1_8v (and hs400, 200 MHz), but HS200 with this driver's
++#     tuning has been run on the HY310 only (644feba7e43: "The other H713
++#     boards keep MMC high speed until someone with one of them reports");
++#     l018 carries it because it is the HY310's base. A board without a
++#     console takes the 52 MHz that every H713 board here has booted with.
++#   - the device tree is sun50i-h713-hy320, an include of the bench board's
++#     plus model and compatible -- the pattern of the HY310's and HY300 Pro's.
++#   - CONFIG_H713_BOARD_HY320 gives project 0x30 this board's own panel row
++#     (its 2200x1125 raster at 164 MHz, not the HY310's 2128x1120 at 143 MHz)
++#     and drives only the panel lines its stock tree names (PH19, PH16, PH15;
++#     PF6 is this board's SD card detect). See arch/arm/mach-sunxi/Kconfig.
++CONFIG_ARM=y
++CONFIG_ARCH_SUNXI=y
++CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy320"
++CONFIG_DRAM_CLK=792
++CONFIG_SPL=y
++CONFIG_IDENT_STRING=" HY320"
++CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
++CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
++CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
++CONFIG_DRAM_SUNXI_ODT_EN=0x1
++CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
++CONFIG_DRAM_SUNXI_PARA1=0x000010f4
++CONFIG_DRAM_SUNXI_PARA2=0x04000000
++CONFIG_DRAM_SUNXI_MR0=0x00001c70
++CONFIG_DRAM_SUNXI_MR1=0x00000040
++CONFIG_DRAM_SUNXI_MR2=0x00000018
++CONFIG_DRAM_SUNXI_MR3=0x00000000
++CONFIG_DRAM_SUNXI_TPR0=0x004a2195
++CONFIG_DRAM_SUNXI_TPR1=0x02423190
++CONFIG_DRAM_SUNXI_TPR2=0x0008b061
++CONFIG_DRAM_SUNXI_TPR3=0xb4787896
++CONFIG_DRAM_SUNXI_TPR4=0x00000000
++CONFIG_DRAM_SUNXI_TPR5=0x48484848
++CONFIG_DRAM_SUNXI_TPR6=0x00000048
++CONFIG_DRAM_SUNXI_TPR7=0x1620121e
++CONFIG_DRAM_SUNXI_TPR8=0x00000000
++CONFIG_DRAM_SUNXI_TPR9=0x00000000
++CONFIG_DRAM_SUNXI_TPR10=0x00000000
++CONFIG_DRAM_SUNXI_TPR11=0x44440000
++CONFIG_DRAM_SUNXI_TPR12=0x00005555
++CONFIG_DRAM_SUNXI_TPR13=0xb4016103
++CONFIG_MACH_SUN50I_H713=y
++CONFIG_H713_POWERON_LIGHT_FAN=y
++CONFIG_H713_MIPS_BOOT=y
++CONFIG_H713_BOARD_HY320=y
++CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
++CONFIG_MMC_SUNXI_SLOT_EXTRA=2
++CONFIG_MMC0_CD_PIN=""
++# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
++CONFIG_SUPPORT_EMMC_BOOT=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_OHCI_HCD=y
++# CONFIG_WATCHDOG is not set
++CONFIG_WDT=y
++CONFIG_USB_MUSB_GADGET=y
++CONFIG_CMD_USB_MASS_STORAGE=y
++# CONFIG_USB_ETHER is not set
++CONFIG_CONSOLE_MUX=y
++CONFIG_SYS_CONSOLE_IS_IN_ENV=y
++CONFIG_USB_FUNCTION_ACM=y
++# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
++CONFIG_SYSRESET=y
++CONFIG_SYSRESET_PSCI=y
++CONFIG_CMD_POWEROFF=y
++CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
++# No "usb start" in the preboot, as on the HY310 since 15.09.: the host-side
++# USB scan cost 2 to 5 s on every boot and nothing in the product boot reads a
++# USB device (no keyboard, no USB boot medium; the installer role brings its
++# own PREBOOT and uses the gadget, not the host). The kernel starts the
++# controllers itself -- patch 0005a clears the HCI PHYs' SIDDQ bit, which is
++# what "usb start" was standing in for. The two reboot-mode magics stay:
++# "reboot fastboot" and "reboot bootloader" from Linux.
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi"
++# CONFIG_ENV_IS_IN_FAT is not set
++CONFIG_ENV_IS_IN_MMC=y
++CONFIG_ENV_OFFSET=0x700000
++CONFIG_ENV_MMC_DEVICE_INDEX=1
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
++CONFIG_H713_VENDOR_CHAINLOAD=y
++CONFIG_CMD_WDT=y
++CONFIG_CMD_GPIO=y
+diff --git a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy320.dts b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy320.dts
+new file mode 100644
+index 00000000000..fcc55d83307
+--- /dev/null
++++ b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy320.dts
+@@ -0,0 +1,26 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * MagCubic HY320 projector. One unit, its owner's, dumped in full; nobody
++ * here has held one.
++ *
++ * Like the HY310's and the HY300 Pro's trees, this is an include of the bench
++ * board's rather than a copy, so that the trees cannot drift and a boot log
++ * names the board it is on. The DRAM block that distinguishes this board
++ * lives in configs/hy320_defconfig, not here.
++ *
++ * Not described here: the panel. It declares project id 0x30 and its
++ * panel_config.ini a 2200x1125 raster at 164 MHz; no node in any of these
++ * trees describes a panel, the display coprocessor drives it from its own
++ * tables, and the row U-Boot patches those tables with is chosen by
++ * CONFIG_H713_BOARD_HY320 in arch/arm/mach-sunxi/h713_mips.c.
++ *
++ * Nothing else about this board has been measured under our firmware, so
++ * nothing else is overridden. When something is measured, it belongs here.
++ */
++
++#include "sun50i-h713-hy200-qz713df-a1.dts"
++
++/ {
++	model = "MagCubic HY320";
++	compatible = "magcubic,hy320", "allwinner,sun50i-h713";
++};

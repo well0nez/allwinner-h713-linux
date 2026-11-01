@@ -215,21 +215,6 @@ class ModeTest(unittest.TestCase):
         self.assertIn("\nExecStart=/usr/local/sbin/h713-mode rescue\n", unit)
         self.assertIn("\nConditionPathExists=/usr/local/sbin/h713-mips-restart\n", unit)   # the restart is still what the mode tool calls
 
-    def test_after_a_sleep_a_wifi_interface_left_down_restarts_h713_wifi(self):
-        """the HY320's AP was gone after every standby until h713-wifi was restarted (doku/227); one that is up stays alone"""
-        down = Root(active=["h713-wifi.service"])
-        down.put("sys/class/net/wlan0/operstate", "down\n")
-        down.mode("sleep-post")
-        self.assertIn("systemctl restart --no-block h713-wifi.service", down.calls())
-        up = Root(active=["h713-wifi.service"])
-        up.put("sys/class/net/wlan0/operstate", "up\n")
-        up.mode("sleep-post")
-        self.assertNotIn("systemctl restart --no-block h713-wifi.service", up.calls())
-        off = Root()
-        off.put("sys/class/net/wlan0/operstate", "down\n")
-        off.mode("sleep-post")
-        self.assertNotIn("systemctl restart --no-block h713-wifi.service", off.calls())   # Wi-Fi switched off: not started by a sleep
-
     def test_a_wrong_word_is_a_usage_error(self):
         self.assertEqual(Root().mode("kodi").returncode, 2)
 

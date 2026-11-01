@@ -985,7 +985,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       **Übernahme in Schritten (Marco 02.11.: "wir machen das genauso"):**
       (1) **erledigt 02.11.2026:** Extraktor-Fix `848e0f2f` als Cherry-Pick (`-x`) auf `versuch/extractor-logo-fix`, Autor bleibt er;
       seine noreply-Adresse in `.githooks/pre-push`; Tests grün (`arbeit/issue5-hy320-20261031/uebernahme/`). Hilft HY350, T08 (#7), #8.
-      (2) **offen, Rechnerarbeit:** das Board als `partial` - seine vier U-Boot-Commits gegenbauen (die vier anderen Boards müssen
+      (2) **erledigt 02.11.2026** (Marco: "das mit der offenen antwort machen wir so . ok"; `arbeit/issue5-hy320-20261031/uebernahme/`,
+      Zweig `versuch/hy320-board`): seine 21 Commits als Cherry-Picks mit `-x` (Autor er), unsere zwei Korrekturen, dann unser Commit:
+      0336 im Baum, aber in `series` auskommentiert; `h713-tv`-Namensstring-Tabelle und `h713-mode`-WLAN-Neustart auf `main`-Stand
+      zurück (`under_page` bleibt); Gitlink U-Boot `26f974b8d6a` = u-boot#1 lokal auf `h713-hy310`, Spiegel 110 Patches verifiziert
+      (Baum `48c416ec`); crust#1 lokal auf `h713` (`21d5356`), sein Spiegel 89 verifiziert (Baum `d757f3cc`); Forks nicht gepusht.
+      Folge für den HY320 in unserem Abbild: HDMI-Eingang Port 1 ohne EDID, bis (3) gemessen ist (Board-README, Antwort). War:
+      das Board als `partial` - seine vier U-Boot-Commits gegenbauen (die vier anderen Boards müssen
       bytegleich bleiben, wie am 31.10.), dann Fork-Merge u-boot#1, Patchspiegel, Gitlink; 0335 mit unseren drei Korrekturen
       (`versuch/hy320-pr6-korrektur`: INDEX, conlog-Rezept raus, 0335-Kopf; `korrektur/patches/`); crust#1; Profil, `boards/hy320/`,
       0337/0338 (Port aus dem Gerätebaum, andere Boards unverändert = Port 0), 0339-0348 soweit nur HY320 (Opt-in prüfen);

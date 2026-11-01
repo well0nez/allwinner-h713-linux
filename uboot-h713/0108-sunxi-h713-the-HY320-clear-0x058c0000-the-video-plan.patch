@@ -1,0 +1,62 @@
+From b5186e6bea748e54015e046be46b4dc178a5800f Mon Sep 17 00:00:00 2001
+From: minpeter <62207008+minpeter@users.noreply.github.com>
+Date: Tue, 3 Nov 2026 00:32:34 +0900
+Subject: [PATCH 108/110] sunxi: h713: the HY320 - clear 0x058c0000, the video
+ plane shows
+
+The HY320's LogoRegData.bin leaves 0x058c0000 (mirrored at 0x058c1000) at
+0x10000040 from its prologue, and its DE group ends without touching it
+again. The L018's file -- the same 1920x1080 dual-port panel class --
+closes its DE group with 0x058c0000 = 0 (record +0x22dc).
+
+Bit 28 of that word blanks the video plane at the mixer and nothing else:
+with it set, a frame the firmware has processed reaches the panel block's
+probes (0x051c0144, 0x051c0304, the histogram at 0x051c0380..0x03fc) as
+white and the wall stays black, while the RGB channel shows normally and a
+half-transparent RGB overlay shows black where the video should be.
+
+Measured on the owner's unit, 01.11.2026, by eye at the wall:
+- 0x10000040 (the file's value): video black, under the "ADT-3 2024"
+  display firmware and under the HY310's (16c74a28...) alike;
+- 0x00000040: video shown; 0x10000000: black;
+- the L018's whole LogoRegData.bin: video shown under both firmwares;
+- this change with the board's own files, the stock kernel module and
+  nothing else: colour bars and motion on the video plane.
+
+Under CONFIG_H713_BOARD_HY320 only: the other ADT-3 family boards have
+not been measured.
+---
+ arch/arm/mach-sunxi/h713_mips.c | 20 ++++++++++++++++++++
+ 1 file changed, 20 insertions(+)
+
+diff --git a/arch/arm/mach-sunxi/h713_mips.c b/arch/arm/mach-sunxi/h713_mips.c
+index 95e8eaa16e5..280ff476473 100644
+--- a/arch/arm/mach-sunxi/h713_mips.c
++++ b/arch/arm/mach-sunxi/h713_mips.c
+@@ -6605,6 +6605,26 @@ static int h713_disp_run(ulong blob, u32 project, bool skip_hdcp_wait,
+ 	if (ret)
+ 		return ret;
+ 
++#ifdef CONFIG_H713_BOARD_HY320
++	/*
++	 * The HY320's LogoRegData.bin ("ADT-3 2024" family) leaves
++	 * 0x058c0000 (and its mirror at 0x058c1000) at 0x10000040 from the
++	 * prologue, and its DE group ends there. The L018's file -- the same
++	 * 1920x1080 dual-port class of panel -- closes its DE group with
++	 * 0x058c0000 = 0 (record +0x22dc). Bit 28 of that word blanks the
++	 * video plane at the mixer and nothing else: with it set, a frame the
++	 * firmware has processed reaches the panel block's own probes
++	 * (0x051c0144, 0x051c0304) and the wall stays black, while the RGB
++	 * channel shows normally. Measured on the owner's unit 01.11.2026:
++	 * 0x10000000 alone blanks the video, 0x00000040 alone does not, and
++	 * the L018's word 0 shows it under both display firmwares.
++	 */
++	writel(0, 0x058c0000);
++	writel(0, 0x058c1000);
++	printf("H713 panel: HY320 - 0x058c0000 cleared as the L018's DE group "
++	       "does (bit 28 blanks the video plane)\n");
++#endif
++
+ 	if (stock_panel_power) {
+ 		ret = h713_disp_stock_panel_power();
+ 		if (ret)

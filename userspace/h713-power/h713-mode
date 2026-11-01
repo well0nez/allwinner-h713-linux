@@ -17,8 +17,7 @@
 #   h713-mode sleep-pre   before a sleep: write the running mode units to /run/h713-mode.resume (the one place the mode
 #                         before a sleep is remembered) and end them
 #   h713-mode sleep-post  after a sleep: bring the picture path back when the display MIPS is parked (h713-mips-restart
-#                         restarts h713-tv and h713-warp), bring the Wi-Fi back when the sleep left its interface down, then
-#                         start what the file remembers and remove it
+#                         restarts h713-tv and h713-warp), then start what the file remembers and remove it
 #   h713-mode rescue      h713-tv gave up and h713-tv-rescue.service reloads the display MIPS: h713-mips-restart stops h713-warp, and the
 #                         mode units end with it (BindsTo=). Remember the running ones in the same file as before a sleep (h713-keys
 #                         then takes their end for the box's own and opens no launcher), restart, start them again, remove the file
@@ -33,7 +32,6 @@ MEM=$R/run/h713-mode.resume
 SYSTEMCTL=${H713_SYSTEMCTL:-systemctl}
 RESTART=${H713_MIPS_RESTART:-/usr/local/sbin/h713-mips-restart}
 TV=${H713_TV:-/usr/local/sbin/h713-tv}
-NET=${H713_NET:-$R/sys/class/net}
 
 say() { [ -n "${JOURNAL_STREAM:-}" ] || echo "h713-mode: $*" >&2; logger -t h713-mode -- "$*" 2>/dev/null || :; }
 units() { sed -n 's/^[[:space:]]*unit[[:space:]]*=[[:space:]]*\([^[:space:]#]*\).*/\1/p' "$D"/*.conf 2>/dev/null; }
@@ -56,19 +54,6 @@ parked() {
 	done
 	return 1
 }
-# The HY320's AIC8800 comes out of the sleep with wlan0 down and hostapd gone (02.11.2026, doku/227: 2 of 2 standbys, the AP
-# lost until `systemctl restart h713-wifi`, which brought it back at once). Where h713-wifi runs and an interface it uses is down,
-# the unit is restarted; an interface that is up is left alone, so a board whose Wi-Fi survives the sleep sees nothing of this.
-wifi_back() {
-	[ "$($SYSTEMCTL is-active h713-wifi.service 2>/dev/null)" = active ] || return 0
-	for n in "$NET"/wlan*; do
-		s=$(cat "$n/operstate" 2>/dev/null) || continue
-		[ "$s" != up ] || continue	# carrying: this one came through the sleep
-		say "after the sleep: ${n##*/} is down, h713-wifi restarted"
-		$SYSTEMCTL restart --no-block h713-wifi.service || say "restarting h713-wifi failed"
-		return
-	done
-}
 
 case ${1:-} in
 status)
@@ -89,7 +74,6 @@ sleep-post)
 	else
 		say "after the sleep: the display MIPS is not parked, no restart"
 	fi
-	wifi_back
 	resume ;;
 rescue)
 	# a sleep may have written MEM already and ended its modes: running is then empty and that file stays what it is

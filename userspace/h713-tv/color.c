@@ -72,10 +72,9 @@
  * the slot must be empty (all zero) or carry this program's mark; anything else
  * is somebody's, and nothing is written. The cpu_comm region must be the one the
  * board file names (reserved-memory cpu-comm@...) and carry the transport's magic,
- * and the firmware must be one of those these addresses were read from (fwc_fw:
- * the HY310's and the HY320's display.bin): four of its strings (the RPC names
- * and the TSE feature "wb_r_gain") are looked for at the addresses they have in
- * that display.bin. Otherwise the whole feature says why it
+ * and the firmware must be the one these addresses were read from: four of its
+ * strings (the RPC names and the TSE feature "wb_r_gain") are looked for at the
+ * addresses they have in display.bin. Otherwise the whole feature says why it
  * is not there, and nothing is sent. Registers are read through /dev/mem to see
  * that the call did what it was asked to (and to notice that the firmware has
  * forgotten it).
@@ -136,7 +135,7 @@ _Static_assert(FWC_SHM_CM_WORDS >= FWC_CM_N + 2, "the colour management block fi
 #define FWC_BASE_FILE	"/run/h713-tv-state/cm-base"
 #define FWC_VERIFY_MS	400
 
-/* the registers (pq_custom.TSE features wb_*; the firmware's table {reg, shift} for the colour management, see fwc_fw) */
+/* the registers (pq_custom.TSE features wb_*; Firmware table 0x8B22F824 for the colour management) */
 #define FWC_REG_WB_D4	0x051C00D4u
 #define FWC_REG_WB_D8	0x051C00D8u
 #define FWC_REG_WB_DC	0x051C00DCu
@@ -156,25 +155,12 @@ static const char *const fwc_cm_axis[FWC_CM_AXES] = {
 };
 static const char *const fwc_cm_comp[3] = { "hue", "sat", "value" };
 
-/*
- * The display firmwares the machinery was checked against, each by four of its strings at the addresses they have in
- * its display.bin (ARM physical). Everything else this file relies on is the same in all of them: the RPC ids (hashed
- * from the names), the block of six words and the feature ids 35..40 behind THal_Vp_SetWhiteBalance, the wb_* features
- * of pq_custom.TSE on 0x051C00D4..E0 with the same masks and curve, the colour management table {reg, shift} on
- * 0x0514030C.., the transport's magic and the allocator at +0x2D000 (docs/tools/h713-tv.md).
- */
-#define FWC_SIG_N	4
-static const char *const fwc_sig_text[FWC_SIG_N] = {
-	"wb_r_gain", "THal_Vp_SetWhiteBalance", "THal_Vp_SetColorManagement", "OnHalColorManagementChange",
-};
-static const struct fwc_fw {
-	const char *name;
-	uint32_t phys[FWC_SIG_N];	/* where fwc_sig_text[i] is */
-} fwc_fw[] = {
-	/* display.bin 1256216 bytes, sha256 16c74a28...; colour management table 0x8B22F824 */
-	{ "HY310 (QZ713 V3.1)", { 0x4B2002A4u, 0x4B22DDA8u, 0x4B22D5F0u, 0x4B1EBF58u } },
-	/* display.bin 1252128 bytes, sha256 22a7df11...; colour management table 0x8B22E824 */
-	{ "HY320", { 0x4B1FF424u, 0x4B22CDA8u, 0x4B22C5F0u, 0x4B1EB104u } },
+/* strings of the firmware this was written for, at the addresses they have in display.bin (ARM physical) */
+static const struct { uint32_t phys; const char *text; } fwc_sig[] = {
+	{ 0x4B2002A4u, "wb_r_gain" },
+	{ 0x4B22DDA8u, "THal_Vp_SetWhiteBalance" },
+	{ 0x4B22D5F0u, "THal_Vp_SetColorManagement" },
+	{ 0x4B1EBF58u, "OnHalColorManagementChange" },
 };
 
 /* the ways to the hardware; the tests put a made-up firmware in their place */
@@ -196,7 +182,6 @@ struct fwc {
 	bool mode_open;			/* fwc_mode_begin() has taken the steps off, fwc_mode_end() has not laid them on yet */
 	const char *base_path;		/* NULL: not kept over a restart of this program */
 	bool probed, ok;
-	const struct fwc_fw *fw;	/* the firmware found (ok) */
 	char why[200];			/* why not ok, in the words of the journal */
 	uint32_t shm;			/* base of the cpu_comm region */
 	bool wb_applied;		/* the registers held the wanted values after the last send */
@@ -437,29 +422,10 @@ static bool fwc_wb_neutral(void)
 
 /* ---- is the machinery there, and is it the one these addresses belong to ---- */
 
-/* the first of the four strings that is not where this firmware has it; FWC_SIG_N: all are */
-static unsigned int fwc_sig_mismatch(const struct fwc_fw *fw)
-{
-	unsigned int i;
-	size_t j;
-
-	for (i = 0; i < FWC_SIG_N; i++) {
-		for (j = 0; j <= strlen(fwc_sig_text[i]); j++) {
-			uint32_t a = fw->phys[i] + (uint32_t)j, w;
-
-			if (!fwc.io->rd(a & ~3u, &w) || (w >> (8 * (a & 3)) & 0xff) != (unsigned char)fwc_sig_text[i][j])
-				return i;
-		}
-	}
-
-	return FWC_SIG_N;
-}
-
 static bool fwc_probe(void)
 {
 	uint32_t base, size, v;
-	unsigned int k;
-	size_t l;
+	unsigned int i, j;
 
 	if (fwc.ok)
 		return true;
@@ -482,24 +448,21 @@ static bool fwc_probe(void)
 			 "no cpu_comm transport at %#x (the magic is not there, or /dev/mem cannot be read)", base);
 		return false;
 	}
-	l = (size_t)snprintf(fwc.why, sizeof(fwc.why), "not the display firmware these addresses were read from (");
-	for (k = 0; k < sizeof(fwc_fw) / sizeof(fwc_fw[0]); k++) {
-		unsigned int i = fwc_sig_mismatch(&fwc_fw[k]);
+	for (i = 0; i < sizeof(fwc_sig) / sizeof(fwc_sig[0]); i++) {
+		for (j = 0; j <= strlen(fwc_sig[i].text); j++) {
+			uint32_t a = fwc_sig[i].phys + j, w;
 
-		if (i == FWC_SIG_N) {
-			fwc.fw = &fwc_fw[k];
-			fwc.why[0] = 0;
-			fwc.ok = true;
-			return true;
+			if (!fwc.io->rd(a & ~3u, &w) || (w >> (8 * (a & 3)) & 0xff) != (unsigned char)fwc_sig[i].text[j]) {
+				snprintf(fwc.why, sizeof(fwc.why),
+					 "not the display firmware these addresses were read from (\"%s\" is not at %#x)",
+					 fwc_sig[i].text, fwc_sig[i].phys);
+				return false;
+			}
 		}
-		if (l < sizeof(fwc.why))
-			l += (size_t)snprintf(fwc.why + l, sizeof(fwc.why) - l, "%s%s: \"%s\" is not at %#x", k ? "; " : "",
-					      fwc_fw[k].name, fwc_sig_text[i], fwc_fw[k].phys[i]);
 	}
-	if (l < sizeof(fwc.why))
-		snprintf(fwc.why + l, sizeof(fwc.why) - l, ")");
+	fwc.ok = true;
 
-	return false;
+	return true;
 }
 
 /* the slot is empty or ours; else its words are named */
@@ -1335,9 +1298,7 @@ void fwc_status(struct reply *r)
 		  fwc.wb_applied ? ", on the registers" : fwc_wb_neutral() ? "" : ", NOT applied");
 	reply_add(r, "colour mgmt     %u entr%s changed%s\n", n, n == 1 ? "y" : "ies",
 		  fwc.cm_applied ? ", on the registers" : n ? ", NOT applied" : "");
-	if (fwc.ok)
-		reply_add(r, "                display firmware %s\n", fwc.fw->name);
-	else if (fwc.why[0])
+	if (!fwc.ok && fwc.why[0])
 		reply_add(r, "                not available: %s\n", fwc.why);
 	if (fwc.sends_wb || fwc.sends_cm)
 		reply_add(r, "                sent %u white balance, %u colour management, %u repairs; last: %s\n", fwc.sends_wb,

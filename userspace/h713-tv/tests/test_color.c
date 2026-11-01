@@ -162,24 +162,13 @@ static void machine_reset(void)
 	put(FWC_SHM_BASE + FWC_SHM_MAGIC2, FWC_SHM_MAGIC);
 	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 47, FWC_SHM_BASE + FWC_SMM_HEAD);	/* the HY310 18.10.2026: break at +0x33000 */
 	put(FWC_SHM_BASE + FWC_SMM_HEAD + 4 * 45, 0x6000);
-	for (i = 0; i < FWC_SIG_N; i++)		/* the HY310's firmware */
-		put_text(fwc_fw[0].phys[i], fwc_sig_text[i]);
+	for (i = 0; i < sizeof(fwc_sig) / sizeof(fwc_sig[0]); i++)
+		put_text(fwc_sig[i].phys, fwc_sig[i].text);
 	put(FWC_REG_WB_D4, 0);
 	put(FWC_REG_WB_D8, 0);
 	put(FWC_REG_WB_DC, 0x08000800);
 	put(FWC_REG_WB_E0, 0x08000000);
 	put_cm_regs();
-}
-
-/* the HY320's display.bin instead of the HY310's: the same machinery, its strings elsewhere */
-static void firmware_hy320(void)
-{
-	unsigned int i;
-
-	for (i = 0; i < FWC_SIG_N; i++) {
-		put_text(fwc_fw[0].phys[i], "XXXXXXXXXXXXXXXXXXXXXXXXXX");
-		put_text(fwc_fw[1].phys[i], fwc_sig_text[i]);
-	}
 }
 
 /* the firmware forgets what it was told (a restart of the display, a picture mode's script): registers back, cache stays */
@@ -545,30 +534,13 @@ int main(void)
 	/* ---- not the firmware this was written for ---- */
 	machine_reset();
 	program_starts();
-	put(fwc_fw[0].phys[1], 0x58585858);
+	put(fwc_sig[1].phys, 0x58585858);
 	reply_clear(&r);
 	fwc_set(&r, 1, "563");
 	check(r.failed && strstr(r.buf, "not the display firmware") && calls_wb == 0 && nwlog == 0 && fwc.wb[1] == 512,
 	      "another firmware: refused, no call, nothing written");
-	check(strstr(fwc.why, "HY310 (QZ713 V3.1): \"THal_Vp_SetWhiteBalance\" is not at 0x4b22dda8") &&
-	      strstr(fwc.why, "HY320: \"wb_r_gain\" is not at 0x4b1ff424"), "the answer names what each known firmware lacks");
 	fwc_sync("the start");
 	check(calls_wb == 0 && calls_cm == 0 && nwlog == 0, "and the start does not touch it either");
-	/* ---- the HY320's display firmware ---- */
-	machine_reset();
-	program_starts();
-	firmware_hy320();
-	reply_clear(&r);
-	fwc_set(&r, 1, "563");
-	check(!r.failed && calls_wb == 1 && (get(FWC_REG_WB_DC) & 0xfff) == 0x8cc && fwc.fw == &fwc_fw[1],
-	      "the HY320's firmware: found by its own addresses, the white balance is sent");
-	reply_clear(&r);
-	fwc_status(&r);
-	check(strstr(r.buf, "display firmware HY320\n") && !strstr(r.buf, "not available"), "status names the firmware");
-	reply_clear(&r);
-	args[0] = "yellow"; args[1] = "5"; args[2] = "5"; args[3] = "5";
-	cmd_cm(&r, args, 4);
-	check(!r.failed && calls_cm >= 1 && cm_mag(9) == 5, "... and the colour management too");
 	machine_reset();
 	program_starts();
 	put(FWC_SHM_BASE + FWC_SHM_MAGIC2, 0);
