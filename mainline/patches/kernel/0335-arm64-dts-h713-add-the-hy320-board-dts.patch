@@ -1,4 +1,4 @@
-From: well0nez <8986239+well0nez@users.noreply.github.com>
+From: minpeter <62207008+minpeter@users.noreply.github.com>
 Subject: arm64: dts: h713: add the HY320 board dts
 
 The MagCubic HY320 (stock Android 11 userland on the ADT-3 vendor build
@@ -37,8 +37,11 @@ serial console:
 Power key PL4 and IR on PL9 are the HY310's by the stock tree, and its IR
 address list holds the 0xfd02 and 0xff00 remotes rc-h713-fd02 maps.
 
-Built (dtc, against the series applied to 6.18.38); not booted. The image
-built from it is a TEST image for the board's owner.
+Built (dtc, against the series applied to 6.18.38) and booted in a TEST
+image on the owner's unit on 31.10.2026: Linux with the fan's tacho on
+PH17, Wi-Fi, the display firmware's log at the addresses above, the AFBD
+handoff words and the RGB plane (boards/hy320/README.md). Measured by the
+owner; the TEST image stays for the board's owner.
 
 diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
 --- a/arch/arm64/boot/dts/allwinner/Makefile
