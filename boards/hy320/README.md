@@ -42,8 +42,8 @@ installed on it the same day.
 
 Installed with `h713-install install --test-image --full` from a host on the USB-A port; FEL was reached
 without the reset button, by `adb reboot efex` from the stock Android. No serial console: the evidence is
-the wall (the owner's eyes), the Wi-Fi access point and SSH, and U-Boot's own console recorded to the
-eMMC (below).
+the wall (the owner's eyes), the Wi-Fi access point and SSH, and U-Boot's own console handed to Linux
+(`h713_conlog`, below).
 
 | | |
 |---|---|
@@ -141,16 +141,12 @@ The owner first heard the sound as crackling; with music playing it was fine, at
 ### U-Boot's console without a UART
 
 `hy320_defconfig` sets `CONFIG_CONSOLE_RECORD`; `h713_conlog <addr>` (U-Boot fork,
-`arch/arm/mach-sunxi/h713_conlog.c`) copies the record behind a header `H713CLOG`, u32 length, u32 flags.
-On the unit the environment carries
-
-```
-bootcmd=h713_disp init ${h713_project} logo; h713_conlog 0x45000000; mmc dev 1; mmc write 0x45000000 0x2800 0x400; run boot_${h713_boot}; run boot_net
-```
-
-left the log in the unused tail of `hy310-uboot` (LBA 10240..11263, well clear of `hy310-keys` at
-12288); read it from Linux with `dd if=/dev/mmcblk0 bs=512 skip=10240 count=1024 | tail -c +17 | head -c
-<length>`. Back to the plain `bootcmd` since 01.11.2026; set it again for a U-Boot question.
+`arch/arm/mach-sunxi/h713_conlog.c`) copies the record to `<addr>` in RAM behind a header `H713CLOG`,
+u32 length, u32 flags. The copy writes nothing else. Where the log goes from there is not settled yet:
+the unused tail of `hy310-uboot` (LBA 10240..11263) is no place for it, because the image checks allow a
+U-Boot of the partition's full 10240 sectors (LBA 2048..12287) and it would be an eMMC write on every
+boot. Its owner read the log that way on 31.10.2026 while bringing the board up (an `mmc write` in his
+`bootcmd`, back to the plain `bootcmd` since 01.11.2026); it is not a recipe.
 
 ## What we do not know
 

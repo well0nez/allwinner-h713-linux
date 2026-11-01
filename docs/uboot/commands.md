@@ -65,10 +65,10 @@ fault, not for a normal boot.
 
 Built where the base sets `CONFIG_CONSOLE_RECORD` (today `hy320_defconfig`). `h713_conlog <addr>` copies
 what U-Boot has printed since relocation to `<addr>` behind a 16-byte header - `H713CLOG`, u32 length,
-u32 flags (bit 0: the record overflowed) - and sets `${filesize}`. Put into `bootcmd` after `h713_disp init`
-and followed by `mmc dev 1; mmc write <addr> 0x2800 0x400`, it leaves every boot's log in the unused tail
-of `hy310-uboot` (LBA 10240..11263), where Linux reads it with `dd` (boards/hy320/README.md, measured on
-the HY320 on 31.10.2026: 69 lines from `Core:` to "display initialised").
+u32 flags (bit 0: the record overflowed) - and sets `${filesize}`. It writes nothing but that copy in RAM.
+A place on the eMMC for the log is not assigned yet; the unused tail of `hy310-uboot` is not one, since
+U-Boot may fill that partition (boards/hy320/README.md). Measured on the HY320 on 31.10.2026: 69 lines
+from `Core:` to "display initialised".
 
 ## h713_logo - replay the vendor boot-logo register table (diagnostic)
 
