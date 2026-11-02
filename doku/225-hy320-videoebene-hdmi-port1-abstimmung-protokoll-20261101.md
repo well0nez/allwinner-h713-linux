@@ -21,7 +21,11 @@ Kernel-Patches `0336` - `0345`, U-Boot-Fork `ca8263484e1`, `fc66272cec5`. Beschr
   der Hersteller-ARISC (v0.8: `0x11728`) bildet Maske -> Port über eine Tabelle (`0x15838`, logisch `00 01 03 02`) mit Byte-Lesen,
   die unter dem Little-Endian-Fenster `02 03 01 00` sehen: Port 1 nie geschrieben, 0 und 2 vertauscht. `0336` schreibt die vier
   Bytes in der Ordnung, die die Firmware liest. Ergebnis ohne Handarbeit: 1920x1080p60, 48 kHz PCM.
-- HDCP: eine Streaming-App auf der Xbox spielt (Besitzer); keine 2.2-Sitzung, also 1.4.
+- HDCP: eine Streaming-App auf der Xbox spielt (Besitzer); keine 2.2-Sitzung, also 1.4. Später am Tag mit Netflix: **2.2-Sitzung
+  steht** (`0x422 = 0x01`, Firmware "port2 HDCP_base:0x6840000 HDCP Process cost tick:676").
+- 4K: 3840x2160p24 von der Xbox gefangen und skaliert (EDID mit 4K30 als erster Timing), die Xbox kehrt aber nach 2..4 s selbst
+  auf 1080p60 zurück. 4K50/60: die gesperrten TSE-Sätze im Speicher freigeschaltet, Y420-Block (VIC 96/97) und HF-VSDB ins EDID -
+  die Xbox sendet, INCAP rastet nie ein. Alles zurückgesetzt.
 
 ## 3 Abgleich gegen Stock
 
