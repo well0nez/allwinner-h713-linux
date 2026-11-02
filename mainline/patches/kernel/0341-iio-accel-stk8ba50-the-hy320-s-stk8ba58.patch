@@ -1,0 +1,350 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: iio: accel: stk8ba50: the HY320's STK8BA58
+
+The HY320's accelerometer at 0x18 on twi1 is a Sensortek STK8BA58 (stock
+tree: "stk,stk83xx", node stk8ba58@18). Read on the unit (01.11.2026,
+I2C reads only): register 0x00 is 0x87, the ID the vendor's stk83xx
+driver gives a data shift of 4 (12 bit); 0x0f is 0x03 (+-2 g), 0x10 is
+0x1f, 0x11 is 0x00; the pairs 0x02..0x07, read as 12 bits left justified,
+give -40/-390/935 at rest, |a| = 1020 LSB - one g at 1024 LSB/g. That is
+the STK8BA50's register map (data 0x02..0x07, RANGESEL 0x0f with codes
+3/5/8, BWSEL 0x10, POWMODE 0x11, SWRST 0x14) with 12-bit samples.
+
+So stk8ba50 learns a second chip: "sensortek,stk8ba58" / "stk8ba58", 12-bit
+channels (s12/16>>4) and its three ranges (+-2/4/8 g at 1024/512/256 LSB/g;
+the vendor driver switches a 16 g request to 8 g). The chip ID is checked
+for the STK8BA58 only and a mismatch is a warning. The driver gets an OF
+match table, so the module loads from the device tree.
+
+And the sampling frequency: STK8BA50_ACCEL_CHANNEL had a comma where an
+"|" belonged, which put IIO_CHAN_INFO_SAMP_FREQ into
+info_mask_shared_by_type_available and left the device without a
+sampling-frequency attribute, while sampling_frequency_available was
+there. It is shared by all channels now: "sampling_frequency", the name
+its _available attribute already has and the one h713-keystone writes.
+
+--- a/drivers/iio/accel/stk8ba50.c
++++ b/drivers/iio/accel/stk8ba50.c
+@@ -1,10 +1,10 @@
+ // SPDX-License-Identifier: GPL-2.0-only
+ /*
+- * Sensortek STK8BA50 3-Axis Accelerometer
++ * Sensortek STK8BA50 and STK8BA58 3-Axis Accelerometers
+  *
+  * Copyright (c) 2015, Intel Corporation.
+  *
+- * STK8BA50 7-bit I2C address: 0x18.
++ * STK8BA50 / STK8BA58 7-bit I2C address: 0x18.
+  */
+ 
+ #include <linux/i2c.h>
+@@ -20,6 +20,7 @@
+ #include <linux/iio/triggered_buffer.h>
+ #include <linux/iio/trigger_consumer.h>
+ 
++#define STK8BA50_REG_CHIPID			0x00
+ #define STK8BA50_REG_XOUT			0x02
+ #define STK8BA50_REG_YOUT			0x04
+ #define STK8BA50_REG_ZOUT			0x06
+@@ -33,7 +34,6 @@
+ #define STK8BA50_MODE_NORMAL			0
+ #define STK8BA50_MODE_SUSPEND			1
+ #define STK8BA50_MODE_POWERBIT			BIT(7)
+-#define STK8BA50_DATA_SHIFT			6
+ #define STK8BA50_RESET_CMD			0xB6
+ #define STK8BA50_SR_1792HZ_IDX			7
+ #define STK8BA50_DREADY_INT_MASK		0x10
+@@ -42,9 +42,17 @@
+ #define STK8BA50_ALL_CHANNEL_SIZE		6
+ 
+ #define STK8BA50_DRIVER_NAME			"stk8ba50"
++#define STK8BA58_DRIVER_NAME			"stk8ba58"
++#define STK8BA58_CHIP_ID			0x87
+ 
+ #define STK8BA50_SCALE_AVAIL			"0.0384 0.0767 0.1534 0.3069"
++#define STK8BA58_SCALE_AVAIL			"0.009577 0.019154 0.038307"
+ 
++struct stk8ba50_scale {
++	u8 reg_val;
++	u32 scale_val;
++};
++
+ /*
+  * The accelerometer has four measurement ranges:
+  * +/-2g; +/-4g; +/-8g; +/-16g
+@@ -61,13 +69,21 @@
+  *
+  * Locally, the range is stored as a table index.
+  */
+-static const struct {
+-	u8 reg_val;
+-	u32 scale_val;
+-} stk8ba50_scale_table[] = {
++static const struct stk8ba50_scale stk8ba50_scale_table[] = {
+ 	{3, 38400}, {5, 76700}, {8, 153400}, {12, 306900}
+ };
+ 
++/*
++ * The STK8BA58 keeps the STK8BA50's register map, but its samples are
++ * 12-bit, left justified in the same register pairs, and it has three
++ * ranges: +/-2g, +/-4g and +/-8g at 1024, 512 and 256 LSB/g.
++ *
++ * scale1 = 9.80665 / 1024 = 0.009577
++ */
++static const struct stk8ba50_scale stk8ba58_scale_table[] = {
++	{3, 9577}, {5, 19154}, {8, 38307}
++};
++
+ /* Sample rates are stored as { <register value>, <Hz value> } */
+ static const struct {
+ 	u8 reg_val;
+@@ -84,8 +100,19 @@
+ 	STK8BA50_REG_ZOUT
+ };
+ 
++struct stk8ba50_chip_info {
++	const char *name;
++	const struct iio_chan_spec *channels;
++	unsigned int num_channels;
++	const struct stk8ba50_scale *scale_table;
++	unsigned int num_scales;
++	const struct iio_info *info;
++	u8 chip_id;	/* 0: no ID is checked */
++};
++
+ struct stk8ba50_data {
+ 	struct i2c_client *client;
++	const struct stk8ba50_chip_info *chip;
+ 	struct mutex lock;
+ 	int range;
+ 	u8 sample_rate_idx;
+@@ -98,37 +125,47 @@
+ 	} scan;
+ };
+ 
+-#define STK8BA50_ACCEL_CHANNEL(index, reg, axis) {			\
++#define STK8BA50_ACCEL_CHANNEL(index, reg, axis, bits) {		\
+ 	.type = IIO_ACCEL,						\
+ 	.address = reg,							\
+ 	.modified = 1,							\
+ 	.channel2 = IIO_MOD_##axis,					\
+ 	.info_mask_separate = BIT(IIO_CHAN_INFO_RAW),			\
+ 	.info_mask_shared_by_type = BIT(IIO_CHAN_INFO_SCALE),		\
+-				    BIT(IIO_CHAN_INFO_SAMP_FREQ),	\
++	.info_mask_shared_by_all = BIT(IIO_CHAN_INFO_SAMP_FREQ),	\
+ 	.scan_index = index,						\
+ 	.scan_type = {							\
+ 		.sign = 's',						\
+-		.realbits = 10,						\
++		.realbits = bits,					\
+ 		.storagebits = 16,					\
+-		.shift = STK8BA50_DATA_SHIFT,				\
++		.shift = 16 - (bits),					\
+ 		.endianness = IIO_CPU,					\
+ 	},								\
+ }
+ 
+ static const struct iio_chan_spec stk8ba50_channels[] = {
+-	STK8BA50_ACCEL_CHANNEL(0, STK8BA50_REG_XOUT, X),
+-	STK8BA50_ACCEL_CHANNEL(1, STK8BA50_REG_YOUT, Y),
+-	STK8BA50_ACCEL_CHANNEL(2, STK8BA50_REG_ZOUT, Z),
++	STK8BA50_ACCEL_CHANNEL(0, STK8BA50_REG_XOUT, X, 10),
++	STK8BA50_ACCEL_CHANNEL(1, STK8BA50_REG_YOUT, Y, 10),
++	STK8BA50_ACCEL_CHANNEL(2, STK8BA50_REG_ZOUT, Z, 10),
+ 	IIO_CHAN_SOFT_TIMESTAMP(3),
+ };
+ 
+-static IIO_CONST_ATTR(in_accel_scale_available, STK8BA50_SCALE_AVAIL);
++static const struct iio_chan_spec stk8ba58_channels[] = {
++	STK8BA50_ACCEL_CHANNEL(0, STK8BA50_REG_XOUT, X, 12),
++	STK8BA50_ACCEL_CHANNEL(1, STK8BA50_REG_YOUT, Y, 12),
++	STK8BA50_ACCEL_CHANNEL(2, STK8BA50_REG_ZOUT, Z, 12),
++	IIO_CHAN_SOFT_TIMESTAMP(3),
++};
++
++static IIO_CONST_ATTR_NAMED(stk8ba50_scale_available,
++			    in_accel_scale_available, STK8BA50_SCALE_AVAIL);
++static IIO_CONST_ATTR_NAMED(stk8ba58_scale_available,
++			    in_accel_scale_available, STK8BA58_SCALE_AVAIL);
+ 
+ static IIO_CONST_ATTR_SAMP_FREQ_AVAIL("14 25 56 112 224 448 896 1792");
+ 
+ static struct attribute *stk8ba50_attributes[] = {
+-	&iio_const_attr_in_accel_scale_available.dev_attr.attr,
++	&iio_const_attr_stk8ba50_scale_available.dev_attr.attr,
+ 	&iio_const_attr_sampling_frequency_available.dev_attr.attr,
+ 	NULL,
+ };
+@@ -137,6 +174,16 @@
+ 	.attrs = stk8ba50_attributes
+ };
+ 
++static struct attribute *stk8ba58_attributes[] = {
++	&iio_const_attr_stk8ba58_scale_available.dev_attr.attr,
++	&iio_const_attr_sampling_frequency_available.dev_attr.attr,
++	NULL,
++};
++
++static const struct attribute_group stk8ba58_attribute_group = {
++	.attrs = stk8ba58_attributes
++};
++
+ static int stk8ba50_read_accel(struct stk8ba50_data *data, u8 reg)
+ {
+ 	int ret;
+@@ -234,7 +281,7 @@
+ 		return IIO_VAL_INT;
+ 	case IIO_CHAN_INFO_SCALE:
+ 		*val = 0;
+-		*val2 = stk8ba50_scale_table[data->range].scale_val;
++		*val2 = data->chip->scale_table[data->range].scale_val;
+ 		return IIO_VAL_INT_PLUS_MICRO;
+ 	case IIO_CHAN_INFO_SAMP_FREQ:
+ 		*val = stk8ba50_samp_freq_table
+@@ -260,8 +307,8 @@
+ 		if (val != 0)
+ 			return -EINVAL;
+ 
+-		for (i = 0; i < ARRAY_SIZE(stk8ba50_scale_table); i++)
+-			if (val2 == stk8ba50_scale_table[i].scale_val) {
++		for (i = 0; i < data->chip->num_scales; i++)
++			if (val2 == data->chip->scale_table[i].scale_val) {
+ 				index = i;
+ 				break;
+ 			}
+@@ -270,7 +317,7 @@
+ 
+ 		ret = i2c_smbus_write_byte_data(data->client,
+ 				STK8BA50_REG_RANGE,
+-				stk8ba50_scale_table[index].reg_val);
++				data->chip->scale_table[index].reg_val);
+ 		if (ret < 0)
+ 			dev_err(&data->client->dev,
+ 					"failed to set measurement range\n");
+@@ -308,6 +355,31 @@
+ 	.attrs			= &stk8ba50_attribute_group,
+ };
+ 
++static const struct iio_info stk8ba58_info = {
++	.read_raw		= stk8ba50_read_raw,
++	.write_raw		= stk8ba50_write_raw,
++	.attrs			= &stk8ba58_attribute_group,
++};
++
++static const struct stk8ba50_chip_info stk8ba50_chip_info = {
++	.name = STK8BA50_DRIVER_NAME,
++	.channels = stk8ba50_channels,
++	.num_channels = ARRAY_SIZE(stk8ba50_channels),
++	.scale_table = stk8ba50_scale_table,
++	.num_scales = ARRAY_SIZE(stk8ba50_scale_table),
++	.info = &stk8ba50_info,
++};
++
++static const struct stk8ba50_chip_info stk8ba58_chip_info = {
++	.name = STK8BA58_DRIVER_NAME,
++	.channels = stk8ba58_channels,
++	.num_channels = ARRAY_SIZE(stk8ba58_channels),
++	.scale_table = stk8ba58_scale_table,
++	.num_scales = ARRAY_SIZE(stk8ba58_scale_table),
++	.info = &stk8ba58_info,
++	.chip_id = STK8BA58_CHIP_ID,
++};
++
+ static irqreturn_t stk8ba50_trigger_handler(int irq, void *p)
+ {
+ 	struct iio_poll_func *pf = p;
+@@ -390,14 +462,28 @@
+ 
+ 	data = iio_priv(indio_dev);
+ 	data->client = client;
++	data->chip = i2c_get_match_data(client);
++	if (!data->chip)
++		data->chip = &stk8ba50_chip_info;
+ 	i2c_set_clientdata(client, indio_dev);
+ 	mutex_init(&data->lock);
+ 
+-	indio_dev->info = &stk8ba50_info;
+-	indio_dev->name = STK8BA50_DRIVER_NAME;
++	indio_dev->info = data->chip->info;
++	indio_dev->name = data->chip->name;
+ 	indio_dev->modes = INDIO_DIRECT_MODE;
+-	indio_dev->channels = stk8ba50_channels;
+-	indio_dev->num_channels = ARRAY_SIZE(stk8ba50_channels);
++	indio_dev->channels = data->chip->channels;
++	indio_dev->num_channels = data->chip->num_channels;
++
++	if (data->chip->chip_id) {
++		ret = i2c_smbus_read_byte_data(client, STK8BA50_REG_CHIPID);
++		if (ret < 0)
++			return dev_err_probe(&client->dev, ret,
++					     "failed to read chip id\n");
++		if (ret != data->chip->chip_id)
++			dev_warn(&client->dev,
++				 "unknown chip id 0x%02x, expected 0x%02x\n",
++				 ret, data->chip->chip_id);
++	}
+ 
+ 	/* Reset all registers on startup */
+ 	ret = i2c_smbus_write_byte_data(client,
+@@ -522,13 +608,21 @@
+ 				stk8ba50_resume);
+ 
+ static const struct i2c_device_id stk8ba50_i2c_id[] = {
+-	{ "stk8ba50" },
++	{ "stk8ba50", (kernel_ulong_t)&stk8ba50_chip_info },
++	{ "stk8ba58", (kernel_ulong_t)&stk8ba58_chip_info },
+ 	{ }
+ };
+ MODULE_DEVICE_TABLE(i2c, stk8ba50_i2c_id);
+ 
++static const struct of_device_id stk8ba50_of_match[] = {
++	{ .compatible = "sensortek,stk8ba50", .data = &stk8ba50_chip_info },
++	{ .compatible = "sensortek,stk8ba58", .data = &stk8ba58_chip_info },
++	{ }
++};
++MODULE_DEVICE_TABLE(of, stk8ba50_of_match);
++
+ static const struct acpi_device_id stk8ba50_acpi_id[] = {
+-	{"STK8BA50", 0},
++	{"STK8BA50", (kernel_ulong_t)&stk8ba50_chip_info},
+ 	{ }
+ };
+ 
+@@ -538,6 +632,7 @@
+ 	.driver = {
+ 		.name = "stk8ba50",
+ 		.pm = pm_sleep_ptr(&stk8ba50_pm_ops),
++		.of_match_table = stk8ba50_of_match,
+ 		.acpi_match_table = stk8ba50_acpi_id,
+ 	},
+ 	.probe =        stk8ba50_probe,
+--- a/drivers/iio/accel/Kconfig
++++ b/drivers/iio/accel/Kconfig
+@@ -677,13 +677,13 @@
+ 	  will be called stk8312.
+ 
+ config STK8BA50
+-	tristate "Sensortek STK8BA50 3-Axis Accelerometer Driver"
++	tristate "Sensortek STK8BA50/STK8BA58 3-Axis Accelerometer Driver"
+ 	depends on I2C
+ 	select IIO_BUFFER
+ 	select IIO_TRIGGERED_BUFFER
+ 	help
+-	  Say yes here to get support for the Sensortek STK8BA50 3-axis
+-	  accelerometer.
++	  Say yes here to get support for the Sensortek STK8BA50 and STK8BA58
++	  3-axis accelerometers.
+ 
+ 	  Choosing M will build the driver as a module. If so, the module
+ 	  will be called stk8ba50.
+--- a/Documentation/devicetree/bindings/trivial-devices.yaml
++++ b/Documentation/devicetree/bindings/trivial-devices.yaml
+@@ -380,6 +380,8 @@
+           - sensortek,stk8312
+             # Sensortek 3 axis accelerometer
+           - sensortek,stk8ba50
++            # Sensortek 3 axis accelerometer
++          - sensortek,stk8ba58
+             # SGX Sensortech VZ89X Sensors
+           - sgx,vz89x
+             # SGX Sensortech VZ89TE Sensors

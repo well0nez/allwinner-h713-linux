@@ -30,7 +30,8 @@ installed on it the same day.
   `sunxi-ir-uinput`, `sunxi-keyboard`, `HYSD-VATOUCH368`, `htc_prj`.
 - **The stock device trees** - U-Boot's (sunxi-package at LBA 24576, item `dtb`) and the kernel's
   (`vendor_boot_a`); they differ only in reserved memory and two status lines. Board-specific nodes: an
-  `stk,stk83xx` (STK8BA58) at 0x18 on twi1 (PH2/PH3), irq PC1; `pwm-fan` on PWM0 with a 40000 ns period, its
+  `stk,stk83xx` (STK8BA58) at 0x18 on twi1 (PH2/PH3), irq PB0 (`<&pio 1 0 1>`, three GPIO cells; *superseded
+  (01.11.2026):* "irq PC1"); `pwm-fan` on PWM0 with a 40000 ns period, its
   tacho `fan1-fg-gpio` PH17, temperature from the GPADC; `motor_ctr` (PH4..PH7, limiter PH14) **disabled**;
   power key PL4; `standby_param` LEDs red PL0 / blue PL1; the IR receiver on PL9.
 - **The two boot0 copies** - LBA 16 carries `para2 0` / `tpr13 0x34010100`, LBA 256 `0x04000000` /
@@ -119,7 +120,21 @@ Kernel `0336` writes that table in the order the firmware reads it, `0337` makes
 device tree's `allwinner,hdmi-port`, `0338` sets it to 1 here. Checked after a reboot with the ARISC
 fix and nothing written by hand: all three DDC RAMs hold the EDID, the Xbox comes up at 1920x1080p60,
 `audio source present=1 rate=48000`, the converter back on BT.709 (no "picture is green" warning).
-The owner first heard the sound as crackling; with music playing it was fine, at volume 40.
+The owner first heard the sound as crackling; with music playing it was fine, at volume 40. Since kernel
+`0343` the codec runs the stock analog words (below), and the owner heard it clean.
+
+### Tuned against the stock firmware (01.11.2026)
+
+| | |
+|---|---|
+| Speaker | our line out was **muted** (`0x02030310` LMUTE/RMUTE 0) and the speaker played over the HP stage; stock runs the line out unmuted, mono differential, at −7.5 dB (`speaker_vol 0x1a`) with HP bits `0x80808f8c`. Kernel `0343` (`allwinner,vendor-analog-init`) writes those words at probe: `0x02030310 = 0x0b15fc7a`, `0x02030324 = 0x80808f8c`; `asound.state` stored with Line Out 26 / Mono Differential. With the HP amp off for 5 s the sound stayed: the speaker hangs off the line out. `dacdrc_used 1` is read and never used by the stock driver - nothing to port. The stock volume curve (0 dB from index 30 on) is not taken: h713-tv keeps its own |
+| White balance | `h713-tv` knows the "ADT-3 2024" firmware's four name strings (`wb_r_gain` at `0x4b1ff424`, ...); `ctl set wb_r_gain 400/700` turned the wall cyan, then pink, and `wb reset` back - the owner's eyes |
+| Accelerometer | an STK8BA58 (chip ID 0x87, 12 bit) at 0x18 on twi1, interrupt pin PB0 (not PC1); no answer at 0x0e (the stock tree's kxtj3). Kernel `0341`/`0342`; `h713-keystone read` gives 1 g. The axes are the HY310's defaults until three poses are measured, so `h713-keystone-auto` is **disabled on the unit** |
+| Thermal | the stock fan driver reads GPADC channel 1 only while LRADC_DATA0 ≤ 5; here it reads 63, so stock never evaluated an NTC on this board, and channel 1 scatters 1313..1526 like the HY310's open input. Kernel `0344` binds that channel, `ntc_num` stays 0; the power-off stays with the SoC zones (orderly at 105 °C, stock 115 °C) and the fan stall. The fan has one speed (PB5's rail) as under stock |
+| Lamp | on while PB5 is high (stock `panel_bl_en`); the firmware's PWM channel 5 is `d_pwm5`, whose only pad is PG7 - this board's Bluetooth UART RX - and the ARM PWM block stays 0. Stock's backlight path (ARM PWM 3) reaches no pad either. No dimmer found; kernel `0345` corrects the comments. PB4 as PWM2 at 0/50/100 % moved neither the fan nor anything reported (the owner did not watch) |
+| HDCP | a streaming app on the Xbox played (owner, 01.11.2026); no 2.2 session, so HDCP 1.4 |
+| Keystone | the GPU warp on the 1080p60 HDMI picture: 60 fps, 2 ms a frame, `check` 0 differing rows; 45 % bottom / 15 % top inward seen smooth on the wall |
+| Power | no standby (the vendor ARISC firmware); `poweroff` -> red LED -> power key -> logo -> HDMI picture back, 01.11.2026 |
 
 ### U-Boot's console without a UART
 
@@ -131,15 +146,18 @@ On the unit the environment carries
 bootcmd=h713_disp init ${h713_project} logo; h713_conlog 0x45000000; mmc dev 1; mmc write 0x45000000 0x2800 0x400; run boot_${h713_boot}; run boot_net
 ```
 
-so every boot leaves the log in the unused tail of `hy310-uboot` (LBA 10240..11263, well clear of
-`hy310-keys` at 12288). Read it from Linux with
-`dd if=/dev/mmcblk0 bs=512 skip=10240 count=1024 | tail -c +17 | head -c <length>`.
+left the log in the unused tail of `hy310-uboot` (LBA 10240..11263, well clear of `hy310-keys` at
+12288); read it from Linux with `dd if=/dev/mmcblk0 bs=512 skip=10240 count=1024 | tail -c +17 | head -c
+<length>`. Back to the plain `bootcmd` since 01.11.2026; set it again for a U-Boot question.
 
 ## What we do not know
 
 - whether the other ADT-3 family boards (HY350, HY300 T08) need the same three words (`0x058c0000`,
   `0x051c0014`, `0x051c0028`) - the fix is scoped to this board until one of them is measured;
-- whether the HDCP-protected parts of a source (streaming apps on the Xbox) authenticate on port 1;
-- which pad PWM channel 5 leaves the SoC on, and whether the PWM words change the lamp;
-- whether the STK8BA58 is driven by anything in mainline;
+- whether an NTC is fitted at all (a cold-start series of GPADC channel 1 would tell: about 2050..2200 from cold,
+  falling as the box warms, scatter within ±5);
+- whether PB4 or PB5 as a PWM dims the lamp with someone watching the wall;
+- the STK8BA58's axes and signs on this board (stk8ba50 drives it as `sensortek,stk8ba58` since kernel 0341: chip ID
+  0x87 read on the unit 01.11.2026; *superseded (01.11.2026):* "whether the STK8BA58 is driven by anything in mainline");
+- other source modes than 1080p60 (720p, 50 Hz, 4K30) on this panel;
 - the silkscreen of the board.

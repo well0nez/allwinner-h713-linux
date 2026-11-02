@@ -1,0 +1,153 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: ASoC: sun4i-codec: h713: the vendor's analog words where the board asks for them
+
+The H713 codec comes out of reset with the mixer -> LINEOUT path muted:
+DAC_REG (0x310) bits 12 and 10, LMUTE/RMUTE, read 0 on the HY320
+(0x0015e811, 01.11.2026), and the H616 manual (8.4.6.54) names 0 "mute".
+Nothing in this driver sets them -- H616 leaves them to its ramp
+controller at 0x31c, which H713 does not have -- so "Line Out Playback
+Volume" moves nothing, which is what the HY310 measured in 0085.
+
+The vendor's sunxi_codec_init() sets them once at probe, together with
+the line out as one differential pair (bits 6, 5), the line-out level
+speaker_vol 0x1a (-7.5 dB, also the stock HAL's "Speaker Volume" 26),
+two undocumented DAC_REG fields (27, 25:24) and three HP_REG fields
+(9:8 = 3, 7:6 = 2, 3). The HY320's own stock kernel (5.4.99 of
+24.10.2024, sunxi_codec_init @0xc07ff5b4) writes exactly the sequence
+the HY310's does (S25 section 4.1).
+
+A new boolean, allwinner,vendor-analog-init, makes the component probe
+write those words; the HY320 sets it. Boards without it keep today's
+registers: 0085 kept HP_REG bit 15 alone on the HY310 after a recorded
+A/B, and that decision stands until a board has had its own listening
+test. The line-out fields are ALSA controls, so a saved alsactl state
+overrides them after boot.
+
+Not ported, because the stock kernel does nothing with it: dacdrc_used,
+the one codec property the HY320's stock tree sets differently from the
+HY310's (1 against 0). sunxi_codec_parse_params() stores it (byte 0x45
+of the codec's data) and prints it, and no code of the driver or the
+machine driver reads it again; no write reaches DAC_DAP_CTL (0xf0) or
+the DRC block.
+
+
+diff -ruN a/sound/soc/sunxi/sun4i-codec.c b/sound/soc/sunxi/sun4i-codec.c
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -406,6 +406,7 @@
+ 	struct reset_control *rst;
+ 	struct gpio_desc *gpio_pa;
+ 	bool pa_stays_on;	/* allwinner,pa-stays-on: never drop the PA from software */
++	bool vendor_analog_init;	/* allwinner,vendor-analog-init (H713) */
+ 	struct gpio_desc *gpio_hp;
+ 
+ 	/* ADC_FIFOC register is at different offset on different SoCs */
+@@ -2546,14 +2547,63 @@
+ };
+ 
+ /*
+- * The controls describe a register window that an older device tree does not
+- * mention, so they appear only when that window is really there.
++ * The analog words the vendor's sunxi_codec_init() sets once at probe and
++ * nothing in this driver touched so far -- S25 section 4.1 for the HY310's
++ * kernel; the HY320's own stock kernel (5.4.99, 24.10.2024) writes the same
++ * sequence at 0xc07ff5b4:
++ *
++ *   DAC_REG 12, 10   LMUTE/RMUTE, the mixer -> LINEOUT path, 0 = muted by
++ *                    the H616 manual (8.4.6.54). Out of reset both are 0, so
++ *                    the line-out stage passes nothing and "Line Out
++ *                    Playback Volume" changes nothing.
++ *   DAC_REG 6, 5     line out as one differential pair (L+R and its
++ *                    inverse): "Line Out Source" = "Mono Differential"
++ *   DAC_REG 4:0      line out at 0x1a = -7.5 dB, the stock speaker_vol and
++ *                    the HAL's "Speaker Volume" 26
++ *   DAC_REG 27, 25:24, HP_REG 9:8 = 3, 7:6 = 2, 3
++ *                    undocumented; reset leaves HP_REG 7:6 at 1 and 9:8, 3
++ *                    at 0
++ *
++ * Only with allwinner,vendor-analog-init: kernel 0085 measured the HP word
++ * on the HY310 at -0.10 dB against bit 15 alone and kept bit 15 alone, so a
++ * board keeps that until it has had a listening test of its own. The line
++ * out fields are ALSA controls; alsactl's restore overrides them later.
+  */
+-static int sun50i_h713_codec_add_controls(struct snd_soc_component *component)
++#define SUN50I_H713_DAC_REG_VENDOR_MASK	(BIT(27) | GENMASK(25, 24) | \
++					 BIT(SUN50I_H616_LMUTE) | \
++					 BIT(SUN50I_H616_RMUTE) | \
++					 BIT(SUN50I_H616_LINEOUTL_SEL) | \
++					 BIT(SUN50I_H616_LINEOUTR_SEL) | \
++					 GENMASK(4, 0))
++#define SUN50I_H713_DAC_REG_VENDOR_VAL	(BIT(27) | GENMASK(25, 24) | \
++					 BIT(SUN50I_H616_LMUTE) | \
++					 BIT(SUN50I_H616_RMUTE) | \
++					 BIT(SUN50I_H616_LINEOUTL_SEL) | \
++					 BIT(SUN50I_H616_LINEOUTR_SEL) | \
++					 0x1a)
++#define SUN50I_H713_HP_REG_VENDOR_MASK	(GENMASK(9, 6) | BIT(3))
++#define SUN50I_H713_HP_REG_VENDOR_VAL	(GENMASK(9, 8) | BIT(7) | BIT(3))
++
++/*
++ * The vendor's analog words where the board asks for them; then the I2S
++ * controls, which describe a register window that an older device tree does
++ * not mention, so they appear only when that window is really there.
++ */
++static int sun50i_h713_codec_component_probe(struct snd_soc_component *component)
+ {
+ 	struct sun4i_codec *scodec =
+ 		snd_soc_card_get_drvdata(component->card);
+ 
++	if (scodec->vendor_analog_init) {
++		snd_soc_component_update_bits(component,
++					      SUN50I_H616_DAC_AC_DAC_REG,
++					      SUN50I_H713_DAC_REG_VENDOR_MASK,
++					      SUN50I_H713_DAC_REG_VENDOR_VAL);
++		snd_soc_component_update_bits(component, SUN50I_H713_HP_REG,
++					      SUN50I_H713_HP_REG_VENDOR_MASK,
++					      SUN50I_H713_HP_REG_VENDOR_VAL);
++	}
++
+ 	if (!scodec->regmap_i2s)
+ 		return 0;
+ 
+@@ -2599,7 +2649,7 @@
+ };
+ 
+ static const struct snd_soc_component_driver sun50i_h713_codec_codec = {
+-	.probe			= sun50i_h713_codec_add_controls,
++	.probe			= sun50i_h713_codec_component_probe,
+ 	.controls		= sun50i_h616_codec_codec_controls,
+ 	.num_controls		= ARRAY_SIZE(sun50i_h616_codec_codec_controls),
+ 	.dapm_widgets		= sun50i_h713_codec_codec_widgets,
+@@ -3103,6 +3153,9 @@
+ 
+ 	scodec->pa_stays_on = device_property_read_bool(&pdev->dev,
+ 							"allwinner,pa-stays-on");
++	scodec->vendor_analog_init =
++		device_property_read_bool(&pdev->dev,
++					  "allwinner,vendor-analog-init");
+ 
+ 	scodec->gpio_hp = devm_gpiod_get_optional(&pdev->dev, "hp-det", GPIOD_IN);
+ 	if (IS_ERR(scodec->gpio_hp)) {
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -116,6 +116,19 @@
+ };
+ 
+ /*
++ * The codec's analog words as this board's stock kernel sets them
++ * (sunxi_codec_init @0xc07ff5b4 of its 5.4.99): the line-out stage unmuted,
++ * mono differential at -7.5 dB (speaker_vol 0x1a), and the vendor's HP_REG
++ * bits. The stock HAL's headphone path switches only the line out off
++ * (audio_mixer_paths.xml "media-headphones": Speaker Off), and that
++ * kernel's speaker control never touches the PA pin -- which points to
++ * the speaker hanging off the line out, not off the HP output alone.
++ */
++&codec {
++	allwinner,vendor-analog-init;
++};
++
++/*
+  * The display state this board's boot loader hands over. Our U-Boot ran the
+  * whole display init on the unit (31.10.2026, its console recorded to the
+  * eMMC: "boot logo up ... with the firmware running", the logo seen on the

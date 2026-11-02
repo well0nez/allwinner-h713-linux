@@ -71,7 +71,7 @@ that costs against crust, measured in `doku/219` and the audit of 22.10.2026 (`T
 | The warp and the ring are mutually exclusive on the video plane | while `h713-warp` draws, the display firmware's magnifier (`h713-tv ctl zoom in`) has nothing to scale and is refused; the picture controls act on the warped frame |
 | The console keyboard is off while a picture stands | seatd runs without a VT, so `h713-tv` switches tty1's keyboard off while the ring, a client or a page is on the panel (`doku/213` §1) |
 | No temperature reading on the HY310 | the unit has no NTC (`ntc_num = 0`); the fan tachometer is the protection, a stalled fan powers the device off (`doku/60`) |
-| `brightness` moves the black level, not the lamp | the vendor's own meaning of the control; the lamp is not adjustable on the HY310 (`backlight_level` and `dynamic_backlight` do nothing, 22.09.2026) |
+| `brightness` moves the black level, not the lamp | the vendor's own meaning of the control; the lamp is not adjustable on the HY310 (`backlight_level` and `dynamic_backlight` do nothing, 22.09.2026) and on the HY320 (the firmware's PWM channel 5 is pad PG7, the Bluetooth UART RX; no pad carries a `d_pwm` function and the PWM block stays 0, 01.11.2026) |
 | A source the firmware's table does not carry gets the "No signal" page | the display firmware's mode table is the list of what locks (`0171`); the page names nothing, `h713-tv ctl status` does |
 | The GPU userspace is 15 MiB and panfrost only | mesa cross-built for this image instead of Debian's 187 MiB; no Vulkan, no second driver |
 | Setting the EDID block mask publishes nothing by itself | the firmware applies it at the next EDID upload ([arisc](subsystems/arisc.md)) |

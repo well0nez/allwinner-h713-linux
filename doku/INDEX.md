@@ -292,6 +292,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`222-l018-test3-installation-abnahme-verified-protokoll-20261026.md`](222-l018-test3-installation-abnahme-verified-protokoll-20261026.md) | Protokoll | 2026-10-26 | 222 Der L018 aus einem Abbild: test3 gebaut, über unser Layout installiert, abgenommen - verified - Protokoll | 6 |
 | [`223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md`](223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md) | Protokoll | 2026-10-26 | 223 v0.97.1-beta: das Release-Abbild des L018 - Bau von vorn, Installation, Start - Protokoll | 1 |
 | [`224-installer-board-pruefung-release-abbild-protokoll-20261026.md`](224-installer-board-pruefung-release-abbild-protokoll-20261026.md) | Protokoll | 2026-10-26 | 224 Der Installer schreibt ein Release-Abbild nur auf sein Board - Protokoll | 1 |
+| [`225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md`](225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md) | Protokoll | 2026-11-01 | 225 HY320: Videoebene, HDMI an Port 1, Abgleich gegen Stock - Protokoll | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |

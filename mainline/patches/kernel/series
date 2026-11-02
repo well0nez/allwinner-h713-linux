@@ -432,3 +432,8 @@
 0338-arm64-dts-h713-hy320-the-hdmi-socket-is-port-1.patch
 0339-drm-tiny-h713-afbd-the-output-mix-word-follows-the-video-plane.patch
 0340-arm64-dts-h713-hy320-the-display-s-mix-window.patch
+0341-iio-accel-stk8ba50-the-hy320-s-stk8ba58.patch
+0342-arm64-dts-h713-hy320-the-stk8ba58-on-twi1.patch
+0343-asoc-sun4i-codec-h713-the-vendor-s-analog-words.patch
+0344-arm64-dts-h713-hy320-the-board-manager-reads-gpadc-channel-1.patch
+0345-arm64-dts-h713-hy320-the-lamp-s-pwm-words-reach-no-pad.patch
