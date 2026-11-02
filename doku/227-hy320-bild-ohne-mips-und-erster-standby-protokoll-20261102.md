@@ -61,3 +61,14 @@ gestecktem USB, Vsync ohne MIPS, Wake über Taste/Fernbedienung, Zyklen, Brummen
   (rote LED). Besitzer: "Logo, dann aus".
 - Bilanz 5 Standbys: 3 mit Bild zurück, 1 Hänger nach der Freigabe, 1 Rücksetzung im MIPS-Neustart. Der MIPS-Neustart auf dem HY320
   (`CrustScope` Lücke 5, S6) ist das nächste Ziel; die WLAN-Abhilfe ist nach einem gelungenen Aufwachen noch nicht gemessen.
+
+## 7 Nachtrag: MIPS-Neustart wach, Standby-Schleife mit dauerhaftem Journal
+
+- `h713-mips-restart` 3x im Wachbetrieb: alle `rc=0`, Bild nach 4.3/4.5/5.4 s, Xbox 1080p60 zurück. `0x051c0014 = 0x18000005`,
+  `0x051c0028 = 0x1f300030` vor und nach einem Neustart - die DE-Endwörter überleben ihn (`CrustScope` Lücke 5 geschlossen).
+- `h713-logs persistent`, dann 5 Zyklen (RTC 20 s, 45 s wach): Zyklus 1 und 2 gut - Bild zurück, `h713-mode: after the sleep:
+  wlan0 is down, h713-wifi restarted`, danach `wlan=up` (die WLAN-Abhilfe wirkt). Zyklus 3: das Journal endet bei `PM: suspend
+  entry (deep)`, die Box stand danach in der Pforte (rote LED), crust meldete beim nächsten Start keinen Vorlauf.
+- Bilanz bis hier: 8 Standbys, 5 gut, 3 verloren (einmal Hänger nach der Freigabe, einmal Rücksetzung im MIPS-Neustart, einmal
+  ohne Spur nach dem Eintritt). crust bleibt auf dem HY320 experimentell; die Hersteller-Firmware ist der sichere Weg
+  (`h713-arisc set vendor`).
