@@ -973,6 +973,27 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `dtb` aus dem Paket bei LBA 24576 (Python-Einzeiler, sha256 muss mit `7db0a4d3` beginnen), freiwillig U-Boot- und
       ARISC-Kennung des Pakets bei LBA 32800. Danach, ohne Termin: Profil-Variante, 8801-Firmware in Extraktor, `layout.py`
       und Treiberpfad, Gerätebaum aus seinem `dtb`, Testabbild über FEL.
+- [ ] 4.18 **HY320 (Issue #5 / PR #6, Melder GitHub `minpeter`, 31.10.2026): das erste Board, das ein Fremder selbst bis zum
+      laufenden TEST-Abbild gebracht hat** - Profil, `boards/hy320/` (`partial`), Gerätebaum 0335, U-Boot-Seite im Fork
+      (well0nez/u-boot#1, 5 Commits unter `CONFIG_H713_BOARD_HY320`), crust (well0nez/crust#1, Board-ID 4). Bewertung und
+      Antworten: `arbeit/issue5-hy320-20261031/` (`BERICHT.md`; seine U-Boot-Commits und 0335 lassen HY310, L018, G-EU, HY300 Pro
+      bytegleich, 11/11 Bauten, 31.10.). Stand 02.11.: PR #6 hat 22 Commits (alle noreply, am 02.11. neu geschrieben), 139 Dateien;
+      dazu 0336-0348, `h713-tv` (Weißabgleich per Namensstring-Tabelle), `h713-mode` (WLAN-Neustart nach Schlaf), `rootfs/install-projekt.sh`,
+      `hy200_qz713df_a1_defconfig` (+3), `pstore.config`, `doku/225-227` (**Nummernkollision**: unsere nächste ist auch 225 - vor dem
+      Merge umnummerieren oder seine stehen lassen und unsere ab 228). Gemessen hat er an seinem Gerät: Video-Ebene (0339/0340 +
+      U-Boot-Worte), HDMI-Eingang Port 1 (0336-0338, Xbox 1080p60/48 kHz, HDCP 2.2), crust (Aus ohne Brummen), HDCP 1.4 Streaming.
+      **Übernahme in Schritten (Marco 02.11.: "wir machen das genauso"):**
+      (1) **erledigt 02.11.2026:** Extraktor-Fix `848e0f2f` als Cherry-Pick (`-x`) auf `versuch/extractor-logo-fix`, Autor bleibt er;
+      seine noreply-Adresse in `.githooks/pre-push`; Tests grün (`arbeit/issue5-hy320-20261031/uebernahme/`). Hilft HY350, T08 (#7), #8.
+      (2) **offen, Rechnerarbeit:** das Board als `partial` - seine vier U-Boot-Commits gegenbauen (die vier anderen Boards müssen
+      bytegleich bleiben, wie am 31.10.), dann Fork-Merge u-boot#1, Patchspiegel, Gitlink; 0335 mit unseren drei Korrekturen
+      (`versuch/hy320-pr6-korrektur`: INDEX, conlog-Rezept raus, 0335-Kopf; `korrektur/patches/`); crust#1; Profil, `boards/hy320/`,
+      0337/0338 (Port aus dem Gerätebaum, andere Boards unverändert = Port 0), 0339-0348 soweit nur HY320 (Opt-in prüfen);
+      seine Änderungen an **unseren** Dateien vorher lesen (`hy200_qz713df_a1_defconfig`, `install-projekt.sh`, `pstore.config`);
+      Video-Ebene gilt dann auch für HY350/T08 als Hinweis (nicht gemessen).
+      (3) **offen, erst nach Messung an HY310 und G-EU (vorher/nachher, Marco):** 0336 (DDC-Porttabelle der Hersteller-ARISC,
+      alle Boards; EDID, 1080p60, Ton, HDCP am HDMI-Eingang), `h713-tv`, `h713-mode`. Ohne Messung nicht nach `main`.
+      Offen im Issue #5: Video-Ebene (durch 0339/0340 gelöst, Issue noch offen), STK8BA58 (0341 jetzt da), PWM5 ohne Pad (Kommentar).
 
 ## 5 Installer und Werkzeuge
 
