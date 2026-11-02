@@ -1,0 +1,27 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: hy320: the HDMI socket is port 1
+
+The HY320's socket is the receiver's port 1 (0337): the display
+firmware's hot-plug callback reports source 4 when a source is plugged
+in, and only port 1 brings its picture. Measured on the owner's unit,
+01.11.2026, an Xbox One X at 1920x1080p60.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -120,9 +120,15 @@
+  * 40000 Hz, vs_lock 1, min 1, max 100 - the HY300 Pro's words (0166a),
+  * which the vendor's PanelControl hands to the firmware at start. No pin
+  * group: the stock pwm5@2000c15 node names no pins (0166a).
++ *
++ * The socket is the receiver's port 1, not the HY310's port 0: with an Xbox
++ * One X plugged in, the display firmware's hot-plug callback reports source
++ * 4 (HDMI-2, port 1 by the stock port map) on 01.11.2026, and only HPD and
++ * SetSource on port 1 brought its picture (1920x1080p60).
+  */
+ &hdmirx {
+ 	allwinner,backlight-pwm-info = <5 1 40000 1 1 100>;
++	allwinner,hdmi-port = <1>;
+ };
+ 
+ /*

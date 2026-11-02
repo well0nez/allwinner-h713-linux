@@ -427,3 +427,6 @@
 
 # --- section 27 One more board: the HY320 (31.10.2026).
 0335-arm64-dts-h713-add-the-hy320-board-dts.patch
+0336-soc-sunxi-h713-arisc-the-ddc-port-table-in-the-firmware-s-byte-order.patch
+0337-media-h713-hdmirx-the-socket-s-port-from-the-device-tree.patch
+0338-arm64-dts-h713-hy320-the-hdmi-socket-is-port-1.patch

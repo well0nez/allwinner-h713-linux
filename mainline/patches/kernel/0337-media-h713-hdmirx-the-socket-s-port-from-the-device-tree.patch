@@ -1,0 +1,204 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: media: h713-hdmirx: the socket's port from the device tree
+
+The driver had the HY310's socket wired in: hardware port 0 for EDID and
+hot-plug (ARISC), source id 3 (HDMI-1) for SetSource and for the
+SignalChange filter of the source-switch repeat. The HY320's socket is
+port 1: with an Xbox One X plugged in, the display firmware's hot-plug
+callback reported source 4, port 0 stayed without a signal, and HPD and
+SetSource on port 1 (source 4, by the stock port map 3/4/5 -> 0/1/2
+the init sequence sends) brought 1920x1080p60.
+
+"allwinner,hdmi-port" (0..2, absent: 0) names the socket's port; the
+source id follows as 3 + port. Every board without the property keeps
+what it had. The log lines name the source id instead of "HDMI-1"; the
+V4L2 input keeps its name. The dtsi's binding comment describes the
+property.
+
+Measured on the HY320, 01.11.2026, with the module built for port 1:
+"EDID/HPD sequence on port 1 completed", the signal 1920x1080p60 and
+48 kHz PCM sound (with 0336).
+
+diff -ruN a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -590,9 +590,15 @@
+ #define H713_WCE_ASPECT		0x040
+ #define H713_WCE_ASPECT_16_9	2
+ 
+-/* THal_Vp_SetSource: 3 is HDMI-1, the board's only socket (hardware port 0). */
+-#define H713_SOURCE_HDMI1	3
+ /*
++ * THal_Vp_SetSource: 3, 4 and 5 are HDMI 1..3, which the init sequence's
++ * port map puts on hardware ports 0, 1 and 2. The board's socket is
++ * "allwinner,hdmi-port" (absent: 0, the HY310's; the HY320's is 1), and its
++ * source id is the one that map gives it.
++ */
++#define H713_SOURCE_HDMI_BASE	3
++#define H713_HDMI_PORTS		3
++/*
+  * The source the firmware is switched to and away from to make the capture
+  * run again. Any source other than HDMI-1 would do -- what the firmware
+  * reacts to is the change, not the destination -- and VideoDec is the one
+@@ -648,7 +654,6 @@
+ #define H713_RETRY_WAIT_MS	3000
+ #define H713_RETRY_AGAIN_MS	5000
+ #define H713_RETRY_MAX		5
+-#define H713_HDMI_PORT		0
+ 
+ /*
+  * cpu_comm call timeouts. 0 means the API default of 500 ms, which is enough
+@@ -1320,6 +1325,8 @@
+ 	phys_addr_t ring_size;
+ 
+ 	u32 id_setsource;
++	u32 hdmi_port;			/* "allwinner,hdmi-port": the socket */
++	u32 source;			/* its SetSource id, 3 + hdmi_port */
+ 	u32 id_setvideorange;
+ 
+ 	struct v4l2_dv_timings timings;	/* the source signal (QUERY_DV_TIMINGS) */
+@@ -1690,7 +1697,7 @@
+  */
+ static int h713_hdmirx_set_source(struct h713_hdmirx *rx)
+ {
+-	u32 arg = H713_SOURCE_HDMI1;
++	u32 arg = rx->source;
+ 
+ 	return cpu_comm_call(rx->id_setsource, &arg, 1, NULL, 0, 0);
+ }
+@@ -2226,7 +2233,7 @@
+ 	 * it delays the acknowledgement to the MIPS for as long as it runs.
+ 	 */
+ 	if (READ_ONCE(rx->rearm_pending) && nargs && args &&
+-	    args[0] == H713_SOURCE_HDMI1)
++	    args[0] == rx->source)
+ 		mod_delayed_work(system_wq, &rx->rearm_retry_work,
+ 				 msecs_to_jiffies(H713_RETRY_SETTLE_MS));
+ 
+@@ -2586,19 +2593,19 @@
+ 		if (!ret) {
+ 			if (try > 1)
+ 				dev_info(rx->dev,
+-					 "release: SetSource(HDMI-1) arrived on attempt %u\n",
+-					 try);
++					 "release: SetSource(%u) arrived on attempt %u\n",
++					 rx->source, try);
+ 			return 0;
+ 		}
+ 
+ 		dev_warn(rx->dev,
+-			 "release: SetSource(HDMI-1) attempt %u of %u failed: %d\n",
+-			 try, H713_SOURCE_RETRIES, ret);
++			 "release: SetSource(%u) attempt %u of %u failed: %d\n",
++			 rx->source, try, H713_SOURCE_RETRIES, ret);
+ 	}
+ 
+ 	dev_err(rx->dev,
+-		"release: SetSource(HDMI-1) never arrived in %u attempts -- the source stays on VideoDec, there will be no picture\n",
+-		H713_SOURCE_RETRIES);
++		"release: SetSource(%u) never arrived in %u attempts -- the source stays on VideoDec, there will be no picture\n",
++		rx->source, H713_SOURCE_RETRIES);
+ 
+ 	return ret;
+ }
+@@ -3016,7 +3023,8 @@
+ 	msleep(H713_RETRY_GAP_MS);
+ 	ret = h713_hdmirx_set_source(rx);
+ 	if (ret)
+-		dev_warn(rx->dev, "release: SetSource(HDMI-1) failed: %d\n", ret);
++		dev_warn(rx->dev, "release: SetSource(%u) failed: %d\n",
++			 rx->source, ret);
+ 	h713_hdmirx_reapply_saturation(rx);
+ 
+ 	start = ktime_get();
+@@ -4500,7 +4508,7 @@
+ 	if (edid->start_block + edid->blocks > blocks)
+ 		edid->blocks = blocks - edid->start_block;
+ 
+-	ret = arisc_hdmi_get_edid(H713_HDMI_PORT, buf, sizeof(buf));
++	ret = arisc_hdmi_get_edid(rx->hdmi_port, buf, sizeof(buf));
+ 	if (ret < (int)((edid->start_block + edid->blocks) * 128)) {
+ 		/*
+ 		 * The read-back is short or the co-processor did not answer.
+@@ -4531,7 +4539,7 @@
+ 	/* blocks == 0 means "no EDID": pull the hotplug pin low and stop. */
+ 	if (!edid->blocks) {
+ 		rx->edid_valid = false;
+-		return arisc_hdmi_hpd(H713_HDMI_PORT, ARISC_HDMI_HPD_DOWN);
++		return arisc_hdmi_hpd(rx->hdmi_port, ARISC_HDMI_HPD_DOWN);
+ 	}
+ 
+ 	if (edid->blocks != ARISC_HDMI_EDID_SIZE / 128 &&
+@@ -4557,7 +4565,7 @@
+ 		memcpy(rx->edid, edid->edid, ARISC_HDMI_EDID_SIZE);
+ 	}
+ 
+-	ret = arisc_hdmi_edid_init(H713_HDMI_PORT, rx->edid,
++	ret = arisc_hdmi_edid_init(rx->hdmi_port, rx->edid,
+ 				   ARISC_HDMI_EDID_SIZE);
+ 	if (ret)
+ 		return ret;
+@@ -5228,8 +5236,8 @@
+ 	int ret;
+ 	u32 y, c;
+ 
+-	seq_printf(s, "input:        HDMI-1 (SetSource %u)\n",
+-		   H713_SOURCE_HDMI1);
++	seq_printf(s, "input:        port %u (SetSource %u)\n",
++		   rx->hdmi_port, rx->source);
+ 	seq_printf(s, "format:       NV16M %ux%u, pitch %u, 2 planes of %u bytes%s\n",
+ 		   rx->ring_width, rx->ring_height, rx->stride, rx->plane_size,
+ 		   rx->ring_width != rx->timings.bt.width ||
+@@ -5420,11 +5428,11 @@
+ 		return;
+ 	rx->late_hpd_done = true;
+ 
+-	ret = arisc_hdmi_hpd_pulse(H713_HDMI_PORT);
++	ret = arisc_hdmi_hpd_pulse(rx->hdmi_port);
+ 	if (ret)
+ 		dev_warn(rx->dev,
+ 			 "late HPD pulse on port %u failed (%d) -- a source plugged all along shows up with the next plug\n",
+-			 H713_HDMI_PORT, ret);
++			 rx->hdmi_port, ret);
+ }
+ 
+ /*
+@@ -5492,6 +5500,15 @@
+ 	spin_lock_init(&rx->slot_lock);
+ 	spin_lock_init(&rx->event_lock);
+ 
++	if (of_property_read_u32(dev->of_node, "allwinner,hdmi-port",
++				 &rx->hdmi_port))
++		rx->hdmi_port = 0;
++	if (rx->hdmi_port >= H713_HDMI_PORTS)
++		return dev_err_probe(dev, -EINVAL,
++				     "allwinner,hdmi-port %u: the firmware has ports 0..%u\n",
++				     rx->hdmi_port, H713_HDMI_PORTS - 1);
++	rx->source = H713_SOURCE_HDMI_BASE + rx->hdmi_port;
++
+ 	rx->id_setsource = cpu_comm_name2id("THal_Vp_SetSource",
+ 					    CPU_COMM_CPU_MIPS);
+ 	if (!rx->id_setsource)
+@@ -5619,7 +5636,7 @@
+ 	 * job and it takes the ten seconds the hotplug pulse needs, which is
+ 	 * why this driver probes asynchronously.
+ 	 */
+-	ret = arisc_hdmi_edid_init(H713_HDMI_PORT, NULL, 0);
++	ret = arisc_hdmi_edid_init(rx->hdmi_port, NULL, 0);
+ 	if (ret) {
+ 		if (ret == -ENODEV)
+ 			ret = -EPROBE_DEFER;
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -2370,6 +2370,10 @@
+ 	 *                    THDMI_ModeList, 152 records) is inside it.
+ 	 *                    Without it the driver matches a measured timing
+ 	 *                    against the kernel's preset list instead.
++	 *   allwinner,hdmi-port  the receiver port (0..2) the board's socket is
++	 *                    on. Optional, 0 when absent. EDID, hot-plug and
++	 *                    SetSource (3 + port, by the port map of the init
++	 *                    sequence) all follow it.
+ 	 *
+ 	 * No interrupt: three independent searches of the firmware image found
+ 	 * the capture interrupt only inside the MIPS interrupt controller, and

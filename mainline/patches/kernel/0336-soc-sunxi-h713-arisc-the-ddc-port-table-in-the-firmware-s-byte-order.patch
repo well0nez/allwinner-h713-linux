@@ -1,0 +1,158 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: soc: sunxi: h713-arisc: the DDC port table in the byte order the firmware reads
+
+The vendor ARISC firmware writes each port's EDID into the DDC RAM
+(0x07091c00, 0x07091d00, 0x07091e00) through a routine that turns the
+port mask (1, 2, 4) into a port with a four-byte table in its rodata,
+indexed by mask - 1 (the HY320's v0.8 build: writer 0x11728, table
+0x15838, logical bytes 00 01 03 02). It reads the table with byte loads,
+and under the little-endian window our boot chain leaves over the SRAM
+(lane 0) those loads see 02 03 01 00: mask 1 goes to port 2, mask 4 to
+port 0 - each with the other's record - and mask 2 to a fourth record
+that does not exist. Port 1's DDC RAM is never written; a source on
+port 1 reads what the SRAM held at power-on.
+
+Seen on the HY320, whose socket is port 1: an Xbox One X sent 640x480
+without sound with the EDID published on every port; the three DDC RAMs
+read back (gate closed) as EDID, random bytes, EDID. The HY310's socket
+is port 0, which the swap covers by accident (both ports carry the same
+EDID but for the VSDB physical address).
+
+The resolver now also finds the table, by the writer's sequence pinned on
+this build's port map, and checks that it sends the three masks to three
+ports. Once the startup notify has said which lanes this boot has, and
+only under lane 0 with the vendor image, the four bytes are written in
+the order the firmware's loads see. Nothing else reads the table.
+
+Measured on the HY320, 01.11.2026, after a reboot with this module:
+"DDC port table 0x15838 in the firmware's byte order (00 01 03 02)", all
+three DDC RAMs hold the EDID, and the Xbox comes up at 1920x1080p60 with
+48 kHz PCM sound - without any write of ours into the DDC RAM.
+
+diff -ruN a/drivers/soc/sunxi/sun50i-h713-arisc.c b/drivers/soc/sunxi/sun50i-h713-arisc.c
+--- a/drivers/soc/sunxi/sun50i-h713-arisc.c
++++ b/drivers/soc/sunxi/sun50i-h713-arisc.c
+@@ -397,6 +397,8 @@
+ 	u32	stack_top;	/* ... and the sp it starts with, above it */
+ 	bool	crust;		/* the contract page instead of a resolved build */
+ 	u32	load_base;	/* where the image goes: 0, or CRUST_LOAD_BASE */
++	u32	ddc_ports;	/* the DDC writer's mask -> port table, 0 = none */
++	u8	ddc_ports_val[4];	/* its logical bytes, as the image holds them */
+ };
+ 
+ struct h713_arisc {
+@@ -670,6 +672,9 @@
+ #define W_SFLTU_R5_R6		0xe4853000	/* l.sfltu r5, r6 */
+ #define W_BF_BACK_2		0x13fffffe	/* l.bf -2 */
+ #define W_ADDI_R5_R5_4		0x9ca50004	/* l.addi r5, r5, 4 */
++#define W_ADD_R3_R3_R2		0xe0631000	/* l.add r3, r3, r2 */
++#define W_LBZ_R14_0_R3		0x8dc30000	/* l.lbz r14, 0(r3) */
++#define W_SLLI_R2_R14_3		0xb84e0003	/* l.slli r2, r14, 3 */
+ 
+ /* The distances the two anchors carry the other six addresses over. */
+ #define GDATA_HPD_COUNTER	(-16)
+@@ -844,6 +849,83 @@
+ }
+ 
+ /*
++ * The DDC writer turns the port mask it is called with (1, 2, 4) into a port
++ * through a four-byte table in its rodata, indexed by mask - 1 (0x11728 and
++ * 0x15838 in the HY320's v0.8 build):
++ *
++ *   l.movhi r2,1 ; l.ori r2,r2,T ; l.add r3,r3,r2 ; l.lbz r14,0(r3)
++ *   l.movhi r3,1 ; l.slli r2,r14,3 ; l.ori r3,r3,<port map>
++ *
++ * Returns T when that sequence is in the image exactly once, points at this
++ * build's port map and its table sends the three masks to three different
++ * ports; the table's logical bytes are left in @val. Else 0.
++ */
++static u32 arisc_sig_ddc_ports(const u8 *data, u32 portmap, u8 val[4])
++{
++	unsigned int hits = 0, i;
++	u32 pc, found = 0;
++
++	for (pc = SIG_SCAN_START; pc < SIG_SCAN_END - 4 * 7; pc += 4) {
++		if (arisc_image_word(data, pc) != OR1K_MOVHI1(OR1K_REG_FP) ||
++		    (arisc_image_word(data, pc + 4) & 0xffff0000) !=
++		    OR1K_ORI_SELF(OR1K_REG_FP) ||
++		    arisc_image_word(data, pc + 8) != W_ADD_R3_R3_R2 ||
++		    arisc_image_word(data, pc + 12) != W_LBZ_R14_0_R3 ||
++		    arisc_image_word(data, pc + 16) != OR1K_MOVHI1(3) ||
++		    arisc_image_word(data, pc + 20) != W_SLLI_R2_R14_3 ||
++		    arisc_image_word(data, pc + 24) !=
++		    (OR1K_ORI_SELF(3) | (portmap & 0xffff)))
++			continue;
++		found = 0x10000 | (arisc_image_word(data, pc + 4) & 0xffff);
++		hits++;
++	}
++	if (hits != 1 || found + 4 > SRAM_IMAGE_SIZE)
++		return 0;
++
++	for (i = 0; i < 4; i++)
++		val[i] = arisc_image_byte(data, found + i);
++	if (val[0] >= ARISC_HDMI_PORTS || val[1] >= ARISC_HDMI_PORTS ||
++	    val[3] >= ARISC_HDMI_PORTS || val[0] == val[1] ||
++	    val[0] == val[3] || val[1] == val[3])
++		return 0;
++	return found;
++}
++
++/*
++ * The vendor firmware reads that table with byte loads, and under the
++ * little-endian window this boot chain leaves over the SRAM (lane 0) a byte
++ * load sees the ARM's byte of the word-reversed image, not the table's: the
++ * v0.8 build reads 2, 3, 1, 0 where the table says 0, 1, 3, 2. Masks 1 and 4
++ * still land on ports 2 and 0 - each written with the other's record - and
++ * mask 2 on a fourth record that does not exist, so port 1's DDC RAM
++ * (0x07091d00) is never written and a source on port 1 reads what the SRAM
++ * held at power-on (HY320, 01.11.2026: an Xbox One X fell back to 640x480
++ * without sound). The table is rodata and nothing writes it; its four bytes
++ * are put in the order the firmware's loads see, once, before the first
++ * EDID is published. Under big-endian lanes the loads already see them.
++ */
++static void arisc_fix_ddc_ports(struct h713_arisc *a)
++{
++	const struct h713_arisc_offsets *o = &a->off;
++	bool same = true;
++	unsigned int i;
++
++	if (o->crust || !o->ddc_ports || a->lane)
++		return;
++
++	for (i = 0; i < 4; i++)
++		same &= sram_rb(a, o->ddc_ports + i) == o->ddc_ports_val[i];
++	if (same)
++		return;
++
++	for (i = 0; i < 4; i++)
++		sram_wb(a, o->ddc_ports_val[i], o->ddc_ports + i);
++	dev_info(a->dev,
++		 "DDC port table 0x%05x in the firmware's byte order (%*ph): every port is published its own EDID\n",
++		 o->ddc_ports, 4, o->ddc_ports_val);
++}
++
++/*
+  * The firmware's own memory map, straight out of two places in its startup:
+  * the loop that zeroes the BSS word by word, and the l.movhi/l.ori pair that
+  * loads the initial sp. Both must be there exactly once.
+@@ -1035,6 +1117,12 @@
+ 			"\"%s\": no usable memory map in the image (BSS 0x%05x..0x%05x, stack top 0x%05x)\n",
+ 			name, o.bss_start, o.bss_end, o.stack_top);
+ 
++	o.ddc_ports = arisc_sig_ddc_ports(data, o.portmap, o.ddc_ports_val);
++	if (!o.ddc_ports)
++		dev_warn(a->dev,
++			 "\"%s\": the DDC writer's port table is not in the image as expected -- under little-endian lanes port 1 may get no EDID\n",
++			 name);
++
+ 	if (!arisc_in_bss(&o, o.hpd_counter, ARISC_HDMI_PORTS) ||
+ 	    !arisc_in_bss(&o, o.edid_ready, 1) ||
+ 	    !arisc_in_bss(&o, o.edid_gate, 1) ||
+@@ -3609,6 +3697,7 @@
+ 	a->running = true;
+ 	dev_info(a->dev, "ARISC startup notify acknowledged: %s (SRAM byte lanes %s)\n",
+ 		 a->notify_version, a->lane ? "big endian" : "little endian");
++	arisc_fix_ddc_ports(a);
+ 	if (a->off.crust) {
+ 		arisc_crust_describe(a);
+ 		arisc_watch_start(a);

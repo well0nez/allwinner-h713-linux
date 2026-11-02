@@ -170,6 +170,24 @@ One more the driver has to live with: the display co-processor has a message cha
 this firmware and can trigger `ResetEDIDModule` behind the driver's back, which would clear the mask
 and the published EDID. Nothing we load is known to send it; it is on the open list.
 
+### The port table the DDC writer reads (01.11.2026)
+
+The routine that writes a port's EDID into its DDC RAM (`0x07091c00`, `0x07091d00`, `0x07091e00` for
+ports 0, 1, 2) is called with the port's mask (1, 2, 4) and turns it into a port through a four-byte
+table in the firmware's rodata, indexed by mask - 1 (the HY320's v0.8 build: writer `0x11728`, table
+`0x15838`, logical bytes `00 01 03 02`). The firmware reads it with byte loads, and under the
+little-endian window our boot chain leaves over the SRAM (`SRAM byte lanes little endian` in the
+startup line) those loads see `02 03 01 00`: mask 1 goes to port 2, mask 4 to port 0, each with the
+other's record, and mask 2 to a fourth record that does not exist. **Port 1's DDC RAM was never
+written**: a source on port 1 read whatever the SRAM held at power-on - on the HY320, whose socket is
+port 1, an Xbox One X fell back to 640x480 without sound. The HY310's socket is port 0, which the swap
+covers by accident. The driver finds the table by the writer's instruction sequence, checks that it
+sends the three masks to three ports, and under little-endian lanes writes its four bytes in the order
+the firmware's loads see, once, after the startup notify (`DDC port table 0x15838 in the firmware's
+byte order (00 01 03 02)`, kernel `0336`). Measured on the HY320 after a reboot: all three DDC RAMs
+hold the EDID (read with the gate in `0x07091b04` closed for the read), and the Xbox comes up at
+1920x1080p60 with 48 kHz PCM sound.
+
 ## Timing
 
 | Step | Measured |
