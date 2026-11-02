@@ -1,0 +1,55 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: hy320: PB5 to the board manager, so a standby switches lamp and fan off
+
+The tree kept PB5 as the dtsi's gpio-hog and took fan-power-gpio away
+from the board manager, which then says "fan power rail not ours, left as
+it is" at suspend: the fan and the lamp would keep running in standby, as
+on the HY300PRO-G-EU before 0249. The board's stock tree names PB5 as
+tvtop panel_bl_en, a GPIO, as the HY310's does, so the board manager owns
+it as there: off late in suspend, on again at resume. Unmeasured on this
+board.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+diff -u a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -21,8 +21,8 @@
+  *  - The fan: the stock "fan" node claims PH17 twice, as PWM0's pin and as
+  *    fan1-fg-gpio, and U-Boot's fan_ctrl names PH17 again. On this unit
+  *    PH17 is the tacho (an EINT, 3900 RPM; 01.11.2026). So the dtsi's fan0
+- *    stays: tacho PH17, no PWM, the fan on PB5. PB5 stays the dtsi's hog,
+- *    as on the HY300 Pro.
++ *    stays: tacho PH17, no PWM, the fan on PB5. PB5 is the board
++ *    manager's, as on the HY310 (below).
+  *  - No NTC evaluation, as under stock: the stock fan driver reads GPADC
+  *    channel 1 only while LRADC channel 0 reads 5 or less, and here it
+  *    reads 63; channel 1 itself scatters like the HY310's open input.
+@@ -81,12 +81,14 @@
+ };
+ 
+ /*
+- * PB5 enables the LED boost and the fan rail (stock tvtop panel_bl_en, a
+- * GPIO): the dtsi's hog holds it high, not the board manager - as on the
+- * HY300 Pro, so nothing in Linux ever drives it low.
++ * PB5 enables the lamp and the fan rail together (stock tvtop
++ * panel_bl_en, a GPIO). The board manager owns it as on the HY310 and the
++ * HY200 QZ713DF A1 (0249), so a standby switches lamp and fan off and back
++ * on; with the hog they kept running in standby. Until the board manager
++ * probes, PB5 keeps the high level U-Boot set.
+  */
+ &fan_power_hog {
+-	status = "okay";
++	status = "disabled";
+ };
+ 
+ /*
+@@ -122,7 +124,7 @@
+ 	io-channels = <&gpadc 1>;
+ 
+ 	fan0 {
+-		/delete-property/ fan-power-gpio;
++		fan-power-gpio = <&pio 1 5 GPIO_ACTIVE_HIGH>;	/* PB5 */
+ 	};
+ };
+ 

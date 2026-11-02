@@ -7,9 +7,11 @@ base is upstream crust's `master` after v0.6). `SERIES.txt` names base, head and
 thing that says which fork commit this mirror stands on. Whoever wants to change something changes the
 fork and has the mirror generated again.
 
-Verified the way a mirror should be: applying all 88 patches onto the base produces a tree with the same
-hash as the fork head (`4ac41f6b88ee`, 10.10.2026; head `54e4a08`, branch `h713`; 0088 the HY310's release
-build powers off through crust too, `doku/190`). Before: 87 patches, tree `34a484a4ecb0`, head `d8a8d56`
+Verified the way a mirror should be: applying all 89 patches onto the base produces a tree with the same
+hash as the fork head (`d757f3cc487c`, 02.11.2026; head `74d64d7`, branch `h713`, local and not yet published;
+0089 the HY320's configs, board id 4, unmeasured). Before: 88 patches, tree `4ac41f6b88ee`, head `54e4a08`
+(10.10.; 0088 the HY310's release build powers off through crust too, `doku/190`); 87 patches, tree
+`34a484a4ecb0`, head `d8a8d56`
 (10.10.; 0082-0087 the power off through crust, `doku/188`); 81 patches, tree `bba95d32ccea`, head `c5b536f`
 (10.10.); up to `ecf2ddc`, 80 patches, tree `2df473047ec5` on 09.10.
 

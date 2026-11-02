@@ -1,0 +1,46 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: hy320: crust as the ARISC firmware's name
+
+The tree names hy320-crust.bin (crust's h713_hy320_sr_defconfig, board id
+4) instead of the vendor's h713-arisc.bin, as 0246 did for the HY200
+QZ713DF A1, so that build-all's crust gate (release/check-crust.py:
+firmware-name[0] == <board>-crust.bin) accepts an image that carries it.
+The images still run the vendor firmware by default (the module option
+firmware=vendor) because of the power supply's hum under crust (TODO
+2.42); h713-arisc set crust switches. Experimental: crust has not run on
+this board, and its HDMI socket is receiver port 1.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+diff -u a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -29,8 +29,8 @@
+  *  - The focus motor is disabled under stock: off here.
+  *  - The accelerometer at 0x18 on twi1 is an STK8BA58 (stk,stk83xx, chip
+  *    ID 0x87), not the HY310's SC7A20: stk8ba50 drives it.
+- *  - The display firmware's elog addresses, the vendor ARISC image, and no
+- *    display MIPS restart (measured on the HY310 only).
++ *  - The display firmware's elog addresses, and no display MIPS restart
++ *    (measured on the HY310 only).
+  *
+  * The same as the HY310 by its stock tree: power key PL4 (standby_param,
+  * keyboard power-gpio), IR on PL9 (cir_param; its address list holds the
+@@ -55,9 +55,15 @@
+ 	status = "disabled";
+ };
+ 
+-/* The vendor ARISC image, as on the HY300 Pro: crust has run on the HY310 only. */
++/*
++ * crust (h713_hy320_sr_defconfig, board id 4) when the image carries it,
++ * the vendor image otherwise (the module option firmware=vendor, the
++ * default of the images). Experimental: nothing of crust has run on this
++ * board yet, and its HDMI socket is receiver port 1, which crust serves
++ * generically but no board has exercised (TODO 2.42).
++ */
+ &arisc {
+-	firmware-name = "h713-arisc.bin", "hy310-edid.bin";
++	firmware-name = "hy320-crust.bin", "hy310-edid.bin";
+ };
+ 
+ /* The display MIPS restart is measured on the HY310 only. */

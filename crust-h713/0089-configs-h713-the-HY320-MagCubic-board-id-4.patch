@@ -1,0 +1,77 @@
+From 74d64d759f99dab384c236ce4aa0407054ffc151 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Mon, 2 Nov 2026 05:16:13 +0900
+Subject: [PATCH 89/89] configs: h713: the HY320 (MagCubic), board id 4
+
+The HY320's stock tree names the same power key (PL4), IR codes (the 19
+NECX pairs of cir_param, same order), LEDs (PL0/PL1), rails (PL6), PB5 and
+PL3 as the HY310, and its DRAM block holds the HY310's values in every
+field crust reads (792 MHz; it differs only in TPR0-2 and TPR11/12, which
+crust does not use). So its configs are the HY310's with board id 4:
+h713_hy320_sr_defconfig and the 60 s self-wake power-off test
+h713_hy320_sr_off_test_defconfig. Nothing of it has run on the board yet.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+ configs/h713_hy320_sr_defconfig          | 14 ++++++++++++++
+ configs/h713_hy320_sr_off_test_defconfig | 16 ++++++++++++++++
+ platform/h713/Kconfig                    |  2 +-
+ 3 files changed, 31 insertions(+), 1 deletion(-)
+ create mode 100644 configs/h713_hy320_sr_defconfig
+ create mode 100644 configs/h713_hy320_sr_off_test_defconfig
+
+diff --git a/configs/h713_hy320_sr_defconfig b/configs/h713_hy320_sr_defconfig
+new file mode 100644
+index 0000000..1fb3455
+--- /dev/null
++++ b/configs/h713_hy320_sr_defconfig
+@@ -0,0 +1,14 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++# CONFIG_DEBUG_VERIFY_DRAM is not set
++CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_BOARD_ID=4
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1
++CONFIG_H713_POWER_OFF=y
+diff --git a/configs/h713_hy320_sr_off_test_defconfig b/configs/h713_hy320_sr_off_test_defconfig
+new file mode 100644
+index 0000000..602bd7e
+--- /dev/null
++++ b/configs/h713_hy320_sr_off_test_defconfig
+@@ -0,0 +1,16 @@
++CONFIG_PLATFORM_H713=y
++CONFIG_CIR=y
++CONFIG_CIR_PROTO_NECX=y
++CONFIG_CIR_WAKE_CODE=0x00ff14
++CONFIG_CIR_USE_OSC24M=y
++CONFIG_I2C_PINS_NONE=y
++# CONFIG_SERIAL is not set
++CONFIG_DEBUG_RECORD_STEPS=y
++# CONFIG_DEBUG_VERIFY_DRAM is not set
++CONFIG_H713_DRAM_SELF_REFRESH=y
++CONFIG_H713_BOARD_ID=4
++CONFIG_H713_LED_RED_PIN=0
++CONFIG_H713_LED_BLUE_PIN=1
++CONFIG_H713_POWER_OFF=y
++CONFIG_H713_TEST=y
++CONFIG_H713_POWER_OFF_TEST_WAKE_S=60
+diff --git a/platform/h713/Kconfig b/platform/h713/Kconfig
+index 4dda59c..5367a32 100644
+--- a/platform/h713/Kconfig
++++ b/platform/h713/Kconfig
+@@ -57,7 +57,7 @@ config H713_RAILS_PIN
+ 		it records the board fact, and crust never touches the pin.
+ 
+ config H713_BOARD_ID
+-	int "Board in the build word (BUILD2 15..12): 1 HY310, 2 HY300 Pro, 3 HY200 QZ713DF A1"
++	int "Board in the build word (BUILD2 15..12): 1 HY310, 2 HY300 Pro, 3 HY200 QZ713DF A1, 4 HY320"
+ 	default 0
+ 	range 0 15
+ 	help
