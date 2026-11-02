@@ -1,0 +1,49 @@
+# 227 HY320: Bild ohne display.bin, und der erste Standby über crust - Protokoll
+
+Datum: 02.11.2026 (Gerätezeit falsch, April 2026). Gerät: der HY320 seines Besitzers. Augen: der Besitzer. Pläne:
+`DisplayStage1` (E2/E5), `CrustScope` S5-S7.
+
+## 1 E2: U-Boot zeigt das Logo, die MIPS bleibt im Reset
+
+Einmal-`bootcmd` (Variable `h713_e2`, vor dem Versuch gelöscht, danach `reset`): `h713_disp init 0x30 noboot logo`, 40 bzw. 60 s
+stehen lassen. Konsole (h713_conlog): `MIPS held in reset (noboot); display driven by the ARM sequence alone`, `sequence complete,
+LVDS FIFO status=0`, Zeitgebung latched, `display initialised from the ARM sequence alone`. Besitzer (zweiter Lauf): **das Logo
+stand 60 s, normal**. display.bin wurde nie gestartet; die Daten sind die LogoRegData-Sätze des eigenen Geräts.
+
+## 2 E5: Linux auf der Anzeige ohne MIPS
+
+Einmal-Start eines Test-FIT (`h713-kernel-e5.fit`: der HY320-Baum mit `allwinner,handoff-state = <0x03001901 0 0>`, weil noboot
+VIDEO_CTRL 0 hinterlässt), `module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp` (ein
+`modprobe.blacklist` reichte nicht: hdmirx zog cpu_comm als Abhängigkeit nach, cpu_comm startete die MIPS selbst - "volle
+Initialisierung"), h713-tv/warp/osd/desktop maskiert.
+
+- afbd übernimmt (`adopting 1920x1080 ... source 6c100000`), fb0 auf `0x76d00000`, `0x058c0000 = 0x10000040` (RGB allein),
+  CCU `0x600`/`0x60c` (MIPS-Takt) 0.
+- Warnung `[CRTC:36:crtc-0] vblank wait timed out`: ohne MIPS kommt der AFBD-Vsync-Interrupt nicht (offen).
+- fbcon stand auf `blank = 4` (daher zuerst schwarz). Nach `echo 0 > blank` und einem Testbild in `/dev/fb0`: Besitzer - **rot,
+  grün, blau von oben, wie geschrieben**.
+- Ohne afbd (auch auf der Sperrliste) blieb das U-Boot-Logo stehen; der Registervergleich mit dem afbd-Lauf unterscheidet sich
+  nur in der Quelladresse des RGB-Kanals. Der Panelblock (`0x051c0100..013c`, `0x051c0000..000c`) bleibt ohne MIPS 0 - für das
+  RGB-Bild allein nicht nötig.
+
+Ergebnis: Panel und RGB-Ebene laufen vom ARM aus, ohne display.bin, ohne cpu_comm.
+
+## 3 Neues Abbild v0.97.2-beta mit `--standby`
+
+Gebaut (`release/build-all.sh --board hy320 --test-image --standby --profile media,desktop`, 23 min), per FEL von pve installiert
+(`h713-fel`, Secure Storage byteweise gleich). Netz-Ein: **mit dem A-A-Kabel gesteckt reagierte die Taste in der roten Pforte
+nicht**; ohne USB-Kabel startete die Taste. Danach: `crust is running ..., image kept`, `mem_sleep s2idle [deep]`, `ready=1`,
+EDID/HPD Port 1, Xbox 1080p60, HDCP 2.2.
+
+## 4 Erster Standby (RTC, 30 s)
+
+`systemctl suspend` mit Weckzeit +30 s: Besitzer - aus, nach etwa 30 s wieder da, **Xbox-Bild zurück**. Journal: `fan power rail
+on`, `aicwf_sdio_resume`, `h713-mode: the display MIPS is parked, h713-mips-restart`, `cpu_comm: resumed`. **Aber das WLAN-AP
+"h713" war danach weg** (pve sah die SSID nicht mehr, hostapd lief weiter, Station nach 60 s "disassociated due to inactivity").
+Und `sun50i-h713-msp: the DSP lost its power in the sleep and is not rebuilt (rebuild_after_sleep=0)`. Nur ein Zyklus.
+Wiederhergestellt mit langem Tastendruck (Aus über crust: nächster Start `powered off through crust ... cycle 1`) und Taste.
+
+## 5 Offen
+
+WLAN nach dem Standby (nur HY320? auf dem HY310/G-EU überlebt es seit `doku/171`), Ton nach dem Standby, Taste in der Pforte bei
+gestecktem USB, Vsync ohne MIPS, Wake über Taste/Fernbedienung, Zyklen, Brummen im Standby.

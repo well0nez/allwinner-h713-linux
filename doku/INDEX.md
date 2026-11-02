@@ -295,6 +295,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`224-installer-board-pruefung-release-abbild-protokoll-20261026.md`](224-installer-board-pruefung-release-abbild-protokoll-20261026.md) | Protokoll | 2026-10-26 | 224 Der Installer schreibt ein Release-Abbild nur auf sein Board - Protokoll | 1 |
 | [`225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md`](225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md) | Protokoll | 2026-11-01 | 225 HY320: Videoebene, HDMI an Port 1, Abgleich gegen Stock - Protokoll | 1 |
 | [`226-hy320-crust-von-linux-geladen-protokoll-20261101.md`](226-hy320-crust-von-linux-geladen-protokoll-20261101.md) | Protokoll | 2026-11-01 | 226 HY320: crust als ARISC-Firmware, von Linux geladen - Protokoll | - |
+| [`227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md`](227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md) | Protokoll | 2026-11-02 | 227 HY320: Bild ohne display.bin, und der erste Standby über crust - Protokoll | - |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -451,7 +452,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-57 von 285 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+58 von 286 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `104-plan-standby-stufe2.md` (ueberholt)
@@ -502,6 +503,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `209-runde-5x-teil-b-uebernahme-panel-20261013.md`
 * `221-nachtpakete-integration-geu-messung-protokoll-20261026.md`
 * `226-hy320-crust-von-linux-geladen-protokoll-20261101.md`
+* `227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)
