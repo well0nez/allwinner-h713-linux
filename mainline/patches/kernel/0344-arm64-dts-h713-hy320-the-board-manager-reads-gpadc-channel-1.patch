@@ -1,0 +1,91 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: hy320: the board manager reads GPADC channel 1
+
+The dtsi binds the board manager to LRADC channel 0 while its ntc0 names
+source 1, the GPADC channel the stock pwm_fan driver reads (gpadc-adc
+table in millivolts: sunxi_gpadc_read_channel_data(1) through
+search_table_gpadc, raw * 439 / 1000). io-channels = <&gpadc 1> here;
+ntc_num stays 0: the stock driver reads that channel only while
+LRADC_DATA0 is 5 or less, and this unit reads 63 (the stock driver then
+books a fixed 20 C), and channel 1 scatters 1313..1526 over 60 reads
+where channel 0 holds 1141..1147 - the HY310's open input, not a proven
+NTC (01.11.2026, read only). Thermal power-off stays with the SoC zones
+(orderly at 105 C) and the fan-stall check. Comments carry the evidence.
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -19,14 +19,13 @@
+  *    no PWM under stock (both nodes disabled; PB5 is tvtop panel_bl_en as a
+  *    plain GPIO), so pwm-backlight is off.
+  *  - The fan: the stock "fan" node claims PH17 twice, as PWM0's pin and as
+- *    fan1-fg-gpio, and U-Boot's fan_ctrl names PH17 again - the pattern the
+- *    HY310's and the HY300 Pro's stock trees have, where PH17 is the tacho
+- *    (measured on the HY310; counted on the HY300 Pro). So the dtsi's fan0
++ *    fan1-fg-gpio, and U-Boot's fan_ctrl names PH17 again. On this unit
++ *    PH17 is the tacho (an EINT, 3900 RPM; 01.11.2026). So the dtsi's fan0
+  *    stays: tacho PH17, no PWM, the fan on PB5. PB5 stays the dtsi's hog,
+  *    as on the HY300 Pro.
+- *  - No NTC evaluation: the stock fan node reads one (temp_det_source 1,
+- *    GPADC channel 1 by its gpadc node's channel_select), but with tables
+- *    of another driver whose conversion is not known here.
++ *  - No NTC evaluation, as under stock: the stock fan driver reads GPADC
++ *    channel 1 only while LRADC channel 0 reads 5 or less, and here it
++ *    reads 63; channel 1 itself scatters like the HY310's open input.
+  *  - The focus motor is disabled under stock: off here.
+  *  - The accelerometer at 0x18 on twi1 is an STK8BA58 (stk,stk83xx, chip
+  *    ID 0x87), not the HY310's SC7A20: stk8ba50 drives it.
+@@ -76,27 +75,37 @@
+ };
+ 
+ /*
+- * The fan. The stock kernel's "fan" node (pwm-fan, the vendor's driver)
+- * names pwms = PWM0, whose stock pin group pwm0@0 is PH17, and
++ * The fan. The stock kernel's "fan" node (pwm-fan, the vendor's
++ * pwm_fan.ko) names pwms = PWM0, whose stock pin group pwm0@0 is PH17, and
+  * fan1-fg-gpio = PH17 as well; U-Boot's tree enables fan_ctrl with
+- * fanctrl-gpios = PH17. The HY310's stock node claimed PH17 the same two
+- * ways and PH17 is its tacho (the dtsi's board manager comment); on the
+- * HY300 Pro, of this board's vendor family, our tacho counted on PH17
+- * (boards/hy300-pro). So fan0 keeps the dtsi's tacho on PH17 and no PWM:
+- * a PWM0 output on PH17 would drive against the tacho line. The board
+- * manager powers off when the tacho counts below 1000 RPM for 8 s, so this
+- * pin decides whether the board stays up.
++ * fanctrl-gpios = PH17. The stock driver enables the PWM first and then
++ * requests PH17's interrupt (fan_check_probe: pwm_fan_update_status, then
++ * request_threaded_irq), which leaves the pin on its EINT function. On
++ * this unit PH17 is on EINT and counts 3900 RPM (01.11.2026): it is the
++ * tacho, and the fan runs at the one speed PB5's rail gives it. So fan0
++ * keeps the dtsi's tacho on PH17 and no PWM: a PWM0 output on PH17 would
++ * drive against the tacho line. The board manager powers off when the
++ * tacho counts below 1000 RPM for 8 s; the stock driver only sends
++ * Android key 197 (fan_io_status_read, rk_send_warn_fan_key).
+  *
+- * No temperature: the stock node evaluates an NTC (temp_det_enable 1,
+- * temp_det_source 1 = GPADC; the gpadc node's channel_select 0x02 is
+- * channel 1) with its own tables (gpadc-temp 0..90 C against gpadc-adc
+- * 0x553..0xcc) and fan speeds above 60/68/72/76 C, no power-off. Those
+- * tables belong to another driver, and whether their numbers are mV, as
+- * this driver's gpadc-table is, or raw counts is not known here; the
+- * L018's table is not this board's. So ntc_num stays the HY310's 0, and
+- * nothing hangs a power-off on an unproven conversion.
++ * No temperature, as under stock. The stock node evaluates an NTC on
++ * GPADC channel 1 (temp_det_source 1) with gpadc-temp 0..90 C against
++ * gpadc-adc 0x553..0xcc, and those are millivolts at 439/1000 mV per LSB,
++ * this driver's unit: ntc_read hands sunxi_gpadc_read_channel_data(1)
++ * straight to search_table_gpadc, and the stock kernel's
++ * sunxi_gpadc_read_channel_data returns raw * 439 / 1000. But ntc_read
++ * reads the GPADC only while LRADC_DATA0 is 5 or less; above 59 it books
++ * a fixed 20 C. LRADC_DATA0 reads 63 on this unit, so the stock firmware
++ * never evaluated the NTC here, and its only NTC power-off
++ * (kernel_power_off in ntc_read) cannot be reached. GPADC channel 1 reads
++ * 1313..1526 in 60 reads where channel 0 stays within 1141..1147
++ * (01.11.2026): the scatter of the HY310's open input. So ntc_num stays
++ * the HY310's 0. The channel is the one the stock tree names, so that a
++ * proven NTC needs only ntc_num, the table and the thresholds.
+  */
+ &board_mgr {
++	io-channels = <&gpadc 1>;
++
+ 	fan0 {
+ 		/delete-property/ fan-power-gpio;
+ 	};

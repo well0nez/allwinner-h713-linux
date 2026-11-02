@@ -1,0 +1,43 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: hy320: the STK8BA58 on twi1
+
+The dtsi's accelerometer@18 (silan,sc7a20) was off on this board because
+its chip is an STK8BA58. stk8ba50 drives it now (the patch before this
+one): the node names "sensortek,stk8ba58". No interrupt line: the stock
+tree's PB0 (stk83xx,irq-gpio <&pio 1 0 1>) stays undescribed, as the
+HY310's is; h713-keystone clocks the IIO buffer with an hrtimer trigger.
+
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -28,8 +28,8 @@
+  *    GPADC channel 1 by its gpadc node's channel_select), but with tables
+  *    of another driver whose conversion is not known here.
+  *  - The focus motor is disabled under stock: off here.
+- *  - The accelerometer at 0x18 on twi1 is an STK8BA58 (stk,stk83xx), not
+- *    the HY310's SC7A20: its node is off here.
++ *  - The accelerometer at 0x18 on twi1 is an STK8BA58 (stk,stk83xx, chip
++ *    ID 0x87), not the HY310's SC7A20: stk8ba50 drives it.
+  *  - The display firmware's elog addresses, the vendor ARISC image, and no
+  *    display MIPS restart (measured on the HY310 only).
+  *
+@@ -171,12 +171,16 @@
+ 
+ /*
+  * twi1 stays on as under stock (PH2/PH3, 100 kHz). Its chip at 0x18 is an
+- * STK8BA58 (stock "stk,stk83xx", irq PB0); mainline's stk8ba50 driver is
+- * for the STK8BA50, and nothing here shows the two share a register map,
+- * so the dtsi's SC7A20 node is off rather than bound to the wrong chip.
++ * STK8BA58: stock "stk,stk83xx" (irq PB0), and on the unit (01.11.2026)
++ * register 0x00 reads 0x87, the vendor driver's 12-bit Sensortek ID, and
++ * the data pairs 0x02..0x07 at the reset range +-2 g (0x0f = 0x03) give a
++ * 12-bit vector of about 1020 LSB - one g at 1024 LSB/g. 0x0e (the stock
++ * tree's kxtj3) does not answer. It has the STK8BA50's register map, so
++ * stk8ba50 drives it as "sensortek,stk8ba58". No interrupt, as on the
++ * HY310: h713-keystone clocks the buffer with an hrtimer trigger.
+  */
+ &twi1 {
+ 	accelerometer@18 {
+-		status = "disabled";
++		compatible = "sensortek,stk8ba58";
+ 	};
+ };

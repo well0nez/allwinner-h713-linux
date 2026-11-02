@@ -1,0 +1,53 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: hy320: the lamp's PWM words reach no pad
+
+The six [PWMSetting] words name channel 5. The display firmware's
+channel 5 is the d_pwm5 pin function, and the stock 5.4 kernel's pin
+table has it on one pad only, PG7 (mux 7) - on this board the Bluetooth
+UART1 RX (stock uart1@0 PG6..PG9). On the unit (01.11.2026) the
+firmware has had the words and level 100 since 5 s: PG7 stays uart1, no
+pad carries a d_pwm function, and the PWM block at 0x02000c00 reads 0
+throughout. Stock's backlight path (libtvpq ThalDevice::deviceSetBackLight
+-> ge2d_dev ARM PWM 3) reaches no pad either: pwm3 is disabled in the
+stock tree and PB5 is driven as the GPIO panel_bl_en. The words stay,
+because stock's PanelControl sends them too; the comments no longer
+call them the lamp's dimmer.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -13,11 +13,11 @@
+  * file keeps what the HY300 Pro, the nearest board of the same vendor
+  * family, runs with. What differs, and what this file does about it:
+  *
+- *  - The lamp: panel_config.ini [PWMSetting] says hardware channel 5,
+- *    polarity 1, 40 kHz, vsync lock 1, duty 1..100 - the HY300 Pro's six
+- *    words, handed to the display firmware. PB4 (pwm2) and PB5 (pwm3) carry
+- *    no PWM under stock (both nodes disabled; PB5 is tvtop panel_bl_en as a
+- *    plain GPIO), so pwm-backlight is off.
++ *  - The lamp: on while PB5 is high (stock tvtop panel_bl_en, a GPIO); no
++ *    dimmer found. panel_config.ini's channel 5 is the firmware's
++ *    d_pwm5, whose only pad is PG7 - this board's Bluetooth UART RX. PB4
++ *    (pwm2) and PB5 (pwm3) carry no PWM under stock (both nodes disabled),
++ *    so pwm-backlight is off.
+  *  - The fan: the stock "fan" node claims PH17 twice, as PWM0's pin and as
+  *    fan1-fg-gpio, and U-Boot's fan_ctrl names PH17 again. On this unit
+  *    PH17 is the tacho (an EINT, 3900 RPM; 01.11.2026). So the dtsi's fan0
+@@ -167,11 +167,12 @@
+ };
+ 
+ /*
+- * The lamp's dimmer is a PWM the display firmware owns. This board's
+- * panel_config.ini [PWMSetting]: pwm_channel 5, polarity 1 (low active),
+- * 40000 Hz, vs_lock 1, min 1, max 100 - the HY300 Pro's words (0166a),
+- * which the vendor's PanelControl hands to the firmware at start. No pin
+- * group: the stock pwm5@2000c15 node names no pins (0166a).
++ * This board's panel_config.ini [PWMSetting]: pwm_channel 5, polarity 1,
++ * 40000 Hz, vs_lock 1, min 1, max 100, which the vendor's PanelControl
++ * hands to the firmware at start, as here. They dim nothing: channel 5 is
++ * the d_pwm5 function, only on PG7 (mux 7), which is UART1 RX for Bluetooth
++ * on this board; on the unit (01.11.2026) no pad carries d_pwm and the PWM
++ * block at 0x02000c00 stays 0 after the words and level 100.
+  *
+  * The socket is the receiver's port 1, not the HY310's port 0: with an Xbox
+  * One X plugged in, the display firmware's hot-plug callback reports source
