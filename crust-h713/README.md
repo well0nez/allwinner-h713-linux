@@ -8,8 +8,8 @@ thing that says which fork commit this mirror stands on. Whoever wants to change
 fork and has the mirror generated again.
 
 Verified the way a mirror should be: applying all 89 patches onto the base produces a tree with the same
-hash as the fork head (`d757f3cc487c`, 02.11.2026; head `74d64d7`, branch `h713`, local and not yet published;
-0089 the HY320's configs, board id 4, unmeasured). Before: 88 patches, tree `4ac41f6b88ee`, head `54e4a08`
+hash as the fork head (`d757f3cc487c`, 02.11.2026; head `74d64d7`, on minpeter/crust `hy320`, offered as well0nez/crust#1;
+0089 the HY320's configs, board id 4, measured loaded by Linux 01.11.2026, doku/226). Before: 88 patches, tree `4ac41f6b88ee`, head `54e4a08`
 (10.10.; 0088 the HY310's release build powers off through crust too, `doku/190`); 87 patches, tree
 `34a484a4ecb0`, head `d8a8d56`
 (10.10.; 0082-0087 the power off through crust, `doku/188`); 81 patches, tree `bba95d32ccea`, head `c5b536f`
