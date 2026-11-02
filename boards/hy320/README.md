@@ -6,7 +6,7 @@ installed on it the same day.
 
 | | |
 |---|---|
-| Status | **partial** - a TEST image boots on the owner's unit (31.10.2026); the video plane does not show yet |
+| Status | **partial** - a TEST image boots on the owner's unit (31.10.2026); the video plane shows since the U-Boot fix of 01.11.2026 (below) |
 | Verified by | nobody |
 | Profile | `installer/h713/profiles/hy320.py` (`h713-install identify` on the dump: "HY320 matches this dump", on `arisc_version`, `dtb_sha256`, `scp_sha256`, `uboot_sha256`, `uboot_version`) |
 | Image | **TEST images** for its owner only (`--test-image`) |
@@ -54,8 +54,36 @@ eMMC (below).
 | Display firmware log | `cpu_comm`'s elog dump at `0x4b48ae00`/`0x4b271d9c` shows the firmware's own lines |
 | AFBD handoff | the firmware leaves CTRL `0x03001901`, VIDEO_CTRL `0x03000200`, selector `0`; with the HY310's defaults the driver refused (`-ENODEV`) and the wall went black after the logo. The board's tree states its own words (`allwinner,handoff-state`), the driver probes, `h713-tv` runs |
 | RGB plane | the no-signal page, the launcher and a frame written to `/dev/fb0` show correctly |
-| **Video plane** | **dark**: a Wayland client through `h713-warp` (NV12 on the video plane) leaves the wall black; the kernel says `converter: still on bypass after SetVideoRange -- the picture is green` |
+| **Video plane** | dark on the first image (a Wayland client through `h713-warp` left the wall black); **shown since 01.11.2026** - see the next section |
 | Boot logo | the vendor's `bootlogo.bmp` sits at the root of `bootloader_a/_b` beside no `mips/`; `h713-extract` now takes it from there (it only looked beside `mips/` before) |
+
+### The video plane: 0x058c0000 bit 28 (01.11.2026)
+
+The board's `LogoRegData.bin` leaves `0x058c0000` (mirrored at `0x058c1000`) at `0x10000040` from its
+prologue, and its DE group ends without writing it again. The L018's file, the same 1920x1080 dual-port
+panel class, closes its DE group with `0x058c0000 = 0` and five panel words besides. Bit 28 of that word
+blanks the video plane at the mixer and nothing else, so everything upstream looked healthy:
+
+| What was seen with bit 28 set | |
+|---|---|
+| `h713-warp`'s NV12 frame | luma 235 for a white client (`h713-warp ctl dump`) |
+| PROC statistics `0x05140600` | `0x3ac` white, `0x040` black - the frame reaches PROC |
+| panel-block probes `0x051c0144`, `0x051c0304` and the histogram `0x051c0380..03fc` | white for a white client - the frame reaches the panel block |
+| RGB channel, per-pixel alpha (`0x051c006c = 0x21000000`) | an opaque half shows; where it is transparent the video is black |
+| lamp | on (the black is the LCD's grey glow); `PB5` and the PWM blocks unchanged between console and video |
+
+Bisected by eye at the wall: the HY310's display firmware (`16c74a28...`) is just as black with the
+board's `LogoRegData.bin`, the "ADT-3 2024" firmware shows the video with the L018's file, and in a
+running picture `0x10000040` -> black, `0x00000040` -> shown, `0x10000000` -> black. The fix is one
+write in the U-Boot fork after the DE group, under `CONFIG_H713_BOARD_HY320` (commit `94d1a5c7042`,
+console line "HY320 - 0x058c0000 cleared as the L018's DE group does"). With the board's own files and
+the unchanged kernel module, colour bars and motion show on the video plane.
+
+Dead ends on the way, so that nobody repeats them: the frame-rate word of the VidDec record (30000, 33131,
+66262), the panel totals in `display_cfg.xml` (filled from `panel_config.ini` the way stock `libmips.so`
+does: `hde_size`, porches, `work_mode 2`, 164 MHz), the selector values `0x29/0x21/0x10/0x00`, the
+blue-screen stages, the border overlay, the gamma stage and the panel's vertical scaler - none of them
+changes the black.
 
 ### U-Boot's console without a UART
 
@@ -73,8 +101,8 @@ so every boot leaves the log in the unused tail of `hy310-uboot` (LBA 10240..112
 
 ## What we do not know
 
-- why the video plane stays dark with the "ADT-3 2024" firmware (VIDEO_CTRL `0x03000200` against the
-  HY310's `0x03000010`, the converter left on bypass);
+- whether the other ADT-3 family boards (HY350, HY300 T08) need the same `0x058c0000` write - the fix is
+  scoped to this board until one of them is measured;
 - which pad PWM channel 5 leaves the SoC on, and whether the PWM words change the lamp;
 - whether the STK8BA58 is driven by anything in mainline;
 - the silkscreen of the board.
