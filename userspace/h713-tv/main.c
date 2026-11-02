@@ -958,6 +958,13 @@ static struct {
 	uint32_t handle, fb_id;
 	bool up;		/* the video plane carries the black frame under a page (under_black_up()) */
 } under;
+/*
+ * tv.conf under_page = black (the default) | off. off: no black frame, the video plane goes off under a page as before
+ * 20.10.2026. The HY320 wants that: its panel block mixes the RGB channel with the video plane at an arbitrary vertical
+ * phase (a different one every boot, measured 01.11.2026), so a page mixed over the black frame stood rolled by a fifth
+ * to two fifths of the panel; with the plane off the AFBD driver puts the output on the RGB channel alone (kernel 0339).
+ */
+static bool under_page_black = true;
 
 static void display_release_master(struct display *d)
 {
@@ -1482,7 +1489,7 @@ static bool under_black_up(struct display *d)
 	bool ok, primary = false;
 	int ret = -1;
 
-	if (!d->master || !under_black_fb(d) || !(req = drmModeAtomicAlloc()))
+	if (!under_page_black || !d->master || !under_black_fb(d) || !(req = drmModeAtomicAlloc()))
 		return false;
 	uint64_t val[11] = { under.fb_id, d->crtc_id, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16, 0, 0,
 			     d->width, d->height, 0 };
@@ -4733,6 +4740,9 @@ static int source_by_name(const char *w)
  *       volume_curve = builtin | vendor  the volume slider's curve: the HY310's (the
  *                               default), or the device's own from audio_config.ini in the
  *                               data directory (the L018's board sets it, 25.10.2026)
+ *       under_page = black | off  what the video plane carries under an opaque page: a black
+ *                               frame (the default, for the HY300PRO-G-EU's two columns), or
+ *                               nothing (the HY320's board sets it, 01.11.2026)
  *
  * The keys are the file format, and since v0.8-beta they speak English like
  * the values. Their German spellings ("zustand", "daten", "rechner") and the
@@ -4788,6 +4798,7 @@ struct conf {
 	bool edid_panel;	/* edid_prefer = panel (true) | file */
 	int source;		/* source = hdmi | client | auto (enum source) */
 	bool volume_vendor;	/* volume_curve = vendor (true) | builtin */
+	bool under_black;	/* under_page = black (true) | off */
 	char input[24];	/* --input; the input h713-pq is asked about */
 	char lut[160];		/* where h713-pq is told to write the LUT */
 };
@@ -4842,6 +4853,7 @@ static void conf_read(struct conf *c)
 	c->edid_panel = false;
 	c->source = SOURCE_HDMI;
 	c->volume_vendor = false;
+	c->under_black = true;
 	snprintf(c->data, sizeof(c->data), "%s", PQ_DATA);
 	snprintf(c->calculator, sizeof(c->calculator), "%s", PQ_BIN);
 	snprintf(c->input, sizeof(c->input), "%s", PQ_INPUT);
@@ -4960,8 +4972,16 @@ static void conf_read(struct conf *c)
 			else
 				warn("%s:%u: volume_curve = \"%s\" unknown (builtin vendor) -- builtin stays",
 				     c->path, n, val);
+		} else if (!strcasecmp(key, "under_page")) {
+			if (!strcasecmp(val, "black"))
+				c->under_black = true;
+			else if (!strcasecmp(val, "off"))
+				c->under_black = false;
+			else
+				warn("%s:%u: under_page = \"%s\" unknown (black off) -- black stays",
+				     c->path, n, val);
 		} else {
-			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator, edid, edid_prefer, source, volume_curve)",
+			warn("%s:%u: unknown key \"%s\" -- ignored (start, state, preset, data, calculator, edid, edid_prefer, source, volume_curve, under_page)",
 			     c->path, n, key);
 		}
 	}
@@ -9811,6 +9831,7 @@ int main(int argc, char **argv)
 	fwc_init();
 	gamma_init();
 	conf_read(&conf);
+	under_page_black = conf.under_black;
 	if (o.calculator)
 		snprintf(conf.calculator, sizeof(conf.calculator), "%s", o.calculator);
 	if (o.data)

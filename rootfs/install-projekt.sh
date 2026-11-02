@@ -211,6 +211,19 @@ board_volume_curve() {
 	printf '%s' "$got"
 }
 
+# UNDER_PAGE of boards/$H713_BOARD (variant.env over board.env): "off" -- no black frame on the video plane under an
+# opaque page, the output on the RGB channel alone (the HY320, whose mix rolls the RGB channel) -- or "black"; unset:
+# nothing is written and h713-tv keeps its default, black. Another word stops the build.
+board_under_page() {
+	local env="$PROJECT_ROOT/boards/$H713_BOARD/board.env" got
+	got=$( set +u; . "$env" >/dev/null 2>&1 || exit 1
+		[[ -z "$H713_VARIANT" ]] || . "${env%/board.env}/variants/$H713_VARIANT/variant.env" >/dev/null 2>&1 || exit 1
+		printf '%s' "${UNDER_PAGE:-}" ) || { warn "boards/$H713_BOARD: board.env not sourceable"; return 1; }
+	[[ -z "$got" || "$got" == black || "$got" == off ]] || \
+		{ warn "boards/$H713_BOARD: UNDER_PAGE '$got' is neither black nor off"; return 1; }
+	printf '%s' "$got"
+}
+
 # FOCUS_HOMING and FOCUS_STEPS of boards/$H713_BOARD (variant.env over board.env), as "HOMING STEPS" with "-" for unset:
 # FOCUS_HOMING=0 keeps the focus motor's reference run at probe off (/etc/modprobe.d/h713-focus.conf, hy310_focus_motor
 # homing=0), FOCUS_STEPS=N (1..100) is h713-keys' focus_steps, the travel of one press of a focus key. Unset: the driver
@@ -518,6 +531,12 @@ if [[ -n "$H713_BOARD" ]]; then
 		printf '\n# board %s (board.env VOLUME_CURVE): the volume curve\nvolume_curve = %s\n' "$H713_BOARD" "$VC" \
 			>> "$TREE/etc/h713/tv.conf"
 		info "tv.conf: volume_curve = $VC (board $H713_BOARD)"
+	fi
+	UP=$(board_under_page) || die "boards/$H713_BOARD: UNDER_PAGE not usable (see above)"
+	if [[ -n "$UP" ]]; then
+		printf '\n# board %s (board.env UNDER_PAGE): under an opaque page\nunder_page = %s\n' "$H713_BOARD" "$UP" \
+			>> "$TREE/etc/h713/tv.conf"
+		info "tv.conf: under_page = $UP (board $H713_BOARD)"
 	fi
 fi
 # No enable: h713-tv@.service deliberately has no [Install] section. The hdmirx

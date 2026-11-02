@@ -45,7 +45,18 @@ Kernel-Patches `0336` - `0345`, U-Boot-Fork `ca8263484e1`, `fc66272cec5`. Beschr
 | Warp | 1080p60 durch die GPU: 60 fps, 2 ms/Bild, `check` 0 Abweichungen; starkes Trapez flüssig (Augen) | nichts |
 | Ein/Aus | `poweroff` -> rote LED -> Taste -> Logo -> Bild | kein Standby (Hersteller-ARISC) |
 
+## 3b RGB über Video: verrollt
+
+Abends: der Launcher über dem Xbox-Bild steht verrollt (Besitzer: oberes Fünftel unten; nach Neustart "4:6"), über
+`0x058c0000` Bit 28 (RGB allein) gerade. Zeilenzähler `0x051c0174` (0..1124): AFBD-Video-Vsync (`0x05600c0` Bit 0) bei ~110,
+Commit des RGB-Kanals (`0x05600168` Bit 1) bei ~328, in beiden Modi gleich. `0x0525c000` eine Zeile kürzer verschiebt die Differenz
+um eine Zeile je Bild, `0x0524c010` nicht. Bandabtastung gegen das Panel-Histogramm: die RGB-Zeilen, die in die Austastung fallen,
+liegen bei 975 - d; d um 1000..1124 zerreißt das Bild (Besitzer: "unbrauchbar"). Ohne Wirkung: `0x05140054` Bit 30, `0x051c0024`,
+`0x051c0070`, `0x0524c014 = 0x500`, `0x0524c004 = 0x07800019` (HY310), AFBD `0x158`/`0x15c`, Resync, Replug.
+Abhilfe: `under_page = off` (h713-tv, neu), Board `UNDER_PAGE=off` - unter einer deckenden Seite kein schwarzes Bild, der
+Treiber setzt Bit 28. Launcher gerade (Besitzer: "völlig normal"). Offen: durchscheinende Einblendungen über dem Bild.
+
 ## 4 Offen
 
 NTC ja/nein (Kaltstart-Reihe), PB4/PB5 als Dimmer mit Beobachter, Achsen des Lagesensors (drei Lagen), andere Quellmodi als
-1080p60, IR-/BT-Fernbedienung (keine vorhanden), Webcam-Mapping (keine Kamera vorhanden).
+1080p60, IR-/BT-Fernbedienung (keine vorhanden), Webcam-Mapping (keine Kamera vorhanden), die Phase des RGB-Kanals im Mischer.
