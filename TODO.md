@@ -904,7 +904,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       gebaut; `BERICHT.md`): sein DRAM-Takt 744 MHz mit dem bewährten Rest des Probe-Satzes, kein Pin getrieben. Nach seiner
       Ausgabe: DRAM bei 744 bestätigt oder nicht; die fünf Panel-Register (über `sunxi_dump` am Stock) in `losei_x9.py` und
       die Panel-Zeile, dann Phase 3 (Gerätebaum). **Nicht in die Spiegel vor einer Messung an diesem Panel**
-- [ ] 4.16 **HY300 Pro+ (Issue #4, Melder GitHub `jo--`, 30.10.2026): unser TEST-Abbild läuft auf `hy200-qz713df-a1/projector09220931`**
+- [x] 4.16 (erledigt 02.11.2026: Variante `verified`, unten) **HY300 Pro+ (Issue #4, Melder GitHub `jo--`, 30.10.2026): unser TEST-Abbild läuft auf `hy200-qz713df-a1/projector09220931`**
       - der erste Lauf unserer Firmware auf dieser Variante (`variant.env` sagt noch `profile-only`). Er hat
       `h713-hy200-qz713df-a1-projector09220931-v0.97-beta-media-desktop-TEST` selbst mit `build-all.sh` gebaut und installiert,
       Debian bootet; danach eigener Kernel mit `HIDRAW`/`HID_SONY` (PS3-Pads), RetroArch, ES-DE unter cage. Platine
@@ -923,10 +923,20 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       **30.10.2026 zweite Antwort gepostet** (Marco; `arbeit/issue4-hy300-pro-plus-20261030/ANTWORT2-TEXT.md`): 5.29/5.30 in `main`,
       kein Neuinstallieren nötig; erbeten `h713-dump/extract/REPORT.txt` (Abgleich mit dem Profil: Fingerprint, `display.bin`-Revision,
       ProjectID) und `git status --short`/`git diff --stat` (die übrigen zwei der "3 local changes", gezählt mit `git status --short`,
-      also auch Ungetracktes). Wartet auf ihn; danach `verified`. Noch einzutragen, sobald es so weit ist: kein Fokusmotor
-      (`variant.env`), Platinenaufdruck (`boards/hy200-qz713df-a1/README.md`); `dram_tpr0` seiner KI-Zusammenfassung klärt erst sein
-      boot0, nicht der REPORT. Nebenbei: `HIDRAW` braucht auch `h713-mic` (2.51) - Gamepads (`HID_SONY` u. a.)
-      als Module ins Abbild?
+      also auch Ungetracktes). **Seine Lieferung 01.11.2026 17:31** (`arbeit/issue4-hy300-pro-plus-20261030/melder-20261101/`,
+      Bewertung `BEWERTUNG-REPORT.md`): der REPORT seines Vollabzugs trägt in jedem Kennzeichen die Variante (Bootpaket `22c9afa9`/
+      `3efebd9a`/`06e5279c`, `display.bin` `4380f1b3` = "HY200 QZ713DF_A1", `database.TSE`, `vendor` 114 384 896 B, Fingerprint);
+      "UNKNOWN/exit 1" ist der Extraktor (`legacy_devices()`, wie #7). Die 3 lokalen Änderungen: crust-Takt (5.29) und seine
+      `ps3.config` mit zwei FITs (eigener Kernel, nur Gamepad-Optionen). **02.11.2026 eingetragen (Marco: "Ja, beides"):**
+      `variant.env` `STATUS=verified`, `VERIFIED_BY` (sein eigener Bau von `main` `591d0d3`, 30.10.), `FEATURES` kein Motor/keine
+      Klinke/keine Kamera; Profil-Variante `status`/`verified_by` (damit schreibt der Installer auf ein Stock-Gerät dieser Firmware
+      und `build-all.sh` baut ein Release-Abbild; `test_identify` angepasst); `boards/README.md`, Board-README (Platinenaufdruck, Messung,
+      offen: Standby, HDMI-Eingang, HDCP, Beschleunigungssensor), `README.md`, `STATUS.md`, `known-issues.md`. Dritte Antwort gepostet
+      (`ANTWORT3-TEXT.md`). **Nebenbefund, Entscheidung Marco:** die G-EU-Variante `projector05061226` steht im Installer-Profil weiter
+      auf `profile-only` (seit 0e26943f), obwohl `variant.env` seit 11.10. `verified` sagt - ein **Stock-G-EU** würde vom Installer
+      ohne `--ohne-erkennung` nicht beschrieben (`report_device`); unsere Boxen hatten da schon unser Layout ("ours"). Angleichen?
+      `dram_tpr0` seiner KI-Zusammenfassung bleibt ungeklärt (der REPORT druckt den Block nicht), ohne Belang. Offen: 9.11 (Plopp),
+      `HIDRAW`/`HID_SONY` als Module ins Abbild (2.51 für `h713-mic` mitdenken).
 - [ ] 4.17 **HY300 T08 (Issue #7, Melder GitHub `smj-0712`, 31.10.2026): erster Besitzer von `hy300-t08`** (`profile-only`).
       Platine "HY300_T08_QZ713_V3", 720p, WLAN-Modul "AW869A Wi-Fi6", ein USB-A, FEL per Pinhole. Stock **neuer als das Profil**:
       Android 11, `ADT-3/adt3/adt3:11/RP1A.201005.006/eng.projector.20240722.121001` (Profil: Android 10, Build 6245789,

@@ -8,14 +8,14 @@ firmware is a **variant** under `variants/<stock build>/`.
 
 | | `projector05061226` | `projector09220931` |
 |---|---|---|
-| Sold as | HY300 Pro, box label **HY300PRO-G-EU** (the maintainer's own unit, October 2026) | "HY300 Pro+" (2025, DDR3) |
+| Sold as | HY300 Pro, box label **HY300PRO-G-EU** (the maintainer's own unit, October 2026) | "HY300 Pro+" (2025, DDR3); the owner's PCB label reads `CGDD011190-HY200F 25.08.06A` and `DW1G+8G+20800D4` (issue #4) |
 | Stock | Android 11 of 2025-05-06 | Android 11 of 2025-09-22 |
-| State | **verified** (11.10.2026, the maintainer's own unit; `VERIFIED_BY` in `variants/projector05061226/variant.env`): a release image since `v0.97-beta`, installed on 22.10.2026 (doku/219); before that the TEST images of doku/136 and `geucrust2` (crust, standby; doku/184) | **profile, testable**: profile-only; nobody has run our firmware on a unit with this firmware |
-| Image | `h713-hy200-qz713df-a1-projector05061226-<version>-media-desktop-*` (`release/build-all.sh --board hy200-qz713df-a1 --variant projector05061226 --profile media,desktop --version vX.Y`) | TEST only: `release/build-all.sh --board hy200-qz713df-a1 --variant projector09220931 --test-image --version vX.Y` |
+| State | **verified** (11.10.2026, the maintainer's own unit; `VERIFIED_BY` in `variants/projector05061226/variant.env`): a release image since `v0.97-beta`, installed on 22.10.2026 (doku/219); before that the TEST images of doku/136 and `geucrust2` (crust, standby; doku/184) | **verified** (30.10.2026, its owner, issue #4; `VERIFIED_BY` in `variants/projector09220931/variant.env`): his own build of `main` `591d0d3` (the crust clock of TODO 5.29 patched by hand), installed with `--test-image`; the report of his dump (01.11.2026) matches the profile in every feature |
+| Image | `h713-hy200-qz713df-a1-projector05061226-<version>-media-desktop-*` (`release/build-all.sh --board hy200-qz713df-a1 --variant projector05061226 --profile media,desktop --version vX.Y`) | `h713-hy200-qz713df-a1-projector09220931-<version>-media-desktop-*` (`release/build-all.sh --board hy200-qz713df-a1 --variant projector09220931 --profile media,desktop --version vX.Y`); no release of it built yet |
 | DRAM clock | 792 MHz (its own boot0) | 624 MHz (its boot0; cstenger's bench clock) |
-| eMMC | 15 273 600 sectors (its own GPT) | 15 269 888 sectors (the image's GPT; no unit read) |
+| eMMC | 15 273 600 sectors (its own GPT) | 15 269 888 sectors (the image's GPT; the owner's dump of issue #4 has the same size, 7 818 182 656 B) |
 | display.bin | 1 256 216 B `16c74a28...` = the HY310's revision | 1 255 696 B `4380f1b3...` = the `HY200 QZ713DF_A1` row of `h713_mips_fw_revs[]` |
-| Measured | SC7A20 accelerometer at 0x18; no camera; fan tacho PH13 at 5520-5610 rpm (doku/136); crust (board id 3), display MIPS restart with the panel's supply cycled (PF6, PH16), standby woken by RTC, key and IR, HDCP 1.4 pair, HDCP 2.2, sound after a standby (doku/182, doku/184); off draws 2.4 W against 0.3 W with stock (TODO 2.32); lamp and fan off in standby since kernel 0249 (PB5 to the board manager, doku/185); `v0.97-beta` with the vendor ARISC firmware: the acceptance 25 of 25, the power-off into the gate silent, the key and both remotes starting the board from the gate (U-Boot 0102), the IR pin under the vendor firmware (kernel 0328), 22.10.2026 (doku/219) | nothing |
+| Measured | SC7A20 accelerometer at 0x18; no camera; fan tacho PH13 at 5520-5610 rpm (doku/136); crust (board id 3), display MIPS restart with the panel's supply cycled (PF6, PH16), standby woken by RTC, key and IR, HDCP 1.4 pair, HDCP 2.2, sound after a standby (doku/182, doku/184); off draws 2.4 W against 0.3 W with stock (TODO 2.32); lamp and fan off in standby since kernel 0249 (PB5 to the board manager, doku/185); `v0.97-beta` with the vendor ARISC firmware: the acceptance 25 of 25, the power-off into the gate silent, the key and both remotes starting the board from the gate (U-Boot 0102), the IR pin under the vendor firmware (kernel 0328), 22.10.2026 (doku/219) | by its owner, 30.10.2026 (issue #4): picture, sound, Wi-Fi, Bluetooth, the remote, the fan, the power key, off and on again; a pop from the speaker at power-off (TODO 9.11). Not measured: standby (crust is not offered for this variant), the HDMI input, HDCP. His kernel carries `HIDRAW` and `HID_SONY` on top of ours (PS3 gamepads) |
 | Installer profile | `hy200_qz713df_a1/projector05061226` | `hy200_qz713df_a1/projector09220931` |
 
 Board level, the same for both: kernel DTB `sun50i-h713-hy200-qz713df-a1` (patch 0181), U-Boot base
@@ -34,6 +34,8 @@ regions. Old names: `BOARD=ddr3` (still an alias of `build/build.sh`) and `board
   (`firmware/hy200-qz713df-a1/2025-09-22_projector09220931/`, sha256 `ced372b4...`) and its facts
   (`installer/tests/fixtures/images/hy300-pro-plus-ddr3-0922.json`): boot0, boot package, both
   `panel_config.ini` copies, the display firmware and the stock device tree of `vendor_boot.fex`.
+  Since 01.11.2026 also the `h713-extract` report of its owner's full dump (issue #4): boot package,
+  `display.bin`, `database.TSE`, vendor size and fingerprint are the image's, byte for byte.
 - **The bench** - cstenger's `configs/hy200_qz713df_a1_defconfig` (624 MHz, his flash layout) and his
   runs: his README at `8860991` "All FEL/bring-up runs on this one", `versions.env` Linux 6.18.38
   "boot-good". His run, not ours: it makes no variant `verified`.
@@ -60,12 +62,13 @@ and the base runs 624, so that a build that names no variant gets the lower cloc
 | | projector05061226 | projector09220931 | source |
 |---|---|---|---|
 | accelerometer | SC7A20 at 0x18, an IIO device | unknown | doku/136 section 1; the stock trees list lsm6dsr, stk83xx and kxtj3 and say nothing |
-| camera | none | unknown | doku/136: no capture device |
-| focus motor | none | its stock tree drives one | stock trees: `motor_ctr` disabled with a 4-step table / okay with the HY310's 8-step tables on PH4..PH7, limiter PH14 |
+| camera | none | none | doku/136: no capture device; the owner of issue #4 |
+| focus motor | none | none on the owner's unit (issue #4), although its stock tree drives one | stock trees: `motor_ctr` disabled with a 4-step table / okay with the HY310's 8-step tables on PH4..PH7, limiter PH14 |
 
 The board's tree leaves `motor_ctr` off: on a unit without a motor the driver would home at probe
-and drive PH4..PH7 into nothing. A 2025-09 unit therefore loses its focus motor under our firmware
-until its owner shows one and the tree learns per-variant nodes. The accelerometer node stays on.
+and drive PH4..PH7 into nothing. The one 2025-09 unit reported (issue #4) has no motor, so the
+tree is right for it; a unit with one would need per-variant nodes. The accelerometer node stays
+on; whether the 2025-09 unit has the chip is not measured (it has no headphone jack either).
 
 ## The project id
 
@@ -82,11 +85,11 @@ from the environment's `h713_project`, else from `panel_config.ini`, never from 
 - the display firmware's event-log addresses of the 2025-09 display.bin (`cpu_comm` uses the HY310's,
   right for the 2025-05 firmware; a wrong pair only empties the elog dump);
 - which pad hardware PWM channel 5 leaves the SoC on, and what PB4 and PH17 are on this board;
-- whether a 2025-09 unit has the accelerometer, a camera, and the focus motor its stock tree drives.
+- whether a 2025-09 unit has the accelerometer (the one of issue #4 has no camera and no focus motor).
 
 ## Moving it forward
 
-For `projector05061226` that happened on 11.10.2026. An owner of a 2025-09 unit builds the TEST image of that
-variant, keeps their full dump as the way back, installs it with `--test-image`, and reports. A green run makes
-**that variant** `verified` (its `variant.env`: `STATUS=verified`, `VERIFIED_BY` with name, unit and date); until then
-it stays where it is, because its DRAM clock, eMMC and display firmware are not the ones that were tested.
+For `projector05061226` that happened on 11.10.2026, for `projector09220931` on 30.10.2026 (issue #4: its owner
+built the TEST image himself, kept his full dump, installed with `--test-image` and reported green; his dump's report
+of 01.11.2026 tied the unit to this firmware). Both variants are `verified` (`variant.env`: `STATUS=verified`,
+`VERIFIED_BY` with name, unit and date). Open for the 2025-09 unit: standby, the HDMI input, HDCP, the accelerometer.

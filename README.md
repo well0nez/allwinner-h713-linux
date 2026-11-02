@@ -76,7 +76,7 @@ the circuit board, and one board is sold in several projectors.
 | Board id | Sold as | DRAM | Panel | State |
 |---|---|---|---|---|
 | [`hy310`](boards/hy310/) | MagCubic HY310 | DDR3 792 MHz | 1920x1080 dual (0x30) | **verified**, release image |
-| [`hy200-qz713df-a1`](boards/hy200-qz713df-a1/) | HY300PRO-G-EU (2025-05 firmware) | DDR3 792 MHz | 1280x720 (0x34) | **verified** for that firmware variant (`projector05061226`), release image; the "HY300 Pro+" variant of 2025-09 is profile only |
+| [`hy200-qz713df-a1`](boards/hy200-qz713df-a1/) | HY300PRO-G-EU (2025-05 firmware) | DDR3 792 MHz | 1280x720 (0x34) | **verified** for both firmware variants: `projector05061226` (release image) and the "HY300 Pro+" of 2025-09, `projector09220931` (its owner's own build, issue #4, 30.10.2026) |
 | [`hy300-pro`](boards/hy300-pro/) | MagCubic HY300 Pro (2024) | DDR3 636 MHz | 1280x720 (0x34) | in test by its owner ([issue #1](https://github.com/well0nez/allwinner-h713-linux/issues/1)), test images only |
 | [`hy200-qz713-v2`](boards/hy200-qz713-v2/) | "HY300 Pro+" (2025, LPDDR3) | LPDDR3 720 MHz | 1280x720 (0x34) | profile only |
 | [`hy300-t08`](boards/hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280x720 (0x34) | profile only |
