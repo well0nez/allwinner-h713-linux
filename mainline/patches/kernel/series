@@ -437,3 +437,6 @@
 0343-asoc-sun4i-codec-h713-the-vendor-s-analog-words.patch
 0344-arm64-dts-h713-hy320-the-board-manager-reads-gpadc-channel-1.patch
 0345-arm64-dts-h713-hy320-the-lamp-s-pwm-words-reach-no-pad.patch
+0346-arm64-dts-h713-hy320-crust-as-the-arisc-firmware-s-name.patch
+0347-arm64-dts-h713-hy320-the-display-mips-with-the-panel-s-supply-and-reset.patch
+0348-arm64-dts-h713-hy320-pb5-to-the-board-manager.patch
