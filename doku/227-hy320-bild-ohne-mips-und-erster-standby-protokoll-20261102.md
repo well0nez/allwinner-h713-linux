@@ -72,3 +72,13 @@ gestecktem USB, Vsync ohne MIPS, Wake über Taste/Fernbedienung, Zyklen, Brummen
 - Bilanz bis hier: 8 Standbys, 5 gut, 3 verloren (einmal Hänger nach der Freigabe, einmal Rücksetzung im MIPS-Neustart, einmal
   ohne Spur nach dem Eintritt). crust bleibt auf dem HY320 experimentell; die Hersteller-Firmware ist der sichere Weg
   (`h713-arisc set vendor`).
+
+## 8 Stand am Gerät (für die Wiederaufnahme)
+
+- Schleife 2 (10 Zyklen): schon Zyklus 1 verloren (Journal endet bei `PM: suspend entry (deep)`, kein crust-Vorlauf beim nächsten
+  Start - der Fehler liegt vor der Übergabe an crust oder löscht dessen Seite). Bilanz 5 von 9.
+- Danach: Kern mit `KERNEL_CONFIG=pstore` (neues Fragment `patches/kernel/board/pstore.config`) als `/boot/h713-kernel.fit`,
+  der Release-Kern liegt als `/boot/h713-kernel-release.fit`; `bootargs_base` trägt `ramoops.mem_address=0x46000000
+  ramoops.mem_size=0x100000 ramoops.console_size=0x80000 ramoops.record_size=0x20000 no_console_suspend`. Schleife 3 lief an
+  (`dmesg -n 8`, `pm_debug_messages 1` kamen nicht mehr an) und ging früh verloren; Auswertung: `/sys/fs/pstore` nach dem Start.
+- Zurück zum Release: `/boot/h713-kernel-release.fit` nach `/boot/h713-kernel.fit`, die ramoops-Wörter aus `bootargs_base`.
