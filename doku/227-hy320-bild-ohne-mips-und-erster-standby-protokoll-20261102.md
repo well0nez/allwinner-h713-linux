@@ -47,3 +47,17 @@ Wiederhergestellt mit langem Tastendruck (Aus über crust: nächster Start `powe
 
 WLAN nach dem Standby (nur HY320? auf dem HY310/G-EU überlebt es seit `doku/171`), Ton nach dem Standby, Taste in der Pforte bei
 gestecktem USB, Vsync ohne MIPS, Wake über Taste/Fernbedienung, Zyklen, Brummen im Standby.
+
+## 6 Nachtrag: vier weitere Standbys, WLAN-Abhilfe
+
+- Zweiter Standby (Skript, 30 s RTC): nach dem Aufwachen `wlan0` DOWN, `hostapd_cli`: keine Steuerdatei; `systemctl restart
+  h713-wifi` -> AP sofort zurück, pve wieder verbunden.
+- `h713-mode sleep-post` startet h713-wifi neu, wenn eine wlan-Schnittstelle nicht `operstate up` ist. Eine erste Fassung prüfte
+  `IFF_UP` - falsch: Messung (Standby 5, Sekundenprotokoll über den Schlaf) zeigt nach dem Aufwachen `operstate down` bei
+  `flags 0x1003` und laufendem hostapd. Test `test_mode.py` deckt down/up/aus ab.
+- Standby 3: Bild zurück, WLAN weg (die IFF_UP-Fassung griff nicht). Standby 4: crust meldet beim nächsten Start "phase released,
+  step 0x619, 205 ms in the phase" - die CPUs wurden freigegeben, Linux kam nicht zurück. Standby 5: Aufwachen, `h713-mips-restart`
+  beginnt, 2 s später Neustart (`standby: a reset until the core runs again ends in the power gate`) -> U-Boot-Logo -> Pforte
+  (rote LED). Besitzer: "Logo, dann aus".
+- Bilanz 5 Standbys: 3 mit Bild zurück, 1 Hänger nach der Freigabe, 1 Rücksetzung im MIPS-Neustart. Der MIPS-Neustart auf dem HY320
+  (`CrustScope` Lücke 5, S6) ist das nächste Ziel; die WLAN-Abhilfe ist nach einem gelungenen Aufwachen noch nicht gemessen.
