@@ -57,27 +57,39 @@ eMMC (below).
 | **Video plane** | dark on the first image (a Wayland client through `h713-warp` left the wall black); **shown since 01.11.2026** - see the next section |
 | Boot logo | the vendor's `bootlogo.bmp` sits at the root of `bootloader_a/_b` beside no `mips/`; `h713-extract` now takes it from there (it only looked beside `mips/` before) |
 
-### The video plane: 0x058c0000 bit 28 (01.11.2026)
+### The video plane and the RGB channel over it (01.11.2026)
 
 The board's `LogoRegData.bin` leaves `0x058c0000` (mirrored at `0x058c1000`) at `0x10000040` from its
 prologue, and its DE group ends without writing it again. The L018's file, the same 1920x1080 dual-port
-panel class, closes its DE group with `0x058c0000 = 0` and five panel words besides. Bit 28 of that word
-blanks the video plane at the mixer and nothing else, so everything upstream looked healthy:
+panel class, closes its DE group with `0x058c0000 = 0` and six panel words besides. With bit 28 of that
+word set the output takes the RGB channel alone, so the video never reached the wall while everything
+upstream looked healthy:
 
 | What was seen with bit 28 set | |
 |---|---|
 | `h713-warp`'s NV12 frame | luma 235 for a white client (`h713-warp ctl dump`) |
 | PROC statistics `0x05140600` | `0x3ac` white, `0x040` black - the frame reaches PROC |
 | panel-block probes `0x051c0144`, `0x051c0304` and the histogram `0x051c0380..03fc` | white for a white client - the frame reaches the panel block |
-| RGB channel, per-pixel alpha (`0x051c006c = 0x21000000`) | an opaque half shows; where it is transparent the video is black |
+| RGB channel, per-pixel alpha (`0x051c006c = 0x21000000`) | an opaque half shows; where it is transparent the video is black (bit 28: the RGB channel alone) |
 | lamp | on (the black is the LCD's grey glow); `PB5` and the PWM blocks unchanged between console and video |
 
 Bisected by eye at the wall: the HY310's display firmware (`16c74a28...`) is just as black with the
 board's `LogoRegData.bin`, the "ADT-3 2024" firmware shows the video with the L018's file, and in a
 running picture `0x10000040` -> black, `0x00000040` -> shown, `0x10000000` -> black. The fix is one
-write in the U-Boot fork after the DE group, under `CONFIG_H713_BOARD_HY320` (commit `94d1a5c7042`,
-console line "HY320 - 0x058c0000 cleared as the L018's DE group does"). With the board's own files and
-the unchanged kernel module, colour bars and motion show on the video plane.
+write in the U-Boot fork after the DE group, under `CONFIG_H713_BOARD_HY320` (commit `94d1a5c7042`).
+With the board's own files and the unchanged kernel module, colour bars and motion show on the video plane.
+
+With bit 28 clear the RGB channel reaches the wall only through the panel block's mixer, and there it
+showed nothing over the video - no `h713-osd` overlay, not even an opaque test frame in `/dev/fb0` - until
+two more words of the L018's tail were set: `0x051c0014` bit 27 and `0x051c0028[5:4]` (`0x18000000` and
+`0x30`; neither alone does it; `0x051c0024`, `0x05140054` and `0x051c0070` are not needed). The
+firmware's TSE leaves those bits alone, so U-Boot writes them with the first word (commit `ca8263484e1`,
+console line "HY320 - the L018's DE tail ..."). Checked after a boot with only that change: the power
+countdown seen over colour bars at the wall, the volume pill through the panel histogram
+(`0x051c0380..03fc` - post-mixer: it moves by ~55000 pixels while the pill is up), and straight
+per-pixel alpha through the same histogram (alpha `0x80` and `0x40` land between the picture's
+distribution and the opaque colour's). The pill itself is a dark translucent shape with no fully
+opaque pixel (alpha 117 ground, 247 at most); over bright colour bars it was not noticed by eye.
 
 Dead ends on the way, so that nobody repeats them: the frame-rate word of the VidDec record (30000, 33131,
 66262), the panel totals in `display_cfg.xml` (filled from `panel_config.ini` the way stock `libmips.so`
@@ -101,8 +113,10 @@ so every boot leaves the log in the unused tail of `hy310-uboot` (LBA 10240..112
 
 ## What we do not know
 
-- whether the other ADT-3 family boards (HY350, HY300 T08) need the same `0x058c0000` write - the fix is
-  scoped to this board until one of them is measured;
+- whether the other ADT-3 family boards (HY350, HY300 T08) need the same three words (`0x058c0000`,
+  `0x051c0014`, `0x051c0028`) - the fix is scoped to this board until one of them is measured;
+- the HDMI input: no source has been plugged in yet, so capture, the ring and the converter's bypass
+  warning (`converter: still on bypass after SetVideoRange`) are untested on this board;
 - which pad PWM channel 5 leaves the SoC on, and whether the PWM words change the lamp;
 - whether the STK8BA58 is driven by anything in mainline;
 - the silkscreen of the board.
