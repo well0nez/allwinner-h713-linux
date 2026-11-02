@@ -55,6 +55,7 @@ eMMC (below).
 | AFBD handoff | the firmware leaves CTRL `0x03001901`, VIDEO_CTRL `0x03000200`, selector `0`; with the HY310's defaults the driver refused (`-ENODEV`) and the wall went black after the logo. The board's tree states its own words (`allwinner,handoff-state`), the driver probes, `h713-tv` runs |
 | RGB plane | the no-signal page, the launcher and a frame written to `/dev/fb0` show correctly |
 | **Video plane** | dark on the first image (a Wayland client through `h713-warp` left the wall black); **shown since 01.11.2026** - see the next section |
+| **HDMI input** | the socket is the receiver's **port 1**; an Xbox One X at 1920x1080p60 with 48 kHz PCM sound since 01.11.2026 - see below |
 | Boot logo | the vendor's `bootlogo.bmp` sits at the root of `bootloader_a/_b` beside no `mips/`; `h713-extract` now takes it from there (it only looked beside `mips/` before) |
 
 ### The video plane and the RGB channel over it (01.11.2026)
@@ -97,6 +98,25 @@ does: `hde_size`, porches, `work_mode 2`, 164 MHz), the selector values `0x29/0x
 blue-screen stages, the border overlay, the gamma stage and the panel's vertical scaler - none of them
 changes the black.
 
+### The HDMI input: port 1, and the EDID port 1 never had (01.11.2026)
+
+With an Xbox One X plugged in, the first image saw no signal at all. The display firmware's hot-plug
+callback said why: `RX-CALL ... comp_id=0x38d780e2 ... p[1..4]=[00000001 00000004 ...]` - source 4,
+HDMI-2, which the init sequence's port map puts on hardware port 1. The driver had the HY310's port 0
+wired in (EDID, hot-plug, SetSource 3). With port 1 and source 4 the Xbox locked at once - at 640x480,
+without sound, and it stayed there over a replug and over EDID block 1. Reading the three DDC RAMs
+(`0x07091c00/1d00/1e00`, the gate `0x07091b04` closed for the read) showed EDID, random bytes, EDID:
+port 1's was never written. Copying port 0's EDID into it by hand and a replug brought 1920x1080p60 and
+sound. The cause is in the vendor ARISC firmware's DDC writer, which reads its mask-to-port table with
+byte loads that see the table byte-reversed under our boot chain's little-endian window - ports 0 and 2
+swap and port 1 is skipped ([arisc.md](../../docs/subsystems/arisc.md#the-port-table-the-ddc-writer-reads-01112026)).
+
+Kernel `0336` writes that table in the order the firmware reads it, `0337` makes the socket's port the
+device tree's `allwinner,hdmi-port`, `0338` sets it to 1 here. Checked after a reboot with the ARISC
+fix and nothing written by hand: all three DDC RAMs hold the EDID, the Xbox comes up at 1920x1080p60,
+`audio source present=1 rate=48000`, the converter back on BT.709 (no "picture is green" warning).
+The owner first heard the sound as crackling; with music playing it was fine, at volume 40.
+
 ### U-Boot's console without a UART
 
 `hy320_defconfig` sets `CONFIG_CONSOLE_RECORD`; `h713_conlog <addr>` (U-Boot fork,
@@ -115,8 +135,7 @@ so every boot leaves the log in the unused tail of `hy310-uboot` (LBA 10240..112
 
 - whether the other ADT-3 family boards (HY350, HY300 T08) need the same three words (`0x058c0000`,
   `0x051c0014`, `0x051c0028`) - the fix is scoped to this board until one of them is measured;
-- the HDMI input: no source has been plugged in yet, so capture, the ring and the converter's bypass
-  warning (`converter: still on bypass after SetVideoRange`) are untested on this board;
+- whether the HDCP-protected parts of a source (streaming apps on the Xbox) authenticate on port 1;
 - which pad PWM channel 5 leaves the SoC on, and whether the PWM words change the lamp;
 - whether the STK8BA58 is driven by anything in mainline;
 - the silkscreen of the board.
