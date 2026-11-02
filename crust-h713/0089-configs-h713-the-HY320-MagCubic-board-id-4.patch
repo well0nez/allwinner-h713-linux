@@ -1,6 +1,6 @@
-From 74d64d759f99dab384c236ce4aa0407054ffc151 Mon Sep 17 00:00:00 2001
-From: well0nez <8986239+well0nez@users.noreply.github.com>
-Date: Mon, 2 Nov 2026 05:16:13 +0900
+From 21d535633adcd84258c930e24cd2251ddab6e83e Mon Sep 17 00:00:00 2001
+From: minpeter <62207008+minpeter@users.noreply.github.com>
+Date: Tue, 3 Nov 2026 00:41:24 +0900
 Subject: [PATCH 89/89] configs: h713: the HY320 (MagCubic), board id 4
 
 The HY320's stock tree names the same power key (PL4), IR codes (the 19
