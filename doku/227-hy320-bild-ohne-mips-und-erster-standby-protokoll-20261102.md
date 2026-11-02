@@ -82,3 +82,6 @@ gestecktem USB, Vsync ohne MIPS, Wake über Taste/Fernbedienung, Zyklen, Brummen
   ramoops.mem_size=0x100000 ramoops.console_size=0x80000 ramoops.record_size=0x20000 no_console_suspend`. Schleife 3 lief an
   (`dmesg -n 8`, `pm_debug_messages 1` kamen nicht mehr an) und ging früh verloren; Auswertung: `/sys/fs/pstore` nach dem Start.
 - Zurück zum Release: `/boot/h713-kernel-release.fit` nach `/boot/h713-kernel.fit`, die ramoops-Wörter aus `bootargs_base`.
+- Schleife 3: Zyklus 1 verloren, `/sys/fs/pstore` danach leer - der Fehlerweg endet in der Pforte, die die Schienen abschaltet,
+  und der RAM-Inhalt ist weg. Deshalb jetzt `h713_gate=0` (ein Fehler startet gleich durch, pstore bleibt) und Schleife 4
+  (`sbloop4`, 10 Zyklen, `/data/log/sbloop.log`). Nach der Auswertung `fw_setenv h713_gate 1` zurück.
