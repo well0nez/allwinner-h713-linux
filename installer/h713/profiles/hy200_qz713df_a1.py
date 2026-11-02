@@ -6,7 +6,7 @@ left the factory with, so the board's keys are here and each firmware is a varia
 stock build (boards/hy200-qz713df-a1/README.md has the comparison, row by row, with its sources):
 
   projector05061226  HY300PRO-G-EU, Android 11 of 2025-05-06 - the maintainer's own unit
-  projector09220931  HY300 Pro+ (2025, DDR3), Android 11 of 2025-09-22 - no unit of ours
+  projector09220931  HY300 Pro+ (2025, DDR3), Android 11 of 2025-09-22 - verified by its owner (issue #4)
 
 Shape: installer/h713/profiles/SCHEMA.md ("variants"). Source tags used in the comments below:
   D  = the HY300PRO-G-EU's own eMMC dump of 2026-10-02 (kept private) and h713-extract 0.4 over it
@@ -203,10 +203,12 @@ PROFILE = {
             "name": "HY300 Pro+ (HY200 QZ713DF A1, stock 2025-09-22)",
             "description": "HY300 Pro+ -- HY200 QZ713DF A1, DDR3 624 MHz, stock build 2025-09-22 "
                            "(projector09220931)",   # J vendor_build_prop, J boot0.dram
-            # An image, but no device: nobody has run OUR firmware on a unit with this firmware
-            # (doku/121 section 5). cstenger booted his own tree on his bench; his run, not ours.
-            "status": "profile-only",
-            "verified_by": None,
+            # Verified by its owner (issue #4): his own build of main 591d0d3 ran on his unit on
+            # 30.10.2026 (picture, sound, Wi-Fi, BT, remote, fan, power key, off and on), and the
+            # report of his dump (01.11.2026) matches every feature of this variant. cstenger's
+            # earlier boots on his bench were his own tree's, not ours.
+            "status": "verified",
+            "verified_by": "jo-- (issue #4), own build of main 591d0d3, 30.10.2026; dump report 01.11.2026",
             "stock": _PLUS_STOCK,
             "dram": dict(_DRAM, clk=624, para2=0, tpr13=0x34010100,
                          source="boot0_sdcard.fex offset 0x38, hy300-pro-downloads/mega/update.img "

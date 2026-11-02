@@ -119,7 +119,7 @@ class Images(unittest.TestCase):
         # board of cstenger's bench and of the HY300PRO-G-EU (package F1, ST3-BOARDMERGE).
         ident = identified("hy300-pro-plus-ddr3")
         self.assertEqual((ident["input"], ident["kind"]), ("image", "stock"))
-        self.assertEqual((ident["profile"], ident["status"]), (PLUS, "profile-only"))
+        self.assertEqual((ident["profile"], ident["status"]), (PLUS, "verified"))
         self.assertEqual(ident["variant"], "projector09220931")
         self.assertEqual(ident["candidates"], [PLUS])
         # Not one string: every feature the variant calls strong agrees, and there are seven ...
@@ -130,9 +130,9 @@ class Images(unittest.TestCase):
         other = ident["matches"]["hy200_qz713df_a1/projector05061226"]
         self.assertEqual([k for k, v in other.items() if v], [])
         log = Recorder()
-        # profile-only is not a licence to write, however well the image matches.
-        self.assertFalse(report_device(ident, log, writing=True))
-        self.assertIn("ERROR", log.text)
+        # verified since issue #4 (30.10.2026): a yes to writing, like the HY310's.
+        self.assertTrue(report_device(ident, log, writing=True))
+        self.assertNotIn("ERROR", log.text)
 
     def test_hy300_pro_plus_lpddr3_is_the_qz713_v2_profile(self):
         ident = identified("hy300-pro-plus-lpddr3")
