@@ -26,6 +26,11 @@ Kernel-Patches `0336` - `0345`, U-Boot-Fork `ca8263484e1`, `fc66272cec5`. Beschr
 - 4K: 3840x2160p24 von der Xbox gefangen und skaliert (EDID mit 4K30 als erster Timing), die Xbox kehrt aber nach 2..4 s selbst
   auf 1080p60 zurück. 4K50/60: die gesperrten TSE-Sätze im Speicher freigeschaltet, Y420-Block (VIC 96/97) und HF-VSDB ins EDID -
   die Xbox sendet, INCAP rastet nie ein. Alles zurückgesetzt.
+- Warum die Xbox von 4K24 zurückkehrt (Abtastung alle 50 ms: HPD-Register `0x07091014`, DDC-Gate, Signal, HDCP-Sitzung; drei
+  Versuche): HPD bleibt stehen (`0x5`), die 2.2-Sitzung steht während der ganzen 4K24-Phase, das Signal bleibt gerastet - der
+  Wechsel zurück geht von der Xbox aus. Mit einem EDID, das 4K nur bei 30 Hz anbietet, schickt die Xbox trotzdem 4K24 und zeigt:
+  "4K wird bei 60 Hz nicht unterstützt, HDR10 nicht, Dolby Vision nicht". Die Oberfläche der Xbox will 4K nur mit 60 Hz; 4K30
+  sendet sie gar nicht. Ohne 4K60 im Empfänger (s. o.) bleibt 1080p60.
 
 ## 3 Abgleich gegen Stock
 
