@@ -27,7 +27,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/185`, `doku/188`, `doku/190`, `doku/213`, `doku/218`, `doku/70`, `doku/72`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/200`, `doku/210`, `doku/212`, `doku/213`, `doku/220`, `doku/80` |
-| `docs/known-issues.md` | `doku/147`, `doku/156`, `doku/180`, `doku/200`, `doku/201`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215`, `doku/218`, `doku/219`, `doku/60` |
+| `docs/known-issues.md` | `doku/147`, `doku/156`, `doku/180`, `doku/200`, `doku/201`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215`, `doku/218`, `doku/219`, `doku/225`, `doku/60` |
 | `docs/services.md` | `doku/107`, `doku/170`, `doku/213` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/181`, `doku/184`, `doku/219`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/206`, `doku/220`, `doku/nachtlog/S21-re-audif-zugang` |
@@ -99,6 +99,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/h713/profiles/hy300_pro.py` | `doku/120`, `doku/121` |
 | `installer/h713/profiles/hy300_t08.py` | `doku/121` |
 | `installer/h713/profiles/hy310.py` | `doku/109`, `doku/120`, `doku/40` |
+| `installer/h713/profiles/hy320.py` | `doku/121` |
 | `installer/h713/profiles/hy350.py` | `doku/121` |
 | `installer/h713/profiles/l018.py` | `doku/222` |
 | `installer/h713/source.py` | `doku/121` |
@@ -186,7 +187,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`118-handoff-20260913.md`](118-handoff-20260913.md) | Handoff | 2026-09-13 | Handoff 13.09.2026 - nach dem Release v0.5-beta | 1 |
 | [`119-plan-fremdgeraete-und-installer-fixes.md`](119-plan-fremdgeraete-und-installer-fixes.md) | Plan |  | Plan 119 - Fremde Geräte (HY300 Pro) und die Installer-Fehler aus Issue #1 | - |
 | [`120-plan-hy300pro.md`](120-plan-hy300pro.md) | Plan |  | Plan 120 - HY300 Pro: von „geht nicht" zu einem Test, den der Melder fahren kann | 4 |
-| [`121-plan-werkzeug-umbau.md`](121-plan-werkzeug-umbau.md) | Plan |  | Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards | 51 |
+| [`121-plan-werkzeug-umbau.md`](121-plan-werkzeug-umbau.md) | Plan |  | Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards | 52 |
 | [`122-handoff-werkzeug-umbau.md`](122-handoff-werkzeug-umbau.md) | Handoff |  | 122 - Handoff Werkzeug-Umbau (abgeschlossen 15.09.2026 mit Release v0.6-beta) | - |
 | [`123-handoff-20260915.md`](123-handoff-20260915.md) | Handoff | 2026-09-15 | 123 - Handoff 15.09.2026 (Werkzeug-Umbau abgeschlossen, Stufe 5 fremde Boards, Testabbild HY300 Pro) | - |
 | [`124-cstenger-abgleich-20260915.md`](124-cstenger-abgleich-20260915.md) | Abgleich | 2026-09-15 | 124 - Abgleich mit cstengers Zweig `h713-display-video-path` (sein Stand 12.09.2026) | - |
@@ -292,6 +293,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`222-l018-test3-installation-abnahme-verified-protokoll-20261026.md`](222-l018-test3-installation-abnahme-verified-protokoll-20261026.md) | Protokoll | 2026-10-26 | 222 Der L018 aus einem Abbild: test3 gebaut, über unser Layout installiert, abgenommen - verified - Protokoll | 6 |
 | [`223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md`](223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md) | Protokoll | 2026-10-26 | 223 v0.97.1-beta: das Release-Abbild des L018 - Bau von vorn, Installation, Start - Protokoll | 1 |
 | [`224-installer-board-pruefung-release-abbild-protokoll-20261026.md`](224-installer-board-pruefung-release-abbild-protokoll-20261026.md) | Protokoll | 2026-10-26 | 224 Der Installer schreibt ein Release-Abbild nur auf sein Board - Protokoll | 1 |
+| [`225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md`](225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md) | Protokoll | 2026-11-01 | 225 HY320: Videoebene, HDMI an Port 1, Abgleich gegen Stock - Protokoll | 1 |
+| [`226-hy320-crust-von-linux-geladen-protokoll-20261101.md`](226-hy320-crust-von-linux-geladen-protokoll-20261101.md) | Protokoll | 2026-11-01 | 226 HY320: crust als ARISC-Firmware, von Linux geladen - Protokoll | - |
+| [`227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md`](227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md) | Protokoll | 2026-11-02 | 227 HY320: Bild ohne display.bin, und der erste Standby über crust - Protokoll | - |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -448,7 +452,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-56 von 283 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+58 von 286 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `104-plan-standby-stufe2.md` (ueberholt)
@@ -498,6 +502,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 * `208-runde-5x-werkzeuge-standby-review-arisc-panel-testabbild-20261012.md`
 * `209-runde-5x-teil-b-uebernahme-panel-20261013.md`
 * `221-nachtpakete-integration-geu-messung-protokoll-20261026.md`
+* `226-hy320-crust-von-linux-geladen-protokoll-20261101.md`
+* `227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md`
 * `69-handoff-20260905.md` (ueberholt)
 * `79-nachtlog-20260907.md` (ueberholt)
 * `91-plan-drei-punkte.md` (ueberholt)

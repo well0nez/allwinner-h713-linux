@@ -302,8 +302,9 @@ class SizesAllowed(unittest.TestCase):
                        if m._size_is_a_units(profile["layout"] or {}))
         # losei_x9 joined the three on 25.10.2026, and that is the decision this test asks for: its
         # layout is the GPT of its owner's device (issue #3), not a sys_partition.fex, so its last
-        # row (UDISK, 6197215 sectors) has an end and disk_sectors is that chip's own size.
-        self.assertEqual(found, sorted([GEU_ID, "hy300_pro", "losei_x9"]))
+        # row (UDISK, 6197215 sectors) has an end and disk_sectors is that chip's own size. hy320
+        # joined on 31.10.2026 for the same reason: its layout is the GPT of its owner's full dump.
+        self.assertEqual(found, sorted([GEU_ID, "hy300_pro", "hy320", "losei_x9"]))
         self.assertFalse(m._size_is_a_units({"disk_sectors": HY310, "partitions": [("UDISK", 1, 0, None)]}))
         self.assertFalse(m._size_is_a_units({"disk_sectors": None, "partitions": [("UDISK", 1, 5, None)]}))
         self.assertFalse(m._size_is_a_units({}))

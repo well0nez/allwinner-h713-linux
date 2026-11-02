@@ -1,7 +1,7 @@
 From 54e4a08ab9f3521e2de4b187e66e820311d7fde2 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sat, 10 Oct 2026 19:44:19 +0200
-Subject: [PATCH 88/88] configs: h713: the HY310 powers off through crust too
+Subject: [PATCH 88/89] configs: h713: the HY310 powers off through crust too
 
 Measured on a HY310 over FEL on 10.10.2026 (doku/190): the power off ends
 in phase 7, step 0x613, the rails low. The 60 s test build woke by itself

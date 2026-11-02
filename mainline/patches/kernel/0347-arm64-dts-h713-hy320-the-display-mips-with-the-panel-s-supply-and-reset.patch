@@ -1,0 +1,49 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: hy320: the display MIPS, with the panel's supply and reset
+
+With &mips disabled, a standby parks the display MIPS raw and nothing
+restarts it: no picture after a wake and no gate word for a standby that
+does not finish. The node is enabled with the panel's supply and reset as
+the board's stock tvtop node names them: panel_power_en <PH19, high> and
+panel_gpio_0 <PH16>, driven low as the reset as on the HY300PRO-G-EU
+(0248). Not PF6, the HY200 QZ713DF A1's supply, which is the SD card
+detect on this board. The restart and the supply cycle are unmeasured on
+the HY320.
+
+Co-Authored-By: Claude Opus 5.5 <noreply@anthropic.com>
+---
+diff -u a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -29,8 +29,8 @@
+  *  - The focus motor is disabled under stock: off here.
+  *  - The accelerometer at 0x18 on twi1 is an STK8BA58 (stk,stk83xx, chip
+  *    ID 0x87), not the HY310's SC7A20: stk8ba50 drives it.
+- *  - The display firmware's elog addresses, and no display MIPS restart
+- *    (measured on the HY310 only).
++ *  - The display firmware's elog addresses; the display MIPS restart
++ *    cycles the panel's supply PH19 and pulses its reset PH16 (below).
+  *
+  * The same as the HY310 by its stock tree: power key PL4 (standby_param,
+  * keyboard power-gpio), IR on PL9 (cir_param; its address list holds the
+@@ -66,9 +66,18 @@
+ 	firmware-name = "hy320-crust.bin", "hy310-edid.bin";
+ };
+ 
+-/* The display MIPS restart is measured on the HY310 only. */
++/*
++ * The display MIPS, so that a standby can park and restart it and the gate
++ * word holds a standby that does not finish. The panel's supply and reset
++ * as the stock tvtop node names them: panel_power_en PH19 (high on), not
++ * the HY200 QZ713DF A1's PF6, which is the SD card detect here, and
++ * panel_gpio_0 PH16. The supply cycle after a restart is the HY300PRO-G-EU's
++ * (0248); on this board it is unmeasured.
++ */
+ &mips {
+-	status = "disabled";
++	status = "okay";
++	panel-power-gpios = <&pio 7 19 GPIO_ACTIVE_HIGH>;	/* PH19 */
++	panel-reset-gpios = <&pio 7 16 GPIO_ACTIVE_LOW>;	/* PH16 */
+ };
+ 
+ /*

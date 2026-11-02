@@ -1,0 +1,118 @@
+From 15aa825283e8028a38b595d1e1043a212b25a881 Mon Sep 17 00:00:00 2001
+From: minpeter <62207008+minpeter@users.noreply.github.com>
+Date: Sat, 31 Oct 2026 14:23:28 +0900
+Subject: [PATCH 107/110] sunxi: h713: h713_conlog - U-Boot's console for Linux
+ on a board without a UART
+
+With CONFIG_CONSOLE_RECORD, `h713_conlog <addr>` copies what U-Boot has
+printed since relocation to <addr> behind a header ("H713CLOG", u32 length,
+u32 flags), so that bootcmd can leave it on the eMMC:
+
+  h713_disp init ${h713_project} logo; h713_conlog 0x45000000; mmc dev 1;
+  mmc write 0x45000000 0x2800 0x400; run boot_${h713_boot}
+
+The HY320 has no serial console on its one unit; this is how its first
+boots were read (69 lines from Core: to "display initialised").
+hy320_defconfig sets CONSOLE_RECORD with a 256 KiB buffer.
+---
+ arch/arm/mach-sunxi/Makefile      |  3 ++
+ arch/arm/mach-sunxi/h713_conlog.c | 61 +++++++++++++++++++++++++++++++
+ configs/hy320_defconfig           |  6 +++
+ 3 files changed, 70 insertions(+)
+ create mode 100644 arch/arm/mach-sunxi/h713_conlog.c
+
+diff --git a/arch/arm/mach-sunxi/Makefile b/arch/arm/mach-sunxi/Makefile
+index 1205bba22d1..faa1b258ee9 100644
+--- a/arch/arm/mach-sunxi/Makefile
++++ b/arch/arm/mach-sunxi/Makefile
+@@ -32,6 +32,9 @@ ifndef CONFIG_XPL_BUILD
+ obj-y	+= el2_to_aarch32.o
+ obj-$(CONFIG_H713_MIPS_BOOT)	+= h713_mips.o
+ obj-$(CONFIG_H713_MIPS_BOOT)	+= h713_hdcp14.o
++ifdef CONFIG_H713_MIPS_BOOT
++obj-$(CONFIG_CONSOLE_RECORD)	+= h713_conlog.o
++endif
+ endif
+ endif
+ 
+diff --git a/arch/arm/mach-sunxi/h713_conlog.c b/arch/arm/mach-sunxi/h713_conlog.c
+new file mode 100644
+index 00000000000..768c44ccf4e
+--- /dev/null
++++ b/arch/arm/mach-sunxi/h713_conlog.c
+@@ -0,0 +1,61 @@
++// SPDX-License-Identifier: GPL-2.0+
++/*
++ * H713: hand U-Boot's own console output to Linux on a board without a serial
++ * console.
++ *
++ * With CONFIG_CONSOLE_RECORD every character U-Boot prints after relocation
++ * also lands in gd->console_out. `h713_conlog <addr>` copies what has been
++ * recorded so far to <addr> behind a 16-byte header and sets ${filesize} to
++ * the whole length, so that the environment can put it somewhere Linux reads:
++ *
++ *	h713_conlog 0x45000000; mmc dev 1; mmc write 0x45000000 0x2800 0x400
++ *
++ * Header: "H713CLOG", u32 payload length, u32 flags (bit 0: the recording
++ * overflowed and lost its tail). The copy drains the record, so a second call
++ * returns only what was printed in between.
++ */
++
++#include <command.h>
++#include <console.h>
++#include <env.h>
++#include <membuf.h>
++#include <asm/global_data.h>
++#include <linux/string.h>
++
++DECLARE_GLOBAL_DATA_PTR;
++
++#define H713_CONLOG_MAGIC	"H713CLOG"
++#define H713_CONLOG_HDR		16
++
++static int do_h713_conlog(struct cmd_tbl *cmdtp, int flag, int argc,
++			  char *const argv[])
++{
++	struct membuf *mb = (struct membuf *)&gd->console_out;
++	char *dst, *data;
++	u32 len = 0, flags;
++	int n;
++
++	if (argc != 2)
++		return CMD_RET_USAGE;
++	if (!mb->start) {
++		printf("h713_conlog: no console record buffer\n");
++		return CMD_RET_FAILURE;
++	}
++	flags = (gd->flags & GD_FLG_RECORD_OVF) ? 1 : 0;
++	dst = (char *)hextoul(argv[1], NULL);
++
++	/* The buffer is circular: getraw hands back at most two runs. */
++	while ((n = membuf_getraw(mb, -1, true, &data)) > 0) {
++		memcpy(dst + H713_CONLOG_HDR + len, data, n);
++		len += n;
++	}
++	memcpy(dst, H713_CONLOG_MAGIC, 8);
++	memcpy(dst + 8, &len, 4);
++	memcpy(dst + 12, &flags, 4);
++	env_set_hex("filesize", H713_CONLOG_HDR + len);
++	return CMD_RET_SUCCESS;
++}
++
++U_BOOT_CMD(h713_conlog, 2, 0, do_h713_conlog,
++	   "copy the recorded console output to memory",
++	   "<addr> - header \"H713CLOG\", u32 length, u32 flags, then the text");
+diff --git a/configs/hy320_defconfig b/configs/hy320_defconfig
+index d14ba9d9377..4593a6d35f0 100644
+--- a/configs/hy320_defconfig
++++ b/configs/hy320_defconfig
+@@ -118,3 +118,9 @@ CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
+ CONFIG_H713_VENDOR_CHAINLOAD=y
+ CONFIG_CMD_WDT=y
+ CONFIG_CMD_GPIO=y
++# No serial console on the one HY320 we have (its owner will not open it): U-Boot
++# records its own console output, and `h713_conlog` (arch/arm/mach-sunxi/
++# h713_conlog.c) copies the record to memory so that bootcmd can leave it on the
++# eMMC for Linux to read.
++CONFIG_CONSOLE_RECORD=y
++CONFIG_CONSOLE_RECORD_OUT_SIZE=0x40000
