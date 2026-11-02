@@ -430,3 +430,5 @@
 0336-soc-sunxi-h713-arisc-the-ddc-port-table-in-the-firmware-s-byte-order.patch
 0337-media-h713-hdmirx-the-socket-s-port-from-the-device-tree.patch
 0338-arm64-dts-h713-hy320-the-hdmi-socket-is-port-1.patch
+0339-drm-tiny-h713-afbd-the-output-mix-word-follows-the-video-plane.patch
+0340-arm64-dts-h713-hy320-the-display-s-mix-window.patch

@@ -1,0 +1,115 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: drm/tiny: h713-afbd: the output mix word follows the video plane
+
+0x058c0000 bit 28 (mirrored at 0x058c1000) puts the panel on the RGB
+channel alone; clear, the panel takes the panel block's mix of the video
+and the RGB channel. The HY320's LogoRegData.bin leaves it set, and the
+video plane stayed black. Cleared by U-Boot after the DE group (as the
+L018's file does), the video showed - but the boot logo then stood with
+trailing copies for as long as it was up (the owner, 01.11.2026; the
+handoff leaves the AFBD video channel at 0x03000200, not idle).
+
+An optional "mix" window lets the driver own the bit: set at probe (the
+handoff is the RGB channel's), cleared when the video plane is enabled,
+set again when it stops. A tree without the window gets no write.
+
+diff -ruN a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -389,6 +389,7 @@
+ 	 */
+ 	void __iomem *osd_regs;
+ 	u32 osd_swizzle_idle;
++	void __iomem *mix_regs;	/* "mix": the output's mix word, optional */
+ 	bool osd_on;		/* the RGB channel is live over source 0 */
+ 	/*
+ 	 * Colour management. A NULL gamma_regs means the device tree did not
+@@ -1243,6 +1244,32 @@
+ 	       h->lvds_regs + 0x06c);
+ }
+ 
++/*
++ * The output's mix word (0x058c0000, mirrored at +0x1000). With bit 28 set
++ * the panel takes the RGB channel alone; clear, it takes the panel block's
++ * mix of the video and the RGB channel. A board whose boot loader leaves the
++ * bit set (the HY320's LogoRegData.bin) keeps the boot logo clean that way,
++ * and this driver clears it only for as long as the video plane is on. On
++ * the HY320, with the bit cleared by the boot loader instead, the owner saw
++ * trailing copies of the logo for as long as it stood (01.11.2026; the
++ * handoff leaves the video channel at 0x03000200, not idle). Optional: no
++ * "mix" window, no write.
++ */
++#define H713_MIX_RGB_ONLY	BIT(28)
++#define H713_MIX_MIRROR		0x1000
++
++static void h713_afbd_mix_video(struct h713_afbd *h, bool video)
++{
++	u32 v;
++
++	if (!h->mix_regs)
++		return;
++	v = readl(h->mix_regs);
++	v = video ? v & ~H713_MIX_RGB_ONLY : v | H713_MIX_RGB_ONLY;
++	writel(v, h->mix_regs);
++	writel(v, h->mix_regs + H713_MIX_MIRROR);
++}
++
+ static void h713_afbd_video_stop(struct h713_afbd *h)
+ {
+ 	unsigned long flags;
+@@ -1298,6 +1325,7 @@
+ 	writel(1, h->regs + AFBD_READY);
+ 	h713_afbd_wait_ready(h, AFBD_READY, "RGB enable");
+ 	writel(h->selector_rgb, h->lvds_regs + 0x06c);
++	h713_afbd_mix_video(h, false);
+ 	h713_afbd_osd_swizzle(h, h->osd_swizzle_idle);
+ 	h->osd_on = false;
+ 	h->video_active = false;
+@@ -1635,6 +1663,7 @@
+ 	       h->regs + AFBD_VIDEO_CTRL);
+ 	writel(1, h->regs + AFBD_VIDEO_READY);
+ 	h713_afbd_wait_ready(h, AFBD_VIDEO_READY, "video enable");
++	h713_afbd_mix_video(h, true);
+ 	writel(H713_VIDEO_SELECTOR, h->lvds_regs + 0x06c);
+ 
+ 	/*
+@@ -2362,6 +2391,29 @@
+ 	return 0;
+ }
+ 
++static int h713_afbd_map_mix(struct h713_afbd *h, struct platform_device *pdev)
++{
++	struct resource *mix;
++
++	mix = platform_get_resource_byname(pdev, IORESOURCE_MEM, "mix");
++	if (!mix)
++		return 0;
++	if (resource_size(mix) < H713_MIX_MIRROR + sizeof(u32))
++		return dev_err_probe(&pdev->dev, -EINVAL,
++				     "the mix window must reach its mirror at +0x%x\n",
++				     H713_MIX_MIRROR);
++	h->mix_regs = devm_ioremap_resource(&pdev->dev, mix);
++	if (IS_ERR(h->mix_regs)) {
++		int ret = PTR_ERR(h->mix_regs);
++
++		h->mix_regs = NULL;
++		return ret;
++	}
++	/* the handoff is the RGB channel's: no video under it until a plane */
++	h713_afbd_mix_video(h, false);
++	return 0;
++}
++
+ /*
+  * The plane block of the RGB channel (0x0524c000), mapped only for its byte
+  * order word. Read here once, with both display clocks held: the boot loader's
+@@ -2651,6 +2703,9 @@
+ 	if (ret)
+ 		return ret;
+ 
++	ret = h713_afbd_map_mix(h, pdev);
++	if (ret)
++		return ret;
+ 	ret = h713_afbd_map_osd(h, pdev);
+ 	if (ret)
+ 		return ret;

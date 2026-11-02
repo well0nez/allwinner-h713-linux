@@ -76,16 +76,20 @@ upstream looked healthy:
 
 Bisected by eye at the wall: the HY310's display firmware (`16c74a28...`) is just as black with the
 board's `LogoRegData.bin`, the "ADT-3 2024" firmware shows the video with the L018's file, and in a
-running picture `0x10000040` -> black, `0x00000040` -> shown, `0x10000000` -> black. The fix is one
-write in the U-Boot fork after the DE group, under `CONFIG_H713_BOARD_HY320` (commit `94d1a5c7042`).
-With the board's own files and the unchanged kernel module, colour bars and motion show on the video plane.
+running picture `0x10000040` -> black, `0x00000040` -> shown, `0x10000000` -> black. The first fix was one
+write in the U-Boot fork after the DE group (commit `94d1a5c7042`): colour bars and motion showed on the
+video plane - and the boot logo stood with trailing copies for as long as it was up. So the bit is now
+the kernel's (`0339`, `0340`): U-Boot leaves `0x10000040` (the RGB channel alone, a clean logo), and the
+AFBD driver, which maps `0x058c0000` as its "mix" window, sets bit 28 at probe, clears it when the video
+plane comes on and sets it again when it stops (U-Boot `fc66272cec5`). Checked after a reboot: the logo
+clean by eye, `0x00000040` under the Xbox picture, `0x10000040` on the console.
 
 With bit 28 clear the RGB channel reaches the wall only through the panel block's mixer, and there it
 showed nothing over the video - no `h713-osd` overlay, not even an opaque test frame in `/dev/fb0` - until
 two more words of the L018's tail were set: `0x051c0014` bit 27 and `0x051c0028[5:4]` (`0x18000000` and
 `0x30`; neither alone does it; `0x051c0024`, `0x05140054` and `0x051c0070` are not needed). The
-firmware's TSE leaves those bits alone, so U-Boot writes them with the first word (commit `ca8263484e1`,
-console line "HY320 - the L018's DE tail ..."). Checked after a boot with only that change: the power
+firmware's TSE leaves those bits alone, so U-Boot writes them (commit `ca8263484e1`, console line
+"HY320 - the L018's DE tail ..."). Checked after a boot with only that change: the power
 countdown seen over colour bars at the wall, the volume pill through the panel histogram
 (`0x051c0380..03fc` - post-mixer: it moves by ~55000 pixels while the pill is up), and straight
 per-pixel alpha through the same histogram (alpha `0x80` and `0x40` land between the picture's
