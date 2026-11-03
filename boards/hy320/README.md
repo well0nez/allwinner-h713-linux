@@ -123,12 +123,13 @@ fix and nothing written by hand: all three DDC RAMs hold the EDID, the Xbox come
 The owner first heard the sound as crackling; with music playing it was fine, at volume 40. Since kernel
 `0343` the codec runs the stock analog words (below), and the owner heard it clean.
 
-**In this repository's `main` (02.11.2026) `0336` is held back:** the patch is in the tree but commented out of
-`series`, because it changes the vendor ARISC firmware on every board that runs it and has been measured on this
-board only; it goes in after a before/after measurement on the HY310 and the HY300PRO-G-EU (EDID, 1080p60, sound,
-HDCP at the HDMI input; TODO 4.18 step 3). Until then an image built from `main` gives this board's port 1 no
-EDID - the owner's own build with `0336` does. Held back for the same reason, measured here only: `h713-tv`'s
-white balance for the "ADT-3 2024" firmware and `h713-mode`'s Wi-Fi restart after a sleep.
+**`0336` in `main` since 03.11.2026.** From 02.11. to 03.11. the patch was held out of `series`, because it changes the
+vendor ARISC firmware on every board that runs it and had been measured on this board only. The before/after measurement on
+the HY310 and the HY300PRO-G-EU (`doku/228`) showed the same picture as here: before, the DDC RAMs held EDID, random bytes,
+EDID; after, EDID three times, the table found at `0x15b6c` and `0x15b7c` in those firmwares; 1080p60, sound and the HDCP 2.2
+session unchanged. `h713-tv`'s white balance table and `h713-mode`'s Wi-Fi restart went in with it (the table recognises
+the HY310's firmware on both boards; the Wi-Fi restart runs only after a sleep, which those images do not offer: not measured
+there).
 
 ### Tuned against the stock firmware (01.11.2026)
 
