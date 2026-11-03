@@ -341,3 +341,16 @@ Niemand hat auf die Wand gesehen.
 - Entwurf: `drafts/30-picture-processing.md` (§3.4 Q-PQ-10, §4.4 Dither, §4.5 `0x0268` und Lage von `0x0144`).
   Umgebung: die Kernel-Spur hat `boot_k73` und 7.3-FITs ergänzt; Referenz `env-before-r11.txt` enthält das. Gerät:
   Normalboot, Umgebung gleich der Referenz, `RUN1`, Sperre frei.
+
+## 16 Runde 12: Q-PQ-11, DRM-Modul Runde 7
+
+- Gerät war ~20:00-20:40 (Arbeitsplatzzeit) nicht erreichbar: der Einmal-Start des 7.3.1-Kerns der Kernel-Spur kam ohne
+  WLAN-Anmeldung hoch; Besitzer hat aus- und eingeschaltet, danach Normalboot 6.18.38, Umgebung gleich `env-before-r11.txt`.
+- **Q-PQ-11**: dritte Kurve des Besitzers hochgeladen, Dither 0, beide Sonden auf (3, 3): 16 Graustufen x 3 Kanäle,
+  Ausgang = ceil(Probe / 4) des dekodierten 12-Bit-Werts am 10-Bit-Eingang, in allen 48 Fällen - Dekodierung stimmt bitgenau.
+- **Modul Runde 7** (`ae0a45c`): S1-T5, S1-T3, T1 (P3 wieder Fach 29), T2 PASS; 3930 Flips ohne Timeout, aber nur 32,8/s
+  (Flip-Ereignis wartet auf das Latch, zwei Vblanks je Flip); S1-T6 mit `align_cal=1` PASS bei 0xff/0x80/0x40, Alpha 0
+  FAIL (Schwarz jetzt 518400/1555200 in Fach 5/6 mit der Standardkurve); pqcheck 38 PASS / 1 FAIL (Sättigung zurück:
+  1264 Pixel); Dumps und Entladen wie erwartet.
+- Entwurf `drafts/30-picture-processing.md` §4.3 (Q-PQ-11). Gerät: Normalboot, Umgebung gleich `env-before-r12.txt`,
+  `RUN1`, Sperre frei.
