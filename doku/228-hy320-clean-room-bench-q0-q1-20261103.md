@@ -371,3 +371,16 @@ Umgebung gleich `env-before-r13.txt`, `RUN1`, Sperre frei.
   Poll 100 us danach genommen; 19 von 4715 Flips kamen zu spät für die Grenze. Entwurf 05 §2 R2a.
 - Start und Ende in `/srv/h713/notes/kernel-bump.md` vermerkt; Gerät: Normalboot, Umgebung gleich `env-before-r14.txt`,
   `RUN1`, Sperre frei. Weitere Bench-Boots erst nach Freigabe durch den lead (Kernel-Spur).
+
+## 19 Stufe 3 offline: Entwürfe 50/55/59/96
+
+- Faktensammlung durch drei Späher (Empfänger, Aufnahme, binär abgeleitete Fakten) aus hdmi-in.md, arisc.md, doku/71-
+  228 und den Nachtlogs; Rohlisten in `analyse/cleanroom-bench-20261103/stage3-*-facts.md`.
+- Entwürfe in `cleanroom-held/drafts/`: `50-hdmi-receiver.md` (Blöcke `RX_CTL 0x06800000`, `RX_LINK 0x06840000`,
+  `RX_APLL 0x06880000`, `AUX 0x07091000`; Zugriffe, die hängen; Strom/Takt; EDID/Hot-Plug über den ARISC; Lock-Zeichen
+  nur stromabwärts; Audio-Statusbytes), `55-capture-to-video-plane.md` (Ring, Schreibindex `0xa0c`, Größen, Freigaben,
+  Weg zu Kanal 0, Quell- gegen Panelrate, Bench-Befund), `59-stage3-open.md` (31 gehaltene binär abgeleitete Fakten,
+  16 offene Fragen, 9 Experimente X1-X9), `96-stage3-tests.md` (T3-00..T3-08, Xbox 1080p60).
+- X1 teilweise: Normalboot (jetzt 7.3.1), ohne Signal (Xbox aus), 8-Bit-Dumps `RX_CTL`, `RX_LINK`, `0x06841000`, `AUX`,
+  `CAP`, `TVTOP`, CCU `0x02001d00..`, PPU (`logs/x1-normal.log`). Der Teil mit Signal braucht die eingeschaltete Xbox
+  (Besitzer).
