@@ -28,6 +28,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/185`, `doku/188`, `doku/190`, `doku/213`, `doku/218`, `doku/70`, `doku/72`, `doku/94` |
 | `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/200`, `doku/210`, `doku/212`, `doku/213`, `doku/220`, `doku/228`, `doku/80` |
+| `docs/kernel-rust.md` | `doku/228` |
 | `docs/known-issues.md` | `doku/147`, `doku/156`, `doku/180`, `doku/200`, `doku/201`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215`, `doku/218`, `doku/219`, `doku/225`, `doku/60` |
 | `docs/services.md` | `doku/107`, `doku/170`, `doku/213` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/181`, `doku/184`, `doku/219`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
@@ -298,8 +299,8 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md`](225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md) | Protokoll | 2026-11-01 | 225 HY320: Videoebene, HDMI an Port 1, Abgleich gegen Stock - Protokoll | 1 |
 | [`226-hy320-crust-von-linux-geladen-protokoll-20261101.md`](226-hy320-crust-von-linux-geladen-protokoll-20261101.md) | Protokoll | 2026-11-01 | 226 HY320: crust als ARISC-Firmware, von Linux geladen - Protokoll | - |
 | [`227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md`](227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md) | Protokoll | 2026-11-02 | 227 HY320: Bild ohne display.bin, und der erste Standby über crust - Protokoll | 2 |
-| [`228-hy320-clean-room-bench-q0-q1-20261103.md`](228-hy320-clean-room-bench-q0-q1-20261103.md) | Analyse | 2026-11-03 | 228 HY320: Clean-Room-Bench, Q0 und Q1 - Protokoll | 2 |
-| [`228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md`](228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md) | Protokoll | 2026-11-03 | 228 - Messung Schritt 3: minpeters 0336 (DDC-Porttabelle), `h713-tv`-Tabelle und `h713-mode` an HY310 und HY300PRO-G-EU (03.11.2026) | 2 |
+| [`228-hy320-clean-room-bench-q0-q1-20261103.md`](228-hy320-clean-room-bench-q0-q1-20261103.md) | Analyse | 2026-11-03 | 228 HY320: Clean-Room-Bench, Q0 und Q1 - Protokoll | 3 |
+| [`228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md`](228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md) | Protokoll | 2026-11-03 | 228 - Messung Schritt 3: minpeters 0336 (DDC-Porttabelle), `h713-tv`-Tabelle und `h713-mode` an HY310 und HY300PRO-G-EU (03.11.2026) | 3 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |

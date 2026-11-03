@@ -140,7 +140,48 @@ podman exec h713-build sh -c 'cd /work && BOARD=hy320 KERNEL_CONFIG=rust mainlin
 podman exec h713-build make -C /work/mainline/tools/rshim-demo KDIR=/work/mainline/build/linux-6.18.38-<hash of the rust tree>
 ```
 
-The kernel and module tree of the rust build (`build/out/h713-kernel-rust.fit`, `build/modroot.<hash>`) replace the
-release ones on the device for the test - all in-tree modules, because they come from another build, and the aic8800
-modules built against the same tree - then `insmod h713_rshim_demo.ko`. Back to the release kernel and its modules
-afterwards.
+`KERNEL_CONFIG=rust` keeps the release name `6.18.38`, so its kernel and modules can only *replace* the release ones
+(that is how the demo above was loaded: `/boot/h713-kernel.fit` and `/lib/modules/6.18.38` swapped, then swapped
+back). For anything longer, use the side-by-side kernel below.
+
+## A Rust kernel next to the release
+
+`board/rustbench.config` is `rust.config` plus `CONFIG_LOCALVERSION="-rust"`: the kernel calls itself `6.18.38-rust`,
+its modules live in `/lib/modules/6.18.38-rust`, and a module built against its tree says `vermagic: 6.18.38-rust`
+and is refused by the release kernel (and the other way round). Apart from that line its `.config` equals the
+`rust` tree's. On the HY320 it sits next to the release kernel; the normal boot (`bootcmd`, `/boot/h713-kernel.fit`,
+`/lib/modules/6.18.38`) is untouched.
+
+Build (the aic8800 Wi-Fi modules in a copy of their tree, so that `build/out/modules/` keeps the release builds):
+
+```bash
+podman exec h713-build sh -c 'cd /work && BOARD=hy320 KERNEL_CONFIG=rustbench mainline/build/build.sh kernel'
+# -> build/out/h713-kernel-rustbench.fit, build/modroot.<hash>/lib/modules/6.18.38-rust
+cp -a mainline/build/aic8800-<commit>-<hash>/. mainline/build/aic8800-rustbench/
+podman exec h713-build bash -c 'K=/work/mainline/build/linux-6.18.38-<rustbench hash>; W=/work/mainline/build/aic8800-rustbench
+  km="make -C $K ARCH=arm64 LLVM=1 CONFIG_PLATFORM_MAINLINE_SUNXI=y"
+  $km M=$W/aic8800_bsp clean modules
+  $km M=$W/aic8800_fdrv KBUILD_EXTRA_SYMBOLS=$W/aic8800_bsp/Module.symvers clean modules'
+```
+
+On the device: the FIT as `/boot/h713-kernel-rust.fit`; `modroot.<hash>/lib/modules/6.18.38-rust` as
+`/lib/modules/6.18.38-rust`, with `aic8800_bsp.ko` and `aic8800_fdrv.ko` in its `extra/` (as in the release tree),
+then `depmod -a 6.18.38-rust`.
+
+**One-shot boot.** The environment has a `boot_rust` next to `boot_emmc`:
+
+```
+boot_rust=setenv h713_boot emmc; saveenv; wdt dev watchdog@2051000; wdt start 16000; if ext4load mmc 1:5 0x60000000 h713-kernel-rust.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw"; bootm 0x60000000; fi
+```
+
+`bootcmd` runs `boot_${h713_boot}`, so `fw_setenv h713_boot rust` + `reboot` boots the `-rust` FIT once. `boot_rust`
+puts `h713_boot` back to `emmc` and saves it *before* it loads anything, so every later boot - a `reboot`, a watchdog
+reset, a hang - is the normal one again. The watchdog (16 s, as in the bench boot of `doku/228`) covers a hang between
+U-Boot and the kernel's watchdog driver; systemd keeps it fed after that. Afterwards remove what `saveenv` wrote
+besides `h713_boot` (runtime variables): `fw_setenv fdtcontroladdr`, `fw_setenv mmc_bootdev`, `fw_setenv serial#`, and
+`fdtfile` back to its old value (`allwinner/allwinner/sun50i-h713-hy320.dtb` on the HY320). A bench boot that needs
+the Rust kernel loads `h713-kernel-rust.fit` instead of `h713-kernel.fit` in its own load line.
+
+Tested on the HY320 (03.11.2026): one-shot boot -> `uname -r` `6.18.38-rust`, `h713_boot=emmc` again, aic8800 loaded,
+`wlan0` up as the access point (192.168.4.1), no failed units; the next reboot came up on the release kernel
+(`6.18.38`, FIT `c5b9719a`), `h713-tv ctl status` ok, environment equal to before plus `boot_rust`.
