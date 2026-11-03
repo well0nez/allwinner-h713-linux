@@ -269,3 +269,15 @@ Abzug, Sperre frei.
   `10-video-plane.md` (§6.3 Pacing-Zeilen und Text). Werkzeuge/Logs in `analyse/cleanroom-bench-20261103/`.
 - Gerät: Normalboot 6.18.38, Umgebung gleich `env-before-r7.txt`, GP5 `RUN1`, `h713-tv` ok, keine fehlgeschlagenen
   Units, Sperre frei.
+
+## 12 Runde 8: DRM-Modul Runde 4
+
+- `d193bd0` (Hashes `25704598…`, `dc05ac52…`, `866c2c2d…`), -rust-Kern, B0, Schritte 0-4 und 6 als Regression, Schritt 5
+  wie geschrieben (`notes/bench-results-drm.md` r4, Logs `notes/bench-logs/2026-11-03-drm-r4/`).
+- Regression: alles PASS (S1-T5, S1-T3 +656/10 s, 3930 Flips, erste volle Aktivierung sauber, T1/T2, 17 Commits ohne
+  Fehler, Logo nach `rmmod` zurück).
+- Schritt 5, Standard (`align=1`): kein "vblank interrupt unavailable" mehr; Zeilen ausgerichtet (9,066 -> 13,786 ms,
+  348 Zeilen in 4 Bildern; 720p 13,772 ms), Spalten offen: U = 18360 (17 Spalten) bei 1080p und 720p.
+- `align_cal=1`: Spalten 17 -> 8 (Gitter) -> 0 (ein Zeilenfenster, 0 Sprünge), Zeilen 23 -> 0; **S1-T6 PASS bei allen vier
+  Alphas** (31/19/12 = 2073600, 5/6 = 777600/1296000), 720p ebenfalls 2073600. Kein Rastersprung -> Q-ALN-4 nicht nötig.
+- Gerät: Normalboot 6.18.38, Umgebung gleich `env-before-r8.txt`, GP5 `RUN1`, `h713-tv` ok, Sperre frei.
