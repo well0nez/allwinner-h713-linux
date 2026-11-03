@@ -324,3 +324,20 @@ Niemand hat auf die Wand gesehen.
   gekreuzt) beruhte darauf; ein zweiter Boot ohne Pause: 10,1 % gelöscht, Bild folgt. Entwurf 10 §6.3 korrigiert.
 - Entwürfe: `drafts/30-picture-processing.md` (zusätzlich §3.3 [7:0], §3.4 Farbton/Sättigung, §3.5 Schärfe),
   `drafts/10-video-plane.md` (§6.3 korrigiert). Gerät: Normalboot, Umgebung gleich `env-before-r10.txt`, `RUN1`, Sperre frei.
+
+## 15 Runde 11: Q-PQ-9/10, Dither, DRM-Modul Runde 6
+
+- **Q-PQ-9**: `0x051c0304` tastet Pixel (1900, 10) ab; `0x051c0268` = (x << 16) | y verschiebt die Abtastung sofort
+  (geprüft mit einem RGB-Puffer, dessen Pixel ihre Koordinaten tragen). `0x051c0144` tastet Pixel (3, 3) des
+  Videobilds; keines von 15 PNL-Kandidatenwörtern verschiebt es.
+- **Q-PQ-10**: rotes Bild (Y 128, Cb 64, Cr 192), neutral: Farbton 0 -> 953/411/1023, 50 -> 1023/397/0, 100 ->
+  109/705/0. Matrix aus ±32-Schritten: B-Cb 1,84, R-Cr 1,62, G-Cr -0,45, G-Cb -0,09 (relativ zur Luma-Verstärkung); nahe
+  BT.709 bei B-Cb und G-Cr, R-Cr 5 % höher, G-Cb halb, ein kleiner R-Cb-Anteil.
+- **Dither** (91 O15): `0x051c00ec` wirkt: 0 / `0x10101000` -> `0x0304` = `0x0144`; `0x14141400` (12-Zustand) bis +4;
+  `0x16161600` bis +16, im Histogramm sichtbar. Erklärt die pqcheck-Abweichungen von 4 und die 5/6-Aufteilung von Schwarz.
+- **Modul Runde 6** (`4145b66`): Schritte 1-5 PASS bis auf P3-Grau (Fach 28 statt 29) und S1-T6 bei Alpha 0x80 (Fach 18)
+  und 0 (alles Fach 5); pqcheck 21 PASS / 14 FAIL (alle FAILs = +4 aus dem Dither am Sondenpixel); Dumps wie erwartet;
+  einmal "RGB latch still pending at a new flip" während der 3930 Flips.
+- Entwurf: `drafts/30-picture-processing.md` (§3.4 Q-PQ-10, §4.4 Dither, §4.5 `0x0268` und Lage von `0x0144`).
+  Umgebung: die Kernel-Spur hat `boot_k73` und 7.3-FITs ergänzt; Referenz `env-before-r11.txt` enthält das. Gerät:
+  Normalboot, Umgebung gleich der Referenz, `RUN1`, Sperre frei.
