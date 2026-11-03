@@ -1,0 +1,18 @@
+    21.638 === open /data/bench/r8-bench-0_0.001.log boot 258e4113-1824-4104-81e4-49f95dbf325b cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    21.642 start: line 0x0 fe74 0x8c90003 fe08 0x8c9112f 0x0c0 0x0
+    21.644 pacing: 0.0 s between tables, 0.001 s after each write
+    21.707 T    64.63 ms: INIT_VPANEL written; line 0x0 fe74 0x8c90003 0x0c0 0x0
+    21.744 T   101.47 ms: INIT_VPROC written; line 0x0 fe74 0x8c90003 0x0c0 0x0
+    21.846 T   203.87 ms: INIT_VNR written; line 0x1054d fe74 0x8c90003 0x0c0 0x0
+    21.879 T   237.17 ms: INIT_VDEINT written; line 0x2014f fe74 0x8c90003 0x0c0 0x0
+    21.893 T   250.73 ms: DBUS_MP_RST_PROJECTOR written; line 0x20343 fe74 0x8c90003 0x0c0 0x0
+    21.895 T   252.76 ms: lock totals written
+    21.897 T   254.50 ms: line counter moved after 0.06 ms
+    21.946 T   304.35 ms: fe74[31:16] = 0x0464 after 48.22 ms
+    22.048 T   406.23 ms: 0x0c0 100 ms after clearing, channel 0 still off: 0x0
+    22.051 T   408.52 ms: channel 0 enabled and latched (no latch words yet)
+    22.053 T   411.18 ms: 0x0c0 bit 0 set with channel 0 on after 0.98 ms
+    22.055 T   412.92 ms: NRC latch words written
+    22.083 T   441.36 ms: VCH_LATCH taken after 26.92 ms
+    22.085 PNL 0x148 0x510 0x158 0x4650000 line 0xd0074
+    22.087 R7 DONE

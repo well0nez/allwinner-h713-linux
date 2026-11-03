@@ -185,3 +185,28 @@ Abzug, Sperre frei.
   `c5b9719a`, Umgebung gleich dem Abzug. In 12 §M.4 als Sicherheitsregel festgehalten.
 - Gerätesperre: mit RustInfra geteilt (`flock /tmp/h713-device.lock`); RustInfra hatte zwei Neustarts um 08:38
   Gerätezeit unter der Sperre, ich danach. Sperre frei, RustInfra benachrichtigt.
+
+## 9 Runde 5: DRM-Modul der sauberen Seite, Fragen Q-DRM-1..5, Takt der Init-Tabellen
+
+- Entwürfe in `cleanroom-held/drafts/` (vollständige Dateien): 05 (§3 GIC-Konfiguration id 144 = Pegel, CPU0; §4.1
+  Takt-IDs der Projekt-Bindung: `CLK_PLL_VIDEO2` 7, `CLK_DEINT` 125, `CLK_PANEL` 126, `CLK_SVP_DTL` 127, `CLK_AFBD` 128,
+  `CLK_BUS_DISP` 129, `RST_BUS_DISP` 57; §6 reservierter Speicher, `nr_base`, Entladen; RGB-Pitch: `0x170` = Pitch,
+  `0x174`[15:0] = Bytes pro Zeile, gemessen mit Pitch 8192), 10 §6.3 (Takt der Init-Tabellen), 12 §M.3 (`0x051c0300`),
+  20 (`0x05001028` kein Zielwort), 95 (S1-T3 umformuliert).
+- RustInfra: zweiter Kern `/boot/h713-kernel-rust.fit` (6.18.38-rust) neben dem Release; Bench mit nur geändertem
+  Dateinamen in `bench_kernel`. Gerätesperre `/tmp/h713-device.lock` für jede Boot-Phase.
+- **h713_drm.ko wie geschrieben** (`notes/bench-results-drm.md`, Logs `notes/bench-logs/2026-11-03-drm/`): Laden,
+  Mode (162210 kHz, 65.539 Hz), RGB-Übernahme, 3930 Flips 65.54/s ohne Timeout, Video T1 mit Histogramm 4/4, 655
+  Overlay-Flips, 720p-Flächen exakt (Kriterium "Rest in Fächern 0..8" zu streng), Ebenen zusammen wie R4/R5, `rmmod`
+  sauber. Fehler: erste volle Aktivierung im frischen Boot meldete Raster-Hänger + Latch-Timeout (spätere sauber);
+  S1-T3 (`/proc/interrupts` beim Stehbild nur +237/10 s, DRM schaltet vblank ab, `kms-test vblank` 65.44/s); `verify t2`
+  an `0x05001028` (Zustandswort); einmal `0x051c0300` live.
+- **Takt der Init-Tabellen** (`r7.py`, `r8.py`, drei frische Boots): alle fünf Tabellen + Totale in 12 ms -> Video-Seite
+  kaputt (Kanal 0 rastet nie, `PNL 0x148..0x158` = 0, Zeilenzähler läuft über 1124), auch langsames Neuschreiben hilft in
+  dem Boot nicht. Mit 200 ms zwischen den Tabellen oder 1 ms pro Schreibzugriff: Raster normal, Latch 25-27 ms nach den
+  zwei Latch-Wörtern. Erklärt den Raster-Hänger von Runde 2 (Boot 3) nicht sicher, aber den ersten Commit des Moduls.
+  `0x0c0` Bit 0 setzt nur mit eingeschaltetem Kanal 0.
+- Prozessfehler meinerseits: die Pacing-Zahlen standen kurz in `notes/bench-results-drm.md` des sauberen Repos (`22f5012`),
+  mit `8be200a` wieder herausgenommen; in der Historie sichtbar.
+- Gerät: Normalboot, Release-FIT `c5b9719a`, `h713_boot=emmc`, Umgebung gleich der Referenz nach `boot_rust`, GP5 `RUN1`,
+  Sperre frei.

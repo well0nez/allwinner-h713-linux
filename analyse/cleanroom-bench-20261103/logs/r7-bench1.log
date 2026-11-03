@@ -1,0 +1,384 @@
+    21.564 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    21.568 start: line 0x0 fe74 0x8c90003 fe08 0x8c9112f 0x0c0 0x0
+    21.570 T     2.69 ms: INIT_VPANEL written; line 0x0 fe74 0x8c90003 0x0c0 0x0
+    21.573 T     5.18 ms: INIT_VPROC written; line 0x0 fe74 0x8c90003 0x0c0 0x0
+    21.575 T     7.66 ms: INIT_VNR written; line 0xb fe74 0x8c90003 0x0c0 0x0
+    21.577 T     9.95 ms: INIT_VDEINT written; line 0x5f fe74 0x8c90003 0x0c0 0x0
+    21.580 T    12.05 ms: DBUS_MP_RST_PROJECTOR written; line 0xac fe74 0x8c90003 0x0c0 0x0
+    21.581 T    13.95 ms: lock totals written
+    21.583 T    15.88 ms: line counter moved after 0.02 ms
+    21.605 T    37.76 ms: fe74[31:16] = 0x0464 after 20.02 ms
+    21.708 T   139.98 ms: 0x0c0 100 ms after clearing, channel 0 still off: 0x0
+    21.710 T   142.77 ms: channel 0 enabled and latched (no latch words yet)
+    21.713 T   145.05 ms: 0x0c0 bit 0 set with channel 0 on after 0.06 ms
+    21.715 T   147.39 ms: NRC latch words written
+    22.717 T  1149.63 ms: VCH_LATCH taken NOT within 1.0 s
+    22.719 R7 DONE
+    40.862 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    40.864 as left: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 PNL_SEL 0x0 MIX 0x10000040
+    40.966 VCH_LATCH pulsed again: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 PNL_SEL 0x0 MIX 0x10000040
+    41.068 ADDR_LATCH pulsed: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 PNL_SEL 0x0 MIX 0x10000040
+    41.170 VCH_LATCH pulsed after ADDR_LATCH: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 PNL_SEL 0x0 MIX 0x10000040
+    41.273 latch words written again: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 PNL_SEL 0x0 MIX 0x10000040
+    41.375 PNL_SEL/MIX video: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 PNL_SEL 0x39000000 MIX 0x40
+    41.477 both latches pulsed: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 PNL_SEL 0x39000000 MIX 0x40
+    54.464 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    54.467 TABLE DBUS_MP_RST_PROJECTOR: 10 writes
+    54.469 BEFORE-WRITE 0x050c0000 <- 0x70f80009 DBUS_MP_RST_PROJECTOR RMW32 mask=0x20 val=0x0
+    54.470 BEFORE-WRITE 0x05000020 <- 0x00000060 DBUS_MP_RST_PROJECTOR RMW32 mask=0x8 val=0x0
+    54.472 BEFORE-WRITE 0x06940400 <- 0x00000000 DBUS_MP_RST_PROJECTOR RMW32 mask=0x60 val=0x0
+    54.473 BEFORE-WRITE 0x05140004 <- 0x00000000 DBUS_MP_RST_PROJECTOR RMW32 mask=0x80000000 val=0x0
+    54.475 BEFORE-WRITE 0x051c0010 <- 0x06000075 DBUS_MP_RST_PROJECTOR RMW32 mask=0x2000000 val=0x2000000
+    54.476 BEFORE-WRITE 0x050c0000 <- 0x70f80029 DBUS_MP_RST_PROJECTOR RMW32 mask=0x20 val=0x20
+    54.477 BEFORE-WRITE 0x05000020 <- 0x00000068 DBUS_MP_RST_PROJECTOR RMW32 mask=0x8 val=0x8
+    54.479 BEFORE-WRITE 0x06940400 <- 0x00000060 DBUS_MP_RST_PROJECTOR RMW32 mask=0x60 val=0x60
+    54.481 BEFORE-WRITE 0x05140004 <- 0x80000000 DBUS_MP_RST_PROJECTOR RMW32 mask=0x80000000 val=0x80000000
+    54.483 BEFORE-WRITE 0x051c0010 <- 0x04000075 DBUS_MP_RST_PROJECTOR RMW32 mask=0x2000000 val=0x0
+    54.485 TABLE DBUS_MP_RST_PROJECTOR applied
+    54.593 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    54.596 after the data-path reset table again (channel 0 on): VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210
+    54.698 both latches pulsed after the reset: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210
+    65.473 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    65.477 TABLE INIT_VNR: 91 writes
+    65.479 BEFORE-WRITE 0x05000048 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.481 BEFORE-WRITE 0x05000068 <- 0x00000000 INIT_VNR RMW32 mask=0xff000000 val=0x0
+    65.483 BEFORE-WRITE 0x050001d4 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.485 BEFORE-WRITE 0x050001d8 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.486 BEFORE-WRITE 0x050001e0 <- 0x00000000 INIT_VNR RMW32 mask=0xfffffff8 val=0x0
+    65.488 BEFORE-WRITE 0x050001e4 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.490 BEFORE-WRITE 0x050001e8 <- 0x00000000 INIT_VNR RMW32 mask=0xfffffff8 val=0x0
+    65.492 BEFORE-WRITE 0x050001ec <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.494 BEFORE-WRITE 0x0500022c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.496 BEFORE-WRITE 0x05000230 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.498 BEFORE-WRITE 0x05000234 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.500 BEFORE-WRITE 0x05000238 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.502 BEFORE-WRITE 0x0500023c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.504 BEFORE-WRITE 0x0500043c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.506 BEFORE-WRITE 0x05000450 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.508 BEFORE-WRITE 0x05000454 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.510 BEFORE-WRITE 0x05000458 <- 0x01000000 INIT_VNR WR32 mask=0xffffffff val=0x1000000
+    65.512 BEFORE-WRITE 0x0500045c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.514 BEFORE-WRITE 0x05000464 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.515 BEFORE-WRITE 0x0500053c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.517 BEFORE-WRITE 0x05000550 <- 0x0000021c INIT_VNR WR32 mask=0xffffffff val=0x21c
+    65.519 BEFORE-WRITE 0x05000554 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.521 BEFORE-WRITE 0x05000558 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.523 BEFORE-WRITE 0x0500055c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.525 BEFORE-WRITE 0x05000568 <- 0x00000000 INIT_VNR RMW32 mask=0xfffffff8 val=0x0
+    65.527 BEFORE-WRITE 0x0500080c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.529 BEFORE-WRITE 0x05000808 <- 0x00000000 INIT_VNR RMW32 mask=0xfffe0000 val=0x0
+    65.531 BEFORE-WRITE 0x050002c0 <- 0x00000000 INIT_VNR RMW32 mask=0xfffffff8 val=0x0
+    65.533 BEFORE-WRITE 0x050002c4 <- 0x00000000 INIT_VNR RMW32 mask=0xfffffff8 val=0x0
+    65.535 BEFORE-WRITE 0x050002f0 <- 0x00000000 INIT_VNR RMW32 mask=0xfffffffb val=0x0
+    65.537 BEFORE-WRITE 0x050002f4 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.539 BEFORE-WRITE 0x05000318 <- 0x00000000 INIT_VNR RMW32 mask=0xffff0000 val=0x0
+    65.540 BEFORE-WRITE 0x05000468 <- 0x00000000 INIT_VNR RMW32 mask=0xfffffff8 val=0x0
+    65.542 BEFORE-WRITE 0x05000860 <- 0x00000000 INIT_VNR RMW32 mask=0xffff0000 val=0x0
+    65.543 BEFORE-WRITE 0x05000000 <- 0xffffffff INIT_VNR WR32 mask=0xffffffff val=0xffffffff
+    65.545 BEFORE-WRITE 0x05000004 <- 0x08007901 INIT_VNR RMW32 mask=0xf800ffff val=0x8007901
+    65.546 BEFORE-WRITE 0x05000024 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.548 BEFORE-WRITE 0x05000028 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.556 BEFORE-WRITE 0x0500006c <- 0x04000000 INIT_VNR RMW32 mask=0xffff0000 val=0x4000000
+    65.557 BEFORE-WRITE 0x05000064 <- 0x00100000 INIT_VNR RMW32 mask=0xffff0000 val=0x100000
+    65.559 BEFORE-WRITE 0x05000058 <- 0x00040000 INIT_VNR RMW32 mask=0x7fffffff val=0x40000
+    65.560 BEFORE-WRITE 0x0500003c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.562 BEFORE-WRITE 0x05000030 <- 0x00400000 INIT_VNR RMW32 mask=0xfffffdff val=0x400000
+    65.563 BEFORE-WRITE 0x05000034 <- 0x003f00c0 INIT_VNR WR32 mask=0xffffffff val=0x3f00c0
+    65.564 BEFORE-WRITE 0x05000040 <- 0x00090480 INIT_VNR RMW32 mask=0xfffffffe val=0x90480
+    65.566 BEFORE-WRITE 0x05000044 <- 0x00000020 INIT_VNR RMW32 mask=0xfffffffc val=0x20
+    65.567 BEFORE-WRITE 0x0500031c <- 0x0001c3f0 INIT_VNR WR32 mask=0xffffffff val=0x1c3f0
+    65.568 BEFORE-WRITE 0x05000724 <- 0x000000c0 INIT_VNR WR32 mask=0xffffffff val=0xc0
+    65.570 BEFORE-WRITE 0x05000470 <- 0x00000c03 INIT_VNR WR32 mask=0xffffffff val=0xc03
+    65.571 BEFORE-WRITE 0x05000570 <- 0x00000c03 INIT_VNR WR32 mask=0xffffffff val=0xc03
+    65.572 BEFORE-WRITE 0x0500013c <- 0x00000000 INIT_VNR RMW32 mask=0xfff8c0c0 val=0x0
+    65.574 BEFORE-WRITE 0x050007cc <- 0x00000007 INIT_VNR WR32 mask=0xffffffff val=0x7
+    65.575 BEFORE-WRITE 0x05000178 <- 0x60020000 INIT_VNR RMW32 mask=0x7fff0000 val=0x60020000
+    65.576 BEFORE-WRITE 0x050001b8 <- 0x60020000 INIT_VNR RMW32 mask=0x7fff0000 val=0x60020000
+    65.578 BEFORE-WRITE 0x050001c8 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.579 BEFORE-WRITE 0x05000304 <- 0x00003cff INIT_VNR WR32 mask=0xffffffff val=0x3cff
+    65.580 BEFORE-WRITE 0x05000308 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.582 BEFORE-WRITE 0x05000228 <- 0x00004480 INIT_VNR RMW32 mask=0xfff9ffff val=0x4480
+    65.583 BEFORE-WRITE 0x05000278 <- 0x60020000 INIT_VNR RMW32 mask=0x7fff0000 val=0x60020000
+    65.585 BEFORE-WRITE 0x050002b8 <- 0x60020000 INIT_VNR RMW32 mask=0x7fff0000 val=0x60020000
+    65.587 BEFORE-WRITE 0x05000310 <- 0x00003cff INIT_VNR WR32 mask=0xffffffff val=0x3cff
+    65.588 BEFORE-WRITE 0x05000314 <- 0x00003c11 INIT_VNR WR32 mask=0xffffffff val=0x3c11
+    65.590 BEFORE-WRITE 0x0500073c <- 0x00000c00 INIT_VNR WR32 mask=0xffffffff val=0xc00
+    65.591 BEFORE-WRITE 0x05000434 <- 0x80000000 INIT_VNR RMW32 mask=0x80000000 val=0x80000000
+    65.592 BEFORE-WRITE 0x05000534 <- 0x80000000 INIT_VNR RMW32 mask=0x80000000 val=0x80000000
+    65.594 BEFORE-WRITE 0x05000828 <- 0x00018001 INIT_VNR WR32 mask=0xffffffff val=0x18001
+    65.595 BEFORE-WRITE 0x0500082c <- 0x00010001 INIT_VNR WR32 mask=0xffffffff val=0x10001
+    65.597 BEFORE-WRITE 0x0500002c <- 0x030303c3 INIT_VNR WR32 mask=0xffffffff val=0x30303c3
+    65.598 BEFORE-WRITE 0x05000870 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.600 BEFORE-WRITE 0x0500001c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.601 BEFORE-WRITE 0x05000020 <- 0x00000068 INIT_VNR WR32 mask=0xffffffff val=0x68
+    65.602 BEFORE-WRITE 0x05000704 <- 0x00000003 INIT_VNR WR32 mask=0xffffffff val=0x3
+    65.604 BEFORE-WRITE 0x05000708 <- 0x000000c0 INIT_VNR WR32 mask=0xffffffff val=0xc0
+    65.606 BEFORE-WRITE 0x050007d0 <- 0x00000300 INIT_VNR WR32 mask=0xffffffff val=0x300
+    65.608 BEFORE-WRITE 0x05000780 <- 0x04000000 INIT_VNR WR32 mask=0xffffffff val=0x4000000
+    65.611 BEFORE-WRITE 0x05000784 <- 0x04000400 INIT_VNR WR32 mask=0xffffffff val=0x4000400
+    65.613 BEFORE-WRITE 0x05000788 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.615 BEFORE-WRITE 0x0500078c <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.617 BEFORE-WRITE 0x05000790 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.619 BEFORE-WRITE 0x05000794 <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.621 BEFORE-WRITE 0x05000798 <- 0x04000000 INIT_VNR WR32 mask=0xffffffff val=0x4000000
+    65.623 BEFORE-WRITE 0x0500079c <- 0x04000400 INIT_VNR WR32 mask=0xffffffff val=0x4000400
+    65.626 BEFORE-WRITE 0x05000628 <- 0x00000030 INIT_VNR RMW32 mask=0x30 val=0x30
+    65.628 BEFORE-WRITE 0x050009d4 <- 0x000000c0 INIT_VNR RMW32 mask=0xf0 val=0xc0
+    65.630 BEFORE-WRITE 0x05000880 <- 0x00010001 INIT_VNR WR32 mask=0xffffffff val=0x10001
+    65.632 BEFORE-WRITE 0x05000884 <- 0x00010001 INIT_VNR WR32 mask=0xffffffff val=0x10001
+    65.634 BEFORE-WRITE 0x0500088c <- 0x07800020 INIT_VNR WR32 mask=0xffffffff val=0x7800020
+    65.636 BEFORE-WRITE 0x05000890 <- 0x0438000c INIT_VNR WR32 mask=0xffffffff val=0x438000c
+    65.638 BEFORE-WRITE 0x050007d4 <- 0x0000003f INIT_VNR WR32 mask=0xffffffff val=0x3f
+    65.640 BEFORE-WRITE 0x050007dc <- 0x00000000 INIT_VNR WR32 mask=0xffffffff val=0x0
+    65.642 BEFORE-WRITE 0x05001048 <- 0x25500008 INIT_VNR RMW32 mask=0x8 val=0x8
+    65.644 TABLE INIT_VNR applied
+    65.755 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    65.757 INIT_VNR again: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 0x46c 0x6f81c1 0x840 0x4390010
+    65.809 0x46c: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 0x46c 0x6f81c1 0x840 0x4390010
+    65.862 0x840: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 0x46c 0x6f81c1 0x840 0x4390010
+    65.964 both latches pulsed: VCH_LATCH 1 ADDR 1 ARMED 0x0/0x0 0x310 0x800210 0x46c 0x6f81c1 0x840 0x4390010
+    87.712 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    87.715 TABLE INIT_VPANEL: 57 writes
+    87.716 BEFORE-WRITE 0x051cfe10 <- 0x80000405 INIT_VPANEL RMW32 mask=0x80000000 val=0x80000000
+    87.718 BEFORE-WRITE 0x051cfe0c <- 0x02000310 INIT_VPANEL WR32 mask=0xffffffff val=0x2000310
+    87.723 BEFORE-WRITE 0x051cfe10 <- 0x80000405 INIT_VPANEL WR32 mask=0xffffffff val=0x80000405
+    87.733 BEFORE-WRITE 0x051cfe14 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.734 BEFORE-WRITE 0x051cfe18 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.735 BEFORE-WRITE 0x051cfe1c <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.737 BEFORE-WRITE 0x051cfe20 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.738 BEFORE-WRITE 0x051cfe24 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.740 BEFORE-WRITE 0x051cfe28 <- 0x00030020 INIT_VPANEL WR32 mask=0xffffffff val=0x30020
+    87.741 BEFORE-WRITE 0x051cfe2c <- 0x04190a04 INIT_VPANEL WR32 mask=0xffffffff val=0x4190a04
+    87.742 BEFORE-WRITE 0x051cfe30 <- 0x00000104 INIT_VPANEL WR32 mask=0xffffffff val=0x104
+    87.744 BEFORE-WRITE 0x051cfe3c <- 0x02060600 INIT_VPANEL WR32 mask=0xffffffff val=0x2060600
+    87.746 BEFORE-WRITE 0x051cfe40 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.748 BEFORE-WRITE 0x051cfe44 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.750 BEFORE-WRITE 0x051cfe48 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.753 BEFORE-WRITE 0x051cfe50 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.755 BEFORE-WRITE 0x051cfe54 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.756 BEFORE-WRITE 0x051cfe58 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.758 BEFORE-WRITE 0x051cfe5c <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.760 BEFORE-WRITE 0x051cfe60 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.762 BEFORE-WRITE 0x051cfe80 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.764 BEFORE-WRITE 0x051cfe84 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.766 BEFORE-WRITE 0x051cfe88 <- 0x000fffff INIT_VPANEL WR32 mask=0xffffffff val=0xfffff
+    87.768 BEFORE-WRITE 0x051cfe8c <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.769 BEFORE-WRITE 0x051cfe90 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.771 BEFORE-WRITE 0x051c0004 <- 0x00050005 INIT_VPANEL WR32 mask=0xffffffff val=0x50005
+    87.774 BEFORE-WRITE 0x051c0014 <- 0x18000005 INIT_VPANEL RMW32 mask=0xc11fffff val=0x5
+    87.776 BEFORE-WRITE 0x051c0010 <- 0x06000075 INIT_VPANEL RMW32 mask=0x67ff3ff val=0x6000075
+    87.778 BEFORE-WRITE 0x051c00e0 <- 0x08000000 INIT_VPANEL WR32 mask=0xffffffff val=0x8000000
+    87.780 BEFORE-WRITE 0x051c033c <- 0x0001c017 INIT_VPANEL RMW32 mask=0x1c0f7 val=0x1c017
+    87.783 BEFORE-WRITE 0x051c00a0 <- 0x80000000 INIT_VPANEL RMW32 mask=0x8000001f val=0x80000000
+    87.785 BEFORE-WRITE 0x051c00ec <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.787 BEFORE-WRITE 0x051c00f0 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.789 BEFORE-WRITE 0x051c00c4 <- 0x40000000 INIT_VPANEL WR32 mask=0xffffffff val=0x40000000
+    87.791 BEFORE-WRITE 0x051c00c8 <- 0x00000800 INIT_VPANEL WR32 mask=0xffffffff val=0x800
+    87.794 BEFORE-WRITE 0x051c00cc <- 0x08000800 INIT_VPANEL WR32 mask=0xffffffff val=0x8000800
+    87.795 BEFORE-WRITE 0x051c00d0 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.797 BEFORE-WRITE 0x051c00e4 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.799 BEFORE-WRITE 0x051c0374 <- 0x00000000 INIT_VPANEL RMW32 mask=0xc0000000 val=0x0
+    87.801 BEFORE-WRITE 0x051c0360 <- 0x00000000 INIT_VPANEL RMW32 mask=0x80000000 val=0x0
+    87.803 BEFORE-WRITE 0x051c0370 <- 0x00000200 INIT_VPANEL WR32 mask=0xffffffff val=0x200
+    87.804 BEFORE-WRITE 0x051c0118 <- 0x00000003 INIT_VPANEL WR32 mask=0xffffffff val=0x3
+    87.806 BEFORE-WRITE 0x051c0030 <- 0x00000030 INIT_VPANEL WR32 mask=0xffffffff val=0x30
+    87.808 BEFORE-WRITE 0x051c0200 <- 0x00401848 INIT_VPANEL WR32 mask=0xffffffff val=0x401848
+    87.810 BEFORE-WRITE 0x051c0204 <- 0x07800000 INIT_VPANEL WR32 mask=0xffffffff val=0x7800000
+    87.812 BEFORE-WRITE 0x051c0208 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.814 BEFORE-WRITE 0x051c0210 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.816 BEFORE-WRITE 0x051c020c <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.818 BEFORE-WRITE 0x051c0000 <- 0x707f0000 INIT_VPANEL RMW32 mask=0xffffff9f val=0x707f0000
+    87.820 BEFORE-WRITE 0x051c0028 <- 0x1f300030 INIT_VPANEL RMW32 mask=0xffffe000 val=0x1f300010
+    87.822 BEFORE-WRITE 0x051c0020 <- 0x00301f30 INIT_VPANEL WR32 mask=0xffffffff val=0x301f30
+    87.824 BEFORE-WRITE 0x051c002c <- 0x00300030 INIT_VPANEL WR32 mask=0xffffffff val=0x300030
+    87.826 BEFORE-WRITE 0x051c0364 <- 0xf0000000 INIT_VPANEL WR32 mask=0xffffffff val=0xf0000000
+    87.828 BEFORE-WRITE 0x05200028 <- 0x00000000 INIT_VPANEL WR32 mask=0xffffffff val=0x0
+    87.830 BEFORE-WRITE 0x051cfe10 <- 0x00000405 INIT_VPANEL RMW32 mask=0x80000000 val=0x0
+    87.831 BEFORE-WRITE 0x051c00dc <- 0x08000800 INIT_VPANEL WR32 mask=0xffffffff val=0x8000800
+    87.834 BEFORE-WRITE 0x051c00e8 <- 0x00f00000 INIT_VPANEL WR32 mask=0xffffffff val=0xf00000
+    87.835 TABLE INIT_VPANEL applied
+    87.997 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    88.004 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+    88.006 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+    88.207 CHECK check: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0xf4a2 fe64 0x406fdb6b
+    88.376 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    88.379 TABLE INIT_VPROC: 31 writes
+    88.381 BEFORE-WRITE 0x0518005c <- 0x00010438 INIT_VPROC WR32 mask=0xffffffff val=0x10438
+    88.382 BEFORE-WRITE 0x0514fe0c <- 0x02400310 INIT_VPROC RMW32 mask=0xffc00000 val=0x2400310
+    88.383 BEFORE-WRITE 0x0514fe10 <- 0x00000405 INIT_VPROC RMW32 mask=0x80000fff val=0x405
+    88.385 BEFORE-WRITE 0x0514fe14 <- 0x00000000 INIT_VPROC WR32 mask=0xffffffff val=0x0
+    88.386 BEFORE-WRITE 0x0514fe18 <- 0x00000000 INIT_VPROC WR32 mask=0xffffffff val=0x0
+    88.388 BEFORE-WRITE 0x0514fe1c <- 0x00000000 INIT_VPROC WR32 mask=0xffffffff val=0x0
+    88.389 BEFORE-WRITE 0x0514fe20 <- 0x00000000 INIT_VPROC WR32 mask=0xffffffff val=0x0
+    88.390 BEFORE-WRITE 0x0514fe24 <- 0x00000000 INIT_VPROC RMW32 mask=0x1f val=0x0
+    88.391 BEFORE-WRITE 0x0514fe2c <- 0x04190a04 INIT_VPROC WR32 mask=0xffffffff val=0x4190a04
+    88.393 BEFORE-WRITE 0x0514fe30 <- 0x00000104 INIT_VPROC RMW32 mask=0x80ffffff val=0x104
+    88.394 BEFORE-WRITE 0x0514fe34 <- 0x000004a0 INIT_VPROC WR32 mask=0xffffffff val=0x4a0
+    88.396 BEFORE-WRITE 0x0514fe38 <- 0x0000042f INIT_VPROC WR32 mask=0xffffffff val=0x42f
+    88.397 BEFORE-WRITE 0x0514fe3c <- 0x3f3f3f02 INIT_VPROC WR32 mask=0xffffffff val=0x3f3f3f02
+    88.398 BEFORE-WRITE 0x0514fe40 <- 0x00000000 INIT_VPROC WR32 mask=0xffffffff val=0x0
+    88.400 BEFORE-WRITE 0x0514fe44 <- 0x00000000 INIT_VPROC RMW32 mask=0xe0000020 val=0x0
+    88.401 BEFORE-WRITE 0x0514fe54 <- 0x00000000 INIT_VPROC RMW32 mask=0xffffff7f val=0x0
+    88.402 BEFORE-WRITE 0x0514fe80 <- 0x00000000 INIT_VPROC WR32 mask=0xffffffff val=0x0
+    88.404 BEFORE-WRITE 0x0514fe88 <- 0x0210ffff INIT_VPROC RMW32 mask=0xffff val=0xfffff
+    88.405 BEFORE-WRITE 0x0514fe8c <- 0x00000000 INIT_VPROC WR32 mask=0xffffffff val=0x0
+    88.406 BEFORE-WRITE 0x0514fe90 <- 0x00000000 INIT_VPROC RMW32 mask=0x7ff val=0x0
+    88.408 BEFORE-WRITE 0x05140000 <- 0x0007ffff INIT_VPROC RMW32 mask=0x7ffff val=0x7ffff
+    88.409 BEFORE-WRITE 0x05140008 <- 0x00200000 INIT_VPROC RMW32 mask=0x20c000 val=0x200000
+    88.410 BEFORE-WRITE 0x05140004 <- 0x80000000 INIT_VPROC RMW32 mask=0x3 val=0x0
+    88.412 BEFORE-WRITE 0x05140058 <- 0x00000002 INIT_VPROC WR32 mask=0xffffffff val=0x2
+    88.413 BEFORE-WRITE 0x05180030 <- 0x00010000 INIT_VPROC RMW32 mask=0xf0000 val=0x10000
+    88.414 BEFORE-WRITE 0x051405b8 <- 0x01560003 INIT_VPROC WR32 mask=0xffffffff val=0x1560003
+    88.415 BEFORE-WRITE 0x05140510 <- 0x00000088 INIT_VPROC RMW32 mask=0xff val=0x88
+    88.417 BEFORE-WRITE 0x05140458 <- 0x00000fff INIT_VPROC WR32 mask=0xffffffff val=0xfff
+    88.418 BEFORE-WRITE 0x0514045c <- 0x00000fff INIT_VPROC RMW32 mask=0x3ffffff val=0x8000fff
+    88.421 BEFORE-WRITE 0x0514047c <- 0x00000000 INIT_VPROC WR32 mask=0xffffffff val=0x0
+    88.422 BEFORE-WRITE 0x051405bc <- 0x00000080 INIT_VPROC WR32 mask=0xffffffff val=0x80
+    88.424 TABLE INIT_VPROC applied
+    88.585 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    88.592 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+    88.594 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+    88.796 CHECK check: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0x9e0c fe64 0x406fdb6b
+    88.944 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    88.945 BEFORE-WRITE 0x0514fe08 <- 0x04640897 x
+    88.947   readback 0x04640897
+    88.948 DONE wr
+    89.094 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    89.101 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+    89.103 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+    89.304 CHECK check: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0x3084 fe64 0x406fdb6b
+   105.994 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   105.996 BEFORE-WRITE 0x05600020 <- 0x043f077f VCH_SIZE
+   105.997 BEFORE-WRITE 0x05600024 <- 0x00420077 VCH_BLOCKS
+   105.999 BEFORE-WRITE 0x05600040 <- 0x00000780 VCH_YSTRIDE
+   106.000 BEFORE-WRITE 0x05600044 <- 0x00000780 VCH_CSTRIDE
+   106.001 BEFORE-WRITE 0x05600048 <- 0x04380780 VCH_YCROP
+   106.003 BEFORE-WRITE 0x0560004c <- 0x021c0780 VCH_CCROP
+   106.004 BEFORE-WRITE 0x05600030 <- 0x04380780 VCH_OUTSIZE (T1 value)
+   106.005 BEFORE-WRITE 0x05600060 <- 0x00000001 VCH_GATE
+   106.007 BEFORE-WRITE 0x05600064 <- 0x00000000 VCH_FIELD
+   106.008 BEFORE-WRITE 0x05600068 <- 0x00000122 VCH_SRCSEL
+   106.010 BEFORE-WRITE 0x05600080 <- 0x00000000 unused
+   106.011 BEFORE-WRITE 0x05600094 <- 0x00000000 unused
+   106.012 BEFORE-WRITE 0x056000a8 <- 0x00000000 unused
+   106.014 BEFORE-WRITE 0x05600070 <- 0x4c000000 Y slot 0
+   106.015 BEFORE-WRITE 0x05600074 <- 0x4c000000 Y slot 1
+   106.017 BEFORE-WRITE 0x05600078 <- 0x4c000000 Y slot 2
+   106.018 BEFORE-WRITE 0x0560007c <- 0x4c000000 Y slot 3
+   106.019 BEFORE-WRITE 0x05600084 <- 0x4c1fa400 C slot 0
+   106.021 BEFORE-WRITE 0x05600088 <- 0x4c1fa400 C slot 1
+   106.022 BEFORE-WRITE 0x0560008c <- 0x4c1fa400 C slot 2
+   106.024 BEFORE-WRITE 0x05600090 <- 0x4c1fa400 C slot 3
+   106.025 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+   106.127 LATCH VCH_ADDR_LATCH 0x0560006c at 20/50/100 ms: 0x1 0x1 0x1
+   106.130 BEFORE-WRITE 0x05600010 <- 0x03000013 VCH_CTRL
+   106.131 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+   106.232 LATCH VCH_LATCH 0x05600014 at 20/50/100 ms: 0x1 0x1 0x1
+   106.234 DONE prog
+   106.387 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   106.394 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+   106.396 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+   106.598 CHECK check: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0xa551 fe64 0x406fdb6b
+   106.721 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   106.727 BEFORE-WRITE 0x051c006c <- 0x39000000 PNL_SEL video alone
+   106.729 BEFORE-WRITE 0x058c0000 <- 0x00000040 MIX video shown
+   106.731 DONE sel
+   106.874 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   106.882 REPLAY N46c: 1 words
+   106.884 BEFORE-WRITE 0x0500046c <- 0x006f81c1 replay N46c
+   106.886 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+   106.888 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+   107.090 CHECK N46c: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0x330f fe64 0x406fdb6b
+   107.092 REPLAY W840: 1 words
+   107.094 BEFORE-WRITE 0x05000840 <- 0x04390010 replay W840
+   107.096 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+   107.098 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+   107.300 CHECK W840: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0x6f82 fe64 0x406fdb6b
+   142.524 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   142.525 BEFORE-WRITE 0x051c0010 <- 0x04000075 PNL 0x010 bit 25 clear
+   142.527   readback 0x04000075
+   142.529 DONE wr
+   142.786 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   142.795 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+   142.796 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+   142.998 CHECK check: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0x98e9 fe64 0x406fdb6b
+   153.564 === open /data/bench/r7-bench1.log boot f6feeeab-7d83-496a-9035-ea0305232b69 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   153.571 REPLAY PNL_LOCK: 3 words
+   153.574 BEFORE-WRITE 0x051cfe00 <- 0x00110449 replay PNL_LOCK
+   153.576 BEFORE-WRITE 0x051cfe04 <- 0x00a40824 replay PNL_LOCK
+   153.578 BEFORE-WRITE 0x051cfe08 <- 0x08c9112f replay PNL_LOCK
+   153.579 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+   153.581 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+   153.783 CHECK PNL_LOCK: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0xbb34 fe64 0x406fdb6b
+   153.786 REPLAY PROC_LOCK: 10 words
+   153.788 BEFORE-WRITE 0x0514fe0c <- 0x0240042b replay PROC_LOCK
+   153.790 BEFORE-WRITE 0x0514fe10 <- 0x00898005 replay PROC_LOCK
+   153.791 BEFORE-WRITE 0x0514fe14 <- 0x00010000 replay PROC_LOCK
+   153.793 BEFORE-WRITE 0x0514fe24 <- 0x03e80000 replay PROC_LOCK
+   153.795 BEFORE-WRITE 0x0514fe2c <- 0x04190a0a replay PROC_LOCK
+   153.797 BEFORE-WRITE 0x0514fe30 <- 0x10000104 replay PROC_LOCK
+   153.799 BEFORE-WRITE 0x0514fe34 <- 0x00a008e1 replay PROC_LOCK
+   153.801 BEFORE-WRITE 0x0514fe38 <- 0x006008b2 replay PROC_LOCK
+   153.803 BEFORE-WRITE 0x0514fe40 <- 0x05a00000 replay PROC_LOCK
+   153.804 BEFORE-WRITE 0x0514fe48 <- 0x04530465 replay PROC_LOCK
+   153.806 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+   153.808 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+   154.010 CHECK PROC_LOCK: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0xfc81 fe64 0x406fdb6b
+   154.012 REPLAY PNL: 54 words
+   154.014 BEFORE-WRITE 0x051c0008 <- 0x01000000 replay PNL
+   154.016 BEFORE-WRITE 0x051c000c <- 0x00000003 replay PNL
+   154.018 BEFORE-WRITE 0x051c0010 <- 0x00000045 replay PNL
+   154.020 BEFORE-WRITE 0x051c0038 <- 0x02000000 replay PNL
+   154.022 BEFORE-WRITE 0x051c003c <- 0x07800000 replay PNL
+   154.024 BEFORE-WRITE 0x051c0040 <- 0x04380000 replay PNL
+   154.025 BEFORE-WRITE 0x051c0048 <- 0x00000200 replay PNL
+   154.027 BEFORE-WRITE 0x051c0050 <- 0x00000038 replay PNL
+   154.029 BEFORE-WRITE 0x051c0078 <- 0x00000200 replay PNL
+   154.031 BEFORE-WRITE 0x051c007c <- 0x00000300 replay PNL
+   154.032 BEFORE-WRITE 0x051c0080 <- 0x04000000 replay PNL
+   154.034 BEFORE-WRITE 0x051c0084 <- 0x04000400 replay PNL
+   154.036 BEFORE-WRITE 0x051c0098 <- 0x04000000 replay PNL
+   154.038 BEFORE-WRITE 0x051c009c <- 0x04000400 replay PNL
+   154.040 BEFORE-WRITE 0x051c00a4 <- 0x07800000 replay PNL
+   154.042 BEFORE-WRITE 0x051c00a8 <- 0x04380000 replay PNL
+   154.044 BEFORE-WRITE 0x051c00b0 <- 0x00000200 replay PNL
+   154.045 BEFORE-WRITE 0x051c00b8 <- 0x00000038 replay PNL
+   154.047 BEFORE-WRITE 0x051c00bc <- 0x078000a3 replay PNL
+   154.049 BEFORE-WRITE 0x051c00c0 <- 0x04380011 replay PNL
+   154.051 BEFORE-WRITE 0x051c00c4 <- 0xc0000000 replay PNL
+   154.053 BEFORE-WRITE 0x051c00e8 <- 0x14f00000 replay PNL
+   154.055 BEFORE-WRITE 0x051c00ec <- 0x14141400 replay PNL
+   154.056 BEFORE-WRITE 0x051c0114 <- 0x00040004 replay PNL
+   154.058 BEFORE-WRITE 0x051c0120 <- 0x42000000 replay PNL
+   154.060 BEFORE-WRITE 0x051c0124 <- 0x06000000 replay PNL
+   154.062 BEFORE-WRITE 0x051c0128 <- 0x00000780 replay PNL
+   154.064 BEFORE-WRITE 0x051c012c <- 0x00000438 replay PNL
+   154.066 BEFORE-WRITE 0x051c0130 <- 0x07800438 replay PNL
+   154.068 BEFORE-WRITE 0x051c0138 <- 0x08010000 replay PNL
+   154.070 BEFORE-WRITE 0x051c013c <- 0x00000020 replay PNL
+   154.072 BEFORE-WRITE 0x051c0144 <- 0x0b02c0b0 replay PNL
+   154.074 BEFORE-WRITE 0x051c0148 <- 0x00000502 replay PNL
+   154.076 BEFORE-WRITE 0x051c014c <- 0x08980780 replay PNL
+   154.078 BEFORE-WRITE 0x051c0150 <- 0x00a20074 replay PNL
+   154.080 BEFORE-WRITE 0x051c0154 <- 0x000c001c replay PNL
+   154.092 BEFORE-WRITE 0x051c0158 <- 0x04650438 replay PNL
+   154.106 BEFORE-WRITE 0x051c016c <- 0x00000088 replay PNL
+   154.108 BEFORE-WRITE 0x051c019c <- 0x00a30823 replay PNL
+   154.109 BEFORE-WRITE 0x051c01a0 <- 0x00110449 replay PNL
+   154.111 BEFORE-WRITE 0x051c01a8 <- 0x007907f9 replay PNL
+   154.112 BEFORE-WRITE 0x051c01ac <- 0x0158012b replay PNL
+   154.114 BEFORE-WRITE 0x051c01b0 <- 0x00b30833 replay PNL
+   154.115 BEFORE-WRITE 0x051c01b4 <- 0x00110449 replay PNL
+   154.116 BEFORE-WRITE 0x051c0200 <- 0x00402c48 replay PNL
+   154.118 BEFORE-WRITE 0x051c0204 <- 0x078000a5 replay PNL
+   154.119 BEFORE-WRITE 0x051c0220 <- 0x40000000 replay PNL
+   154.120 BEFORE-WRITE 0x051c0228 <- 0x00002000 replay PNL
+   154.122 BEFORE-WRITE 0x051c0240 <- 0x10000120 replay PNL
+   154.123 BEFORE-WRITE 0x051c0244 <- 0x0000007b replay PNL
+   154.125 BEFORE-WRITE 0x051c0248 <- 0x00889950 replay PNL
+   154.126 BEFORE-WRITE 0x051c0300 <- 0x000000a3 replay PNL
+   154.127 BEFORE-WRITE 0x051c0324 <- 0x00000e80 replay PNL
+   154.129 BEFORE-WRITE 0x051c0328 <- 0x00000e80 replay PNL
+   154.130 BEFORE-WRITE 0x0560006c <- 0x00000001 VCH_ADDR_LATCH
+   154.131 BEFORE-WRITE 0x05600014 <- 0x00000001 VCH_LATCH
+   154.333 CHECK PNL: VCH_LATCH 0x1 ADDR_LATCH 0x1 ARMED [(0, 0)] 0x310 ['0x800210'] 0x320 0x0 PNL line 0x596f fe64 0x406fdb6b

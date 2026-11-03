@@ -1,0 +1,1110 @@
+=== 0 boot and files
+6.18.38-rust
+console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+CmaTotal:         131072 kB
+CmaFree:          130176 kB
++ /root/vp-bench dump scanout --log /root/drm-bench.log
+FIRST SCANOUT access: dump from 0x05600000
+SCANOUT 0x05600000 0x80000020
+SCANOUT 0x05600004 0x00000000
+SCANOUT 0x05600008 0x00000000
+SCANOUT 0x0560000c 0x00000000
+SCANOUT 0x05600010 0x00000000
+SCANOUT 0x05600014 0x00000000
+SCANOUT 0x05600018 0x00000000
+SCANOUT 0x0560001c 0x00000000
+SCANOUT 0x05600020 0x00000000
+SCANOUT 0x05600024 0x00000000
+SCANOUT 0x05600028 0x00000000
+SCANOUT 0x0560002c 0x00000000
+SCANOUT 0x05600030 0x00000000
+SCANOUT 0x05600034 0x00080808
+SCANOUT 0x05600038 0x00000000
+SCANOUT 0x0560003c 0x00000000
+SCANOUT 0x05600040 0x00000000
+SCANOUT 0x05600044 0x00000000
+SCANOUT 0x05600048 0x00000000
+SCANOUT 0x0560004c 0x00000000
+SCANOUT 0x05600050 0x00000000
+SCANOUT 0x05600054 0x00000000
+SCANOUT 0x05600058 0x00000000
+SCANOUT 0x0560005c 0x00000000
+SCANOUT 0x05600060 0x00000000
+SCANOUT 0x05600064 0x00000000
+SCANOUT 0x05600068 0x00000000
+SCANOUT 0x0560006c 0x00000000
+SCANOUT 0x05600070 0x00000000
+SCANOUT 0x05600074 0x00000000
+SCANOUT 0x05600078 0x00000000
+SCANOUT 0x0560007c 0x00000000
+SCANOUT 0x05600080 0x00000000
+SCANOUT 0x05600084 0x00000000
+SCANOUT 0x05600088 0x00000000
+SCANOUT 0x0560008c 0x00000000
+SCANOUT 0x05600090 0x00000000
+SCANOUT 0x05600094 0x00000000
+SCANOUT 0x05600098 0x00000000
+SCANOUT 0x0560009c 0x00000000
+SCANOUT 0x056000a0 0x00000000
+SCANOUT 0x056000a4 0x00000000
+SCANOUT 0x056000a8 0x00000000
+SCANOUT 0x056000ac 0x00000000
+SCANOUT 0x056000b0 0x00000000
+SCANOUT 0x056000b4 0x00000000
+SCANOUT 0x056000b8 0x00000000
+SCANOUT 0x056000bc 0x00000000
+SCANOUT 0x056000c0 0x00000000
+SCANOUT 0x056000c4 0x00000000
+SCANOUT 0x05600100 0x00010000
+SCANOUT 0x05600104 0x00000000
+SCANOUT 0x05600108 0x00000000
+SCANOUT 0x0560010c 0x00000000
+SCANOUT 0x05600110 0x00000000
+SCANOUT 0x05600114 0x00000000
+SCANOUT 0x05600118 0x00000000
+SCANOUT 0x0560011c 0x00000000
+SCANOUT 0x05600120 0x00000000
+SCANOUT 0x05600124 0x00000808
+SCANOUT 0x05600128 0x00000000
+SCANOUT 0x0560012c 0x00000000
+SCANOUT 0x05600130 0x00000000
+SCANOUT 0x05600134 0x00000000
+SCANOUT 0x05600138 0x00000000
+SCANOUT 0x0560013c 0x00000000
+SCANOUT 0x05600140 0x03001901
+SCANOUT 0x05600144 0x00000000
+SCANOUT 0x05600148 0x008000ff
+SCANOUT 0x0560014c 0x00000080
+SCANOUT 0x05600150 0x043f077f
+SCANOUT 0x05600154 0x00430077
+SCANOUT 0x05600158 0x00000000
+SCANOUT 0x0560015c 0x00000000
+SCANOUT 0x05600160 0x04380780
+SCANOUT 0x05600164 0x00000808
+SCANOUT 0x05600168 0x00000002
+SCANOUT 0x0560016c 0x00000021
+SCANOUT 0x05600170 0x00001e00
+SCANOUT 0x05600174 0x04381e00
+SCANOUT 0x05600178 0x6c100000
+SCANOUT 0x0560017c 0x00000000
+SCANOUT 0x05600180 0x00000000
+SCANOUT 0x05600184 0x0000004c
+SCANOUT 0x05600300 0x00800210
+SCANOUT 0x05600304 0x00800000
+SCANOUT 0x05600308 0x00800210
+SCANOUT 0x0560030c 0x0080c258
+SCANOUT 0x05600310 0x00800210
+SCANOUT 0x05600314 0x00000000
+SCANOUT 0x05600318 0x00000000
+SCANOUT 0x0560031c 0x00000000
+SCANOUT 0x05600320 0x00000000
+SCANOUT 0x05600324 0x00000000
+rc=0
++ /root/vp-bench dump mix --log /root/drm-bench.log
+FIRST MIX access: dump from 0x058c0000
+MIX 0x058c0000 0x10000040
+rc=0
++ /root/vp-bench dump tcon --log /root/drm-bench.log
+FIRST TCON access: dump from 0x05880000
+TCON 0x05880000 0x03060188
+TCON 0x05880020 0x04650898
+TCON 0x05880024 0x04380780
+rc=0
+=== 1 load
++ insmod /root/h713_drm.ko bench=1
+rc=0
+[    0.000000] Kernel command line: console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+[    0.096173] sun50i-h713-pinctrl 2000000.pinctrl: initialized sunXi PIO driver
+[    0.105553] sun50i-h713-ppu 7001014.power-controller: H713 PPU: 5 power domains registered
+[    0.147752] sun50i-h713-lradc 2009800.lradc: H713 LRADC IIO registered (2 channels)
+[    0.165382] sun50i-h713-r-pinctrl 7022000.pinctrl: initialized sunXi PIO driver
+[    0.166245] sun50i-h713-tvcap 50c0000.tvcap: TVFE+TVCAP powered, 4 clocks enabled, held from now on
+[    0.167202] Registered IR keymap rc-h713-fd02
+[    0.167995] sunxi-ir 7040000.ir: h713-ir regs ctl=0x33 rxctl=0x4 rxint=0x1f13 rxsta=0x0 cir=0xf04
+[    0.175666]   #0: h713-audio-codec
+[    1.691653] systemd[1]: Starting modprobe@drm.service - Load Kernel Module drm...
+[    1.895670] systemd[1]: modprobe@drm.service: Deactivated successfully.
+[    1.896093] systemd[1]: Finished modprobe@drm.service - Load Kernel Module drm.
+[    2.883279] sun50i-h713-arisc 100000.arisc: firmware "hy320-crust.bin" (device tree)
+[    2.884095] sun50i-h713-arisc 100000.arisc: "hy320-crust.bin" (20776 bytes): crust image, contract page 0x23800
+[    2.888266] sun50i-h713-arisc 100000.arisc: crust is running (status 0xa2490001), image kept
+[    2.945564] [drm] Initialized panfrost 1.4.0 for 1800000.gpu on minor 0
+[    3.010427] h713-ce-test 3040000.crypto: Clocks on: bus 200000000 Hz, mod 300000000 Hz, ram 400000000 Hz; bus_ce_sys on, RST_BUS_CE_SYS was already released
+[    3.014547] h713-ce-test 3040000.crypto: ready. Banks 0x03040000 (IRQ 332) and 0x03040800 (IRQ 333), buffer at 0x0000000040527000
+[    3.014565] h713-ce-test 3040000.crypto: no run. Start with: echo ns > /sys/kernel/debug/h713-ce-test/starten
+[    3.066651] Module sun50i_h713_afbd is blacklisted
+[    3.077417] Module sun50i_h713_msp is blacklisted
+[    3.095597] sun50i-h713-arisc 100000.arisc: ARISC startup notify acknowledged: crust-h713 v5 v0.6.90-g74d64d759f99 (SRAM byte lanes little endian)
+[    3.095625] sun50i-h713-arisc 100000.arisc: crust contract v5, build 0x05005128 (20776 bytes self-refresh ir), build2 0x01004318 (DRAM 792 MHz, board 4, R_WDOG code 0, power off)
+[    3.109389] systemd[1]: Mounting var-log.mount - /var/log on /data/log (h713-logs persistent)...
+[    3.196427] systemd[1]: Mounted var-log.mount - /var/log on /data/log (h713-logs persistent).
+[    3.227289] systemd[1]: Starting h713-hdcp-key.service - Hand the HDCP 2.2 key from the device to the HDMI-RX driver...
+[   16.863743] sun50i-h713-ppu 7001014.power-controller: sync_state() pending due to 6144000.audio-dsp
+[   40.860650] h713-drm h713-drm: no clocks to hold: boot with clk_ignore_unused (spec 05 §4)
+[   40.864662] h713-drm h713-drm: handoff: RGB control 0x03001901, address 0x6c100000, irq enable 0x00000021; 0 clocks; h713/database.TSE loaded
+[   40.865117] [drm] Initialized h713-drm 1.0.0 for h713-drm on minor 1
+[   40.865172] h713_drm: bench device registered (rgb-done irq 334 = SPI 112, video-vsync irq 335 = SPI 110)
++ /root/vp-bench dump scanout --log /root/drm-bench.log
+FIRST SCANOUT access: dump from 0x05600000
+SCANOUT 0x05600000 0x80000020
+SCANOUT 0x05600004 0x00000000
+SCANOUT 0x05600008 0x00000000
+SCANOUT 0x0560000c 0x00000000
+SCANOUT 0x05600010 0x00000000
+SCANOUT 0x05600014 0x00000000
+SCANOUT 0x05600018 0x00000000
+SCANOUT 0x0560001c 0x00000000
+SCANOUT 0x05600020 0x00000000
+SCANOUT 0x05600024 0x00000000
+SCANOUT 0x05600028 0x00000000
+SCANOUT 0x0560002c 0x00000000
+SCANOUT 0x05600030 0x00000000
+SCANOUT 0x05600034 0x00080808
+SCANOUT 0x05600038 0x00000000
+SCANOUT 0x0560003c 0x00000000
+SCANOUT 0x05600040 0x00000000
+SCANOUT 0x05600044 0x00000000
+SCANOUT 0x05600048 0x00000000
+SCANOUT 0x0560004c 0x00000000
+SCANOUT 0x05600050 0x00000000
+SCANOUT 0x05600054 0x00000000
+SCANOUT 0x05600058 0x00000000
+SCANOUT 0x0560005c 0x00000000
+SCANOUT 0x05600060 0x00000000
+SCANOUT 0x05600064 0x00000000
+SCANOUT 0x05600068 0x00000000
+SCANOUT 0x0560006c 0x00000000
+SCANOUT 0x05600070 0x00000000
+SCANOUT 0x05600074 0x00000000
+SCANOUT 0x05600078 0x00000000
+SCANOUT 0x0560007c 0x00000000
+SCANOUT 0x05600080 0x00000000
+SCANOUT 0x05600084 0x00000000
+SCANOUT 0x05600088 0x00000000
+SCANOUT 0x0560008c 0x00000000
+SCANOUT 0x05600090 0x00000000
+SCANOUT 0x05600094 0x00000000
+SCANOUT 0x05600098 0x00000000
+SCANOUT 0x0560009c 0x00000000
+SCANOUT 0x056000a0 0x00000000
+SCANOUT 0x056000a4 0x00000000
+SCANOUT 0x056000a8 0x00000000
+SCANOUT 0x056000ac 0x00000000
+SCANOUT 0x056000b0 0x00000000
+SCANOUT 0x056000b4 0x00000000
+SCANOUT 0x056000b8 0x00000000
+SCANOUT 0x056000bc 0x00000000
+SCANOUT 0x056000c0 0x00000000
+SCANOUT 0x056000c4 0x00000000
+SCANOUT 0x05600100 0x00010000
+SCANOUT 0x05600104 0x00000000
+SCANOUT 0x05600108 0x00000000
+SCANOUT 0x0560010c 0x00000000
+SCANOUT 0x05600110 0x00000000
+SCANOUT 0x05600114 0x00000000
+SCANOUT 0x05600118 0x00000000
+SCANOUT 0x0560011c 0x00000000
+SCANOUT 0x05600120 0x00000000
+SCANOUT 0x05600124 0x00000808
+SCANOUT 0x05600128 0x00000000
+SCANOUT 0x0560012c 0x00000000
+SCANOUT 0x05600130 0x00000000
+SCANOUT 0x05600134 0x00000000
+SCANOUT 0x05600138 0x00000000
+SCANOUT 0x0560013c 0x00000000
+SCANOUT 0x05600140 0x03001901
+SCANOUT 0x05600144 0x00000000
+SCANOUT 0x05600148 0x008000ff
+SCANOUT 0x0560014c 0x00000080
+SCANOUT 0x05600150 0x043f077f
+SCANOUT 0x05600154 0x00430077
+SCANOUT 0x05600158 0x00000000
+SCANOUT 0x0560015c 0x00000000
+SCANOUT 0x05600160 0x04380780
+SCANOUT 0x05600164 0x00000808
+SCANOUT 0x05600168 0x00000002
+SCANOUT 0x0560016c 0x00000021
+SCANOUT 0x05600170 0x00001e00
+SCANOUT 0x05600174 0x04381e00
+SCANOUT 0x05600178 0x6c100000
+SCANOUT 0x0560017c 0x00000000
+SCANOUT 0x05600180 0x00000000
+SCANOUT 0x05600184 0x0000004b
+SCANOUT 0x05600300 0x00800210
+SCANOUT 0x05600304 0x00800000
+SCANOUT 0x05600308 0x00800210
+SCANOUT 0x0560030c 0x00804258
+SCANOUT 0x05600310 0x00800210
+SCANOUT 0x05600314 0x00000000
+SCANOUT 0x05600318 0x00000000
+SCANOUT 0x0560031c 0x00000000
+SCANOUT 0x05600320 0x00000000
+SCANOUT 0x05600324 0x00000000
+rc=0
++ /root/vp-bench dump mix --log /root/drm-bench.log
+FIRST MIX access: dump from 0x058c0000
+MIX 0x058c0000 0x10000040
+rc=0
++ /root/vp-bench dump tcon --log /root/drm-bench.log
+FIRST TCON access: dump from 0x05880000
+TCON 0x05880000 0x00e00363
+TCON 0x05880020 0x04650898
+TCON 0x05880024 0x04380780
+rc=0
++ /root/kms-test info
+driver h713-drm
+crtc 40 connector 42 primary plane 33 overlay plane 37
+mode 1920x1080 total 2200x1125 clock 162210 kHz refresh 65.539 Hz (vrefresh field 66)
+primary formats XR24
+overlay formats NV12 NV16
+PASS S1-T5 mode check
+rc=0
+=== 2 RGB plane
+commit ok in 0 ms: primary grey, overlay off (alpha 255)
+holding 20 s
++ /root/vp-bench dump scanout --log /root/drm-bench.log
+FIRST SCANOUT access: dump from 0x05600000
+SCANOUT 0x05600000 0x80000020
+SCANOUT 0x05600004 0x00000000
+SCANOUT 0x05600008 0x00000000
+SCANOUT 0x0560000c 0x00000000
+SCANOUT 0x05600010 0x00000000
+SCANOUT 0x05600014 0x00000000
+SCANOUT 0x05600018 0x00000000
+SCANOUT 0x0560001c 0x00000000
+SCANOUT 0x05600020 0x00000000
+SCANOUT 0x05600024 0x00000000
+SCANOUT 0x05600028 0x00000000
+SCANOUT 0x0560002c 0x00000000
+SCANOUT 0x05600030 0x00000000
+SCANOUT 0x05600034 0x00080808
+SCANOUT 0x05600038 0x00000000
+SCANOUT 0x0560003c 0x00000000
+SCANOUT 0x05600040 0x00000000
+SCANOUT 0x05600044 0x00000000
+SCANOUT 0x05600048 0x00000000
+SCANOUT 0x0560004c 0x00000000
+SCANOUT 0x05600050 0x00000000
+SCANOUT 0x05600054 0x00000000
+SCANOUT 0x05600058 0x00000000
+SCANOUT 0x0560005c 0x00000000
+SCANOUT 0x05600060 0x00000000
+SCANOUT 0x05600064 0x00000000
+SCANOUT 0x05600068 0x00000000
+SCANOUT 0x0560006c 0x00000000
+SCANOUT 0x05600070 0x00000000
+SCANOUT 0x05600074 0x00000000
+SCANOUT 0x05600078 0x00000000
+SCANOUT 0x0560007c 0x00000000
+SCANOUT 0x05600080 0x00000000
+SCANOUT 0x05600084 0x00000000
+SCANOUT 0x05600088 0x00000000
+SCANOUT 0x0560008c 0x00000000
+SCANOUT 0x05600090 0x00000000
+SCANOUT 0x05600094 0x00000000
+SCANOUT 0x05600098 0x00000000
+SCANOUT 0x0560009c 0x00000000
+SCANOUT 0x056000a0 0x00000000
+SCANOUT 0x056000a4 0x00000000
+SCANOUT 0x056000a8 0x00000000
+SCANOUT 0x056000ac 0x00000000
+SCANOUT 0x056000b0 0x00000000
+SCANOUT 0x056000b4 0x00000000
+SCANOUT 0x056000b8 0x00000000
+SCANOUT 0x056000bc 0x00000000
+SCANOUT 0x056000c0 0x00000000
+SCANOUT 0x056000c4 0x00000000
+SCANOUT 0x05600100 0x00010000
+SCANOUT 0x05600104 0x00000000
+SCANOUT 0x05600108 0x00000000
+SCANOUT 0x0560010c 0x00000000
+SCANOUT 0x05600110 0x00000000
+SCANOUT 0x05600114 0x00000000
+SCANOUT 0x05600118 0x00000000
+SCANOUT 0x0560011c 0x00000000
+SCANOUT 0x05600120 0x00000000
+SCANOUT 0x05600124 0x00000808
+SCANOUT 0x05600128 0x00000000
+SCANOUT 0x0560012c 0x00000000
+SCANOUT 0x05600130 0x00000000
+SCANOUT 0x05600134 0x00000000
+SCANOUT 0x05600138 0x00000000
+SCANOUT 0x0560013c 0x00000000
+SCANOUT 0x05600140 0x03001901
+SCANOUT 0x05600144 0x00000000
+SCANOUT 0x05600148 0x008000ff
+SCANOUT 0x0560014c 0x00000080
+SCANOUT 0x05600150 0x043f077f
+SCANOUT 0x05600154 0x00430077
+SCANOUT 0x05600158 0x00000000
+SCANOUT 0x0560015c 0x00000000
+SCANOUT 0x05600160 0x04380780
+SCANOUT 0x05600164 0x00000808
+SCANOUT 0x05600168 0x00000000
+SCANOUT 0x0560016c 0x00000031
+SCANOUT 0x05600170 0x00001e00
+SCANOUT 0x05600174 0x04381e00
+SCANOUT 0x05600178 0x76d00000
+SCANOUT 0x0560017c 0x00000000
+SCANOUT 0x05600180 0x00000000
+SCANOUT 0x05600184 0x0000004b
+SCANOUT 0x05600300 0x00800210
+SCANOUT 0x05600304 0x00800000
+SCANOUT 0x05600308 0x00800210
+SCANOUT 0x0560030c 0x0080c258
+SCANOUT 0x05600310 0x00800210
+SCANOUT 0x05600314 0x00000000
+SCANOUT 0x05600318 0x00000000
+SCANOUT 0x0560031c 0x00000000
+SCANOUT 0x05600320 0x00000000
+SCANOUT 0x05600324 0x00000000
+rc=0
+334:         93          0          0          0    GICv2 144 Level     h713-drm
+334:        330          0          0          0    GICv2 144 Level     h713-drm
+rgb grey rc=0
++ /root/kms-test vblank 656
+commit ok in 12 ms: primary grey, overlay off (alpha 255)
+vblanks 656 in 10.009 s: 65.44/s, sequence 374..1029 (spec 05 §5: 65.538 Hz)
+rc=0
++ /root/kms-test rgb white --flip 3930 --alt black --hold 0
+commit ok in 14 ms: primary white, overlay off (alpha 255)
+flips 3930: 3930 events, 0 timeouts (200 ms), 0 EBUSY retries, 59.963 s, 65.54 flips/s, vblank sequence advanced 3929
+rc=0
+[    3.095597] sun50i-h713-arisc 100000.arisc: ARISC startup notify acknowledged: crust-h713 v5 v0.6.90-g74d64d759f99 (SRAM byte lanes little endian)
+[    3.095625] sun50i-h713-arisc 100000.arisc: crust contract v5, build 0x05005128 (20776 bytes self-refresh ir), build2 0x01004318 (DRAM 792 MHz, board 4, R_WDOG code 0, power off)
+[    3.109389] systemd[1]: Mounting var-log.mount - /var/log on /data/log (h713-logs persistent)...
+[    3.196427] systemd[1]: Mounted var-log.mount - /var/log on /data/log (h713-logs persistent).
+[    3.227289] systemd[1]: Starting h713-hdcp-key.service - Hand the HDCP 2.2 key from the device to the HDMI-RX driver...
+[   16.863743] sun50i-h713-ppu 7001014.power-controller: sync_state() pending due to 6144000.audio-dsp
+[   40.860650] h713-drm h713-drm: no clocks to hold: boot with clk_ignore_unused (spec 05 §4)
+[   40.864662] h713-drm h713-drm: handoff: RGB control 0x03001901, address 0x6c100000, irq enable 0x00000021; 0 clocks; h713/database.TSE loaded
+[   40.865117] [drm] Initialized h713-drm 1.0.0 for h713-drm on minor 1
+[   40.865172] h713_drm: bench device registered (rgb-done irq 334 = SPI 112, video-vsync irq 335 = SPI 110)
+=== 3 video T1
+commit ok in 177 ms: primary off, overlay p1 1920x1080 Nv12 (alpha 255)
+holding 30 s
+[    3.014547] h713-ce-test 3040000.crypto: ready. Banks 0x03040000 (IRQ 332) and 0x03040800 (IRQ 333), buffer at 0x0000000040527000
+[    3.095625] sun50i-h713-arisc 100000.arisc: crust contract v5, build 0x05005128 (20776 bytes self-refresh ir), build2 0x01004318 (DRAM 792 MHz, board 4, R_WDOG code 0, power off)
+[    5.023134] aicbsp: aicbsp_sdio_probe:1 vid:0xC8A1  did:0x0082
+[    5.023230] aicbsp: aicbsp_sdio_probe:2 vid:0xC8A1  did:0x0182
+[   40.864662] h713-drm h713-drm: handoff: RGB control 0x03001901, address 0x6c100000, irq enable 0x00000021; 0 clocks; h713/database.TSE loaded
+[  133.646661] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x76d00000 chroma 0x76efa400; rgb off 0x00000000 alpha 255
+[  133.646712] h713-drm h713-drm: [drm] commit: 0, 1147 ops, 1125 writes, 0 read-back mismatches, 1 timeouts, 5 check failures (video plane: full enable)
+[  133.646738] h713-drm h713-drm: [drm] *ERROR* raster stall suspected (spec 10 §6.3): 6 stall signs; channel 0 cannot latch
+luma=0x76d00000 chroma=0x76efa400
++ /root/vp-bench verify t1 --luma 0x76d00000 --chroma 0x76efa400 --log /root/drm-bench.log
+verify T1 (95 §3 T1)
+PASS 0x05600000 & 0xffffffff: read 0x80000020, want 0x80000020  [10 §5 T1; 10 §2]
+PASS 0x05600018 & 0xffffffff: read 0x00000000, want 0x00000000  [10 §5 T1; 10 §2]
+PASS 0x0560001c & 0xffffffff: read 0x00000000, want 0x00000000  [10 §5 T1; 10 §2]
+PASS 0x05600020 & 0xffffffff: read 0x043f077f, want 0x043f077f  [10 §5 T1; 10 §2]
+PASS 0x05600024 & 0xffffffff: read 0x00420077, want 0x00420077  [10 §5 T1; 10 §2]
+PASS 0x05600030 & 0xffffffff: read 0x04380780, want 0x04380780  [10 §5 T1; 10 §2]
+PASS 0x05600034 & 0xffffffff: read 0x00080808, want 0x00080808  [10 §5 T1; 10 §2]
+PASS 0x05600040 & 0xffffffff: read 0x00000780, want 0x00000780  [10 §5 T1; 10 §2]
+PASS 0x05600044 & 0xffffffff: read 0x00000780, want 0x00000780  [10 §5 T1; 10 §2]
+PASS 0x05600048 & 0xffffffff: read 0x04380780, want 0x04380780  [10 §5 T1; 10 §2]
+PASS 0x0560004c & 0xffffffff: read 0x021c0780, want 0x021c0780  [10 §5 T1; 10 §2]
+PASS 0x05600050 & 0xffffffff: read 0x00000000, want 0x00000000  [10 §5 T1; 10 §2]
+PASS 0x05600054 & 0xffffffff: read 0x00000000, want 0x00000000  [10 §5 T1; 10 §2]
+PASS 0x05600010 & 0xffffffff: read 0x03000013, want 0x03000013  [10 §5 T1]
+PASS 0x05600014 & 0x00000001: read 0x00000000, want 0x00000000  [95 T1: 0 after the commit]
+PASS 0x0560006c & 0x00000001: read 0x00000000, want 0x00000000  [95 T1: 0 after the commit]
+PASS 0x05600070 & 0xffffffff: read 0x76d00000, want 0x76d00000  [10 §5 T1 (driver buffer)]
+PASS 0x05600084 & 0xffffffff: read 0x76efa400, want 0x76efa400  [10 §5 T1 (driver buffer)]
+PASS 0x05600074 & 0xffffffff: read 0x76d00000, want 0x76d00000  [10 §5 T1 (driver buffer)]
+PASS 0x05600088 & 0xffffffff: read 0x76efa400, want 0x76efa400  [10 §5 T1 (driver buffer)]
+PASS 0x05600078 & 0xffffffff: read 0x76d00000, want 0x76d00000  [10 §5 T1 (driver buffer)]
+PASS 0x0560008c & 0xffffffff: read 0x76efa400, want 0x76efa400  [10 §5 T1 (driver buffer)]
+PASS 0x0560007c & 0xffffffff: read 0x76d00000, want 0x76d00000  [10 §5 T1 (driver buffer)]
+PASS 0x05600090 & 0xffffffff: read 0x76efa400, want 0x76efa400  [10 §5 T1 (driver buffer)]
+PASS 0x05600060 & 0xffffffff: read 0x00000001, want 0x00000001  [10 §5 T1]
+PASS 0x05600064 & 0xffffffff: read 0x00000000, want 0x00000000  [10 §5 T1]
+PASS 0x05600068 & 0xffffffff: read 0x00000122, want 0x00000122  [10 §5 T1]
+PASS 0x05600080 & 0xffffffff: read 0x00000000, want 0x00000000  [10 §5 T1]
+PASS VCH_ARMED 0x05600058 non-zero: read 0x00000069  [10 §2, §6.2]
+PASS VCH_ARMED 0x0560005c non-zero: read 0x0000004c  [10 §2, §6.2]
+INFO 0x05600038 = 0x00000000  [10 §5 T1 shows 0x10]
+PASS 0x05600140 & 0xffffffff: read 0x83001900, want 0x83001900  [10 §3, §5 T1]
+PASS 0x051c006c & 0xffffffff: read 0x39000000, want 0x39000000  [95 T1]
+PASS 0x058c0000 & 0xffffffff: read 0x00000040, want 0x00000040  [95 T1]
+PASS line counter PNL 0x051c0174 moving: 0x00bb000b then 0x00c10292  [95 T1; 30 §4.5]
+PASS 0x02001600 & 0xffffffff: read 0x00000000, want 0x00000000  [00 §4; 95 T1]
+PASS 0x0200160c & 0xffffffff: read 0x00000000, want 0x00000000  [00 §4; 95 T1]
+INFO histogram sum 2073600, non-zero bins 5:67387 6:129670 7:13408 8:11391 9:13822 10:15433 11:14453 12:14721 13:15814 14:15440 15:15025 16:14236 17:15426 18:15433 19:13713 20:14758 21:13410 22:15066 23:15471 24:15415 25:15016 26:14594 27:15350 28:15382 29:191045 30:18584 31:1344137
+PASS 0x05180014 & 0x08000000: read 0x08000000, want 0x08000000  [95 T1: SCL bypass]
+PASS 0x05180008 & 0x003fffff: read 0x43010000, want 0x00010000  [95 T1: ratio 0x10000]
+PASS 0x0518003c & 0x003fffff: read 0x00010000, want 0x00010000  [95 T1: ratio 0x10000]
+verify t1: PASS
+rc=0
++ /root/vp-bench verify scan --log /root/drm-bench.log
+verify scan (10 §6.2 readout words, 10 §6.3 raster signs)
+PASS 0x05600014 & 0x00000001: read 0x00000000, want 0x00000000  [10 §6.2]
+PASS 0x0560006c & 0x00000001: read 0x00000000, want 0x00000000  [10 §6.2]
+PASS VCH_ARMED non-zero: [6a, 6a, 6a, 6a, 6a, 6a, 6a, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 68]  [10 §2, §6.2]
+PASS VCH_ARMED changing:   [10 §6.2]
+PASS 0x05600310 bit 21 toggling: [a00210, a00210, a00210, a00210, 800210, a00210, a00210, a00210, 800210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210]  [10 §6.1, §6.2]
+PASS 0x05600320 non-zero: read 0x4c7ed000  [10 §6.2]
+PASS video vsync status events in 1 s: 65 (reference 65.5/s: the panel's own rate, 00 §4)  [10 §6.1, §6.3]
+PASS PROC_LOCK fe74 [31:16] = fe08 [31:16]: fe74 0x04640003, fe08 0x04640897  [10 §6.3]
+PASS PNL 0x051c0148 non-zero: 0x00000502  [10 §6.3]
+PASS PNL 0x051c014c non-zero: 0x08980780  [10 §6.3]
+PASS PNL 0x051c0150 non-zero: 0x00a20074  [10 §6.3]
+PASS PNL 0x051c0154 non-zero: 0x000c001c  [10 §6.3]
+PASS PNL 0x051c0158 non-zero: 0x04650438  [10 §6.3]
+PASS line counter PNL 0x051c0174 moving: 0x010d005a then 0x011302d0  [95 T1; 30 §4.5]
+verify scan: PASS
+rc=0
+video p1 rc=0
+commit ok in 21 ms: primary off, overlay white 1920x1080 Nv12 (alpha 255)
+holding 8 s
++ /root/vp-bench verify hist --expect white --log /root/drm-bench.log
+verify histogram, frame white (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 31:2073600
+INFO histogram sum 2073600, non-zero bins 31:2073600
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+PASS white: all in bin 31: bin31 2073600  [10 §6.2]
+INFO 0x05140600 = 0x0eb0058f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0eb0058f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: PASS
+rc=0
+video white rc=0
+commit ok in 26 ms: primary off, overlay black 1920x1080 Nv12 (alpha 255)
+holding 8 s
++ /root/vp-bench verify hist --expect black --log /root/drm-bench.log
+verify histogram, frame black (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:777600 6:1296000
+INFO histogram sum 2073600, non-zero bins 5:777600 6:1296000
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+PASS black: bins 5 and 6 only:   [10 §6.2]
+REF black bins 5/6 = 777600/1296000 (measured 777568/1296032)
+INFO 0x05140600 = 0x09110110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: PASS
+rc=0
+video black rc=0
+commit ok in 21 ms: primary off, overlay p3 1920x1080 Nv12 (alpha 255)
+holding 8 s
++ /root/vp-bench verify hist --expect grey --log /root/drm-bench.log
+verify histogram, frame grey (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 29:2073600
+INFO histogram sum 2073600, non-zero bins 29:2073600
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+PASS grey (Y 126): all in bin 29: bin29 2073600  [10 §6.2]
+INFO 0x05140600 = 0x0911058f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910058f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: PASS
+rc=0
+video p3 rc=0
+commit ok in 21 ms: primary off, overlay p1 1920x1080 Nv12 (alpha 255)
+holding 8 s
++ /root/vp-bench verify hist --expect p1 --log /root/drm-bench.log
+verify histogram, frame p1 (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:65839 6:131220 7:13406 8:11393 9:13821 10:15430 11:14455 12:14721 13:15816 14:15437 15:15029 16:14233 17:15424 18:15436 19:13713 20:14756 21:13414 22:15062 23:15473 24:15418 25:15013 26:14594 27:15349 28:15382 29:191045 30:18584 31:1344137
+INFO histogram sum 2073600, non-zero bins 5:65834 6:131225 7:13406 8:11393 9:13821 10:15430 11:14456 12:14721 13:15815 14:15439 15:15026 16:14234 17:15425 18:15433 19:13715 20:14756 21:13412 22:15064 23:15473 24:15418 25:15014 26:14594 27:15349 28:15381 29:191045 30:18583 31:1344138
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: false
+PASS P1: bins 5..31 only:   [10 §6.2]
+REF P1 bin 31 = 1344138 (measured 1344137)
+INFO 0x05140600 = 0x0bc10400  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0bc003ff  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: PASS
+rc=0
+video p1 rc=0
++ /root/kms-test video white 1920 1080 nv12 --flip 655 --alt black --hold 0
+commit ok in 22 ms: primary off, overlay white 1920x1080 Nv12 (alpha 255)
+flips 655: 655 events, 0 timeouts (200 ms), 0 EBUSY retries, 9.982 s, 65.62 flips/s, vblank sequence advanced 654
+rc=0
+=== 4 video T2
+commit ok in 22 ms: primary off, overlay p2 1280x720 Nv12 (alpha 255)
+holding 20 s
+[  206.505042] h713-drm h713-drm: [drm] video: NV12 1280x720 pitch 1280 luma 0x76d00000 chroma 0x76de1000; rgb off 0x00000000 alpha 255
+luma=0x76d00000 chroma=0x76de1000
++ /root/vp-bench verify t2 --luma 0x76d00000 --chroma 0x76de1000 --size 1280x720 --log /root/drm-bench.log
+verify T2 (95 §3 T2; 20 §3 S2 HY320)
+PASS 0x05600020 & 0xffffffff: read 0x02cf04ff, want 0x02cf04ff  [95 T2 VCH_SIZE]
+PASS 0x05600024 & 0xffffffff: read 0x002c004f, want 0x002c004f  [95 T2 VCH_BLOCKS]
+PASS 0x05600040 & 0xffffffff: read 0x00000500, want 0x00000500  [95 T2 VCH_YSTRIDE]
+PASS 0x05600044 & 0xffffffff: read 0x00000500, want 0x00000500  [95 T2 VCH_CSTRIDE]
+PASS 0x05600048 & 0xffffffff: read 0x02d00500, want 0x02d00500  [95 T2 VCH_YCROP]
+PASS 0x0560004c & 0xffffffff: read 0x01680500, want 0x01680500  [95 T2 VCH_CCROP]
+PASS 0x05600030 & 0xffffffff: read 0x02d00500, want 0x02d00500  [10 §2 VCH_OUTSIZE = source window]
+PASS 0x05600050 & 0xffffffff: read 0x00000000, want 0x00000000  [10 §2 window start]
+PASS 0x05600054 & 0xffffffff: read 0x00000000, want 0x00000000  [10 §2 window start]
+PASS 0x05140104 & 0xffffffff: read 0x05000000, want 0x05000000  [20 S2 HY320]
+PASS 0x05140108 & 0xffffffff: read 0x02d00000, want 0x02d00000  [20 S2 HY320]
+PASS 0x0514011c & 0xffffffff: read 0x02d08002, want 0x02d08002  [20 S2 HY320]
+PASS 0x05140124 & 0xffffffff: read 0x07800000, want 0x07800000  [20 S2 HY320]
+PASS 0x05140128 & 0xffffffff: read 0x04380000, want 0x04380000  [20 S2 HY320]
+PASS 0x05000840 & 0xffffffff: read 0x02d10010, want 0x02d10010  [20 S2 HY320]
+PASS 0x05180000 & 0xffffffff: read 0x0f006aaa, want 0x0f006aaa  [95 T2; 20 S2 HY320]
+PASS 0x05180008 & 0xffffffff: read 0x3200aaaa, want 0x3200aaaa  [95 T2; 20 S2 HY320]
+PASS 0x05180014 & 0xffffffff: read 0x00000000, want 0x00000000  [95 T2; 20 S2 HY320]
+PASS 0x05180034 & 0xffffffff: read 0x050002d0, want 0x050002d0  [95 T2; 20 S2 HY320]
+PASS 0x05180038 & 0xffffffff: read 0x0010d555, want 0x0010d555  [95 T2; 20 S2 HY320]
+PASS 0x0518003c & 0xffffffff: read 0x0000aaaa, want 0x0000aaaa  [95 T2; 20 S2 HY320]
+PASS 0x05180100 & 0xffffffff: read 0x0f006aaa, want 0x0f006aaa  [95 T2; 20 S2 HY320]
+PASS 0x05180108 & 0xffffffff: read 0x3200aaaa, want 0x3200aaaa  [95 T2; 20 S2 HY320]
+PASS 0x05180114 & 0xffffffff: read 0x00000000, want 0x00000000  [95 T2; 20 S2 HY320]
+PASS 0x05180134 & 0xffffffff: read 0x050002d0, want 0x050002d0  [95 T2; 20 S2 HY320]
+PASS 0x05180138 & 0xffffffff: read 0x0010d555, want 0x0010d555  [95 T2; 20 S2 HY320]
+PASS 0x0518013c & 0xffffffff: read 0x0000aaaa, want 0x0000aaaa  [95 T2; 20 S2 HY320]
+PASS 0x05180200 & 0xffffffff: read 0x0f006aaa, want 0x0f006aaa  [95 T2; 20 S2 HY320]
+PASS 0x05180208 & 0xffffffff: read 0x3200aaaa, want 0x3200aaaa  [95 T2; 20 S2 HY320]
+PASS 0x05180214 & 0xffffffff: read 0x00000000, want 0x00000000  [95 T2; 20 S2 HY320]
+PASS 0x05180234 & 0xffffffff: read 0x050002d0, want 0x050002d0  [95 T2; 20 S2 HY320]
+PASS 0x05180238 & 0xffffffff: read 0x0010d555, want 0x0010d555  [95 T2; 20 S2 HY320]
+PASS 0x0518023c & 0xffffffff: read 0x0000aaaa, want 0x0000aaaa  [95 T2; 20 S2 HY320]
+PASS 0x05180300 & 0xffffffff: read 0x0f006aaa, want 0x0f006aaa  [95 T2; 20 S2 HY320]
+PASS 0x05180308 & 0xffffffff: read 0x3200aaaa, want 0x3200aaaa  [95 T2; 20 S2 HY320]
+PASS 0x05180314 & 0xffffffff: read 0x00000000, want 0x00000000  [95 T2; 20 S2 HY320]
+PASS 0x05180334 & 0xffffffff: read 0x050002d0, want 0x050002d0  [95 T2; 20 S2 HY320]
+PASS 0x05180338 & 0xffffffff: read 0x0010d555, want 0x0010d555  [95 T2; 20 S2 HY320]
+PASS 0x0518033c & 0xffffffff: read 0x0000aaaa, want 0x0000aaaa  [95 T2; 20 S2 HY320]
+PASS 0x05000224 & 0xffffffff: read 0x02d00500, want 0x02d00500  [20 S2 HY320]
+PASS 0x05000444 & 0xffffffff: read 0x02d00500, want 0x02d00500  [20 S2 HY320]
+PASS 0x05000544 & 0xffffffff: read 0x02d00500, want 0x02d00500  [20 S2 HY320]
+PASS 0x05000804 & 0xffffffff: read 0x009f0500, want 0x009f0500  [20 S2 HY320]
+PASS 0x0500080c & 0xffffffff: read 0x000f02d0, want 0x000f02d0  [20 S2 HY320]
+PASS 0x05000844 & 0xffffffff: read 0x050000a3, want 0x050000a3  [20 S2 HY320]
+PASS 0x0500085c & 0xffffffff: read 0x050000a3, want 0x050000a3  [20 S2 HY320]
+PASS 0x05000278 & 0xffffffff: read 0xe0020168, want 0xe0020168  [20 S2 HY320]
+PASS 0x050002b8 & 0xffffffff: read 0xe00202d0, want 0xe00202d0  [20 S2 HY320]
+PASS 0x05000174 & 0xffffffff: read 0x00640064, want 0x00640064  [20 S2 HY320]
+PASS 0x050001b4 & 0xffffffff: read 0x00640064, want 0x00640064  [20 S2 HY320]
+PASS 0x05000274 & 0xffffffff: read 0x00640064, want 0x00640064  [20 S2 HY320]
+PASS 0x050002b4 & 0xffffffff: read 0x00640064, want 0x00640064  [20 S2 HY320]
+PASS 0x050000f0 & 0xffffffff: read 0x63006464, want 0x63006464  [20 S2 HY320]
+PASS 0x05000210 & 0xffffffff: read 0x63006464, want 0x63006464  [20 S2 HY320]
+FAIL 0x05001028 & 0xffffffff: read 0xff000001, want 0xff000000  [20 S2 HY320]
+PASS 0x050c028c & 0xffffffff: read 0x005246c8, want 0x005246c8  [20 S2 HY320]
+PASS 0x05600010 & 0xffffffff: read 0x03000013, want 0x03000013  [10 §5 T1]
+PASS 0x05600014 & 0x00000001: read 0x00000000, want 0x00000000  [95 T1: 0 after the commit]
+PASS 0x0560006c & 0x00000001: read 0x00000000, want 0x00000000  [95 T1: 0 after the commit]
+PASS 0x05600070 & 0xffffffff: read 0x76d00000, want 0x76d00000  [10 §5 T1 (driver buffer)]
+PASS 0x05600084 & 0xffffffff: read 0x76de1000, want 0x76de1000  [10 §5 T1 (driver buffer)]
+PASS 0x05600074 & 0xffffffff: read 0x76d00000, want 0x76d00000  [10 §5 T1 (driver buffer)]
+PASS 0x05600088 & 0xffffffff: read 0x76de1000, want 0x76de1000  [10 §5 T1 (driver buffer)]
+PASS 0x05600078 & 0xffffffff: read 0x76d00000, want 0x76d00000  [10 §5 T1 (driver buffer)]
+PASS 0x0560008c & 0xffffffff: read 0x76de1000, want 0x76de1000  [10 §5 T1 (driver buffer)]
+PASS 0x0560007c & 0xffffffff: read 0x76d00000, want 0x76d00000  [10 §5 T1 (driver buffer)]
+PASS 0x05600090 & 0xffffffff: read 0x76de1000, want 0x76de1000  [10 §5 T1 (driver buffer)]
+PASS 0x05600060 & 0xffffffff: read 0x00000001, want 0x00000001  [10 §5 T1]
+PASS 0x05600064 & 0xffffffff: read 0x00000000, want 0x00000000  [10 §5 T1]
+PASS 0x05600068 & 0xffffffff: read 0x00000122, want 0x00000122  [10 §5 T1]
+PASS 0x05600080 & 0xffffffff: read 0x00000000, want 0x00000000  [10 §5 T1]
+PASS VCH_ARMED 0x05600058 non-zero: read 0x00000089  [10 §2, §6.2]
+PASS VCH_ARMED 0x0560005c non-zero: read 0x0000006c  [10 §2, §6.2]
+INFO 0x05600038 = 0x00000000  [10 §5 T1 shows 0x10]
+PASS 0x05600140 & 0xffffffff: read 0x83001900, want 0x83001900  [10 §3, §5 T1]
+PASS 0x051c006c & 0xffffffff: read 0x39000000, want 0x39000000  [95 T1]
+PASS 0x058c0000 & 0xffffffff: read 0x00000040, want 0x00000040  [95 T1]
+PASS line counter PNL 0x051c0174 moving: 0x136d0099 then 0x1373030f  [95 T1; 30 §4.5]
+PASS 0x02001600 & 0xffffffff: read 0x00000000, want 0x00000000  [00 §4; 95 T1]
+PASS 0x0200160c & 0xffffffff: read 0x00000000, want 0x00000000  [00 §4; 95 T1]
+INFO histogram sum 2073600, non-zero bins 4:17935 5:672906 6:1248061 8:13 9:198 10:216 11:20010 12:23 13:1 14:185 15:26 16:9288 17:10316 21:106 22:105 24:11 25:49 27:27 28:2861 29:2847 30:23 31:88393
+verify t2: 1 FAIL
+rc=1
++ /root/vp-bench verify scan --size 1280x720 --log /root/drm-bench.log
+verify scan (10 §6.2 readout words, 10 §6.3 raster signs)
+PASS 0x05600014 & 0x00000001: read 0x00000000, want 0x00000000  [10 §6.2]
+PASS 0x0560006c & 0x00000001: read 0x00000000, want 0x00000000  [10 §6.2]
+PASS VCH_ARMED non-zero: [69, 69, 6a, 6a, 98, 98, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69, 69]  [10 §2, §6.2]
+PASS VCH_ARMED changing:   [10 §6.2]
+ADVISORY 0x05600310 bit 21 toggling: true [800210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, a00210, 800210]  [measured at 1920x1080 only, 10 §6.2]
+PASS 0x05600320 non-zero: read 0x4c7ed000  [10 §6.2]
+PASS video vsync status events in 1 s: 65 (reference 65.5/s: the panel's own rate, 00 §4)  [10 §6.1, §6.3]
+PASS PROC_LOCK fe74 [31:16] = fe08 [31:16]: fe74 0x04640003, fe08 0x04640897  [10 §6.3]
+PASS PNL 0x051c0148 non-zero: 0x00000502  [10 §6.3]
+PASS PNL 0x051c014c non-zero: 0x08980780  [10 §6.3]
+PASS PNL 0x051c0150 non-zero: 0x00a20074  [10 §6.3]
+PASS PNL 0x051c0154 non-zero: 0x000c001c  [10 §6.3]
+PASS PNL 0x051c0158 non-zero: 0x04650438  [10 §6.3]
+PASS line counter PNL 0x051c0174 moving: 0x13bf00bb then 0x13c50331  [95 T1; 30 §4.5]
+verify scan: PASS
+rc=0
+video p2 rc=0
+commit ok in 22 ms: primary off, overlay quad 1280x720 Nv12 (alpha 255)
+holding 8 s
++ /root/vp-bench verify hist --expect quad --log /root/drm-bench.log
+verify histogram, frame quad (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 4:539 5:581314 6:971847 9:958 10:3 11:539 31:518400
+INFO histogram sum 2073600, non-zero bins 4:540 5:581311 6:971849 9:958 10:2 11:540 31:518400
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: false
+FAIL white quadrant -> 25.00 %: high bins 24..31 = 518400, the rest in bins 0..8: high 518400, low 1553700  [10 §6.3 (1.5x areas)]
+INFO 0x05140600 = 0x09110110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: 1 FAIL
+rc=1
+video quad rc=0
+commit ok in 20 ms: primary off, overlay left 1280x720 Nv12 (alpha 255)
+holding 8 s
++ /root/vp-bench verify hist --expect left --log /root/drm-bench.log
+verify histogram, frame left (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 4:1080 5:387182 6:647458 10:1 11:1079 31:1036800
+INFO histogram sum 2073600, non-zero bins 4:1080 5:387182 6:647458 10:1 11:1079 31:1036800
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+FAIL left half white -> 50.00 %: high bins 24..31 = 1036800, the rest in bins 0..8: high 1036800, low 1035720  [10 §6.3 (1.5x areas)]
+INFO 0x05140600 = 0x0eb00110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0eb0010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: 1 FAIL
+rc=1
+video left rc=0
+commit ok in 21 ms: primary off, overlay top 1280x720 Nv12 (alpha 255)
+holding 8 s
++ /root/vp-bench verify hist --expect top --log /root/drm-bench.log
+verify histogram, frame top (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:386640 6:648240 9:1920 31:1036800
+INFO histogram sum 2073600, non-zero bins 5:386640 6:648240 9:1920 31:1036800
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+FAIL top half white -> 50.00 %: high bins 24..31 = 1036800, the rest in bins 0..8: high 1036800, low 1034880  [10 §6.3 (1.5x areas)]
+INFO 0x05140600 = 0x0eb00110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0eb0010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: 1 FAIL
+rc=1
+video top rc=0
+commit ok in 24 ms: primary off, overlay white 1280x720 Nv12 (alpha 255)
+holding 8 s
++ /root/vp-bench verify hist --expect white --log /root/drm-bench.log
+verify histogram, frame white (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 31:2073600
+INFO histogram sum 2073600, non-zero bins 31:2073600
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+PASS white: all in bin 31: bin31 2073600  [10 §6.2]
+INFO 0x05140600 = 0x0eb0058f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0eb0058f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: PASS
+rc=0
+video white rc=0
+=== 5 planes together
+commit ok in 31 ms: primary white, overlay black 1920x1080 Nv12 (alpha 255)
+holding 8 s
++ /root/vp-bench verify hist --expect white --log /root/drm-bench.log
+verify histogram, frame white (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:53800 6:89525 31:1930275
+INFO histogram sum 2073600, non-zero bins 5:53801 6:89524 31:1930275
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: false
+FAIL white: all in bin 31: bin31 1930275  [10 §6.2]
+INFO 0x05140600 = 0x09110110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: 1 FAIL
+rc=1
+commit ok in 29 ms: primary white, overlay black 1920x1080 Nv12 (alpha 128)
+holding 8 s
++ /root/vp-bench verify hist --expect white --log /root/drm-bench.log
+verify histogram, frame white (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:53618 6:89707 19:1930275
+INFO histogram sum 2073600, non-zero bins 5:53617 6:89708 19:1930275
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: false
+FAIL white: all in bin 31: bin31 0  [10 §6.2]
+INFO 0x05140600 = 0x09110110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: 1 FAIL
+rc=1
+commit ok in 30 ms: primary white, overlay black 1920x1080 Nv12 (alpha 0)
+holding 8 s
++ /root/vp-bench verify hist --expect black --log /root/drm-bench.log
+verify histogram, frame black (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:777600 6:1296000
+INFO histogram sum 2073600, non-zero bins 5:777600 6:1296000
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+PASS black: bins 5 and 6 only:   [10 §6.2]
+REF black bins 5/6 = 777600/1296000 (measured 777568/1296032)
+INFO 0x05140600 = 0x09110110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: PASS
+rc=0
++ /root/vp-bench dump pnl --log /root/drm-bench.log
+FIRST PNL access: dump from 0x051c0000
+PNL 0x051c0000 0x707f0000
+PNL 0x051c0004 0x00050005
+PNL 0x051c0008 0x01000000
+PNL 0x051c000c 0x00000003
+PNL 0x051c0010 0x00000045
+PNL 0x051c0014 0x18000005
+PNL 0x051c0018 0x00000000
+PNL 0x051c001c 0x00000000
+PNL 0x051c0020 0x00301f30
+PNL 0x051c0024 0x00000000
+PNL 0x051c0028 0x1f300030
+PNL 0x051c002c 0x00300030
+PNL 0x051c0030 0x00000030
+PNL 0x051c0034 0x00000000
+PNL 0x051c0038 0x02000000
+PNL 0x051c003c 0x07800000
+PNL 0x051c0040 0x04380000
+PNL 0x051c0044 0x00000000
+PNL 0x051c0048 0x00000200
+PNL 0x051c004c 0x00000000
+PNL 0x051c0050 0x00000038
+PNL 0x051c0054 0x00000000
+PNL 0x051c0058 0x00000000
+PNL 0x051c005c 0x00000000
+PNL 0x051c0060 0x00000000
+PNL 0x051c0064 0x00000000
+PNL 0x051c0068 0x00000000
+PNL 0x051c006c 0x29000000
+PNL 0x051c0070 0x00000000
+PNL 0x051c0074 0x00000000
+PNL 0x051c0078 0x00000200
+PNL 0x051c007c 0x00000300
+PNL 0x051c0080 0x04000000
+PNL 0x051c0084 0x04000400
+PNL 0x051c0088 0x00000000
+PNL 0x051c008c 0x00000000
+PNL 0x051c0090 0x00000000
+PNL 0x051c0094 0x00000000
+PNL 0x051c0098 0x04000000
+PNL 0x051c009c 0x04000400
+PNL 0x051c00a0 0x80000000
+PNL 0x051c00a4 0x07800000
+PNL 0x051c00a8 0x04380000
+PNL 0x051c00ac 0x00000000
+PNL 0x051c00b0 0x00000200
+PNL 0x051c00b4 0x00000000
+PNL 0x051c00b8 0x00000038
+PNL 0x051c00bc 0x078000a3
+PNL 0x051c00c0 0x04380011
+PNL 0x051c00c4 0xc0000000
+PNL 0x051c00c8 0x00000800
+PNL 0x051c00cc 0x08000800
+PNL 0x051c00d0 0x00000000
+PNL 0x051c00d4 0x00000000
+PNL 0x051c00d8 0x00000000
+PNL 0x051c00dc 0x08000800
+PNL 0x051c00e0 0x08000000
+PNL 0x051c00e4 0x00000000
+PNL 0x051c00e8 0x14f00000
+PNL 0x051c00ec 0x14141400
+PNL 0x051c00f0 0x00000000
+PNL 0x051c00f4 0x00000000
+PNL 0x051c00f8 0x00000000
+PNL 0x051c00fc 0x00000000
+PNL 0x051c0100 0x00000000
+PNL 0x051c0104 0x00000000
+PNL 0x051c0108 0x00000000
+PNL 0x051c010c 0x00000000
+PNL 0x051c0110 0x00000000
+PNL 0x051c0114 0x00040004
+PNL 0x051c0118 0x00000003
+PNL 0x051c011c 0x00000000
+PNL 0x051c0120 0x42000000
+PNL 0x051c0124 0x06000000
+PNL 0x051c0128 0x00000780
+PNL 0x051c012c 0x00000438
+PNL 0x051c0130 0x07800438
+PNL 0x051c0134 0x00000000
+PNL 0x051c0138 0x08010000
+PNL 0x051c013c 0x00000020
+PNL 0x051c0140 0x00000000
+PNL 0x051c0144 0x0b02c0b0
+PNL 0x051c0148 0x00000502
+PNL 0x051c014c 0x08980780
+PNL 0x051c0150 0x00a20074
+PNL 0x051c0154 0x000c001c
+PNL 0x051c0158 0x04650438
+PNL 0x051c015c 0x00000000
+PNL 0x051c0160 0x00000000
+PNL 0x051c0164 0x00000000
+PNL 0x051c0168 0x00a20000
+PNL 0x051c016c 0x00000086
+PNL 0x051c0170 0xfffcfffc
+PNL 0x051c0174 0x255e024d
+PNL 0x051c0178 0xffffffff
+PNL 0x051c017c 0x00000021
+PNL 0x051c0180 0x019a0100
+PNL 0x051c0184 0x992501b0
+PNL 0x051c0188 0x004c8450
+PNL 0x051c018c 0x00004089
+PNL 0x051c0190 0xb3104908
+PNL 0x051c0194 0x2023210f
+PNL 0x051c0198 0x0a300008
+PNL 0x051c019c 0x00a30823
+PNL 0x051c01a0 0x00110449
+PNL 0x051c01a4 0x08970464
+PNL 0x051c01a8 0x006c07ec
+PNL 0x051c01ac 0x031a02ed
+PNL 0x051c01b0 0x007c0833
+PNL 0x051c01b4 0x00000449
+PNL 0x051c01b8 0x04000000
+PNL 0x051c01bc 0x00000000
+PNL 0x051c01c0 0x00000000
+PNL 0x051c01c4 0x00000000
+PNL 0x051c01c8 0x00000000
+PNL 0x051c01cc 0x00000000
+PNL 0x051c01d0 0x00000000
+PNL 0x051c01d4 0x00000000
+PNL 0x051c01d8 0x00000000
+PNL 0x051c01dc 0x00000000
+PNL 0x051c01e0 0x00000000
+PNL 0x051c01e4 0x00000000
+PNL 0x051c01e8 0x00000000
+PNL 0x051c01ec 0x00000000
+PNL 0x051c01f0 0x00000000
+PNL 0x051c01f4 0x00000000
+PNL 0x051c01f8 0x00000000
+PNL 0x051c01fc 0x00000000
+PNL 0x051c0200 0x00402c48
+PNL 0x051c0204 0x078000a5
+PNL 0x051c0208 0x00000000
+PNL 0x051c020c 0x00000000
+PNL 0x051c0210 0x00000000
+PNL 0x051c0214 0x00200005
+PNL 0x051c0218 0x00000001
+PNL 0x051c021c 0x00000000
+PNL 0x051c0220 0x40000000
+PNL 0x051c0224 0x0009000c
+PNL 0x051c0228 0x00002000
+PNL 0x051c022c 0x0012000f
+PNL 0x051c0230 0x001c0019
+PNL 0x051c0234 0x00260023
+PNL 0x051c0238 0x00000000
+PNL 0x051c023c 0x00000000
+PNL 0x051c0240 0x10000120
+PNL 0x051c0244 0x0000007b
+PNL 0x051c0248 0x00889950
+PNL 0x051c024c 0x00000000
+PNL 0x051c0250 0x00000000
+PNL 0x051c0254 0x00000000
+PNL 0x051c0258 0x00000000
+PNL 0x051c025c 0x00000000
+PNL 0x051c0260 0x00000000
+PNL 0x051c0264 0x00100100
+PNL 0x051c0268 0x076c000a
+PNL 0x051c026c 0x04240004
+PNL 0x051c0270 0x4005fdf8
+PNL 0x051c0274 0x076c000a
+PNL 0x051c0278 0x0424000a
+PNL 0x051c027c 0x4005fffe
+PNL 0x051c0280 0x0025bf93
+PNL 0x051c0284 0x0025f743
+PNL 0x051c0288 0x00262ef3
+PNL 0x051c028c 0x002666a3
+PNL 0x051c0290 0x00269e53
+PNL 0x051c0294 0x0026d603
+PNL 0x051c0298 0x00270db3
+PNL 0x051c029c 0x00274563
+PNL 0x051c02a0 0x0049fc9b
+PNL 0x051c02a4 0x004a344b
+PNL 0x051c02a8 0x004a6bfb
+PNL 0x051c02ac 0x004aa3ab
+PNL 0x051c02b0 0x004adb5b
+PNL 0x051c02b4 0x004b130b
+PNL 0x051c02b8 0x004b4abb
+PNL 0x051c02bc 0x004b826b
+PNL 0x051c02c0 0x00713eb9
+PNL 0x051c02c4 0x00717669
+PNL 0x051c02c8 0x0071ae19
+PNL 0x051c02cc 0x0071e5c9
+PNL 0x051c02d0 0x00721d79
+PNL 0x051c02d4 0x00725529
+PNL 0x051c02d8 0x00728cd9
+PNL 0x051c02dc 0x0072c489
+PNL 0x051c02e0 0x00957bc1
+PNL 0x051c02e4 0x0095b371
+PNL 0x051c02e8 0x0095eb21
+PNL 0x051c02ec 0x009622d1
+PNL 0x051c02f0 0x00965a81
+PNL 0x051c02f4 0x00969231
+PNL 0x051c02f8 0x0096c9e1
+PNL 0x051c02fc 0x62120a06
+PNL 0x051c0300 0x000000a3
+PNL 0x051c0304 0x0b32f8b8
+PNL 0x051c0308 0x00000000
+PNL 0x051c030c 0x00000000
+PNL 0x051c0310 0x0ba2e0b8
+PNL 0x051c0314 0x00000000
+PNL 0x051c0318 0x00000000
+PNL 0x051c031c 0x00000000
+PNL 0x051c0320 0x00000000
+PNL 0x051c0324 0x00000e80
+PNL 0x051c0328 0x00000e80
+PNL 0x051c032c 0x00000000
+PNL 0x051c0330 0x00000000
+PNL 0x051c0334 0x00000000
+PNL 0x051c0338 0x00000000
+PNL 0x051c033c 0x0001c017
+PNL 0x051c0340 0x00300001
+PNL 0x051c0344 0x00010000
+PNL 0x051c0348 0x00000000
+PNL 0x051c034c 0x00000000
+PNL 0x051c0350 0x00000341
+PNL 0x051c0354 0x00000000
+PNL 0x051c0358 0x00000000
+PNL 0x051c035c 0x00000000
+PNL 0x051c0360 0x00000000
+PNL 0x051c0364 0xf0000000
+PNL 0x051c0368 0x00000000
+PNL 0x051c036c 0x00000000
+PNL 0x051c0370 0x00000200
+PNL 0x051c0374 0x00000000
+PNL 0x051c0378 0x1bd129fb
+PNL 0x051c037c 0x1bf1d963
+PNL 0x051c0380 0x00000000
+PNL 0x051c0384 0x00000000
+PNL 0x051c0388 0x00000000
+PNL 0x051c038c 0x00000000
+PNL 0x051c0390 0x00000000
+PNL 0x051c0394 0x000bdd80
+PNL 0x051c0398 0x0013c680
+PNL 0x051c039c 0x00000000
+PNL 0x051c03a0 0x00000000
+PNL 0x051c03a4 0x00000000
+PNL 0x051c03a8 0x00000000
+PNL 0x051c03ac 0x00000000
+PNL 0x051c03b0 0x00000000
+PNL 0x051c03b4 0x00000000
+PNL 0x051c03b8 0x00000000
+PNL 0x051c03bc 0x00000000
+PNL 0x051c03c0 0x00000000
+PNL 0x051c03c4 0x00000000
+PNL 0x051c03c8 0x00000000
+PNL 0x051c03cc 0x00000000
+PNL 0x051c03d0 0x00000000
+PNL 0x051c03d4 0x00000000
+PNL 0x051c03d8 0x00000000
+PNL 0x051c03dc 0x00000000
+PNL 0x051c03e0 0x00000000
+PNL 0x051c03e4 0x00000000
+PNL 0x051c03e8 0x00000000
+PNL 0x051c03ec 0x00000000
+PNL 0x051c03f0 0x00000000
+PNL 0x051c03f4 0x00000000
+PNL 0x051c03f8 0x00000000
+PNL 0x051c03fc 0x00000000
+rc=0
+=== 6 unload
++ rmmod h713_drm
+rc=0
++ /root/vp-bench dump scanout --log /root/drm-bench.log
+FIRST SCANOUT access: dump from 0x05600000
+SCANOUT 0x05600000 0x80000020
+SCANOUT 0x05600004 0x00000000
+SCANOUT 0x05600008 0x00000000
+SCANOUT 0x0560000c 0x00000000
+SCANOUT 0x05600010 0x03000010
+SCANOUT 0x05600014 0x00000000
+SCANOUT 0x05600018 0x00000000
+SCANOUT 0x0560001c 0x00000000
+SCANOUT 0x05600020 0x043f077f
+SCANOUT 0x05600024 0x00420077
+SCANOUT 0x05600028 0x00000000
+SCANOUT 0x0560002c 0x00000000
+SCANOUT 0x05600030 0x04380780
+SCANOUT 0x05600034 0x00080808
+SCANOUT 0x05600038 0x00000000
+SCANOUT 0x0560003c 0x00000000
+SCANOUT 0x05600040 0x00000780
+SCANOUT 0x05600044 0x00000780
+SCANOUT 0x05600048 0x04380780
+SCANOUT 0x0560004c 0x021c0780
+SCANOUT 0x05600050 0x00000000
+SCANOUT 0x05600054 0x00000000
+SCANOUT 0x05600058 0x00000069
+SCANOUT 0x0560005c 0x0000004c
+SCANOUT 0x05600060 0x00000001
+SCANOUT 0x05600064 0x00000000
+SCANOUT 0x05600068 0x00000122
+SCANOUT 0x0560006c 0x00000000
+SCANOUT 0x05600070 0x00000000
+SCANOUT 0x05600074 0x00000000
+SCANOUT 0x05600078 0x00000000
+SCANOUT 0x0560007c 0x00000000
+SCANOUT 0x05600080 0x00000000
+SCANOUT 0x05600084 0x00000000
+SCANOUT 0x05600088 0x00000000
+SCANOUT 0x0560008c 0x00000000
+SCANOUT 0x05600090 0x00000000
+SCANOUT 0x05600094 0x00000000
+SCANOUT 0x05600098 0x00000000
+SCANOUT 0x0560009c 0x00000000
+SCANOUT 0x056000a0 0x00000000
+SCANOUT 0x056000a4 0x00000000
+SCANOUT 0x056000a8 0x00000000
+SCANOUT 0x056000ac 0x00000000
+SCANOUT 0x056000b0 0x0025c3f8
+SCANOUT 0x056000b4 0x00000898
+SCANOUT 0x056000b8 0x0005a029
+SCANOUT 0x056000bc 0x000026d1
+SCANOUT 0x056000c0 0x00000001
+SCANOUT 0x056000c4 0x00000000
+SCANOUT 0x05600100 0x00010000
+SCANOUT 0x05600104 0x00000000
+SCANOUT 0x05600108 0x00000000
+SCANOUT 0x0560010c 0x00000000
+SCANOUT 0x05600110 0x00000000
+SCANOUT 0x05600114 0x00000000
+SCANOUT 0x05600118 0x00000000
+SCANOUT 0x0560011c 0x00000000
+SCANOUT 0x05600120 0x00000000
+SCANOUT 0x05600124 0x00000808
+SCANOUT 0x05600128 0x00000000
+SCANOUT 0x0560012c 0x00000000
+SCANOUT 0x05600130 0x00000000
+SCANOUT 0x05600134 0x00000000
+SCANOUT 0x05600138 0x00000000
+SCANOUT 0x0560013c 0x00000000
+SCANOUT 0x05600140 0x83001900
+SCANOUT 0x05600144 0x00000000
+SCANOUT 0x05600148 0x008000ff
+SCANOUT 0x0560014c 0x00000080
+SCANOUT 0x05600150 0x043f077f
+SCANOUT 0x05600154 0x00430077
+SCANOUT 0x05600158 0x00000000
+SCANOUT 0x0560015c 0x00000000
+SCANOUT 0x05600160 0x04380780
+SCANOUT 0x05600164 0x00000808
+SCANOUT 0x05600168 0x00000002
+SCANOUT 0x0560016c 0x00000021
+SCANOUT 0x05600170 0x00001e00
+SCANOUT 0x05600174 0x04381e00
+SCANOUT 0x05600178 0x76d00000
+SCANOUT 0x0560017c 0x00000000
+SCANOUT 0x05600180 0x00000000
+SCANOUT 0x05600184 0x00000051
+SCANOUT 0x05600300 0x00800210
+SCANOUT 0x05600304 0x00800000
+SCANOUT 0x05600308 0x00800210
+SCANOUT 0x0560030c 0x00800250
+SCANOUT 0x05600310 0x00800210
+SCANOUT 0x05600314 0x00000000
+SCANOUT 0x05600318 0x00000000
+SCANOUT 0x0560031c 0x00000000
+SCANOUT 0x05600320 0x4c7ed000
+SCANOUT 0x05600324 0x4cdea000
+rc=0
++ /root/vp-bench dump mix --log /root/drm-bench.log
+FIRST MIX access: dump from 0x058c0000
+MIX 0x058c0000 0x10000040
+rc=0
+[  188.225474] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x76d00000 chroma 0x76efa400; rgb off 0x00000000 alpha 255
+[  188.225504] h713-drm h713-drm: [drm] commit: 0, 1147 ops, 1125 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  196.358330] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x76d00000 chroma 0x76efa400; rgb off 0x00000000 alpha 255
+[  196.358360] h713-drm h713-drm: [drm] commit: 0, 1147 ops, 1125 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  206.505042] h713-drm h713-drm: [drm] video: NV12 1280x720 pitch 1280 luma 0x76d00000 chroma 0x76de1000; rgb off 0x00000000 alpha 255
+[  206.505074] h713-drm h713-drm: [drm] commit: 0, 1147 ops, 1125 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  226.599948] h713-drm h713-drm: [drm] video: NV12 1280x720 pitch 1280 luma 0x76d00000 chroma 0x76de1000; rgb off 0x00000000 alpha 255
+[  226.599981] h713-drm h713-drm: [drm] commit: 0, 1147 ops, 1125 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  234.701920] h713-drm h713-drm: [drm] video: NV12 1280x720 pitch 1280 luma 0x76d00000 chroma 0x76de1000; rgb off 0x00000000 alpha 255
+[  234.701950] h713-drm h713-drm: [drm] commit: 0, 1147 ops, 1125 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  242.804190] h713-drm h713-drm: [drm] video: NV12 1280x720 pitch 1280 luma 0x76d00000 chroma 0x76de1000; rgb off 0x00000000 alpha 255
+[  242.804222] h713-drm h713-drm: [drm] commit: 0, 1147 ops, 1125 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  250.906726] h713-drm h713-drm: [drm] video: NV12 1280x720 pitch 1280 luma 0x76d00000 chroma 0x76de1000; rgb off 0x00000000 alpha 255
+[  250.906758] h713-drm h713-drm: [drm] commit: 0, 1147 ops, 1125 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  259.649798] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x77500000 chroma 0x776fa400; rgb on 0x76d00000 alpha 255
+[  259.649830] h713-drm h713-drm: [drm] commit: 0, 1151 ops, 1128 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  268.392569] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x77500000 chroma 0x776fa400; rgb on 0x76d00000 alpha 128
+[  268.392599] h713-drm h713-drm: [drm] commit: 0, 1151 ops, 1128 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  277.135554] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x77500000 chroma 0x776fa400; rgb on 0x76d00000 alpha 0
+[  277.135598] h713-drm h713-drm: [drm] commit: 0, 1151 ops, 1128 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+=== end
