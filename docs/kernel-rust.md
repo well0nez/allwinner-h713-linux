@@ -190,3 +190,39 @@ The clean stack's one-shot into 7.3.1-rustbench, `boot_rust73`, is in that page'
 Tested on the HY320 (03.11.2026): one-shot boot -> `uname -r` `6.18.38-rust`, `h713_boot=emmc` again, aic8800 loaded,
 `wlan0` up as the access point (192.168.4.1), no failed units; the next reboot came up on the release kernel
 (`6.18.38`, FIT `c5b9719a`), `h713-tv ctl status` ok, environment equal to before plus `boot_rust`.
+
+## 7.3.1: the bench kernel `7.3.1-rustbench`
+
+On 7.3.1 the device carries three kernels: the default 7.3.1 (`boot_emmc`), the kernel lane's own `7.3.1-rust`
+(`rustbench.config`), and the display lane's bench kernel. So that the bench never shares a module directory with the
+kernel lane, `board/rustbench73.config` is `rust.config` plus `CONFIG_LOCALVERSION="-rustbench"`: kernel release
+`7.3.1-rustbench`, FIT `/boot/h713-kernel-rustbench73.fit`, modules `/lib/modules/7.3.1-rustbench` (in-tree modules and
+`extra/aic8800_{bsp,fdrv,btlpm}.ko` with aic8800 0011, the 7.3 `probe_peer` fix - without it the access point answers no
+authentication). Apart from that line its `.config` equals the `7.3.1-rust` tree's.
+
+Built from the committed `kernel-7.3` series in a worktree of its own, so that uncommitted work of the kernel lane does
+not end up in it; the aic8800 modules in a copy of the aic8800 tree, as for 6.18:
+
+```bash
+git worktree add --detach mainline/build/rb73-wt kernel-7.3
+mkdir -p mainline/build/rb73-wt/mainline/build/cache && cp <linux-7.3.1.tar.xz> mainline/build/rb73-wt/mainline/build/cache/
+podman exec h713-build sh -c 'cd /work/mainline/build/rb73-wt && BOARD=hy320 KERNEL_CONFIG=rustbench73 \
+  MKIMAGE=/work/mainline/build/uboot-hy320-check/tools/mkimage mainline/build/build.sh kernel'
+# -> out/h713-kernel-rustbench73.fit, modroot.<hash>/lib/modules/7.3.1-rustbench; aic8800 against the same tree
+```
+
+One-shot selector, like `boot_rust`:
+
+```
+boot_rustbench73=setenv h713_boot emmc; saveenv; wdt dev watchdog@2051000; wdt start 16000; if ext4load mmc 1:5 0x60000000 h713-kernel-rustbench73.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw"; bootm 0x60000000; fi
+```
+
+`fw_setenv h713_boot rustbench73` + `reboot` boots it once; every later boot is the default again. Afterwards put back
+what `saveenv` wrote (`fdtcontroladdr`, `mmc_bootdev`, `serial#`, `fdtfile`). A bench boot loads
+`h713-kernel-rustbench73.fit` in its own load line; modules for it are built against the `rustbench73` tree and say
+`vermagic: 7.3.1-rustbench SMP preempt mod_unload aarch64`.
+
+Tested on the HY320 (03.11.2026, default boot 7.3.1): one-shot boot -> `uname -r` `7.3.1-rustbench`, `h713_boot=emmc`
+again, aic8800 loaded, `wlan0` up as the access point (192.168.4.1); the next reboot came up on the default 7.3.1,
+`h713-tv ctl status` ok, environment equal to before plus `boot_rustbench73`. `h713_drm.ko` built against the tree says
+`vermagic: 7.3.1-rustbench SMP preempt mod_unload aarch64`.
