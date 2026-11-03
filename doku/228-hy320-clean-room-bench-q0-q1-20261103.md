@@ -493,3 +493,14 @@ authentifiziert, EDID ausgeliefert, Ton 48 kHz; Launcher bedeckte das Bild bis z
   Kopie in `testdata/hy320/`.
 - Sichtfenster: Zustände 2-5 (5 = HDMI über das Modul) in einem Bench-Start probegefahren, alle Rücklesungen gut.
 - Ende: Umgebung = Referenz, Normalstart 7.3.1, RUN1, Sperre frei.
+
+## 25 Runde 11: Stufe 3 ohne Pausen (04.11.)
+
+- Modul `517689fe…` (7.3.1-rustbench): 1-7 wie Runde 10; Schritt 8 alle Zeilen PASS. Q-HDMI-6: die volle Reihenfolge
+  (90 Schreibzugriffe) rastet ohne Pausen, TMDS -> capturing 0,31 s (kurz `unsupported` mit 2200x1085, dann 1125).
+  T3-08 PASS; T3-05 (HPD 10 s tief über den Provider): Rückkehr 0,21 s nach TMDS, 2,3 s nach dem HPD-Aufruf - PASS.
+  Auffällig: beim zweiten und dritten Full-Enable je 1 Timeout und "raster stall suspected"; `+0x3c5` ist ein
+  Statusbyte. `notes/bench-results-drm.md` Runde 11 (sauber `31fc952`).
+- Sichtfenster: ein Befehl `tools/window.sh` (feste Folge 1 -> Bench -> 2 -> 3 -> 4 -> 5 -> zurück, UTC-Zeitstempel),
+  Zustand 5 mit diesem Modul. Wartet auf "ready" des Besitzers.
+- Ende: Umgebung = Referenz, Normalstart 7.3.1, RUN1, Sperre frei.
