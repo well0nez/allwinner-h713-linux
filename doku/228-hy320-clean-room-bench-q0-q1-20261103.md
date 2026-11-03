@@ -80,3 +80,39 @@ Video-Pipeline (Capture-Seite), den es für eine DRAM-Quelle ohne Firmware erst 
 Normalboot (`uptime` frisch, normale Kommandozeile), `h713-tv ctl status` ok, `fw_printenv` gleich dem Abzug vor der
 Serie (kein `h713_bench`, keine `bench_*`), GP5 `RUN1`, MIPS läuft (`0x0200160c = 0x00070001`). Auf dem Gerät liegen
 die Werkzeuge und Logs unter `/data/bench/`.
+
+## 5 Runde 2: was Kanal 0 ohne Firmware einrasten lässt
+
+Auftrag des Leads (WALL `f829da8`): die Eingangstakt-Vermutung prüfen und den Latch zum Einrasten bringen. Ergebnis in
+der Spezifikation: `cleanroom-h713` `1423868` (10 §6.2, neues Dokument 12, 00 §2, 20 §5.1).
+
+- **Normalboot, nur lesen** (`mon.py`, `snap.py` jetzt mit dem ganzen INCAP `0x06940000..0ffc`):
+  - Mit HDMI (`h713-tv ctl bare 600`): Kanal 0 läuft, `VCH_ADDR_LATCH` pro Bild, `VCH_LATCH` bleibt 0 (wird gar nicht
+    gepulst), `0x310` zählt `0x008/9/a/b00210`, `fe64` läuft.
+  - HPD weg ohne Hände: `v4l2-ctl -d /dev/video1 --clear-edid=0` -> `no signal`, `fe64` steht, die Firmware schaltet
+    Kanal 0 ab (`0x03000200`). `h713-warp ctl test grid` wird ohne Signal von h713-tv abgelehnt ("no signal to warp").
+  - Ohne Signal, aber mit Wayland-Client (`h713-tv ctl source client; systemctl start h713-desktop`): **Kanal 0 läuft**
+    aus DRAM (`0x78f00000`), `fe64` steht. Die Eingangstakt-Vermutung ist damit widerlegt. Zwischen "kein Signal, aus"
+    und "kein Signal, Client" ändern sich nur Kanal-0-Wörter; INCAP, Lock-Blöcke, TV-Top, DTOP, NRC/PROC-Anfang gleich.
+  - Rückweg: Neustart; h713-tv veröffentlicht die EDID beim Start, danach `query-dv-timings` 1920x1080, `fe64` läuft,
+    HDCP 2.2 steht. `h713-desktop` ist nach dem Neustart inaktiv (statische Unit).
+- **Datendateien**: keine Registertabelle für kein Signal / Freilauf / Testbild. `OUTPUT_TIMING_*` und `CRTC_MAIN_TV`
+  sind EquTable-Parameter ohne Adressen. `0x0500046c` schreibt nur `V_NR/MP_PFU_RAGT_VNR` (`0xa00d`), `0x05000840`
+  keine Tabelle.
+- **Bench** (8 Boots, jeweils GP5 `RUN1` geprüft): der Firmware-Zustand "kein Signal + Client" minus Bench-Zustand
+  (`replay-client.json`, 796 Wörter ohne Zähler/Stempel/Statistik, zwei Wörter mit Adressen außerhalb der Reservate
+  ausgelassen) gruppenweise aufgespielt (`replay.py`):
+  - Lock-Wörter, PROC, SCL, DEI: kein Latch. **NRC: Latch verbraucht**, ARMED zählt, `0x310` wie mit Firmware.
+  - Eingegrenzt (Boot 2, 4-8): **`0x0500046c = 0x006f81c1` und `0x05000840 = 0x04390010` zusammen** genügen, in
+    beliebiger Reihenfolge, keins allein; `0x804/808/80c` und `0x05000040` Bit 25 nicht nötig.
+  - Bild nach Histogramm (`histchk.sh`, weiß/schwarz/grau/P1 im DRAM): mit nur den Latch-Wörtern volle Bilder in Fach 0;
+    folgt dem Inhalt erst mit NRC `0x844..0x860` + `0x000..0x0fc` (+ `0x900..0xa98` für sauber: weiß 2073600 in Fach
+    31, schwarz nur Fächer 5/6) und BORDER. Niemand hat auf die Wand geschaut.
+  - Video-Vsync bleibt bei 15.26 ms (65.5 Hz) gegen 60 Hz am Panel, auch mit den Lock-Wörtern der Firmware.
+  - Boot 3 (Skripte 20 s nach Kernelstart): Video-Raster startete nach den Init-Tabellen nicht (Zeilenzähler 0,
+    `fe74/78` mit Boot-Totalen), auch nicht bei erneutem Aufspielen; mit 15 s Wartezeit 5 von 5 gut. Ursache offen.
+- Am Ende: Normalboot, `fw_printenv` gleich dem Abzug (Bench-Variablen und die von `saveenv` mitgeschriebenen
+  Laufzeitvariablen wieder entfernt), GP5 `RUN1`, HDMI-Signal zurück. Werkzeuge und Logs:
+  `analyse/cleanroom-bench-20261103/` (`r2-*.log`, `diff-*.txt`).
+- Nächstes: welche Wörter von PROC/SCL/PNL/DEI über die Init-Tabellen hinaus für das Bild nötig sind; Frame-Lock auf
+  60 Hz; ein Bild mit Augen an der Wand.
