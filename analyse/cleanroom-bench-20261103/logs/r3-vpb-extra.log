@@ -1,0 +1,8 @@
+   117.539 === open /data/bench/r3-vpb-extra.log boot 8eeb1320-7c6a-43b0-a691-e0ed487cd334 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   117.695 QUAD quad: sum 2073600 high 394238 = 19.01 % low 847321 = 40.86 %
+   117.850 QUAD left: sum 2073600 high 787204 = 37.96 % low 321062 = 15.48 %
+   118.004 QUAD top: sum 2073600 high 693360 = 33.44 % low 685440 = 33.06 %
+   118.508 === open /data/bench/r3-vpb-extra.log boot 8eeb1320-7c6a-43b0-a691-e0ed487cd334 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   118.663 QUAD quad: sum 2073600 high 518400 = 25.00 % low 1553700 = 74.93 %
+   118.818 QUAD left: sum 2073600 high 1036800 = 50.00 % low 1035720 = 49.95 %
+   118.973 QUAD top: sum 2073600 high 1036800 = 50.00 % low 1034880 = 49.91 %

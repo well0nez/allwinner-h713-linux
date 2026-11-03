@@ -116,3 +116,30 @@ der Spezifikation: `cleanroom-h713` `1423868` (10 §6.2, neues Dokument 12, 00 �
   `analyse/cleanroom-bench-20261103/` (`r2-*.log`, `diff-*.txt`).
 - Nächstes: welche Wörter von PROC/SCL/PNL/DEI über die Init-Tabellen hinaus für das Bild nötig sind; Frame-Lock auf
   60 Hz; ein Bild mit Augen an der Wand.
+
+## 6 Runde 3: Minimalsatz, 65.5 Hz, 720p skaliert, das Werkzeug der sauberen Seite
+
+Auftrag des Leads (WALL `fe3b521`, danach die Zusatzaufträge A/B). Spezifikation: `cleanroom-h713` `5f0eb3f`
+(10 §6.3, 12 §M, 20 S2 HY320, 00 §4, 40 §7, `notes/bench-results-stage2.md`).
+
+- **Minimalsatz** (`minimize.py`, im Prozess, Bilder per Adress-Flip weiß `0x4c000000` / schwarz `0x6ca00000` / P1
+  `0x6cd00000`): ganz 12 -> exakt; ohne DEI und ohne die Lock-Wörter weiter exakt; ohne NRC, PROC, SCL, PNL oder BORDER
+  kaputt. Gieriges Entfernen: 40 Wörter für schwarz/weiß (P1 fällt auf zwei Fächer), 85 Wörter mit P1-Kriterium; beide
+  in einem frischen Boot allein bestätigt. **Einmal Hänger**: ein Pufferadress-Wort von NRC allein auf 0 gesetzt, während
+  die NRC-Schreibkanäle an waren -> SoC hing, Watchdog -> Normalboot (das Netz hat im Ernstfall gegriffen). Danach
+  Adresswörter ausgespart.
+- **60 Hz gibt es nicht**: RGB-Kanal fertig-Bit 65.6/s, Video-Vsync 15.267 ms, in der Bench und mit Firmware gleich
+  (`rate.py`: `fe68` 65.5/s im Normalboot). Das Panel läuft mit ~65.5 Hz; 00 §4 korrigiert.
+- **Raster-Hänger**: bei 19.4/19.6/20.4/31 s Start nicht wieder aufgetreten (0 von 4, insgesamt 1 von 13). Erkennungsmerkmale
+  in 10 §6.3 (`fe74`[31:16] = Boot-Totale, Zeilenzähler steht).
+- **720p**: Firmware-Referenz über den Zoom 1.5 (`h713-tv ctl zoom in 1.5` bei HDMI, nur lesen): Phasen `0x6aaa`/`0xd555`,
+  PROC/NRC auf Quellgröße, `VCH_OUTSIZE` = Quellfenster, `0x050/0x054` Fensteranfang. Auf der Bench mit echtem
+  1280x720-NV12 (`q4.py`): Quadrant 25.00 %, linke/obere Hälfte je 50.00 % - exakt.
+- **Q-PQ-4**: Weißabgleich über die Firmware gemessen, Kurvenergebnis wird abgeschnitten (600 -> `0x960`, 1000 -> `0xfa2`).
+- **vp-bench der sauberen Seite** (Auftrag A, wie geschrieben, `run-vp-bench.sh`, Start 40.8 s): T1 besteht (Latch, Scan,
+  Histogramm weiß/schwarz/grau/P1 exakt auf den Referenzen), `apply` meldet 39 Rücklese-Abweichungen = Statuswörter aus
+  12 (Spezifikationsfehler, jetzt 12 §M.3). T2: `verify t2` PASS, aber Geometrie falsch (Quadrant 19 % statt 25 %), weil
+  S2 nur die vier HY310-Wörter hatte, NRC/PROC auf 1080 blieben und `VCH_OUTSIZE` 1080 geschrieben wurde; `verify scan`
+  bei 720p: `0x310` Bit 21 kippte nicht (bei 720p nie gemessen). Code nicht angefasst.
+- Fragen der sauberen Seite (Auftrag B): 40 §7 aus den Dateien beantwortet; Q-TSE-4/6 offen (nicht nötig für das Bild).
+- Gerät am Ende: Normalboot, `fw_printenv` gleich dem Abzug, GP5 `RUN1`, HDMI 1080p zurück, Zoom aus, WB neutral.
