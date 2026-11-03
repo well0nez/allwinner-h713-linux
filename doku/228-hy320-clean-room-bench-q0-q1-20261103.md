@@ -474,3 +474,22 @@ authentifiziert, EDID ausgeliefert, Ton 48 kHz; Launcher bedeckte das Bild bis z
   8/a/b/c), c (RX_LINK `+0x000..0x0fc`) für den Lock und e (`+0x310`, `+0x35e`, `+0x3c5`) für die Capture. Nicht nötig:
   CCU/PLL/TVTOP, Port-Select, PHY-Reset, `+0x002`, die Freigaben, Gruppen a und d.
 - Ende: Umgebung = Referenz, Normalstart 7.3.1, RUN1, Sperre frei.
+
+## 24 Runde 10: Stufe 3 über das saubere Modul, Q-HDMI (04.11.)
+
+- Modul `f907a5a7…` (7.3.1-rustbench, hängt an `sun50i-h713-arisc`): Schritte 1-7 wie Runde 9; Schritt 8 HDMI: alle
+  `kms-test hdmi`-Zeilen PASS (599 Bilder/10 s, Schreibindex, Kanal 0 auf dem Ring, 598 von 599 gezeigt, 0 übersprungen),
+  Empfänger 90 / Capture 78 Schreibzugriffe; T3-08 PASS; T3-05 (Verlust durch HPD tief über den Provider, 10 s):
+  Verlust in 70 ms erkannt, Rückkehr 11,7 s nach TMDS (96 will 5 s). `notes/bench-results-drm.md` Runde 10.
+- Q-HDMI-1: ohne Pausen rastet der Empfänger 0,1-0,7 s nach den Schreibzugriffen, erstes Capture-Bild nach 7 ms.
+- Korrektur 50 §9: der Ring wird nur mit `TVTOP 0x06e00008 = 0x504` beschrieben (0x404: Zähler läuft, Ring leer); die
+  Bisektion hatte nur den Zähler geprüft.
+- Q-HDMI-2 (Gate-Tests, je 0,5 s; zwei Watchdog-Resets, beide erwartet): `svp-dtl` (127) aus -> RX_CTL-Lesen hängt;
+  `bus-tvcap` (124) aus -> Lesen 0, Block verliert den Zustand; `vincap-dma` (120) aus -> Ring leer; `tcd3` (119) aus ->
+  Bildzähler stand (2 von 3). Bench ohne `clk_ignore_unused`: das Aufräumen schaltet 119/121/123/125-129 und PLL_VIDEO2
+  ab, das erste RX_CTL-Lesen hängt; der ARISC-Provider war in diesem Start unbrauchbar ("startup notify malformed").
+- Q-HDMI-4: Ring liegt in `mips-firmware@4b100000` (no-map, in 6.18 und 7.3 gleich); eine Markierung überlebte einen
+  Normalstart mit laufender Firmware. Q-HDMI-5: `/lib/firmware/hy310-edid.bin` (vom Installer aus dem Stock-Image),
+  Kopie in `testdata/hy320/`.
+- Sichtfenster: Zustände 2-5 (5 = HDMI über das Modul) in einem Bench-Start probegefahren, alle Rücklesungen gut.
+- Ende: Umgebung = Referenz, Normalstart 7.3.1, RUN1, Sperre frei.

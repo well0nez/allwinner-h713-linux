@@ -1,0 +1,34 @@
+    32.896 === open /data/bench/rxtime2.log boot 18052a6a-e677-4d9e-b749-403e2a4b08f6 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    32.901 BEFORE-READ RX_CTL 0x068008fc / RX_LINK timing
+    32.904 RXTIME start: TMDS 1 9ab=3c timing (0, 0, 0, 0); 35 writes
+    33.595 RXTIME writes took 0.26 ms; horizontal valid after 657.0 ms; lock (2200, 1920, 1125, 1080) after 689.1 ms
+    33.611 RXTIME capture: first frame counted 5.8 ms after the first capture write; 0x104 00010025 0xa0c 1
+    35.114 RXTIME capture frames in 0.5 s: 30
+    35.220 RXTIME ring after the no-pause start: slots written in 100 ms [False, False, False]; 0x104 006101fa 0x100 00000707
+    36.124 RXTIME ring after a start with 0.5 s between the programming and the output enables: slots written in 100 ms [False, False, False]; 0x104 00120306 0x100 00000707
+    58.321 === open /data/bench/rxtime2.log boot 18052a6a-e677-4d9e-b749-403e2a4b08f6 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    58.426 RING before: written [False, False, False] 0x104 054b01b0
+    58.530 RING after CCU 0x2001d10 bit 31: written [False, False, False] 0x104 055102c6
+    58.634 RING after CCU 0x2001d18 bit 31: written [False, False, False] 0x104 055703ce
+    58.739 RING after CCU 0x2001d24 bit 31: written [False, False, False] 0x104 055e00b9
+    58.843 RING after CCU 0x2001d28 bit 31: written [False, False, False] 0x104 056401dc
+    58.948 RING after CCU 0x2001d2c bit 31: written [False, False, False] 0x104 056a0318
+    59.052 RING after CCU 0x2001d30 bit 31: written [False, False, False] 0x104 05700437
+    59.157 RING after CCU 0x2001d34 bit 31: written [False, False, False] 0x104 057700f0
+    59.261 RING after CCU 0x2001d38 bit 31: written [False, False, False] 0x104 057d0216
+    59.366 RING after CCU 0x2001d40 bit 31: written [False, False, False] 0x104 05830333
+    59.470 RING after CCU 0x2001d48 bit 31: written [False, False, False] 0x104 05890457
+    59.574 RING after CCU 0x2001d4c bit 31: written [False, False, False] 0x104 05900115
+    59.679 RING after CCU 0x2001d50 bit 31: written [False, False, False] 0x104 05960239
+    59.784 RING after CCU 0x2001d58 bit 31: written [False, False, False] 0x104 059c036a
+    59.888 RING after CCU 0x2001d5c bit 31: written [False, False, False] 0x104 05a30025
+    59.992 RING after CCU 0x2001d60 bit 31: written [False, False, False] 0x104 05a9014a
+    60.098 RING after CCU 0x2001d64 = 0x10001: written [False, False, False] 0x104 05af02a9
+    60.211 RING after PLL_VIDEO1: written [False, False, False] 0x104 05b601c9
+    60.324 RING after TVTOP: written [True, True, True] 0x104 05bd00b1
+    84.039 === open /data/bench/rxtime2.log boot 18052a6a-e677-4d9e-b749-403e2a4b08f6 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    84.144 RING now: written [True, True, True] 0x104 0b5003fe tvtop +8 00000504 +1c 00000001
+    84.257 RING +0x1c = 0: written [True, True, True] 0x104 0b5702f1 tvtop +8 00000504 +1c 00000000
+    84.370 RING +0x1c = 1, +8 = 0x404: written [False, False, False] 0x104 0b5e01fd tvtop +8 00000404 +1c 00000001
+    84.482 RING +8 = 0x504 again: written [True, True, True] 0x104 0b6500d9 tvtop +8 00000504 +1c 00000001
+    84.596 RING CCU words and PLL_VIDEO1 back to the bench values, TVTOP kept: written [True, True, True] 0x104 0b6b0445 tvtop +8 00000504 +1c 00000001

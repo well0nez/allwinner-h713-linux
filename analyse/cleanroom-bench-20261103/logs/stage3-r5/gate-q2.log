@@ -1,0 +1,127 @@
+    31.074 === open /data/bench/gate-q2.log boot 4110f11a-7f00-4e32-95b6-5305d3d345af cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    31.087 GATE 0x02001d84 bit 31 cleared (80000000 -> 00000000); BEFORE-READ 0x068008fc, 0x06840000
+    31.089 GATE 0x02001d84 bit 31 off: read ok 0x068008fc=bf 0x06840000=c0
+    31.101 GATE 0x02001d84 restored 80000000
+    31.113 GATE 0x02001d80 bit 31 cleared (c0000000 -> 40000000); BEFORE-READ 0x068008fc, 0x06840000
+    31.115 GATE 0x02001d80 bit 31 off: read ok 0x068008fc=bf 0x06840000=c0
+    31.127 GATE 0x02001d80 restored c0000000
+    31.139 GATE 0x02001d6c bit 31 cleared (80000305 -> 00000305); BEFORE-READ 0x068008fc, 0x06840000
+    31.142 GATE 0x02001d6c bit 31 off: read ok 0x068008fc=bf 0x06840000=c0
+    31.154 GATE 0x02001d6c restored 80000305
+    63.928 === open /data/bench/gate-q2.log boot 4110f11a-7f00-4e32-95b6-5305d3d345af cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    63.940 GATE 0x02001d84 bit 31 cleared (80000000 -> 00000000)
+    63.952 GATE 0x02001d80 bit 31 cleared (c0000000 -> 40000000)
+    63.965 GATE 0x02001d6c bit 31 cleared (80000305 -> 00000305)
+    63.967 GATES d84:31+d80:31+d6c:31 off; BEFORE-READ 0x068008fc, 0x06840000
+    63.969 GATES d84:31+d80:31+d6c:31 off: read ok 0x068008fc=bf 0x06840000=c0
+    63.981 GATES d84:31+d80:31+d6c:31 restored
+    63.993 GATE 0x02001050 bit 31 cleared (b9002a00 -> 29002a00)
+    63.995 GATES 050:31 off; BEFORE-READ 0x068008fc, 0x06840000
+    63.996 GATES 050:31 off: read ok 0x068008fc=bf 0x06840000=c0
+    64.009 GATES 050:31 restored
+    64.021 GATE 0x02001dd8 bit 0 cleared (00010001 -> 00010000)
+    64.024 GATES dd8:0 off; BEFORE-READ 0x068008fc, 0x06840000
+    64.026 GATES dd8:0 off: read ok 0x068008fc=bf 0x06840000=c0
+    64.038 GATES dd8:0 restored
+    93.141 === open /data/bench/gate-q2.log boot 4110f11a-7f00-4e32-95b6-5305d3d345af cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    93.143 BEFORE-READ rccu-keep 0x07010000+0x400
+    93.145 DUMP rccu-keep w 0x07010000: 00000000 00000000 00000000 00000000
+    93.147 DUMP rccu-keep w 0x07010010: 00000000 00000000 00000000 00000000
+    93.148 DUMP rccu-keep w 0x07010020: 00000000 00000000 00000000 00000000
+    93.150 DUMP rccu-keep w 0x07010030: 00000000 00000000 00000000 00000000
+    93.152 DUMP rccu-keep w 0x07010040: 00000000 00000000 00000000 00000000
+    93.154 DUMP rccu-keep w 0x07010050: 00000000 00000000 00000000 00000000
+    93.156 DUMP rccu-keep w 0x07010060: 00000000 00000000 00000000 00000000
+    93.158 DUMP rccu-keep w 0x07010070: 00000000 00000000 00000000 00000000
+    93.160 DUMP rccu-keep w 0x07010080: 00000000 00000000 00000000 00000000
+    93.162 DUMP rccu-keep w 0x07010090: 00000000 00000000 00000000 00000000
+    93.164 DUMP rccu-keep w 0x070100a0: 00000000 00000000 00000000 00000000
+    93.166 DUMP rccu-keep w 0x070100b0: 00000000 00000000 00000000 00000000
+    93.168 DUMP rccu-keep w 0x070100c0: 00000000 00000000 00000000 00000000
+    93.170 DUMP rccu-keep w 0x070100d0: 00000000 00000000 00000000 00000000
+    93.172 DUMP rccu-keep w 0x070100e0: 00000000 00000000 00000000 00000000
+    93.174 DUMP rccu-keep w 0x070100f0: 00000000 00000000 00000000 00000000
+    93.175 DUMP rccu-keep w 0x07010100: 00000000 00000000 00000000 00000000
+    93.177 DUMP rccu-keep w 0x07010110: 00000001 00000001 00000001 00000000
+    93.178 DUMP rccu-keep w 0x07010120: 00000000 00000000 00000000 00000000
+    93.180 DUMP rccu-keep w 0x07010130: 80000000 00000000 00000000 00010001
+    93.181 DUMP rccu-keep w 0x07010140: 00000000 00000000 00000000 00000000
+    93.183 DUMP rccu-keep w 0x07010150: 00000000 00000000 00000000 00000000
+    93.184 DUMP rccu-keep w 0x07010160: 00000000 00000000 00000000 00000000
+    93.186 DUMP rccu-keep w 0x07010170: 00000000 00000000 00000000 00000000
+    93.187 DUMP rccu-keep w 0x07010180: 00000000 00000000 00000000 00000000
+    93.189 DUMP rccu-keep w 0x07010190: 00000000 00000000 00000000 00000000
+    93.190 DUMP rccu-keep w 0x070101a0: 00000000 00000000 00000000 00010001
+    93.192 DUMP rccu-keep w 0x070101b0: 00000000 00000000 00000000 00000000
+    93.193 DUMP rccu-keep w 0x070101c0: 81000002 00000000 00000000 00010001
+    93.195 DUMP rccu-keep w 0x070101d0: 00000000 00000000 00000000 00000000
+    93.196 DUMP rccu-keep w 0x070101e0: 00000000 00000000 00000000 00000000
+    93.197 DUMP rccu-keep w 0x070101f0: 00000000 00000000 00000000 00000000
+    93.199 DUMP rccu-keep w 0x07010200: 00000000 00000000 00000000 00010001
+    93.200 DUMP rccu-keep w 0x07010210: 00000000 00000000 00000000 00000000
+    93.201 DUMP rccu-keep w 0x07010220: 00000000 00000000 00000000 00010001
+    93.203 DUMP rccu-keep w 0x07010230: 00000000 00000000 00000000 00000000
+    93.204 DUMP rccu-keep w 0x07010240: 00000007 00040005 00000000 00000000
+    93.206 DUMP rccu-keep w 0x07010250: 00000010 00000000 00000000 00000000
+    93.207 DUMP rccu-keep w 0x07010260: 00000001 00000000 00000000 00000000
+    93.208 DUMP rccu-keep w 0x07010270: 00134403 00000000 00000000 00000000
+    93.210 DUMP rccu-keep w 0x07010280: 00000000 00000000 00000000 00000000
+    93.211 DUMP rccu-keep w 0x07010290: 00000007 00000000 00000000 00000000
+    93.213 DUMP rccu-keep w 0x070102a0: 00000000 00000000 00000000 00000000
+    93.214 DUMP rccu-keep w 0x070102b0: 00000000 00000000 00000000 00000000
+    93.216 DUMP rccu-keep w 0x070102c0: 00000000 00000000 00000000 00000000
+    93.217 DUMP rccu-keep w 0x070102d0: 00000000 00000000 00000000 00000000
+    93.218 DUMP rccu-keep w 0x070102e0: 00000000 00000000 00000000 00000000
+    93.220 DUMP rccu-keep w 0x070102f0: 00000000 00000000 00000000 00000000
+    93.221 DUMP rccu-keep w 0x07010300: 00000000 00000000 00000000 00000000
+    93.222 DUMP rccu-keep w 0x07010310: 00000000 00000000 00000000 00000000
+    93.224 DUMP rccu-keep w 0x07010320: 00000000 00000000 00000001 00000000
+    93.225 DUMP rccu-keep w 0x07010330: 00000000 00000000 00000010 00000000
+    93.227 DUMP rccu-keep w 0x07010340: 00002f0f 00000000 00000000 00000000
+    93.228 DUMP rccu-keep w 0x07010350: 00000000 00000000 00000000 00000000
+    93.230 DUMP rccu-keep w 0x07010360: 00000000 00000000 00000000 00000000
+    93.231 DUMP rccu-keep w 0x07010370: 00000000 00000000 00000000 00000000
+    93.232 DUMP rccu-keep w 0x07010380: 00000000 00000000 00000000 00000000
+    93.234 DUMP rccu-keep w 0x07010390: 00000000 00000000 00000000 00000000
+    93.235 DUMP rccu-keep w 0x070103a0: 00000000 00000000 00000000 00000000
+    93.237 DUMP rccu-keep w 0x070103b0: 00000000 00000000 00000000 00000000
+    93.238 DUMP rccu-keep w 0x070103c0: 00000000 00000000 00000000 00000000
+    93.239 DUMP rccu-keep w 0x070103d0: 00000000 00000000 00000000 00000000
+    93.241 DUMP rccu-keep w 0x070103e0: 00000000 00000000 00000000 00000000
+    93.242 DUMP rccu-keep w 0x070103f0: 00010002 00000000 00000000 00000000
+    93.370 === open /data/bench/gate-q2.log boot 4110f11a-7f00-4e32-95b6-5305d3d345af cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    93.383 GATE 0x02001db0 bit 31 cleared (80000000 -> 00000000)
+    93.396 GATE 0x02001db4 bit 31 cleared (80000000 -> 00000000)
+    93.408 GATE 0x02001db8 bit 31 cleared (c4000005 -> 44000005)
+    93.421 GATE 0x02001dc0 bit 31 cleared (80000005 -> 00000005)
+    93.423 GATES db0:31+db4:31+db8:31+dc0:31 off; BEFORE-READ 0x068008fc, 0x06840000
+    30.131 === open /data/bench/gate-q2.log boot abe5650d-ee72-4632-8df5-ae765ee5bf23 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    30.144 GATE 0x02001db0 bit 31 cleared (80000000 -> 00000000)
+    30.156 GATE 0x02001db4 bit 31 cleared (80000000 -> 00000000)
+    30.158 GATES db0:31+db4:31 off; BEFORE-READ 0x068008fc, 0x06840000
+    30.160 GATES db0:31+db4:31 off: read ok 0x068008fc=bf 0x06840000=c0
+    30.172 GATES db0:31+db4:31 restored
+    49.671 === open /data/bench/gate-q2.log boot abe5650d-ee72-4632-8df5-ae765ee5bf23 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    49.684 GATE 0x02001db8 bit 31 cleared (c4000005 -> 44000005)
+    49.686 GATES db8:31 off; BEFORE-READ 0x068008fc, 0x06840000
+    31.011 === open /data/bench/gate-q2.log boot 6a3350c2-5b00-4b5d-a1da-1dfae1613358 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    31.024 GATE 0x02001dc0 bit 31 cleared (80000005 -> 00000005)
+    31.026 GATES dc0:31 off; BEFORE-READ 0x068008fc, 0x06840000
+    31.028 GATES dc0:31 off: read ok 0x068008fc=bf 0x06840000=c0
+    31.040 GATES dc0:31 restored
+    31.052 GATE 0x02001d20 bit 31 cleared (80000000 -> 00000000)
+    31.054 GATES d20:31 off; BEFORE-READ 0x068008fc, 0x06840000
+    31.056 GATES d20:31 off: read ok 0x068008fc=bf 0x06840000=c0
+    31.068 GATES d20:31 restored
+    31.081 GATE 0x02001d74 bit 31 cleared (81000001 -> 01000001)
+    31.083 GATES d74:31 off; BEFORE-READ 0x068008fc, 0x06840000
+    31.085 GATES d74:31 off: read ok 0x068008fc=bf 0x06840000=c0
+    31.097 GATES d74:31 restored
+    31.110 GATE 0x02001d80 bit 30 cleared (c0000000 -> 80000000)
+    31.112 GATES d80:30 off; BEFORE-READ 0x068008fc, 0x06840000
+    31.114 GATES d80:30 off: read ok 0x068008fc=bf 0x06840000=c0
+    31.127 GATES d80:30 restored
+    31.139 GATE 0x02001d88 bit 0 cleared (00010001 -> 00010000)
+    31.141 GATES d88:0 off; BEFORE-READ 0x068008fc, 0x06840000
+    31.144 GATES d88:0 off: read ok 0x068008fc=00 0x06840000=00
+    31.156 GATES d88:0 restored

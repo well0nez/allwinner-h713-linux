@@ -1,0 +1,90 @@
+    73.070 === open /data/bench/gatefn.log boot 6a3350c2-5b00-4b5d-a1da-1dfae1613358 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    73.074 BEFORE-READ RX_CTL 0x068008fc / RX_LINK timing
+    73.076 RXTIME start: TMDS 0 9ab=00 timing (0, 0, 0, 0); 35 writes
+    83.079 RXTIME writes took 0.22 ms; horizontal valid after None ms; lock (0, 0, 0, 0) after 10002.1 ms
+    85.090 RXTIME capture: first frame counted 2000.8 ms after the first capture write; 0x104 00000000 0xa0c 0
+    86.592 RXTIME capture frames in 0.5 s: 0
+    86.727 === open /data/bench/gatefn.log boot 6a3350c2-5b00-4b5d-a1da-1dfae1613358 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    86.729 GATEFN 0x02001d20 bit 31 off; before: timing (0, 0, 0, 0) frame 0
+    87.732 GATEFN 0x02001d20 bit 31: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    87.734 GATEFN 0x02001d74 bit 31 off; before: timing (0, 0, 0, 0) frame 0
+    88.736 GATEFN 0x02001d74 bit 31: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    88.739 GATEFN 0x02001d80 bit 30 off; before: timing (0, 0, 0, 0) frame 0
+    89.741 GATEFN 0x02001d80 bit 30: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    89.744 GATEFN 0x02001d80 bit 31 off; before: timing (0, 0, 0, 0) frame 0
+    90.746 GATEFN 0x02001d80 bit 31: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    90.749 GATEFN 0x02001d84 bit 31 off; before: timing (0, 0, 0, 0) frame 0
+    91.753 GATEFN 0x02001d84 bit 31: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    91.756 GATEFN 0x02001d6c bit 31 off; before: timing (0, 0, 0, 0) frame 0
+    92.759 GATEFN 0x02001d6c bit 31: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    92.761 GATEFN 0x02001050 bit 31 off; before: timing (0, 0, 0, 0) frame 0
+    93.764 GATEFN 0x02001050 bit 31: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    93.767 GATEFN 0x02001db0 bit 31 off; before: timing (0, 0, 0, 0) frame 0
+    94.770 GATEFN 0x02001db0 bit 31: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    94.773 GATEFN 0x02001db4 bit 31 off; before: timing (0, 0, 0, 0) frame 0
+    95.776 GATEFN 0x02001db4 bit 31: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    95.779 GATEFN 0x02001dc0 bit 31 off; before: timing (0, 0, 0, 0) frame 0
+    96.782 GATEFN 0x02001dc0 bit 31: during 0.5 s off: timing (0, 0, 0, 0), frames +0; 0.5 s after restore: timing (0, 0, 0, 0), frames +0
+    32.964 === open /data/bench/gatefn.log boot 80bcb7c8-5ccb-4747-b5c8-a527fcd29177 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    32.969 BEFORE-READ RX_CTL 0x068008fc / RX_LINK timing
+    32.971 RXTIME start: TMDS 1 9ab=3c timing (0, 0, 0, 0); 35 writes
+    33.507 RXTIME writes took 0.23 ms; horizontal valid after 502.1 ms; lock (2200, 1920, 1125, 1080) after 534.2 ms
+    33.523 RXTIME capture: first frame counted 6.8 ms after the first capture write; 0x104 00010011 0xa0c 1
+    35.026 RXTIME capture frames in 0.5 s: 30
+    35.155 === open /data/bench/gatefn.log boot 80bcb7c8-5ccb-4747-b5c8-a527fcd29177 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    35.157 GATEFN 0x02001d20 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 98
+    36.160 GATEFN 0x02001d20 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +31; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    36.162 GATEFN 0x02001d74 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 159
+    37.165 GATEFN 0x02001d74 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    37.168 GATEFN 0x02001d80 bit 30 off; before: timing (2200, 1920, 1125, 1080) frame 219
+    38.171 GATEFN 0x02001d80 bit 30: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    38.174 GATEFN 0x02001d80 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 279
+    39.177 GATEFN 0x02001d80 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    39.181 GATEFN 0x02001d84 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 340
+    40.184 GATEFN 0x02001d84 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    40.187 GATEFN 0x02001d6c bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 400
+    41.190 GATEFN 0x02001d6c bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +0; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    41.193 GATEFN 0x02001050 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 430
+    42.196 GATEFN 0x02001050 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    42.199 GATEFN 0x02001db0 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 491
+    43.202 GATEFN 0x02001db0 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    43.205 GATEFN 0x02001db4 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 551
+    44.209 GATEFN 0x02001db4 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    44.212 GATEFN 0x02001dc0 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 611
+    45.215 GATEFN 0x02001dc0 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30
+    69.759 === open /data/bench/gatefn.log boot 80bcb7c8-5ccb-4747-b5c8-a527fcd29177 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    69.761 GATEFN 0x02001d20 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 2143
+    70.765 GATEFN 0x02001d20 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3
+    70.768 GATEFN 0x02001d74 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 2203
+    71.771 GATEFN 0x02001d74 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3
+    71.773 GATEFN 0x02001d80 bit 30 off; before: timing (2200, 1920, 1125, 1080) frame 2263
+    72.776 GATEFN 0x02001d80 bit 30: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3
+    72.778 GATEFN 0x02001d6c bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 2323
+    73.781 GATEFN 0x02001d6c bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +1, ring slots written 0/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3
+    73.784 GATEFN 0x02001d84 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 2354
+    74.787 GATEFN 0x02001d84 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3
+    74.789 GATEFN 0x02001d80 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 2414
+    75.792 GATEFN 0x02001d80 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3
+    75.795 GATEFN 0x02001d88 bit 0 off; before: timing (2200, 1920, 1125, 1080) frame 2474
+    76.798 GATEFN 0x02001d88 bit 0: during 0.5 s off: timing (0, 0, 0, 0), frames +63062, ring slots written 0/3; 0.5 s after restore: timing (0, 0, 0, 0), frames +0, ring slots written 0/3
+   100.557 === open /data/bench/gatefn.log boot 18052a6a-e677-4d9e-b749-403e2a4b08f6 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   100.559 GATEFN 0x02001d20 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 3880
+   101.562 GATEFN 0x02001d20 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3
+   101.565 GATEFN 0x02001d74 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 3941
+   102.568 GATEFN 0x02001d74 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 0/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3
+   102.571 GATEFN 0x02001d80 bit 30 off; before: timing (2200, 1920, 1125, 1080) frame 4001
+   103.574 GATEFN 0x02001d80 bit 30: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3
+   103.576 GATEFN 0x02001d6c bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 4061
+   104.579 GATEFN 0x02001d6c bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3
+   104.582 GATEFN 0x02001d84 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 4121
+   105.585 GATEFN 0x02001d84 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +31, ring slots written 3/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3
+   105.587 GATEFN 0x02001d80 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 4182
+   106.591 GATEFN 0x02001d80 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3
+   106.594 GATEFN 0x02001050 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 4242
+   107.598 GATEFN 0x02001050 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3
+   107.601 GATEFN 0x02001db0 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 4302
+   108.604 GATEFN 0x02001db0 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +31, ring slots written 3/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3
+   108.608 GATEFN 0x02001db4 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 4363
+   109.612 GATEFN 0x02001db4 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3
+   109.615 GATEFN 0x02001dc0 bit 31 off; before: timing (2200, 1920, 1125, 1080) frame 4423
+   110.619 GATEFN 0x02001dc0 bit 31: during 0.5 s off: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3; 0.5 s after restore: timing (2200, 1920, 1125, 1080), frames +30, ring slots written 3/3

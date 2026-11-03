@@ -1,0 +1,1 @@
+for n in /proc/device-tree/reserved-memory/*/; do nm=$(basename $n); [ -f $n/reg ] || continue; r=$(od -An -tx1 -v $n/reg | tr -d ' \n'); echo "$nm reg=$r nomap=$([ -e $n/no-map ] && echo yes || echo no) reusable=$([ -e $n/reusable ] && echo yes || echo no) compat=$(cat $n/compatible 2>/dev/null | tr '\0' ' ')"; done
