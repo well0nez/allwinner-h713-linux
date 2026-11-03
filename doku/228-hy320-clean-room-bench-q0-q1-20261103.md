@@ -354,3 +354,10 @@ Niemand hat auf die Wand gesehen.
   1264 Pixel); Dumps und Entladen wie erwartet.
 - Entwurf `drafts/30-picture-processing.md` §4.3 (Q-PQ-11). Gerät: Normalboot, Umgebung gleich `env-before-r12.txt`,
   `RUN1`, Sperre frei.
+
+## 17 Runde 13: S1-T6/T1-Histogramme mit und ohne Standardkurve
+
+Ein Bench-Boot (`t6c.py`, Log `t6c-bench.log`): 12-Zustand, ausgerichtet, dritte Kurve hochgeladen. Kurve an / LUT aus:
+Schwarz 518400/1555200 in Fach 5/6 bzw. alles Fach 5; Weiß 31/31; P3 29/28; S1-T6 Alpha 0xff 31/31, 0x80 19/18, 0x40
+12/12, 0 wie Schwarz. Entwurf `drafts/95-test-procedures.md` (Tabelle nach den Stufe-1-Tests). Gerät: Normalboot,
+Umgebung gleich `env-before-r13.txt`, `RUN1`, Sperre frei.
