@@ -1,0 +1,9 @@
+   205.842 === open /data/bench/x5d.log boot fefb3a3f-a1d2-40df-839d-96ca20fa8215 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   205.844 BEFORE 32-bit read 0x06840374
+   205.847 0x06840374 = 00000000 (bytes 374..377 by 8-bit: 00 00 00 00)
+   205.848 BEFORE 32-bit write 0x06840374 = 00020000
+   205.850 read back 00000000; byte 376 = 00
+   205.852 BEFORE 32-bit read 0x06840000
+   205.854 0x06840000 = c0c0c0c0
+   205.856 after 32-bit write of byte 0 = 0: c0c0c0c0
+   206.059 timing 28..3f 000000000000000000000000000000000000000000000000 37a=00

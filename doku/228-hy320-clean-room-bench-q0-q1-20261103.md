@@ -410,3 +410,35 @@ Vergleich mit dem Normalstart ohne Signal (`x1-normal.log`, `x2-normal.log`) in 
 - Spec: 50 §6a + Anhang A, 55 §7 (sauberes Repo `43cca36`, WALL-Zeilen "not yet checked by lead"); 59 (gehalten)
   um den Stand von X3/X4/X6 ergänzt.
 - Offen: alles mit Signal (X5, X7, Rest von X6, die Lock-Zeichen) braucht die Konsole an, also den Besitzer.
+
+## 21 Runde 9 (7.3.1) und Stufe 3 mit Quelle
+
+**Runde 9:** `h713_drm.ko` `c990fc7a…` (7.3.1-rustbench), `kms-test` `5a1e62a3…`, `vp-bench` `22b68345…`, Bench B0 mit
+`/boot/h713-kernel-rustbench73.fit` (gebaut aus kernel-7.3 `727b88a6`, ohne den späteren 0354/tmpfs-ACL-Commit).
+Schritte 0-7 wie geschrieben: auf jeder Zeile dasselbe Urteil wie Runde 8 (6.18). 3930 Flips 65,55/s, T1/T2 PASS, 5a
+Spalten-FAIL (jetzt 9 statt 45 Spalten), 5b PASS bei allen vier Alphas, `pqcheck` 39/39, alle 22 `commit:`-Zeilen und 115
+`pq:`/`gamma:`-Zeilen ohne Fehlschreibung, Logo nach `rmmod` zurück. Kern: kein Oops/BUG/WARNING/RCU-Stall, AP hielt.
+Sauberes Repo `c673e98`, `b5bcb3b` (`notes/bench-results-drm.md` Runde 9, Logs `notes/bench-logs/2026-11-03-drm-r9/`).
+
+**Quelle am HDMI (Besitzer):** Normalstart 7.3.1: `h713-tv ctl status` 1920x1080p60 148,5 MHz, VIC 16, HDCP 2.2
+authentifiziert, EDID ausgeliefert, Ton 48 kHz; Launcher bedeckte das Bild bis zu einem Tastendruck (danach
+`picture plane on`). Zeile für die Kernel-Spur in `/srv/h713/notes/kernel-bump.md`.
+
+- X1 mit Signal gegen ohne (`logs/stage3-r2/x1-sig.log`, `x1-sig-diff.txt`): `RX_LINK +0x28..0x3f` = CTA-1080p60 als
+  16-bit-Paare (2200/1920/280/88/44/148, 1125/1080/45/4/5/36); H5-Freigaben genau wie gehalten; `0x0684037a = 0x04`
+  (Empfängerport 2 = ARISC-Port 1); `RX_CTL 0x8fc` Bit 7 und `0x9ab..0x9af` zeigen TMDS an (auch auf dem Bench);
+  `AUX 0x07091010 = 0x2` mit eingeschalteter Quelle. 12+6 Bytes laufen. X2: keine Takt-/Energieänderung mit Signal.
+- Panne: im ersten X5-Lauf las `rxdump` `AUX` vor dem EDID-Reset der ARISC - Hänger, der Watchdog setzte den Bench in
+  den Normalstart zurück (wie in §1 vorgesehen; `x57-hang1.log`). Reihenfolge korrigiert.
+- X4 vollständig: mit EDID+HPD vom ARM ohne Firmware sendet die Quelle TMDS.
+- X5: `RX_LINK` nimmt ohne Firmware keine Schreibzugriffe an (8 und 32 bit), bis `0x06841001 = 0x05`. Ausgeschlossen als
+  Tor: PLL_VIDEO1, CCU-Display-Wörter, TVTOP, `0x06700000`, `SYS_CFG 0x03000090`; ganze CCU, R_CCU, PPU, SYS_CFG, PIO/
+  R_PIO, TVTOP-Fenster verglichen (`ccu-full-*.txt`, `gate*-*.log`, `pio-normal.log`). Danach H2->H5 nachgespielt,
+  zweiter HPD-Puls: H-Timing rastet auf 2200/1920/88/44/148 und bleibt, V nicht (0xffff bzw. Vielfache eines Frames).
+  `CAP 0x104` bleibt 0. Offen: was V braucht (HDCP-1.4-Schlüssel nicht geladen, PD_IDCLK).
+- X6/X7: Capture nimmt die Programmierung, schreibt ohne V-Lock nicht; Kanal 0 zeigt den eigenen Ring (Histogramm =
+  Markierung 0x5a in Fach 25). Ein HDMI-Bild über den sauberen Pfad gibt es noch nicht.
+- Sichtfenster für den Besitzer: Zustand 1 (Normalstart-HDMI) stand 15:46-16:03 Gerätezeit, keine Antwort; vertagt.
+  Jeder Zustand mit einem Befehl: `tools/visual-window.sh ref|1|bench|2|3|4|restore`.
+- Spec: 50 §4/§6a/Anhang B, 55 §7 (sauberes Repo `ff44e49`, WALL "not yet checked by lead"); 59 (gehalten) ergänzt.
+- Ende: Umgebung = Referenz (`diff` leer), Normalstart 7.3.1, `ctl status` ok, keine fehlgeschlagenen Units, RUN1, Sperre frei.

@@ -1,0 +1,15 @@
+    83.855 === open /data/bench/x5h.log boot 6a1b33bc-1e99-4461-af8e-542d6f0026b6 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    83.857 SIGNS start: 37a=04 007=68 timing htotal 65535 hact 3 hblank 65532 vtotal 1672 vact 510 | CAP 104=00000000 548=0688c3f8 | PROC fe64=f8a55470
+    83.860 W8 0x068009b1 = 6a (was 00)
+    83.862 W8 0x068009b2 = 20 (was 00)
+    83.863 W8 0x068009b3 = 04 (was 00)
+    83.865 W8 0x068009b4 = b4 (was 00)
+    83.867 W8 0x068009b5 = 73 (was 21)
+    83.869 W8 0x068009bb = ff (was 01)
+    83.871 W8 0x068009bd = 0f (was 00)
+    84.374 SIGNS +0.5 s: 37a=04 007=68 timing htotal 65535 hact 0 hblank 65535 vtotal 1672 vact 510 | CAP 104=00000000 548=0688c3f8 | PROC fe64=f8a55470
+    84.876 SIGNS +1.0 s: 37a=04 007=68 timing htotal 65535 hact 0 hblank 65535 vtotal 1672 vact 510 | CAP 104=00000000 548=0688c3fa | PROC fe64=f8a55470
+    85.379 SIGNS +1.5 s: 37a=04 007=68 timing htotal 65535 hact 3 hblank 65532 vtotal 1672 vact 510 | CAP 104=00000000 548=0688c3fa | PROC fe64=f8a55470
+    85.882 SIGNS +2.0 s: 37a=04 007=68 timing htotal 65535 hact 2 hblank 65533 vtotal 1672 vact 510 | CAP 104=00000000 548=0688c3f6 | PROC fe64=f8a55470
+    86.384 SIGNS +2.5 s: 37a=04 007=68 timing htotal 65535 hact 3 hblank 65532 vtotal 1672 vact 510 | CAP 104=00000000 548=068887f1 | PROC fe64=f8a55470
+    86.887 SIGNS +3.0 s: 37a=04 007=68 timing htotal 65535 hact 1922 hblank 63613 vtotal 1672 vact 510 | CAP 104=00000000 548=0688c3f8 | PROC fe64=f8a55470

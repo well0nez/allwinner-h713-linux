@@ -1,0 +1,1363 @@
+BOOT=bench
+=== X5
+6.18.38-rust
+30.62 101.44
+insmod rc=0
+[   31.323165] spx4: hy310-edid.bin 512 bytes, port 1
+[   31.956711] spx4: edid_init(port 1, 512 bytes) = 0
+[   32.168614] spx4: get_edid(port 1) = 256: 00 ff ff ff ff ff ff 00 5e 78 43 48 21 03 00 00 | 128.. 02 03 4c f1 54 1f 20 5d | byte168 20 byte255 14 sum 00
+[   32.993624] spx4: hpd(port 1, 3) = 0
+    36.153 === open /data/bench/x57-bench.log boot 6a1b33bc-1e99-4461-af8e-542d6f0026b6 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    36.157 SIGNS start: 37a=00 377=00 001=00 005=00 007=00 0fc=3f 1ab..1af=00 00 00 00 00 ctl8fc=bf | timing 28..3f 000000000000000000000000000000000000000000000000 (htotal 0 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    36.159 X5 step 0: PLL_VIDEO1, CCU 0x02001d10..d64 and TVTOP as in the normal boot
+    36.161 W32 0x02001048 = a8006202 (was 28006202)
+    36.173 PLL_VIDEO1 0x02001048 = b8006202 (normal boot: b8006202)
+    36.175 W32 0x02001d10 = 81000005 (was 01000005)
+    36.177 W32 0x02001d18 = 81000004 (was 01000004)
+    36.179 W32 0x02001d24 = 80000007 (was 00000007)
+    36.180 W32 0x02001d28 = 80000002 (was 00000002)
+    36.182 W32 0x02001d2c = 80000005 (was 00000005)
+    36.184 W32 0x02001d30 = 80000004 (was 00000004)
+    36.186 W32 0x02001d34 = 80000004 (was 00000004)
+    36.188 W32 0x02001d38 = 8000000b (was 0000000b)
+    36.190 W32 0x02001d40 = 8000020a (was 0000020a)
+    36.192 W32 0x02001d48 = 80000002 (was 00000002)
+    36.194 W32 0x02001d4c = 80000002 (was 00000002)
+    36.196 W32 0x02001d50 = 81000002 (was 00000007)
+    36.198 W32 0x02001d58 = 80000002 (was 00000002)
+    36.200 W32 0x02001d5c = 8000020b (was 0000020b)
+    36.202 W32 0x02001d60 = 8000020b (was 0000020b)
+    36.204 W32 0x02001d64 = 00010001 (was 00000000)
+    36.206 W32 0x06e00008 = 00000504 (was 00000404)
+    36.208 W32 0x06e0001c = 00000001 (was 00000000)
+    36.210 SIGNS after step 0: 37a=00 377=00 001=00 005=00 007=00 0fc=3f 1ab..1af=00 00 00 00 00 ctl8fc=bf | timing 28..3f 000000000000000000000000000000000000000000000000 (htotal 0 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    36.212 X5 step 1: the 0x06841000 view's enables as in the normal boot (+0x001 = 0x05 opens RX_LINK for writes)
+    36.214 W8 0x06841001 = 05 (was 00)
+    36.216 W8 0x06841014 = 01 (was 00)
+    36.218 W8 0x06841015 = ff (was 00)
+    36.220 W8 0x06841016 = ff (was 00)
+    36.222 W8 0x06841017 = ff (was 00)
+    36.224 SIGNS after step 1: 37a=04 377=04 001=fe 005=40 007=00 0fc=bf 1ab..1af=3c 03 01 9f ee ctl8fc=bf | timing 28..3f 000000000000000000000000000000000000000000000000 (htotal 0 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    36.226 X5 H2: port select
+    36.228 W8 0x068008f1 = 80 (was 00)
+    36.230 W8 0x068008f2 = 29 (was 21)
+    36.232 W8 0x068008f4 = 80 (was 00)
+    36.234 W8 0x06840376 = 02 (was 00)
+    36.237 SIGNS after H2: 37a=04 377=04 001=fe 005=40 007=00 0fc=bf 1ab..1af=3c 03 01 80 ee ctl8fc=bf | timing 28..3f 000000000000000000000000000000000000000000000000 (htotal 0 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    36.239 X5 configuration: the firmware's no-signal bytes where the bench differs (HDCP, status, mirrors left out)
+    36.241 W8 0x068000a7 = 01 (was 00)
+    36.242 W8 0x068002a7 = 01 (was 01)
+    36.244 W8 0x068003a7 = 01 (was 01)
+    36.246 W8 0x068004a7 = 01 (was 01)
+    36.248 W8 0x068006a7 = 01 (was 01)
+    36.250 W8 0x068007a7 = 01 (was 01)
+    36.252 W8 0x06800ea7 = 01 (was 01)
+    36.254 W8 0x06800fa7 = 01 (was 01)
+    36.256 W8 0x068008fc = 33 (was bf)
+    36.257    read back b3
+    36.259 W8 0x06800af1 = 80 (was 80)
+    36.261 W8 0x06800af2 = 29 (was 29)
+    36.263 W8 0x06800af4 = 80 (was 80)
+    36.265 W8 0x06800afc = 33 (was b3)
+    36.267    read back b3
+    36.269 W8 0x06800bf1 = 80 (was 80)
+    36.271 W8 0x06800bf2 = 29 (was 29)
+    36.272 W8 0x06800bf4 = 80 (was 80)
+    36.274 W8 0x06800bfc = 33 (was b3)
+    36.276    read back b3
+    36.278 W8 0x06800cf1 = 80 (was 80)
+    36.279 W8 0x06800cf2 = 29 (was 29)
+    36.281 W8 0x06800cf4 = 80 (was 80)
+    36.283 W8 0x06800cfc = 33 (was b3)
+    36.284    read back b3
+    36.286 W8 0x06840000 = 00 (was c0)
+    36.288 W8 0x06840008 = 01 (was 00)
+    36.290 W8 0x06840016 = 00 (was 01)
+    36.292 W8 0x0684001a = 00 (was 01)
+    36.293 W8 0x06840040 = 07 (was 03)
+    36.296 W8 0x06840064 = 02 (was 0a)
+    36.298 W8 0x06840065 = 02 (was 0a)
+    36.300 W8 0x068400a1 = f0 (was fc)
+    36.301    read back fc
+    36.303 W8 0x068400b9 = 71 (was f0)
+    36.305 W8 0x068400c1 = 90 (was 80)
+    36.307 W8 0x068400c9 = 34 (was 14)
+    36.309 W8 0x068400fc = 37 (was bf)
+    36.310    read back b7
+    36.312 W8 0x06840186 = 00 (was ff)
+    36.314 W8 0x06840187 = 00 (was ff)
+    36.316 W8 0x068401a9 = 3f (was 3f)
+    36.317 W8 0x068401aa = 40 (was 40)
+    36.319 W8 0x068401ab = 18 (was 3c)
+    36.321    read back 3c
+    36.323 W8 0x068401ac = 10 (was 03)
+    36.324    read back 03
+    36.326 W8 0x068401ae = 80 (was 80)
+    36.328 W8 0x068401af = 0e (was ee)
+    36.330    read back ee
+    36.331 W8 0x068401b1 = 04 (was 00)
+    36.333 W8 0x06840310 = 61 (was 01)
+    36.335 W8 0x0684035e = 3a (was 3f)
+    36.336 W8 0x068403c5 = 02 (was 02)
+    36.339 SIGNS after the no-signal configuration: 37a=04 377=04 001=fe 005=40 007=00 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f 39d2000039d239d10003fffe00000000000000020001fffd (htotal 14802 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    37.341 SIGNS +1 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0003fffce67039d2dfba000000000000ffc700010038 (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    37.344 X5 H3: PHY out of reset: 0x8fc/afc/bfc/cfc bit 7, RX_LINK +0x1b bits 2 and 4 cleared, +0xfc bit 7, EQ on
+    37.346 W8 0x068008fc = b3 (was b3)
+    37.348 W8 0x06800afc = b3 (was b3)
+    37.350 W8 0x06800bfc = b3 (was b3)
+    37.352 W8 0x06800cfc = b3 (was b3)
+    37.355 W8 0x0684001b = 01 (was 15)
+    37.357 W8 0x068400fc = b7 (was b7)
+    37.359 W8 0x068401b5 = 31 (was 21)
+    37.611 SIGNS after H3 +0.25 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0003fffce67039d2dfba000000000000ffc700010038 (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    37.865 SIGNS after H3 +0.50 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0003fffce67039d2dfba000000000000ffc700010038 (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    38.118 SIGNS after H3 +0.75 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0003fffce67039d2dfba000000000000ffc700010038 (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    38.371 SIGNS after H3 +1.00 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f 55f0000155ef003c000955aa000000000000ff4d000100b2 (htotal 22000 hact 1 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    38.374 X5 H4: activation +0x02 = 0x27 then 0x07
+    38.376 W8 0x06840002 = 27 (was 6e)
+    38.389 W8 0x06840002 = 07 (was 27)
+    38.641 SIGNS after H4 +0.25 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0001fffeaa4b39d31be0000000000000ff4d000100b2 (htotal 65535 hact 1 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    38.894 SIGNS after H4 +0.50 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0000ffffffff39d2c62e000000000000ff15000100ea (htotal 65535 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    39.147 SIGNS after H4 +0.75 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0003fffcdde439d2e846000000000000fef600010109 (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    39.435 SIGNS after H4 +1.00 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0003fffcdde439d4e844000000000000fef600010109 (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    39.456 X5 H5: enables as with a locked 1080p60
+    39.459 W8 0x06840006 = 6a (was 6a)
+    39.460 W8 0x06840010 = 4d (was 00)
+    39.463 W8 0x06840012 = 27 (was 00)
+    39.465 W8 0x0684000c = 87 (was 00)
+    39.467 W8 0x0684000d = 8f (was 00)
+    39.468 W8 0x0684000b = 01 (was 00)
+    39.971 SIGNS after H5 +0.5 s: 37a=04 377=04 001=fe 005=51 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0003fffcef0739d2d723000000000000feb20001014d (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    40.475 SIGNS after H5 +1.0 s: 37a=04 377=04 001=fe 005=51 007=68 0fc=b7 1ab..1af=3c 03 01 81 ee ctl8fc=b3 | timing 28..3f ffff0003fffcbb7739d30ab2000000000000fe8900010176 (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    40.978 SIGNS after H5 +1.5 s: 37a=04 377=04 001=fe 005=51 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0004fffbe67d39d4dfaa000000000000fe46000101b9 (htotal 65535 hact 4 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    41.482 SIGNS after H5 +2.0 s: 37a=04 377=04 001=fe 005=51 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0003fffce66f39d4dfb9000000000000fe35000101ca (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    41.985 SIGNS after H5 +2.5 s: 37a=04 377=04 001=fe 005=51 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0003fffce66f39d2dfbb000000000000fe35000101ca (htotal 65535 hact 3 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    42.489 SIGNS after H5 +3.0 s: 37a=04 377=04 001=fe 005=51 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0004fffbe67e39d4dfa9000000000000fdf10001020e (htotal 65535 hact 4 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    42.992 SIGNS after H5 +3.5 s: 37a=04 377=04 001=fe 005=51 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0004fffbe67e39d3dfaa000000000000fdf10001020e (htotal 65535 hact 4 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    43.495 SIGNS after H5 +4.0 s: 37a=04 377=04 001=fe 005=51 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0004fffbe67e39d4dfa9000000000000fdf10001020e (htotal 65535 hact 4 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=f8a55470
+    43.498 X5 DONE
+=== X6
+    44.281 === open /data/bench/x57-bench.log boot 6a1b33bc-1e99-4461-af8e-542d6f0026b6 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    44.309 CAP7 ring filled with 0x5a: luma ['0x4b100000', '0x4b2ff000', '0x4b4fe000'], chroma ['0x4b6fd000', '0x4b8fc000', '0x4bafb000']
+    44.312 CAP7 before: 000=00000001 100=00000000 104=00000000 400=00000000 540=00000000 548=00000000 874=00000000 928=00000000 968=00000000 a00=00000334 a04=07f40808 a0c=00000000 a20=00600780 a24=00800048 a28=00080200 | 0x05600320 00000000 0x324 00000000 | ring pages changed [0, 0, 0, 0, 0, 0] | slot luma mean/min/max ['90.0/90/90', '90.0/90/90', '90.0/90/90']
+    44.315 CAP7 75 words written; read back different: 0: 
+    44.318 CAP7 programmed, outputs off: 000=00000001 100=00000404 104=00000000 400=00000021 540=90000000 548=0000ba93 874=07800438 928=60020438 968=60020438 a00=00000334 a04=07f40808 a0c=00000000 a20=00000000 a24=00000000 a28=00000000 | 0x05600320 00000000 0x324 00000000 | ring pages changed [0, 0, 0, 0, 0, 0] | slot luma mean/min/max ['90.0/90/90', '90.0/90/90', '90.0/90/90']
+    44.822 CAP7 programmed +0.5 s: 000=00000001 100=00000404 104=00000000 400=00000021 540=90000000 548=000087f0 874=07800438 928=60020438 968=60020438 a00=00000334 a04=07f40808 a0c=00000000 a20=00000000 a24=00000000 a28=00000000 | 0x05600320 00000000 0x324 00000000 | ring pages changed [0, 0, 0, 0, 0, 0] | slot luma mean/min/max ['90.0/90/90', '90.0/90/90', '90.0/90/90']
+    44.824 CAP7 outputs on (bit 31 of 0x928 and 0x968)
+    45.328 CAP7 outputs on +0.5 s: 000=00000001 100=00000404 104=00000000 400=00000021 540=90000000 548=000087f0 874=07800438 928=e0020438 968=e0020438 a00=00000334 a04=07f40808 a0c=00000000 a20=00000000 a24=00000000 a28=00000000 | 0x05600320 00000000 0x324 00000000 | ring pages changed [0, 0, 0, 0, 0, 0] | slot luma mean/min/max ['90.0/90/90', '90.0/90/90', '90.0/90/90']
+    45.833 CAP7 outputs on +1.0 s: 000=00000001 100=00000404 104=00000000 400=00000021 540=90000000 548=0000c3f8 874=07800438 928=e0020438 968=e0020438 a00=00000334 a04=07f40808 a0c=00000000 a20=00000000 a24=00000000 a28=00000000 | 0x05600320 00000000 0x324 00000000 | ring pages changed [0, 0, 0, 0, 0, 0] | slot luma mean/min/max ['90.0/90/90', '90.0/90/90', '90.0/90/90']
+    46.338 CAP7 outputs on +1.5 s: 000=00000001 100=00000404 104=00000000 400=00000021 540=90000000 548=0000c3f8 874=07800438 928=e0020438 968=e0020438 a00=00000334 a04=07f40808 a0c=00000000 a20=00000000 a24=00000000 a28=00000000 | 0x05600320 00000000 0x324 00000000 | ring pages changed [0, 0, 0, 0, 0, 0] | slot luma mean/min/max ['90.0/90/90', '90.0/90/90', '90.0/90/90']
+    46.842 CAP7 outputs on +2.0 s: 000=00000001 100=00000404 104=00000000 400=00000021 540=90000000 548=000087ee 874=07800438 928=e0020438 968=e0020438 a00=00000334 a04=07f40808 a0c=00000000 a20=00000000 a24=00000000 a28=00000000 | 0x05600320 00000000 0x324 00000000 | ring pages changed [0, 0, 0, 0, 0, 0] | slot luma mean/min/max ['90.0/90/90', '90.0/90/90', '90.0/90/90']
+    47.347 CAP7 outputs on +2.5 s: 000=00000001 100=00000404 104=00000000 400=00000021 540=90000000 548=0000c3f8 874=07800438 928=e0020438 968=e0020438 a00=00000334 a04=07f40808 a0c=00000000 a20=00000000 a24=00000000 a28=00000000 | 0x05600320 00000000 0x324 00000000 | ring pages changed [0, 0, 0, 0, 0, 0] | slot luma mean/min/max ['90.0/90/90', '90.0/90/90', '90.0/90/90']
+    47.852 CAP7 outputs on +3.0 s: 000=00000001 100=00000404 104=00000000 400=00000021 540=90000000 548=0000c3f8 874=07800438 928=e0020438 968=e0020438 a00=00000334 a04=07f40808 a0c=00000000 a20=00000000 a24=00000000 a28=00000000 | 0x05600320 00000000 0x324 00000000 | ring pages changed [0, 0, 0, 0, 0, 0] | slot luma mean/min/max ['90.0/90/90', '90.0/90/90', '90.0/90/90']
+    47.855 CAP7 outputs left on
+=== X7
+vp-bench apply: /root/vp-bench apply --fmt nv16 --size 1920x1080 --pitch 1920 --luma 0x4b100000 --chroma 0x4b6fd000 --db /boot/mips/database.TSE --log /data/bench/x57-bench.log
+# step precondition [switch precheck] (00 §3, §3.1, §4)
+FIRST CCU access: CHECK 0x02001600 & 0xffffffff == 0x00000000 fatal  co-processor clock 0 (never ran)
+CHECK 0x02001600 & 0xffffffff == 0x00000000 fatal  co-processor clock 0 (never ran)  -> read 0x00000000 ok
+CHECK 0x0200160c & 0xffffffff == 0x00000000 fatal  co-processor reset 0 (never ran)  -> read 0x00000000 ok
+CHECK 0x02001050 & 0x80000000 == 0x80000000 fatal  video PLL 2 enabled  -> read 0xb9002a00 ok
+CHECK 0x02001db0 & 0x80000000 == 0x80000000 fatal  deinterlacer clock gate  -> read 0x80000000 ok
+CHECK 0x02001db4 & 0x80000000 == 0x80000000 fatal  panel clock gate  -> read 0x80000000 ok
+CHECK 0x02001db8 & 0x80000000 == 0x80000000 fatal  video processing clock gate  -> read 0xc4000005 ok
+CHECK 0x02001dc0 & 0x80000000 == 0x80000000 fatal  scanout clock gate  -> read 0x80000005 ok
+CHECK 0x02001dd8 & 0x00010001 == 0x00010001 fatal  display bus gate and reset release  -> read 0x00010001 ok
+FIRST TCON access: CHECK 0x05880020 & 0xffffffff == 0x04650898 fatal  raster totals 2200 x 1125
+CHECK 0x05880020 & 0xffffffff == 0x04650898 fatal  raster totals 2200 x 1125  -> read 0x04650898 ok
+CHECK 0x05880024 & 0xffffffff == 0x04380780 fatal  active size = panel  -> read 0x04380780 ok
+FIRST SCANOUT access: CHECK 0x05600000 & 0xffffffff == 0x80000020  SCAN_TOP as the stage-1 tables leave it
+CHECK 0x05600000 & 0xffffffff == 0x80000020  SCAN_TOP as the stage-1 tables leave it  -> read 0x80000020 ok
+# step table 0x2006 SYSTEM_INIT_SVP/INIT_VPANEL Only [switch init-tables] (40 §4.2-4.4; 10 §6.2 Q1 state; 91 O11)
+FIRST PNL_LOCK access: M     0x051cfe10 mask 0x80000000 val 0x80000000
+M     0x051cfe10 mask 0x80000000 val 0x80000000  -> wrote 0x80000005 read 0x80000005 ok
+W     0x051cfe0c = 0x02000310  -> wrote 0x02000310 read 0x02000310 ok
+W     0x051cfe10 = 0x80000405  -> wrote 0x80000405 read 0x80000405 ok
+W     0x051cfe14 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe18 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe1c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe20 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe24 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe28 = 0x00030020  -> wrote 0x00030020 read 0x00030020 ok
+W     0x051cfe2c = 0x04190a04  -> wrote 0x04190a04 read 0x04190a04 ok
+W     0x051cfe30 = 0x00000104  -> wrote 0x00000104 read 0x00000104 ok
+W     0x051cfe3c = 0x02060600  -> wrote 0x02060600 read 0x02060600 ok
+W     0x051cfe40 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe44 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe48 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe50 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe54 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe58 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe5c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe60 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe80 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe84 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe88 = 0x000fffff  -> wrote 0x000fffff read 0x000fffff ok
+W     0x051cfe8c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051cfe90 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+FIRST PNL access: W     0x051c0004 = 0x00050005
+W     0x051c0004 = 0x00050005  -> wrote 0x00050005 read 0x00050005 ok
+M     0x051c0014 mask 0xc11fffff val 0x00000005  -> wrote 0x18000005 read 0x18000005 ok
+M     0x051c0010 mask 0x067ff3ff val 0x06000075  -> wrote 0x06000075 read 0x06000075 ok
+W     0x051c00e0 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+M     0x051c033c mask 0x0001c0f7 val 0x0001c017  -> wrote 0x0001c017 read 0x0001c017 ok
+M     0x051c00a0 mask 0x8000001f val 0x80000000  -> wrote 0x80000000 read 0x80000000 ok
+W     0x051c00ec = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051c00f0 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051c00c4 = 0x40000000  -> wrote 0x40000000 read 0x40000000 ok
+W     0x051c00c8 = 0x00000800  -> wrote 0x00000800 read 0x00000800 ok
+W     0x051c00cc = 0x08000800  -> wrote 0x08000800 read 0x08000800 ok
+W     0x051c00d0 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051c00e4 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x051c0374 mask 0xc0000000 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x051c0360 mask 0x80000000 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051c0370 = 0x00000200  -> wrote 0x00000200 read 0x00000200 ok
+W     0x051c0118 = 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+W     0x051c0030 = 0x00000030  -> wrote 0x00000030 read 0x00000030 ok
+W     0x051c0200 = 0x00401848  -> wrote 0x00401848 read 0x00401848 ok
+W     0x051c0204 = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x051c0208 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051c0210 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051c020c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x051c0000 mask 0xffffff9f val 0x707f0000  -> wrote 0x707f0000 read 0x707f0000 ok
+M     0x051c0028 mask 0xffffe000 val 0x1f300000  -> wrote 0x1f300030 read 0x1f300030 ok
+W     0x051c0020 = 0x00301f30  -> wrote 0x00301f30 read 0x00301f30 ok
+W     0x051c002c = 0x00300030  -> wrote 0x00300030 read 0x00300030 ok
+W     0x051c0364 = 0xf0000000  -> wrote 0xf0000000 read 0xf0000000 ok
+FIRST BORDER access: W     0x05200028 = 0x00000000
+W     0x05200028 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x051cfe10 mask 0x80000000 val 0x00000000  -> wrote 0x00000405 read 0x00000405 ok
+W     0x051c00dc = 0x08000800  -> wrote 0x08000800 read 0x08000800 ok
+M     0x051c00e8 mask 0xefffffff val 0x00f00000  -> wrote 0x00f00000 read 0x00f00000 ok
+# step table 0x2005 SYSTEM_INIT_SVP/INIT_VPROC Only [switch init-tables] (40 §4.2-4.4; 10 §6.2 Q1 state; 91 O11)
+DELAY 200000 us
+FIRST SCL access: W     0x0518005c = 0x00010438
+W     0x0518005c = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+FIRST PROC_LOCK access: M     0x0514fe0c mask 0xffc00000 val 0x02400000
+M     0x0514fe0c mask 0xffc00000 val 0x02400000  -> wrote 0x02400310 read 0x02400310 ok
+M     0x0514fe10 mask 0x80000fff val 0x00000405  -> wrote 0x00000405 read 0x00000405 ok
+W     0x0514fe14 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0514fe18 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0514fe1c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0514fe20 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x0514fe24 mask 0x0000001f val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0514fe2c = 0x04190a04  -> wrote 0x04190a04 read 0x04190a04 ok
+M     0x0514fe30 mask 0x80ffffff val 0x00000104  -> wrote 0x00000104 read 0x00000104 ok
+W     0x0514fe34 = 0x000004a0  -> wrote 0x000004a0 read 0x000004a0 ok
+W     0x0514fe38 = 0x0000042f  -> wrote 0x0000042f read 0x0000042f ok
+W     0x0514fe3c = 0x3f3f3f02  -> wrote 0x3f3f3f02 read 0x3f3f3f02 ok
+W     0x0514fe40 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x0514fe44 mask 0xe0000020 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x0514fe54 mask 0xffffff7f val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0514fe80 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x0514fe88 mask 0x0000ffff val 0x0000ffff  -> wrote 0x0210ffff read 0x0210ffff ok
+W     0x0514fe8c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x0514fe90 mask 0x000007ff val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+FIRST PROC access: M     0x05140000 mask 0x0007ffff val 0x0007ffff
+M     0x05140000 mask 0x0007ffff val 0x0007ffff  -> wrote 0x0007ffff read 0x0007ffff ok
+M     0x05140008 mask 0x0020c000 val 0x00200000  -> wrote 0x00200000 read 0x00200000 ok
+M     0x05140004 mask 0x00000003 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05140058 = 0x00000002  -> wrote 0x00000002 read 0x00000002 ok
+M     0x05180030 mask 0x000f0000 val 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x051405b8 = 0x01560003  -> wrote 0x01560003 read 0x01560003 ok
+M     0x05140510 mask 0x000000ff val 0x00000088  -> wrote 0x00000088 read 0x00000088 ok
+W     0x05140458 = 0x00000fff  -> wrote 0x00000fff read 0x00000fff ok
+M     0x0514045c mask 0x03ffffff val 0x00000fff  -> wrote 0x00000fff read 0x00000fff ok
+W     0x0514047c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051405bc = 0x00000080  -> wrote 0x00000080 read 0x00000080 ok
+# step table 0x2003 SYSTEM_INIT_SVP/INIT_VNR Only [switch init-tables] (40 §4.2-4.4; 10 §6.2 Q1 state; 91 O11)
+DELAY 200000 us
+FIRST NRC access: W     0x05000048 = 0x00000000
+W     0x05000048 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x05000068 mask 0xff000000 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x050001d4 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x050001d8 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x050001e0 mask 0xfffffff8 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x050001e4 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x050001e8 mask 0xfffffff8 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x050001ec = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0500022c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000230 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000234 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000238 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0500023c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0500043c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000450 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000454 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000458 = 0x01000000  -> wrote 0x01000000 read 0x01000000 ok
+W     0x0500045c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000464 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0500053c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000550 = 0x0000021c  -> wrote 0x0000021c read 0x0000021c ok
+W     0x05000554 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000558 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0500055c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x05000568 mask 0xfffffff8 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0500080c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x05000808 mask 0xfffe0000 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x050002c0 mask 0xfffffff8 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x050002c4 mask 0xfffffff8 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x050002f0 mask 0xfffffffb val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x050002f4 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x05000318 mask 0xffff0000 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x05000468 mask 0xfffffff8 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x05000860 mask 0xffff0000 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000000 = 0xffffffff  -> wrote 0xffffffff read 0xffffffff ok
+M     0x05000004 mask 0xf800ffff val 0x08007901  -> wrote 0x08007901 read 0x08007901 ok
+W     0x05000024 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000028 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x0500006c mask 0xffff0000 val 0x04000000  -> wrote 0x04000000 read 0x04000000 ok
+M     0x05000064 mask 0xffff0000 val 0x00100000  -> wrote 0x00100000 read 0x00100000 ok
+M     0x05000058 mask 0x7fffffff val 0x00040000  -> wrote 0x00040000 read 0x00040000 ok
+W     0x0500003c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x05000030 mask 0xfffffdff val 0x00400000  -> wrote 0x00400000 read 0x00400000 ok
+W     0x05000034 = 0x003f00c0  -> wrote 0x003f00c0 read 0x003f00c0 ok
+M     0x05000040 mask 0xfffffffe val 0x00090480  -> wrote 0x00090480 read 0x00090480 ok
+M     0x05000044 mask 0xfffffffc val 0x00000020  -> wrote 0x00000020 read 0x00000020 ok
+W     0x0500031c = 0x0001c3f0  -> wrote 0x0001c3f0 read 0x0001c3f0 ok
+W     0x05000724 = 0x000000c0  -> wrote 0x000000c0 read 0x000000c0 ok
+W     0x05000470 = 0x00000c03  -> wrote 0x00000c03 read 0x00000c03 ok
+W     0x05000570 = 0x00000c03  -> wrote 0x00000c03 read 0x00000c03 ok
+M     0x0500013c mask 0xfff8c0c0 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x050007cc = 0x00000007  -> wrote 0x00000007 read 0x00000007 ok
+M     0x05000178 mask 0x7fff0000 val 0x60020000  -> wrote 0x60020000 read 0x60020000 ok
+M     0x050001b8 mask 0x7fff0000 val 0x60020000  -> wrote 0x60020000 read 0x60020000 ok
+W     0x050001c8 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000304 = 0x00003cff  -> wrote 0x00003cff read 0x00003cff ok
+W     0x05000308 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x05000228 mask 0xfff9ffff val 0x00004480  -> wrote 0x00004480 read 0x00004480 ok
+M     0x05000278 mask 0x7fff0000 val 0x60020000  -> wrote 0x60020000 read 0x60020000 ok
+M     0x050002b8 mask 0x7fff0000 val 0x60020000  -> wrote 0x60020000 read 0x60020000 ok
+W     0x05000310 = 0x00003cff  -> wrote 0x00003cff read 0x00003cff ok
+W     0x05000314 = 0x00003c11  -> wrote 0x00003c11 read 0x00003c11 ok
+W     0x0500073c = 0x00000c00  -> wrote 0x00000c00 read 0x00000c00 ok
+M     0x05000434 mask 0x80000000 val 0x80000000  -> wrote 0x80000000 read 0x80000000 ok
+M     0x05000534 mask 0x80000000 val 0x80000000  -> wrote 0x80000000 read 0x80000000 ok
+W     0x05000828 = 0x00018001  -> wrote 0x00018001 read 0x00018001 ok
+W     0x0500082c = 0x00010001  -> wrote 0x00010001 read 0x00010001 ok
+W     0x0500002c = 0x030303c3  -> wrote 0x030303c3 read 0x030303c3 ok
+W     0x05000870 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0500001c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000020 = 0x00000068  -> wrote 0x00000068 read 0x00000068 ok
+W     0x05000704 = 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+W     0x05000708 = 0x000000c0  -> wrote 0x000000c0 read 0x000000c0 ok
+W     0x050007d0 = 0x00000300  -> wrote 0x00000300 read 0x00000300 ok
+W     0x05000780 = 0x04000000  -> wrote 0x04000000 read 0x04000000 ok
+W     0x05000784 = 0x04000400  -> wrote 0x04000400 read 0x04000400 ok
+W     0x05000788 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0500078c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000790 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000794 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000798 = 0x04000000  -> wrote 0x04000000 read 0x04000000 ok
+W     0x0500079c = 0x04000400  -> wrote 0x04000400 read 0x04000400 ok
+M     0x05000628 mask 0x00000030 val 0x00000030  -> wrote 0x00000030 read 0x00000030 ok
+M     0x050009d4 mask 0x000000f0 val 0x000000c0  -> wrote 0x000000c0 read 0x000000c0 ok
+W     0x05000880 = 0x00010001  -> wrote 0x00010001 read 0x00010001 ok
+W     0x05000884 = 0x00010001  -> wrote 0x00010001 read 0x00010001 ok
+W     0x0500088c = 0x07800020  -> wrote 0x07800020 read 0x07800020 ok
+W     0x05000890 = 0x0438000c  -> wrote 0x0438000c read 0x0438000c ok
+W     0x050007d4 = 0x0000003f  -> wrote 0x0000003f read 0x0000003f ok
+W     0x050007dc = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x05001048 mask 0x00000008 val 0x00000008  -> wrote 0x24b00008 read 0x24b00008 ok
+# step table 0x2004 SYSTEM_INIT_SVP/INIT_VDEINT Only [switch init-tables] (40 §4.2-4.4; 10 §6.2 Q1 state; 91 O11)
+DELAY 200000 us
+FIRST DEI access: W     0x050c0000 = 0x70f80029
+W     0x050c0000 = 0x70f80029  -> wrote 0x70f80029 read 0x70f80029 ok
+W     0x050c0064 = 0x00001f00  -> wrote 0x00001f00 read 0x00001f00 ok
+W     0x050c0068 = 0x00040077  -> wrote 0x00040077 read 0x00040077 ok
+W     0x050c006c = 0x00050010  -> wrote 0x00050010 read 0x00050010 ok
+W     0x050c0070 = 0x00190440  -> wrote 0x00190440 read 0x00190440 ok
+W     0x050c0074 = 0x00300780  -> wrote 0x00300780 read 0x00300780 ok
+W     0x050c0040 = 0x03800016  -> wrote 0x03800016 read 0x03800016 ok
+W     0x050c0044 = 0x002e002e  -> wrote 0x002e002e read 0x002e002e ok
+W     0x050c0048 = 0x002e002c  -> wrote 0x002e002c read 0x002e002c ok
+W     0x050c004c = 0x0780002f  -> wrote 0x0780002f read 0x0780002f ok
+W     0x050c0050 = 0x00d40060  -> wrote 0x00d40060 read 0x00d40060 ok
+W     0x050c0054 = 0x90000000  -> wrote 0x90000000 read 0x90000000 ok
+W     0x050c0200 = 0x0303090f  -> wrote 0x0303090f read 0x0303090f ok
+W     0x050c0c90 = 0x00000078  -> wrote 0x00000078 read 0x00000078 ok
+M     0x050c0c94 mask 0x40ffffff val 0x00282804  -> wrote 0x00282804 read 0x00282804 ok
+W     0x050c0010 = 0x03ff00ff  -> wrote 0x03ff00ff read 0x03ff00ff ok
+W     0x050c0014 = 0x030000ff  -> wrote 0x030000ff read 0x030000ff ok
+M     0x050c000c mask 0x0000000f val 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050c0080 = 0x00000300  -> wrote 0x00000300 read 0x00000300 ok
+W     0x050c0084 = 0x01000100  -> wrote 0x01000100 read 0x01000100 ok
+W     0x050c0088 = 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+W     0x0500103c = 0x00000043  -> wrote 0x00000043 read 0x00000043 ok
+M     0x05001034 mask 0x00000003 val 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+M     0x05001038 mask 0x000000ff val 0x0000003c  -> wrote 0xc026003c read 0xc026003c ok
+W     0x050c0c98 = 0x0000635a  -> wrote 0x0000635a read 0x0000635a ok
+W     0x050c0c9c = 0x000c6316  -> wrote 0x000c6316 read 0x000c6316 ok
+W     0x050c0ca0 = 0x006400c8  -> wrote 0x006400c8 read 0x006400c8 ok
+# step table 0x1c003 FINAL/DBUS_MP_RST_PROJECTOR Only [switch init-tables] (40 §4.2-4.4; 10 §6.2 Q1 state; 91 O11)
+DELAY 200000 us
+M     0x050c0000 mask 0x00000020 val 0x00000000  -> wrote 0x70f80009 read 0x70f80009 ok
+M     0x05000020 mask 0x00000008 val 0x00000000  -> wrote 0x00000060 read 0x00000060 ok
+FIRST CAP access: M     0x06940400 mask 0x00000060 val 0x00000000
+M     0x06940400 mask 0x00000060 val 0x00000000  -> wrote 0x00000001 read 0x00000001 ok
+M     0x05140004 mask 0x80000000 val 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+M     0x051c0010 mask 0x02000000 val 0x02000000  -> wrote 0x06000075 read 0x06000075 ok
+M     0x050c0000 mask 0x00000020 val 0x00000020  -> wrote 0x70f80029 read 0x70f80029 ok
+M     0x05000020 mask 0x00000008 val 0x00000008  -> wrote 0x00000068 read 0x00000068 ok
+M     0x06940400 mask 0x00000060 val 0x00000060  -> wrote 0x00000061 read 0x00000061 ok
+M     0x05140004 mask 0x80000000 val 0x80000000  -> wrote 0x80000000 read 0x80000000 ok
+M     0x051c0010 mask 0x02000000 val 0x00000000  -> wrote 0x04000075 read 0x04000075 ok
+# step lock-totals [switch lock-totals] (10 §6.1, §6.2 Q1 state; 20 §6)
+DELAY 200000 us
+W     0x0514fe08 = 0x04640897  -> wrote 0x04640897 read 0x04640897 ok
+W     0x051cfe08 = 0x04640897  -> wrote 0x04640897 read 0x04640897 ok
+# step runtime-30-5 [switch runtime-30-5] (30 §5; 91 O5)
+W     0x051c0014 = 0x18000005  -> wrote 0x18000005 read 0x18000005 ok
+W     0x051c0028 = 0x1f300030  -> wrote 0x1f300030 read 0x1f300030 ok
+W     0x051c0034 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x051c0038 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x051c003c = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x051c0040 = 0x04380000  -> wrote 0x04380000 read 0x04380000 ok
+W     0x051c0050 = 0x00000038  -> wrote 0x00000038 read 0x00000038 ok
+W     0x051c00a4 = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x051c00a8 = 0x04380000  -> wrote 0x04380000 read 0x04380000 ok
+W     0x051c00b8 = 0x00000038  -> wrote 0x00000038 read 0x00000038 ok
+W     0x051c00bc = 0x078000a3  -> wrote 0x078000a3 read 0x078000a3 ok
+W     0x051c00c0 = 0x04380011  -> wrote 0x04380011 read 0x04380011 ok
+W     0x051c00c4 = 0xc0000000  -> wrote 0xc0000000 read 0xc0000000 ok
+M     0x051c00e8 mask 0xefffffff val 0x00f00000  -> wrote 0x00f00000 read 0x00f00000 ok
+W     0x051c0124 = 0x06000000  -> wrote 0x06000000 read 0x06000000 ok
+W     0x051c0128 = 0x00000780  -> wrote 0x00000780 read 0x00000780 ok
+W     0x051c012c = 0x00000438  -> wrote 0x00000438 read 0x00000438 ok
+W     0x051c0130 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x051c0138 = 0x08010000  -> wrote 0x08010000 read 0x08010000 ok
+W     0x051c0200 = 0x00402c48  -> wrote 0x00402c48 read 0x00402c48 ok
+W     0x051c0204 = 0x078000a5  -> wrote 0x078000a5 read 0x078000a5 ok
+W     0x05200000 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05200004 = 0x40210000  -> wrote 0x40210000 read 0x40210000 ok
+W     0x0520000c = 0x078000a4 (no compare)  -> wrote 0x078000a4 read 0x078000a4 ok
+W     0x05200010 = 0x04380011  -> wrote 0x04380011 read 0x04380011 ok
+W     0x05140010 = 0x0c000c80  -> wrote 0x0c000c80 read 0x0c000c80 ok
+W     0x05140018 = 0x0c000c00  -> wrote 0x0c000c00 read 0x0c000c00 ok
+W     0x0514011c = 0x04388002  -> wrote 0x04388002 read 0x04388002 ok
+W     0x0514fe0c = 0x0240042b  -> wrote 0x0240042b read 0x0240042b ok
+W     0x0514fe10 = 0x00898005  -> wrote 0x00898005 read 0x00898005 ok
+W     0x0514fe14 = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+# step dram-rest [switch dram-rest] (12; 10 §6.2, §6.3 (full set only))
+W     0x0514fe0c = 0x0240042b  -> wrote 0x0240042b read 0x0240042b ok
+W     0x0514fe10 = 0x00898005  -> wrote 0x00898005 read 0x00898005 ok
+W     0x0514fe14 = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x0514fe24 = 0x03e80000  -> wrote 0x03e80000 read 0x03e80000 ok
+W     0x0514fe2c = 0x04190a0a  -> wrote 0x04190a0a read 0x04190a0a ok
+W     0x0514fe30 = 0x10000104  -> wrote 0x10000104 read 0x10000104 ok
+W     0x0514fe34 = 0x00a008e1  -> wrote 0x00a008e1 read 0x00a008e1 ok
+W     0x0514fe38 = 0x006008b2  -> wrote 0x006008b2 read 0x006008b2 ok
+W     0x0514fe40 = 0x05a00000  -> wrote 0x05a00000 read 0x05a00000 ok
+W     0x0514fe48 = 0x04530465  -> wrote 0x04530465 read 0x04530465 ok
+W     0x051cfe00 = 0x00110449 (no compare)  -> wrote 0x00110449 read 0x00110449 ok
+W     0x051cfe04 = 0x00a40824 (no compare)  -> wrote 0x00a40824 read 0x00a40824 ok
+W     0x051cfe08 = 0x08c9112f  -> wrote 0x08c9112f read 0x08c9112f ok
+W     0x05140008 = 0x0c2030c0  -> wrote 0x0c2030c0 read 0x0c2030c0 ok
+W     0x0514000c = 0x000c0c00  -> wrote 0x000c0c00 read 0x000c0c00 ok
+W     0x05140010 = 0x0c000c80  -> wrote 0x0c000c80 read 0x0c000c80 ok
+W     0x05140014 = 0x0000c040  -> wrote 0x0000c040 read 0x0000c040 ok
+W     0x05140018 = 0x0c000c00  -> wrote 0x0c000c00 read 0x0c000c00 ok
+W     0x0514001c = 0x000000c0  -> wrote 0x000000c0 read 0x000000c0 ok
+W     0x05140020 = 0x00000406  -> wrote 0x00000406 read 0x00000406 ok
+W     0x05140024 = 0x00030c0c  -> wrote 0x00030c0c read 0x00030c0c ok
+W     0x05140028 = 0x0000000c  -> wrote 0x0000000c read 0x0000000c ok
+W     0x0514002c = 0x021c03c0  -> wrote 0x021c03c0 read 0x021c03c0 ok
+W     0x05140030 = 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+W     0x05140034 = 0xb0000040  -> wrote 0xb0000040 read 0xb0000040 ok
+W     0x0514003c = 0x00010001  -> wrote 0x00010001 read 0x00010001 ok
+W     0x05140040 = 0x00010001  -> wrote 0x00010001 read 0x00010001 ok
+W     0x05140044 = 0x00010001  -> wrote 0x00010001 read 0x00010001 ok
+W     0x05140048 = 0x00000001  -> wrote 0x00000001 read 0x00000001 ok
+W     0x05140054 = 0x00000080  -> wrote 0x00000080 read 0x00000080 ok
+W     0x05140100 = 0x03808080  -> wrote 0x03808080 read 0x03808080 ok
+W     0x05140104 = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x05140108 = 0x04380000  -> wrote 0x04380000 read 0x04380000 ok
+W     0x0514011c = 0x04388002  -> wrote 0x04388002 read 0x04388002 ok
+W     0x05140120 = 0x080c0800  -> wrote 0x080c0800 read 0x080c0800 ok
+W     0x05140124 = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x05140128 = 0x04380000  -> wrote 0x04380000 read 0x04380000 ok
+W     0x0514013c = 0x078a018b  -> wrote 0x078a018b read 0x078a018b ok
+W     0x05140140 = 0x08035800  -> wrote 0x08035800 read 0x08035800 ok
+W     0x05140144 = 0x08087008  -> wrote 0x08087008 read 0x08087008 ok
+W     0x05140148 = 0x00000438  -> wrote 0x00000438 read 0x00000438 ok
+W     0x0514014c = 0x00000780  -> wrote 0x00000780 read 0x00000780 ok
+W     0x05140150 = 0x000000b0  -> wrote 0x000000b0 read 0x000000b0 ok
+W     0x05140160 = 0x00000438  -> wrote 0x00000438 read 0x00000438 ok
+W     0x05140164 = 0x00000780  -> wrote 0x00000780 read 0x00000780 ok
+W     0x0514016c = 0x0000000a  -> wrote 0x0000000a read 0x0000000a ok
+W     0x05140170 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x05140174 = 0x00000200  -> wrote 0x00000200 read 0x00000200 ok
+W     0x0514017c = 0x0f430400  -> wrote 0x0f430400 read 0x0f430400 ok
+W     0x05140180 = 0x04000e2a  -> wrote 0x04000e2a read 0x04000e2a ok
+W     0x05140184 = 0x00000742  -> wrote 0x00000742 read 0x00000742 ok
+W     0x05140188 = 0x00000400  -> wrote 0x00000400 read 0x00000400 ok
+W     0x0514018c = 0x00000629  -> wrote 0x00000629 read 0x00000629 ok
+W     0x05140194 = 0x0000000b  -> wrote 0x0000000b read 0x0000000b ok
+W     0x051401a0 = 0x02000200  -> wrote 0x02000200 read 0x02000200 ok
+W     0x051401a4 = 0x009405b9  -> wrote 0x009405b9 read 0x009405b9 ok
+W     0x051401a8 = 0x0cd801b3  -> wrote 0x0cd801b3 read 0x0cd801b3 ok
+W     0x051401ac = 0x0f0f0417  -> wrote 0x0f0f0417 read 0x0f0f0417 ok
+W     0x051401b0 = 0x0f9f0c48  -> wrote 0x0f9f0c48 read 0x0f9f0c48 ok
+W     0x051401b4 = 0x00000417  -> wrote 0x00000417 read 0x00000417 ok
+W     0x051401c0 = 0x03c0021c  -> wrote 0x03c0021c read 0x03c0021c ok
+W     0x05140200 = 0x00400040  -> wrote 0x00400040 read 0x00400040 ok
+W     0x05140204 = 0x088a088a  -> wrote 0x088a088a read 0x088a088a ok
+W     0x05140208 = 0x0780088a  -> wrote 0x0780088a read 0x0780088a ok
+W     0x0514020c = 0x07800780  -> wrote 0x07800780 read 0x07800780 ok
+W     0x05140210 = 0x00001000  -> wrote 0x00001000 read 0x00001000 ok
+W     0x05140218 = 0x00001000  -> wrote 0x00001000 read 0x00001000 ok
+W     0x05140220 = 0x00001000  -> wrote 0x00001000 read 0x00001000 ok
+W     0x05140224 = 0x80480040  -> wrote 0x80480040 read 0x80480040 ok
+W     0x05140228 = 0x08700f00  -> wrote 0x08700f00 read 0x08700f00 ok
+W     0x0514025c = 0x08000800  -> wrote 0x08000800 read 0x08000800 ok
+W     0x05140260 = 0x00000800  -> wrote 0x00000800 read 0x00000800 ok
+W     0x05140264 = 0x01000280  -> wrote 0x01000280 read 0x01000280 ok
+W     0x05140268 = 0x00000080  -> wrote 0x00000080 read 0x00000080 ok
+W     0x0514026c = 0x02000133  -> wrote 0x02000133 read 0x02000133 ok
+W     0x05140270 = 0x013d0100  -> wrote 0x013d0100 read 0x013d0100 ok
+W     0x05140278 = 0x08000800  -> wrote 0x08000800 read 0x08000800 ok
+W     0x0514027c = 0x00000800  -> wrote 0x00000800 read 0x00000800 ok
+W     0x05140280 = 0x01000280  -> wrote 0x01000280 read 0x01000280 ok
+W     0x05140284 = 0x00000080  -> wrote 0x00000080 read 0x00000080 ok
+W     0x05140288 = 0x02000133  -> wrote 0x02000133 read 0x02000133 ok
+W     0x0514028c = 0x013d0100  -> wrote 0x013d0100 read 0x013d0100 ok
+W     0x051402d4 = 0x00040000  -> wrote 0x00040000 read 0x00040000 ok
+W     0x051402d8 = 0x800c0008  -> wrote 0x800c0008 read 0x800c0008 ok
+W     0x051402dc = 0x0000000e  -> wrote 0x0000000e read 0x0000000e ok
+W     0x051402e0 = 0x00000040  -> wrote 0x00000040 read 0x00000040 ok
+W     0x051402e4 = 0x0000009c  -> wrote 0x0000009c read 0x0000009c ok
+W     0x051402e8 = 0x00000126  -> wrote 0x00000126 read 0x00000126 ok
+W     0x051402ec = 0x000001e1  -> wrote 0x000001e1 read 0x000001e1 ok
+W     0x051402f0 = 0x000002ce  -> wrote 0x000002ce read 0x000002ce ok
+W     0x051402f4 = 0x000003f0  -> wrote 0x000003f0 read 0x000003f0 ok
+W     0x051402f8 = 0x00000548  -> wrote 0x00000548 read 0x00000548 ok
+W     0x051402fc = 0x000006d8  -> wrote 0x000006d8 read 0x000006d8 ok
+W     0x05140300 = 0x62632161  -> wrote 0x62632161 read 0x62632161 ok
+W     0x05140304 = 0xa2727270  -> wrote 0xa2727270 read 0xa2727270 ok
+W     0x0514030c = 0x3e004c61  -> wrote 0x3e004c61 read 0x3e004c61 ok
+W     0x05140310 = 0x36000000  -> wrote 0x36000000 read 0x36000000 ok
+W     0x05140314 = 0xff0055ff  -> wrote 0xff0055ff read 0xff0055ff ok
+W     0x05140318 = 0x0055ff00  -> wrote 0x0055ff00 read 0x0055ff00 ok
+W     0x0514031c = 0x55ff0055  -> wrote 0x55ff0055 read 0x55ff0055 ok
+W     0x05140320 = 0xff0055ff  -> wrote 0xff0055ff read 0xff0055ff ok
+W     0x05140324 = 0x00550055  -> wrote 0x00550055 read 0x00550055 ok
+W     0x05140328 = 0x842a0153  -> wrote 0x842a0153 read 0x842a0153 ok
+W     0x0514032c = 0x18000000  -> wrote 0x18000000 read 0x18000000 ok
+W     0x05140330 = 0xff0055ff  -> wrote 0xff0055ff read 0xff0055ff ok
+W     0x05140334 = 0x0055ff00  -> wrote 0x0055ff00 read 0x0055ff00 ok
+W     0x05140338 = 0x55ff0055  -> wrote 0x55ff0055 read 0x55ff0055 ok
+W     0x0514033c = 0xff0055ff  -> wrote 0xff0055ff read 0xff0055ff ok
+W     0x05140340 = 0x3c383515  -> wrote 0x3c383515 read 0x3c383515 ok
+W     0x05140344 = 0x60000000  -> wrote 0x60000000 read 0x60000000 ok
+W     0x05140348 = 0xff0055ff  -> wrote 0xff0055ff read 0xff0055ff ok
+W     0x0514034c = 0x0055ff00  -> wrote 0x0055ff00 read 0x0055ff00 ok
+W     0x05140350 = 0x55ff0055  -> wrote 0x55ff0055 read 0x55ff0055 ok
+W     0x05140354 = 0xff0055ff  -> wrote 0xff0055ff read 0xff0055ff ok
+W     0x05140358 = 0x00550807  -> wrote 0x00550807 read 0x00550807 ok
+W     0x0514035c = 0x3d0011e2  -> wrote 0x3d0011e2 read 0x3d0011e2 ok
+W     0x05140360 = 0x60000000  -> wrote 0x60000000 read 0x60000000 ok
+W     0x05140364 = 0xff0055ff  -> wrote 0xff0055ff read 0xff0055ff ok
+W     0x05140368 = 0x0055ff00  -> wrote 0x0055ff00 read 0x0055ff00 ok
+W     0x0514036c = 0x00ff0055  -> wrote 0x00ff0055 read 0x00ff0055 ok
+W     0x05140370 = 0xff0255ff  -> wrote 0xff0255ff read 0xff0255ff ok
+W     0x05140374 = 0x2f005a20  -> wrote 0x2f005a20 read 0x2f005a20 ok
+W     0x05140378 = 0x0a000000  -> wrote 0x0a000000 read 0x0a000000 ok
+W     0x0514037c = 0xff0066ff  -> wrote 0xff0066ff read 0xff0066ff ok
+W     0x05140380 = 0x0055ff00  -> wrote 0x0055ff00 read 0x0055ff00 ok
+W     0x05140384 = 0x55ff0055  -> wrote 0x55ff0055 read 0x55ff0055 ok
+W     0x05140388 = 0xff0055ff  -> wrote 0xff0055ff read 0xff0055ff ok
+W     0x0514038c = 0x00550866  -> wrote 0x00550866 read 0x00550866 ok
+W     0x05140390 = 0x47040ac4  -> wrote 0x47040ac4 read 0x47040ac4 ok
+W     0x05140394 = 0x1c000000  -> wrote 0x1c000000 read 0x1c000000 ok
+W     0x05140398 = 0xff0065ff  -> wrote 0xff0065ff read 0xff0065ff ok
+W     0x0514039c = 0x0066ff00  -> wrote 0x0066ff00 read 0x0066ff00 ok
+W     0x051403a0 = 0x66ff0266  -> wrote 0x66ff0266 read 0x66ff0266 ok
+W     0x051403a4 = 0xff0266ff  -> wrote 0xff0266ff read 0xff0266ff ok
+W     0x051403a8 = 0x4d000000  -> wrote 0x4d000000 read 0x4d000000 ok
+W     0x051403ac = 0x1f000000  -> wrote 0x1f000000 read 0x1f000000 ok
+W     0x051403c4 = 0x44005760  -> wrote 0x44005760 read 0x44005760 ok
+W     0x051403c8 = 0x1f000000  -> wrote 0x1f000000 read 0x1f000000 ok
+W     0x051403e0 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x05140448 = 0xc0808080  -> wrote 0xc0808080 read 0xc0808080 ok
+W     0x0514044c = 0x04020810  -> wrote 0x04020810 read 0x04020810 ok
+W     0x05140450 = 0x0808481f  -> wrote 0x0808481f read 0x0808481f ok
+W     0x05140454 = 0x008080f0  -> wrote 0x008080f0 read 0x008080f0 ok
+W     0x0514045c = 0x08000fff  -> wrote 0x08000fff read 0x08000fff ok
+W     0x05140480 = 0x00009400  -> wrote 0x00009400 read 0x00009400 ok
+W     0x05140484 = 0xc0000000  -> wrote 0xc0000000 read 0xc0000000 ok
+W     0x05140488 = 0x01b603ef  -> wrote 0x01b603ef read 0x01b603ef ok
+W     0x0514048c = 0x03f6018f  -> wrote 0x03f6018f read 0x03f6018f ok
+W     0x05140490 = 0x006600c4  -> wrote 0x006600c4 read 0x006600c4 ok
+W     0x05140494 = 0x02ee08a2  -> wrote 0x02ee08a2 read 0x02ee08a2 ok
+W     0x05140498 = 0x8d070753  -> wrote 0x8d070753 read 0x8d070753 ok
+W     0x0514049c = 0x03670b71  -> wrote 0x03670b71 read 0x03670b71 ok
+W     0x051404a0 = 0x012801e0  -> wrote 0x012801e0 read 0x012801e0 ok
+W     0x051404a4 = 0x064f082f  -> wrote 0x064f082f read 0x064f082f ok
+W     0x051404a8 = 0x02f0076f  -> wrote 0x02f0076f read 0x02f0076f ok
+W     0x051404ac = 0x00c00000  -> wrote 0x00c00000 read 0x00c00000 ok
+W     0x05140504 = 0x00060008  -> wrote 0x00060008 read 0x00060008 ok
+W     0x05140508 = 0x04400000  -> wrote 0x04400000 read 0x04400000 ok
+W     0x0514050c = 0x02000031  -> wrote 0x02000031 read 0x02000031 ok
+W     0x05140518 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05140520 = 0x0fff0fff  -> wrote 0x0fff0fff read 0x0fff0fff ok
+W     0x05140528 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05140530 = 0x03c00438  -> wrote 0x03c00438 read 0x03c00438 ok
+W     0x0514053c = 0x010000ff  -> wrote 0x010000ff read 0x010000ff ok
+W     0x05140540 = 0xd4146088  -> wrote 0xd4146088 read 0xd4146088 ok
+W     0x05140544 = 0x00000001  -> wrote 0x00000001 read 0x00000001 ok
+W     0x05140548 = 0x00002020  -> wrote 0x00002020 read 0x00002020 ok
+W     0x05140550 = 0x10331033  -> wrote 0x10331033 read 0x10331033 ok
+W     0x05140554 = 0x9158ff00  -> wrote 0x9158ff00 read 0x9158ff00 ok
+W     0x05140558 = 0x00006600  -> wrote 0x00006600 read 0x00006600 ok
+W     0x05140564 = 0x00029204  -> wrote 0x00029204 read 0x00029204 ok
+W     0x05140568 = 0x80802001  -> wrote 0x80802001 read 0x80802001 ok
+W     0x0514056c = 0x20181008  -> wrote 0x20181008 read 0x20181008 ok
+W     0x05140570 = 0x40383028  -> wrote 0x40383028 read 0x40383028 ok
+W     0x05140574 = 0x60585048  -> wrote 0x60585048 read 0x60585048 ok
+W     0x05140578 = 0x80787068  -> wrote 0x80787068 read 0x80787068 ok
+W     0x0514057c = 0x06010020  -> wrote 0x06010020 read 0x06010020 ok
+W     0x05140580 = 0x0300a020  -> wrote 0x0300a020 read 0x0300a020 ok
+W     0x05140584 = 0x0120400e  -> wrote 0x0120400e read 0x0120400e ok
+W     0x05140588 = 0xa0601605  -> wrote 0xa0601605 read 0xa0601605 ok
+W     0x0514058c = 0x801e0701  -> wrote 0x801e0701 read 0x801e0701 ok
+W     0x05140590 = 0xa0989088  -> wrote 0xa0989088 read 0xa0989088 ok
+W     0x05140594 = 0xc0b8b0a8  -> wrote 0xc0b8b0a8 read 0xc0b8b0a8 ok
+W     0x05140598 = 0xe0d8d0c8  -> wrote 0xe0d8d0c8 read 0xe0d8d0c8 ok
+W     0x0514059c = 0xfff8f0e8  -> wrote 0xfff8f0e8 read 0xfff8f0e8 ok
+W     0x051405a0 = 0x26090220  -> wrote 0x26090220 read 0x26090220 ok
+W     0x051405a4 = 0x0b02a0a0  -> wrote 0x0b02a0a0 read 0x0b02a0a0 ok
+W     0x051405a8 = 0x0320c02e  -> wrote 0x0320c02e read 0x0320c02e ok
+W     0x051405ac = 0xa0e0360d  -> wrote 0xa0e0360d read 0xa0e0360d ok
+W     0x051405b0 = 0xfffe0f03  -> wrote 0xfffe0f03 read 0xfffe0f03 ok
+W     0x051405b4 = 0x80000000  -> wrote 0x80000000 read 0x80000000 ok
+W     0x051405b8 = 0x02000003  -> wrote 0x02000003 read 0x02000003 ok
+W     0x051405bc = 0x00006480  -> wrote 0x00006480 read 0x00006480 ok
+W     0x051405c0 = 0x80000000  -> wrote 0x80000000 read 0x80000000 ok
+W     0x051405c4 = 0xff010000  -> wrote 0xff010000 read 0xff010000 ok
+W     0x05140800 = 0x000008a1  -> wrote 0x000008a1 read 0x000008a1 ok
+W     0x05140804 = 0x00000aa5  -> wrote 0x00000aa5 read 0x00000aa5 ok
+W     0x05140808 = 0x00000ce4  -> wrote 0x00000ce4 read 0x00000ce4 ok
+W     0x0514080c = 0x00000f5f  -> wrote 0x00000f5f read 0x00000f5f ok
+W     0x05140810 = 0x00001218  -> wrote 0x00001218 read 0x00001218 ok
+W     0x05140814 = 0x0000150f  -> wrote 0x0000150f read 0x0000150f ok
+W     0x05140818 = 0x00001845  -> wrote 0x00001845 read 0x00001845 ok
+W     0x0514081c = 0x00001bbc  -> wrote 0x00001bbc read 0x00001bbc ok
+W     0x05140820 = 0x00001f73  -> wrote 0x00001f73 read 0x00001f73 ok
+W     0x05140824 = 0x0000236c  -> wrote 0x0000236c read 0x0000236c ok
+W     0x05140828 = 0x000027a8  -> wrote 0x000027a8 read 0x000027a8 ok
+W     0x0514082c = 0x00002c26  -> wrote 0x00002c26 read 0x00002c26 ok
+W     0x05140830 = 0x000030e8  -> wrote 0x000030e8 read 0x000030e8 ok
+W     0x05140834 = 0x000035ee  -> wrote 0x000035ee read 0x000035ee ok
+W     0x05140838 = 0x00003b39  -> wrote 0x00003b39 read 0x00003b39 ok
+W     0x0514083c = 0x000040ca  -> wrote 0x000040ca read 0x000040ca ok
+W     0x05140840 = 0x000046a0  -> wrote 0x000046a0 read 0x000046a0 ok
+W     0x05140844 = 0x00004cbe  -> wrote 0x00004cbe read 0x00004cbe ok
+W     0x05140848 = 0x00005322  -> wrote 0x00005322 read 0x00005322 ok
+W     0x0514084c = 0x000059ce  -> wrote 0x000059ce read 0x000059ce ok
+W     0x05140850 = 0x000060c2  -> wrote 0x000060c2 read 0x000060c2 ok
+W     0x05140854 = 0x000067ff  -> wrote 0x000067ff read 0x000067ff ok
+W     0x05140858 = 0x00006f85  -> wrote 0x00006f85 read 0x00006f85 ok
+W     0x0514085c = 0x00007755  -> wrote 0x00007755 read 0x00007755 ok
+W     0x05140860 = 0x00007f6f  -> wrote 0x00007f6f read 0x00007f6f ok
+W     0x05140864 = 0x000087d3  -> wrote 0x000087d3 read 0x000087d3 ok
+W     0x05140868 = 0x00009082  -> wrote 0x00009082 read 0x00009082 ok
+W     0x0514086c = 0x0000997c  -> wrote 0x0000997c read 0x0000997c ok
+W     0x05140870 = 0x0000a2c3  -> wrote 0x0000a2c3 read 0x0000a2c3 ok
+W     0x05140874 = 0x0000ac55  -> wrote 0x0000ac55 read 0x0000ac55 ok
+W     0x05140878 = 0x0000b634  -> wrote 0x0000b634 read 0x0000b634 ok
+W     0x0514087c = 0x0000c060  -> wrote 0x0000c060 read 0x0000c060 ok
+W     0x05140880 = 0x0000cad9  -> wrote 0x0000cad9 read 0x0000cad9 ok
+W     0x05140884 = 0x0000d5a0  -> wrote 0x0000d5a0 read 0x0000d5a0 ok
+W     0x05140888 = 0x0000e0b6  -> wrote 0x0000e0b6 read 0x0000e0b6 ok
+W     0x0514088c = 0x0000ec19  -> wrote 0x0000ec19 read 0x0000ec19 ok
+W     0x05140890 = 0x0000f7cc  -> wrote 0x0000f7cc read 0x0000f7cc ok
+W     0x05140894 = 0x000103cd  -> wrote 0x000103cd read 0x000103cd ok
+W     0x05140898 = 0x0001101e  -> wrote 0x0001101e read 0x0001101e ok
+W     0x0514089c = 0x00011cbf  -> wrote 0x00011cbf read 0x00011cbf ok
+W     0x051408a0 = 0x000129b0  -> wrote 0x000129b0 read 0x000129b0 ok
+W     0x051408a4 = 0x000136f1  -> wrote 0x000136f1 read 0x000136f1 ok
+W     0x051408a8 = 0x00014483  -> wrote 0x00014483 read 0x00014483 ok
+W     0x051408ac = 0x00015267  -> wrote 0x00015267 read 0x00015267 ok
+W     0x051408b0 = 0x0001609c  -> wrote 0x0001609c read 0x0001609c ok
+W     0x051408b4 = 0x00016f22  -> wrote 0x00016f22 read 0x00016f22 ok
+W     0x051408b8 = 0x00017dfa  -> wrote 0x00017dfa read 0x00017dfa ok
+W     0x051408bc = 0x00018d25  -> wrote 0x00018d25 read 0x00018d25 ok
+W     0x051408c0 = 0x00019ca3  -> wrote 0x00019ca3 read 0x00019ca3 ok
+W     0x051408c4 = 0x0001ac73  -> wrote 0x0001ac73 read 0x0001ac73 ok
+W     0x051408c8 = 0x0001bc97  -> wrote 0x0001bc97 read 0x0001bc97 ok
+W     0x051408cc = 0x0001cd0e  -> wrote 0x0001cd0e read 0x0001cd0e ok
+W     0x051408d0 = 0x0001ddd8  -> wrote 0x0001ddd8 read 0x0001ddd8 ok
+W     0x051408d4 = 0x0001eef7  -> wrote 0x0001eef7 read 0x0001eef7 ok
+W     0x051408d8 = 0x0001ffff  -> wrote 0x0001ffff read 0x0001ffff ok
+W     0x051408dc = 0x0001ffff  -> wrote 0x0001ffff read 0x0001ffff ok
+W     0x05140a94 = 0x00100008  -> wrote 0x00100008 read 0x00100008 ok
+W     0x05140a98 = 0x00200018  -> wrote 0x00200018 read 0x00200018 ok
+W     0x05140a9c = 0x00300028  -> wrote 0x00300028 read 0x00300028 ok
+W     0x05140aa0 = 0x00400038  -> wrote 0x00400038 read 0x00400038 ok
+W     0x05140aa4 = 0x004b0048  -> wrote 0x004b0048 read 0x004b0048 ok
+W     0x05140aa8 = 0x0052004f  -> wrote 0x0052004f read 0x0052004f ok
+W     0x05140aac = 0x00580055  -> wrote 0x00580055 read 0x00580055 ok
+W     0x05140ab0 = 0x005d005b  -> wrote 0x005d005b read 0x005d005b ok
+W     0x05140ab4 = 0x00400060  -> wrote 0x00400060 read 0x00400060 ok
+W     0x05140ab8 = 0x0070005d  -> wrote 0x0070005d read 0x0070005d ok
+W     0x05140abc = 0x008e0080  -> wrote 0x008e0080 read 0x008e0080 ok
+W     0x05140ac0 = 0x00a5009a  -> wrote 0x00a5009a read 0x00a5009a ok
+W     0x05140ac4 = 0x00b900af  -> wrote 0x00b900af read 0x00b900af ok
+W     0x05140ac8 = 0x00cb00c2  -> wrote 0x00cb00c2 read 0x00cb00c2 ok
+W     0x05140acc = 0x00da00d3  -> wrote 0x00da00d3 read 0x00da00d3 ok
+W     0x05140ad0 = 0x00e900e2  -> wrote 0x00e900e2 read 0x00e900e2 ok
+W     0x05140ad4 = 0x00f700f0  -> wrote 0x00f700f0 read 0x00f700f0 ok
+W     0x05140ad8 = 0x00f000af  -> wrote 0x00f000af read 0x00f000af ok
+W     0x05140adc = 0x01490121  -> wrote 0x01490121 read 0x01490121 ok
+W     0x05140ae0 = 0x018c016c  -> wrote 0x018c016c read 0x018c016c ok
+W     0x05140ae4 = 0x01c301a8  -> wrote 0x01c301a8 read 0x01c301a8 ok
+W     0x05140ae8 = 0x01f301dc  -> wrote 0x01f301dc read 0x01f301dc ok
+W     0x05140aec = 0x021e0209  -> wrote 0x021e0209 read 0x021e0209 ok
+W     0x05140af0 = 0x02460232  -> wrote 0x02460232 read 0x02460232 ok
+W     0x05140af4 = 0x026a0258  -> wrote 0x026a0258 read 0x026a0258 ok
+W     0x05140af8 = 0x01c3027b  -> wrote 0x01c3027b read 0x01c3027b ok
+W     0x05140afc = 0x02e7026a  -> wrote 0x02e7026a read 0x02e7026a ok
+W     0x05140b00 = 0x03a9034f  -> wrote 0x03a9034f read 0x03a9034f ok
+W     0x05140b04 = 0x044403fa  -> wrote 0x044403fa read 0x044403fa ok
+W     0x05140b08 = 0x04c80488  -> wrote 0x04c80488 read 0x04c80488 ok
+W     0x05140b0c = 0x053d0504  -> wrote 0x053d0504 read 0x053d0504 ok
+W     0x05140b10 = 0x05a70573  -> wrote 0x05a70573 read 0x05a70573 ok
+W     0x05140b14 = 0x060805d8  -> wrote 0x060805d8 read 0x060805d8 ok
+W     0x05140b18 = 0x06620636  -> wrote 0x06620636 read 0x06620636 ok
+W     0x05140b1c = 0x06360488  -> wrote 0x06360488 read 0x06360488 ok
+W     0x05140b20 = 0x08830778  -> wrote 0x08830778 read 0x08830778 ok
+W     0x05140b24 = 0x0a3c096c  -> wrote 0x0a3c096c read 0x0a3c096c ok
+W     0x05140b28 = 0x0baa0afa  -> wrote 0x0baa0afa read 0x0baa0afa ok
+W     0x05140b2c = 0x0ce90c4e  -> wrote 0x0ce90c4e read 0x0ce90c4e ok
+W     0x05140b30 = 0x0e060d7b  -> wrote 0x0e060d7b read 0x0e060d7b ok
+W     0x05140b34 = 0x0f0b0e8b  -> wrote 0x0f0b0e8b read 0x0f0b0e8b ok
+W     0x05140b38 = 0x0ffc0f85  -> wrote 0x0ffc0f85 read 0x0ffc0f85 ok
+W     0x05140b3c = 0x0baa0fff  -> wrote 0x0baa0fff read 0x0baa0fff ok
+W     0x05140b40 = 0x0fff0ffc  -> wrote 0x0fff0ffc read 0x0fff0ffc ok
+W     0x05140b44 = 0x0fff0fff  -> wrote 0x0fff0fff read 0x0fff0fff ok
+W     0x05140b48 = 0x0fff0fff  -> wrote 0x0fff0fff read 0x0fff0fff ok
+W     0x05140b4c = 0x0fff0fff  -> wrote 0x0fff0fff read 0x0fff0fff ok
+W     0x05140b50 = 0x0fff0fff  -> wrote 0x0fff0fff read 0x0fff0fff ok
+W     0x05140b54 = 0x0fff0fff  -> wrote 0x0fff0fff read 0x0fff0fff ok
+W     0x05140b58 = 0x0fff0fff  -> wrote 0x0fff0fff read 0x0fff0fff ok
+W     0x05140b5c = 0x0fff0fff  -> wrote 0x0fff0fff read 0x0fff0fff ok
+W     0x05140c00 = 0x19323c99  -> wrote 0x19323c99 read 0x19323c99 ok
+W     0x05140c04 = 0x03033219  -> wrote 0x03033219 read 0x03033219 ok
+W     0x05140c08 = 0x3c990303  -> wrote 0x3c990303 read 0x3c990303 ok
+W     0x05140c0c = 0x03641002  -> wrote 0x03641002 read 0x03641002 ok
+W     0x05140c10 = 0x000c0a08  -> wrote 0x000c0a08 read 0x000c0a08 ok
+W     0x05140c14 = 0x080c0808  -> wrote 0x080c0808 read 0x080c0808 ok
+W     0x05140c18 = 0x0a000808  -> wrote 0x0a000808 read 0x0a000808 ok
+W     0x05140c1c = 0x08080808  -> wrote 0x08080808 read 0x08080808 ok
+W     0x05140c20 = 0x08080800  -> wrote 0x08080800 read 0x08080800 ok
+W     0x05140c24 = 0x08400060  -> wrote 0x08400060 read 0x08400060 ok
+W     0x05140c28 = 0x40800610  -> wrote 0x40800610 read 0x40800610 ok
+W     0x05140c2c = 0x00088088  -> wrote 0x00088088 read 0x00088088 ok
+W     0x05140c30 = 0x08088040  -> wrote 0x08088040 read 0x08088040 ok
+W     0x05140c34 = 0x00620a3a  -> wrote 0x00620a3a read 0x00620a3a ok
+W     0x05140c38 = 0x0314b000  -> wrote 0x0314b000 read 0x0314b000 ok
+W     0x05140c3c = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05140c40 = 0x08207f18  -> wrote 0x08207f18 read 0x08207f18 ok
+W     0x05140c44 = 0x0f140081  -> wrote 0x0f140081 read 0x0f140081 ok
+W     0x05140c48 = 0x81100880  -> wrote 0x81100880 read 0x81100880 ok
+W     0x05140c4c = 0x80780855  -> wrote 0x80780855 read 0x80780855 ok
+W     0x05140c50 = 0x208c5ac0  -> wrote 0x208c5ac0 read 0x208c5ac0 ok
+W     0x05140c54 = 0x40200000  -> wrote 0x40200000 read 0x40200000 ok
+W     0x05140c58 = 0x298034c9  -> wrote 0x298034c9 read 0x298034c9 ok
+W     0x05140c5c = 0x00ff3055  -> wrote 0x00ff3055 read 0x00ff3055 ok
+W     0x05140c60 = 0x90ff2055  -> wrote 0x90ff2055 read 0x90ff2055 ok
+W     0x05140c88 = 0x19326699  -> wrote 0x19326699 read 0x19326699 ok
+W     0x05140c90 = 0x9100eb10  -> wrote 0x9100eb10 read 0x9100eb10 ok
+W     0x05140c94 = 0x002cff20  -> wrote 0x002cff20 read 0x002cff20 ok
+W     0x05140c98 = 0x80540159  -> wrote 0x80540159 read 0x80540159 ok
+W     0x05140c9c = 0x01b503ef  -> wrote 0x01b503ef read 0x01b503ef ok
+W     0x05140ca0 = 0x03f6018f  -> wrote 0x03f6018f read 0x03f6018f ok
+W     0x05140ca4 = 0x006700c4  -> wrote 0x006700c4 read 0x006700c4 ok
+W     0x05140cc0 = 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+W     0x05140cc4 = 0x00000408  -> wrote 0x00000408 read 0x00000408 ok
+W     0x05140cc8 = 0x00083c30  -> wrote 0x00083c30 read 0x00083c30 ok
+W     0x05140ccc = 0x10080000  -> wrote 0x10080000 read 0x10080000 ok
+W     0x05140cd0 = 0x00008080  -> wrote 0x00008080 read 0x00008080 ok
+W     0x05140cd4 = 0x00082040  -> wrote 0x00082040 read 0x00082040 ok
+W     0x05140cd8 = 0x000000c0  -> wrote 0x000000c0 read 0x000000c0 ok
+W     0x05140cdc = 0x00000008  -> wrote 0x00000008 read 0x00000008 ok
+W     0x05140ce0 = 0x10808040  -> wrote 0x10808040 read 0x10808040 ok
+W     0x05140d00 = 0x66000000  -> wrote 0x66000000 read 0x66000000 ok
+W     0x05140d10 = 0x01000000  -> wrote 0x01000000 read 0x01000000 ok
+W     0x05140d14 = 0xfb06fe01  -> wrote 0xfb06fe01 read 0xfb06fe01 ok
+W     0x05140d18 = 0x0601f9ff  -> wrote 0x0601f9ff read 0x0601f9ff ok
+W     0x05140d1c = 0xc0004000  -> wrote 0xc0004000 read 0xc0004000 ok
+W     0x05140d20 = 0x03a10000  -> wrote 0x03a10000 read 0x03a10000 ok
+W     0x05140d24 = 0x0f160200  -> wrote 0x0f160200 read 0x0f160200 ok
+W     0x05140d28 = 0x02000fa2  -> wrote 0x02000fa2 read 0x02000fa2 ok
+W     0x05140d2c = 0x00000314  -> wrote 0x00000314 read 0x00000314 ok
+W     0x05140d30 = 0x00000200  -> wrote 0x00000200 read 0x00000200 ok
+W     0x05140d34 = 0x0d8c0d8c  -> wrote 0x0d8c0d8c read 0x0d8c0d8c ok
+W     0x05140d38 = 0x00400d8c  -> wrote 0x00400d8c read 0x00400d8c ok
+W     0x05140d3c = 0x03ff0000  -> wrote 0x03ff0000 read 0x03ff0000 ok
+W     0x05140d40 = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x05140d44 = 0x04380000  -> wrote 0x04380000 read 0x04380000 ok
+W     0x05180000 = 0x0f008000  -> wrote 0x0f008000 read 0x0f008000 ok
+W     0x05180004 = 0x00100f00  -> wrote 0x00100f00 read 0x00100f00 ok
+W     0x05180008 = 0x43010000  -> wrote 0x43010000 read 0x43010000 ok
+W     0x05180014 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x05180020 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x0518002c = 0x00a80780  -> wrote 0x00a80780 read 0x00a80780 ok
+W     0x05180030 = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180034 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05180038 = 0x00100000  -> wrote 0x00100000 read 0x00100000 ok
+W     0x0518003c = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x05180040 = 0xc0000780  -> wrote 0xc0000780 read 0xc0000780 ok
+W     0x05180044 = 0x000000a4  -> wrote 0x000000a4 read 0x000000a4 ok
+W     0x05180050 = 0x00160438  -> wrote 0x00160438 read 0x00160438 ok
+W     0x05180100 = 0x0f008000  -> wrote 0x0f008000 read 0x0f008000 ok
+W     0x05180104 = 0x00100f00  -> wrote 0x00100f00 read 0x00100f00 ok
+W     0x05180108 = 0x43010000  -> wrote 0x43010000 read 0x43010000 ok
+W     0x05180114 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x05180120 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x0518012c = 0x00a80780  -> wrote 0x00a80780 read 0x00a80780 ok
+W     0x05180130 = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180134 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05180138 = 0x00100000  -> wrote 0x00100000 read 0x00100000 ok
+W     0x0518013c = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x05180140 = 0xc0000780  -> wrote 0xc0000780 read 0xc0000780 ok
+W     0x05180144 = 0x000000a4  -> wrote 0x000000a4 read 0x000000a4 ok
+W     0x05180150 = 0x00160438  -> wrote 0x00160438 read 0x00160438 ok
+W     0x05180200 = 0x0f008000  -> wrote 0x0f008000 read 0x0f008000 ok
+W     0x05180204 = 0x00100f00  -> wrote 0x00100f00 read 0x00100f00 ok
+W     0x05180208 = 0x43010000  -> wrote 0x43010000 read 0x43010000 ok
+W     0x05180214 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x05180220 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x0518022c = 0x00a80780  -> wrote 0x00a80780 read 0x00a80780 ok
+W     0x05180230 = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180234 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05180238 = 0x00100000  -> wrote 0x00100000 read 0x00100000 ok
+W     0x0518023c = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x05180240 = 0xc0000780  -> wrote 0xc0000780 read 0xc0000780 ok
+W     0x05180244 = 0x000000a4  -> wrote 0x000000a4 read 0x000000a4 ok
+W     0x05180250 = 0x00160438  -> wrote 0x00160438 read 0x00160438 ok
+W     0x05180300 = 0x0f008000  -> wrote 0x0f008000 read 0x0f008000 ok
+W     0x05180304 = 0x00100f00  -> wrote 0x00100f00 read 0x00100f00 ok
+W     0x05180308 = 0x43010000  -> wrote 0x43010000 read 0x43010000 ok
+W     0x05180314 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x05180320 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x0518032c = 0x00a80780  -> wrote 0x00a80780 read 0x00a80780 ok
+W     0x05180330 = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180334 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05180338 = 0x00100000  -> wrote 0x00100000 read 0x00100000 ok
+W     0x0518033c = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x05180340 = 0xc0000780  -> wrote 0xc0000780 read 0xc0000780 ok
+W     0x05180344 = 0x000000a4  -> wrote 0x000000a4 read 0x000000a4 ok
+W     0x05180350 = 0x00160438  -> wrote 0x00160438 read 0x00160438 ok
+W     0x050c000c = 0xfe000115  -> wrote 0xfe000115 read 0xfe000115 ok
+W     0x050c0018 = 0x80000501  -> wrote 0x80000501 read 0x80000501 ok
+W     0x050c0034 = 0x00030000  -> wrote 0x00030000 read 0x00030000 ok
+W     0x050c0038 = 0x00010001  -> wrote 0x00010001 read 0x00010001 ok
+W     0x050c003c = 0x00010001  -> wrote 0x00010001 read 0x00010001 ok
+W     0x050c0040 = 0x01e0000e  -> wrote 0x01e0000e read 0x01e0000e ok
+W     0x050c0044 = 0x00a200a2  -> wrote 0x00a200a2 read 0x00a200a2 ok
+W     0x050c0048 = 0x00a200a0  -> wrote 0x00a200a0 read 0x00a200a0 ok
+W     0x050c004c = 0x02d000a3  -> wrote 0x02d000a3 read 0x02d000a3 ok
+W     0x050c0060 = 0x00000300  -> wrote 0x00000300 read 0x00000300 ok
+W     0x050c006c = 0x00060010  -> wrote 0x00060010 read 0x00060010 ok
+W     0x050c0070 = 0x00110438  -> wrote 0x00110438 read 0x00110438 ok
+W     0x050c0074 = 0x00a402d0  -> wrote 0x00a402d0 read 0x00a402d0 ok
+W     0x050c0200 = 0x0303090c  -> wrote 0x0303090c read 0x0303090c ok
+W     0x050c0240 = 0xad250084  -> wrote 0xad250084 read 0xad250084 ok
+W     0x050c0244 = 0xa084e500  -> wrote 0xa084e500 read 0xa084e500 ok
+W     0x050c0248 = 0x8d002042  -> wrote 0x8d002042 read 0x8d002042 ok
+W     0x050c024c = 0x2002588c  -> wrote 0x2002588c read 0x2002588c ok
+W     0x050c0250 = 0x028220f7  -> wrote 0x028220f7 read 0x028220f7 ok
+W     0x050c0254 = 0x00005038  -> wrote 0x00005038 read 0x00005038 ok
+W     0x050c0258 = 0x00a100d3  -> wrote 0x00a100d3 read 0x00a100d3 ok
+W     0x050c025c = 0x10a3c0d3  -> wrote 0x10a3c0d3 read 0x10a3c0d3 ok
+W     0x050c0260 = 0x01810302  -> wrote 0x01810302 read 0x01810302 ok
+W     0x050c0264 = 0x44004040  -> wrote 0x44004040 read 0x44004040 ok
+W     0x050c0268 = 0x00103810  -> wrote 0x00103810 read 0x00103810 ok
+W     0x050c026c = 0x006c33c0  -> wrote 0x006c33c0 read 0x006c33c0 ok
+W     0x050c0270 = 0x264d8960  -> wrote 0x264d8960 read 0x264d8960 ok
+W     0x050c0274 = 0x0048c993  -> wrote 0x0048c993 read 0x0048c993 ok
+W     0x050c0278 = 0x03219028  -> wrote 0x03219028 read 0x03219028 ok
+W     0x050c027c = 0x0d0007d0  -> wrote 0x0d0007d0 read 0x0d0007d0 ok
+W     0x050c0280 = 0x0002a990  -> wrote 0x0002a990 read 0x0002a990 ok
+W     0x050c0288 = 0x01000000  -> wrote 0x01000000 read 0x01000000 ok
+W     0x050c028c = 0x000246c8  -> wrote 0x000246c8 read 0x000246c8 ok
+W     0x050c0290 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x050c02c0 = 0xc0208e02  -> wrote 0xc0208e02 read 0xc0208e02 ok
+W     0x050c02c4 = 0x2050a064  -> wrote 0x2050a064 read 0x2050a064 ok
+W     0x050c02c8 = 0x0a0a0020  -> wrote 0x0a0a0020 read 0x0a0a0020 ok
+W     0x050c02cc = 0x00001919  -> wrote 0x00001919 read 0x00001919 ok
+W     0x050c02d0 = 0x07020202  -> wrote 0x07020202 read 0x07020202 ok
+W     0x050c02d4 = 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+W     0x050c02d8 = 0x02020250  -> wrote 0x02020250 read 0x02020250 ok
+W     0x050c02dc = 0x78000304  -> wrote 0x78000304 read 0x78000304 ok
+W     0x050c02e4 = 0x3752e000  -> wrote 0x3752e000 read 0x3752e000 ok
+W     0x050c02e8 = 0x8006000e  -> wrote 0x8006000e read 0x8006000e ok
+W     0x050c02ec = 0x001202b3  -> wrote 0x001202b3 read 0x001202b3 ok
+W     0x050c02f0 = 0x0014600e  -> wrote 0x0014600e read 0x0014600e ok
+W     0x050c02f4 = 0xe00902b3  -> wrote 0xe00902b3 read 0xe00902b3 ok
+W     0x050c02f8 = 0xb8004007  -> wrote 0xb8004007 read 0xb8004007 ok
+W     0x050c02fc = 0x73e1cdc2  -> wrote 0x73e1cdc2 read 0x73e1cdc2 ok
+W     0x050c0300 = 0xffff1000  -> wrote 0xffff1000 read 0xffff1000 ok
+W     0x050c0304 = 0x12485903  -> wrote 0x12485903 read 0x12485903 ok
+W     0x050c0308 = 0x4003232a  -> wrote 0x4003232a read 0x4003232a ok
+W     0x050c030c = 0x02020200  -> wrote 0x02020200 read 0x02020200 ok
+W     0x050c0310 = 0x0e004123  -> wrote 0x0e004123 read 0x0e004123 ok
+W     0x050c0314 = 0x02000e02  -> wrote 0x02000e02 read 0x02000e02 ok
+W     0x050c0318 = 0x200082b3  -> wrote 0x200082b3 read 0x200082b3 ok
+W     0x050c031c = 0x03104048  -> wrote 0x03104048 read 0x03104048 ok
+W     0x050c0320 = 0x00f00f00  -> wrote 0x00f00f00 read 0x00f00f00 ok
+W     0x050c0324 = 0x00140000  -> wrote 0x00140000 read 0x00140000 ok
+W     0x050c0328 = 0x00200005  -> wrote 0x00200005 read 0x00200005 ok
+W     0x050c032c = 0x50000000  -> wrote 0x50000000 read 0x50000000 ok
+W     0x050c0330 = 0x04020202  -> wrote 0x04020202 read 0x04020202 ok
+W     0x050c0334 = 0x02841a43  -> wrote 0x02841a43 read 0x02841a43 ok
+W     0x050c0338 = 0x00402060  -> wrote 0x00402060 read 0x00402060 ok
+W     0x050c033c = 0x00f07082  -> wrote 0x00f07082 read 0x00f07082 ok
+W     0x050c0400 = 0xff0f0100  -> wrote 0xff0f0100 read 0xff0f0100 ok
+W     0x050c0404 = 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050c0420 = 0x00000401  -> wrote 0x00000401 read 0x00000401 ok
+W     0x050c0428 = 0x00004c80  -> wrote 0x00004c80 read 0x00004c80 ok
+W     0x050c0440 = 0x04d02800  -> wrote 0x04d02800 read 0x04d02800 ok
+W     0x050c0444 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c0448 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c044c = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c0450 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c0454 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c0474 = 0x00240060  -> wrote 0x00240060 read 0x00240060 ok
+W     0x050c0478 = 0x660200f0  -> wrote 0x660200f0 read 0x660200f0 ok
+W     0x050c0480 = 0xff0f0100  -> wrote 0xff0f0100 read 0xff0f0100 ok
+W     0x050c0484 = 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050c04a0 = 0x00000401  -> wrote 0x00000401 read 0x00000401 ok
+W     0x050c04a8 = 0x00004c80  -> wrote 0x00004c80 read 0x00004c80 ok
+W     0x050c04c0 = 0x04d35a00  -> wrote 0x04d35a00 read 0x04d35a00 ok
+W     0x050c04c4 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c04c8 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c04cc = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c04d0 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c04d4 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c04f4 = 0x00240060  -> wrote 0x00240060 read 0x00240060 ok
+W     0x050c04f8 = 0x66020078  -> wrote 0x66020078 read 0x66020078 ok
+W     0x050c0500 = 0xff0f0100  -> wrote 0xff0f0100 read 0xff0f0100 ok
+W     0x050c0504 = 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050c0520 = 0x00000401  -> wrote 0x00000401 read 0x00000401 ok
+W     0x050c0528 = 0x00004c80  -> wrote 0x00004c80 read 0x00004c80 ok
+W     0x050c0540 = 0x04d02800  -> wrote 0x04d02800 read 0x04d02800 ok
+W     0x050c0544 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c0548 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c054c = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c0550 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c0554 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c0574 = 0x00240060  -> wrote 0x00240060 read 0x00240060 ok
+W     0x050c0578 = 0x660200f0  -> wrote 0x660200f0 read 0x660200f0 ok
+W     0x050c0580 = 0xff0f0100  -> wrote 0xff0f0100 read 0xff0f0100 ok
+W     0x050c0584 = 0x00000001  -> wrote 0x00000001 read 0x00000001 ok
+W     0x050c05a0 = 0x00000401  -> wrote 0x00000401 read 0x00000401 ok
+W     0x050c05a8 = 0x00004c80  -> wrote 0x00004c80 read 0x00004c80 ok
+W     0x050c05f4 = 0x00060006  -> wrote 0x00060006 read 0x00060006 ok
+W     0x050c05f8 = 0x660200f0  -> wrote 0x660200f0 read 0x660200f0 ok
+W     0x050c0600 = 0xff0f0100  -> wrote 0xff0f0100 read 0xff0f0100 ok
+W     0x050c0604 = 0x00000001  -> wrote 0x00000001 read 0x00000001 ok
+W     0x050c0620 = 0x00000401  -> wrote 0x00000401 read 0x00000401 ok
+W     0x050c0628 = 0x00004c80  -> wrote 0x00004c80 read 0x00004c80 ok
+W     0x050c0674 = 0x00060006  -> wrote 0x00060006 read 0x00060006 ok
+W     0x050c0678 = 0x660200f0  -> wrote 0x660200f0 read 0x660200f0 ok
+W     0x050c0680 = 0x09000100  -> wrote 0x09000100 read 0x09000100 ok
+W     0x050c0684 = 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050c068c = 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050c06a0 = 0x00000401  -> wrote 0x00000401 read 0x00000401 ok
+W     0x050c06a4 = 0x01e002d0  -> wrote 0x01e002d0 read 0x01e002d0 ok
+W     0x050c06c0 = 0x04d02800  -> wrote 0x04d02800 read 0x04d02800 ok
+W     0x050c06c4 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c06c8 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c06cc = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c06d0 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c06d4 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050c06f4 = 0x40600060  -> wrote 0x40600060 read 0x40600060 ok
+W     0x050c06f8 = 0x66020000  -> wrote 0x66020000 read 0x66020000 ok
+W     0x050c0700 = 0x04d35a00  -> wrote 0x04d35a00 read 0x04d35a00 ok
+W     0x050c0704 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c0708 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c070c = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c0710 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c0714 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x050c0734 = 0x40600060  -> wrote 0x40600060 read 0x40600060 ok
+W     0x050c0738 = 0x660200f0  -> wrote 0x660200f0 read 0x660200f0 ok
+W     0x050c0740 = 0x090f0100  -> wrote 0x090f0100 read 0x090f0100 ok
+W     0x050c0744 = 0x00000001  -> wrote 0x00000001 read 0x00000001 ok
+W     0x050c0760 = 0x00000401  -> wrote 0x00000401 read 0x00000401 ok
+W     0x050c07b4 = 0x00060006  -> wrote 0x00060006 read 0x00060006 ok
+W     0x050c07b8 = 0x660200f0  -> wrote 0x660200f0 read 0x660200f0 ok
+W     0x051c0008 = 0x01000000  -> wrote 0x01000000 read 0x01000000 ok
+W     0x051c000c = 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+W     0x051c0010 = 0x00000045  -> wrote 0x00000045 read 0x00000045 ok
+W     0x051c0038 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x051c003c = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x051c0040 = 0x04380000  -> wrote 0x04380000 read 0x04380000 ok
+W     0x051c0048 = 0x00000200  -> wrote 0x00000200 read 0x00000200 ok
+W     0x051c0050 = 0x00000038  -> wrote 0x00000038 read 0x00000038 ok
+W     0x051c0078 = 0x00000200  -> wrote 0x00000200 read 0x00000200 ok
+W     0x051c007c = 0x00000300  -> wrote 0x00000300 read 0x00000300 ok
+W     0x051c0080 = 0x04000000  -> wrote 0x04000000 read 0x04000000 ok
+W     0x051c0084 = 0x04000400  -> wrote 0x04000400 read 0x04000400 ok
+W     0x051c0098 = 0x04000000  -> wrote 0x04000000 read 0x04000000 ok
+W     0x051c009c = 0x04000400  -> wrote 0x04000400 read 0x04000400 ok
+W     0x051c00a4 = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x051c00a8 = 0x04380000  -> wrote 0x04380000 read 0x04380000 ok
+W     0x051c00b0 = 0x00000200  -> wrote 0x00000200 read 0x00000200 ok
+W     0x051c00b8 = 0x00000038  -> wrote 0x00000038 read 0x00000038 ok
+W     0x051c00bc = 0x078000a3  -> wrote 0x078000a3 read 0x078000a3 ok
+W     0x051c00c0 = 0x04380011  -> wrote 0x04380011 read 0x04380011 ok
+W     0x051c00c4 = 0xc0000000  -> wrote 0xc0000000 read 0xc0000000 ok
+M     0x051c00e8 mask 0xefffffff val 0x00f00000  -> wrote 0x00f00000 read 0x00f00000 ok
+W     0x051c00ec = 0x14141400  -> wrote 0x14141400 read 0x14141400 ok
+W     0x051c0114 = 0x00040004  -> wrote 0x00040004 read 0x00040004 ok
+W     0x051c0120 = 0x42000000  -> wrote 0x42000000 read 0x42000000 ok
+W     0x051c0124 = 0x06000000  -> wrote 0x06000000 read 0x06000000 ok
+W     0x051c0128 = 0x00000780  -> wrote 0x00000780 read 0x00000780 ok
+W     0x051c012c = 0x00000438  -> wrote 0x00000438 read 0x00000438 ok
+W     0x051c0130 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x051c0138 = 0x08010000  -> wrote 0x08010000 read 0x08010000 ok
+W     0x051c013c = 0x00000020  -> wrote 0x00000020 read 0x00000020 ok
+W     0x051c0144 = 0x0b02c0b0 (no compare)  -> wrote 0x0b02c0b0 read 0x00701d03 ok
+W     0x051c0148 = 0x00000502 (no compare)  -> wrote 0x00000502 read 0x00000510 ok
+W     0x051c014c = 0x08980780 (no compare)  -> wrote 0x08980780 read 0x11300000 ok
+W     0x051c0150 = 0x00a20074 (no compare)  -> wrote 0x00a20074 read 0x00001120 ok
+W     0x051c0154 = 0x000c001c (no compare)  -> wrote 0x000c001c read 0x000008c5 ok
+W     0x051c0158 = 0x04650438 (no compare)  -> wrote 0x04650438 read 0x08ca0000 ok
+W     0x051c0200 = 0x00402c48  -> wrote 0x00402c48 read 0x00402c48 ok
+W     0x051c0204 = 0x078000a5  -> wrote 0x078000a5 read 0x078000a5 ok
+W     0x051c0220 = 0x40000000  -> wrote 0x40000000 read 0x40000000 ok
+W     0x051c0228 = 0x00002000  -> wrote 0x00002000 read 0x00002000 ok
+W     0x051c0240 = 0x10000120  -> wrote 0x10000120 read 0x10000120 ok
+W     0x051c0244 = 0x0000007b  -> wrote 0x0000007b read 0x0000007b ok
+W     0x051c0248 = 0x00889950  -> wrote 0x00889950 read 0x00889950 ok
+W     0x051c0324 = 0x00000e80  -> wrote 0x00000e80 read 0x00000e80 ok
+W     0x051c0328 = 0x00000e80  -> wrote 0x00000e80 read 0x00000e80 ok
+# step dram-nrc-border [switch dram-nrc-border] (12, 12 §M; 10 §6.2, §6.3; 91 O2)
+W     0x05000004 = 0x0e807901  -> wrote 0x0e807901 read 0x0e807901 ok
+W     0x05000018 = 0x01000004  -> wrote 0x01000004 read 0x01000004 ok
+W     0x0500001c = 0x00808000  -> wrote 0x00808000 read 0x00808000 ok
+W     0x05000030 = 0x00000c00  -> wrote 0x00000c00 read 0x00000c00 ok
+W     0x05000040 = 0x02090508  -> wrote 0x02090508 read 0x02090508 ok
+W     0x05000044 = 0x00000023  -> wrote 0x00000023 read 0x00000023 ok
+W     0x05000048 = 0x0000aaaa  -> wrote 0x0000aaaa read 0x0000aaaa ok
+W     0x05000064 = 0x00080000  -> wrote 0x00080000 read 0x00080000 ok
+W     0x050000f0 = 0x63009696  -> wrote 0x63009696 read 0x63009696 ok
+W     0x050000f4 = 0x0000003f  -> wrote 0x0000003f read 0x0000003f ok
+W     0x050000fc = 0x40200002  -> wrote 0x40200002 read 0x40200002 ok
+W     0x05000100 = 0x32008000  -> wrote 0x32008000 read 0x32008000 ok
+W     0x05000104 = 0x1100ff00  -> wrote 0x1100ff00 read 0x1100ff00 ok
+W     0x05000108 = 0x594c3f3f  -> wrote 0x594c3f3f read 0x594c3f3f ok
+W     0x0500010c = 0x8c7f7266  -> wrote 0x8c7f7266 read 0x8c7f7266 ok
+W     0x05000110 = 0xbfb2a599  -> wrote 0xbfb2a599 read 0xbfb2a599 ok
+W     0x05000114 = 0xf2e5d8cc  -> wrote 0xf2e5d8cc read 0xf2e5d8cc ok
+W     0x05000118 = 0x847a7066  -> wrote 0x847a7066 read 0x847a7066 ok
+W     0x0500011c = 0xada3998e  -> wrote 0xada3998e read 0xada3998e ok
+W     0x05000120 = 0xd6ccc1b7  -> wrote 0xd6ccc1b7 read 0xd6ccc1b7 ok
+W     0x05000124 = 0xfff4eae0  -> wrote 0xfff4eae0 read 0xfff4eae0 ok
+W     0x05000128 = 0x7a70665b  -> wrote 0x7a70665b read 0x7a70665b ok
+W     0x0500012c = 0xa3998e84  -> wrote 0xa3998e84 read 0xa3998e84 ok
+W     0x05000130 = 0xccc1b7ad  -> wrote 0xccc1b7ad read 0xccc1b7ad ok
+W     0x05000134 = 0xf4eae0d6  -> wrote 0xf4eae0d6 read 0xf4eae0d6 ok
+W     0x05000138 = 0x04ffffff  -> wrote 0x04ffffff read 0x04ffffff ok
+W     0x0500013c = 0x00001820  -> wrote 0x00001820 read 0x00001820 ok
+W     0x05000140 = 0x04d35a00  -> wrote 0x04d35a00 read 0x04d35a00 ok
+W     0x05000144 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x05000148 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x0500014c = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x05000150 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x05000154 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x05000174 = 0x00960096  -> wrote 0x00960096 read 0x00960096 ok
+W     0x05000178 = 0xe002021c  -> wrote 0xe002021c read 0xe002021c ok
+W     0x05000180 = 0x04d02800  -> wrote 0x04d02800 read 0x04d02800 ok
+W     0x05000184 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x05000188 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x0500018c = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x05000190 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x05000194 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050001b4 = 0x00960096  -> wrote 0x00960096 read 0x00960096 ok
+W     0x050001b8 = 0xe0020438  -> wrote 0xe0020438 read 0xe0020438 ok
+W     0x050001c0 = 0x00000200  -> wrote 0x00000200 read 0x00000200 ok
+W     0x050001e0 = 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050001e8 = 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050001f0 = 0xff9a0f00  -> wrote 0xff9a0f00 read 0xff9a0f00 ok
+W     0x050001f4 = 0x450f0088  -> wrote 0x450f0088 read 0x450f0088 ok
+W     0x050001f8 = 0x4160b0ff  -> wrote 0x4160b0ff read 0x4160b0ff ok
+W     0x050001fc = 0x06af0868  -> wrote 0x06af0868 read 0x06af0868 ok
+W     0x05000200 = 0xff9a0f00  -> wrote 0xff9a0f00 read 0xff9a0f00 ok
+W     0x05000204 = 0x450f0088  -> wrote 0x450f0088 read 0x450f0088 ok
+W     0x05000208 = 0x4160b0ff  -> wrote 0x4160b0ff read 0x4160b0ff ok
+W     0x0500020c = 0x06af0868  -> wrote 0x06af0868 read 0x06af0868 ok
+W     0x05000210 = 0x63009696  -> wrote 0x63009696 read 0x63009696 ok
+W     0x05000214 = 0x0000013f  -> wrote 0x0000013f read 0x0000013f ok
+W     0x0500021c = 0x00000002  -> wrote 0x00000002 read 0x00000002 ok
+W     0x05000220 = 0x00001201  -> wrote 0x00001201 read 0x00001201 ok
+W     0x05000224 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+W     0x05000240 = 0x04d35a00  -> wrote 0x04d35a00 read 0x04d35a00 ok
+W     0x05000244 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x05000248 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x0500024c = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x05000250 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x05000254 = 0x04d4f300  -> wrote 0x04d4f300 read 0x04d4f300 ok
+W     0x05000274 = 0x00960096  -> wrote 0x00960096 read 0x00960096 ok
+W     0x05000278 = 0xe002021c  -> wrote 0xe002021c read 0xe002021c ok
+W     0x05000280 = 0x04d02800  -> wrote 0x04d02800 read 0x04d02800 ok
+W     0x05000284 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x05000288 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x0500028c = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x05000290 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x05000294 = 0x04d1c100  -> wrote 0x04d1c100 read 0x04d1c100 ok
+W     0x050002b4 = 0x00960096  -> wrote 0x00960096 read 0x00960096 ok
+W     0x050002b8 = 0xe0020438  -> wrote 0xe0020438 read 0xe0020438 ok
+W     0x050002c0 = 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050002c4 = 0x00000005  -> wrote 0x00000005 read 0x00000005 ok
+W     0x050002c8 = 0xff9a0f00  -> wrote 0xff9a0f00 read 0xff9a0f00 ok
+W     0x050002cc = 0x450f0088  -> wrote 0x450f0088 read 0x450f0088 ok
+W     0x050002d0 = 0x4160b0ff  -> wrote 0x4160b0ff read 0x4160b0ff ok
+W     0x050002d4 = 0x06af0868  -> wrote 0x06af0868 read 0x06af0868 ok
+W     0x050002d8 = 0x01002191  -> wrote 0x01002191 read 0x01002191 ok
+W     0x050002dc = 0x0000001e  -> wrote 0x0000001e read 0x0000001e ok
+W     0x050002e0 = 0xff9a0f00  -> wrote 0xff9a0f00 read 0xff9a0f00 ok
+W     0x050002e4 = 0x450f0088  -> wrote 0x450f0088 read 0x450f0088 ok
+W     0x050002e8 = 0x4160b0ff  -> wrote 0x4160b0ff read 0x4160b0ff ok
+W     0x050002ec = 0x06af0868  -> wrote 0x06af0868 read 0x06af0868 ok
+W     0x050002f0 = 0x00000044  -> wrote 0x00000044 read 0x00000044 ok
+W     0x050002f8 = 0x01002191  -> wrote 0x01002191 read 0x01002191 ok
+W     0x050002fc = 0x0000001e  -> wrote 0x0000001e read 0x0000001e ok
+W     0x05000300 = 0x01010101  -> wrote 0x01010101 read 0x01010101 ok
+W     0x0500030c = 0x0101c1c1  -> wrote 0x0101c1c1 read 0x0101c1c1 ok
+W     0x05000318 = 0x000043f0  -> wrote 0x000043f0 read 0x000043f0 ok
+W     0x05000400 = 0x04c3ef00  -> wrote 0x04c3ef00 read 0x04c3ef00 ok
+W     0x05000404 = 0x04c5ee00  -> wrote 0x04c5ee00 read 0x04c5ee00 ok
+W     0x05000408 = 0x04c7ed00  -> wrote 0x04c7ed00 read 0x04c7ed00 ok
+W     0x0500040c = 0x04c7ed00  -> wrote 0x04c7ed00 read 0x04c7ed00 ok
+W     0x05000410 = 0x04c7ed00  -> wrote 0x04c7ed00 read 0x04c7ed00 ok
+W     0x05000414 = 0x04c7ed00  -> wrote 0x04c7ed00 read 0x04c7ed00 ok
+W     0x05000434 = 0x80780078  -> wrote 0x80780078 read 0x80780078 ok
+W     0x05000438 = 0x60020438  -> wrote 0x60020438 read 0x60020438 ok
+W     0x05000440 = 0x00002301  -> wrote 0x00002301 read 0x00002301 ok
+W     0x05000444 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+W     0x05000448 = 0x00084480  -> wrote 0x00084480 read 0x00084480 ok
+W     0x05000468 = 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+W     0x0500046c = 0x006f81c1  -> wrote 0x006f81c1 read 0x006f81c1 ok
+W     0x05000500 = 0x04c9ec00  -> wrote 0x04c9ec00 read 0x04c9ec00 ok
+W     0x05000504 = 0x04cbeb00  -> wrote 0x04cbeb00 read 0x04cbeb00 ok
+W     0x05000508 = 0x04cdea00  -> wrote 0x04cdea00 read 0x04cdea00 ok
+W     0x0500050c = 0x04cdea00  -> wrote 0x04cdea00 read 0x04cdea00 ok
+W     0x05000510 = 0x04cdea00  -> wrote 0x04cdea00 read 0x04cdea00 ok
+W     0x05000514 = 0x04cdea00  -> wrote 0x04cdea00 read 0x04cdea00 ok
+W     0x05000534 = 0x80780078  -> wrote 0x80780078 read 0x80780078 ok
+W     0x05000538 = 0x60020438  -> wrote 0x60020438 read 0x60020438 ok
+W     0x05000540 = 0x00002301  -> wrote 0x00002301 read 0x00002301 ok
+W     0x05000544 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+W     0x05000548 = 0x00084480  -> wrote 0x00084480 read 0x00084480 ok
+W     0x05000550 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05000568 = 0x00000003  -> wrote 0x00000003 read 0x00000003 ok
+W     0x0500056c = 0x006f8100  -> wrote 0x006f8100 read 0x006f8100 ok
+W     0x05000600 = 0x02022802  -> wrote 0x02022802 read 0x02022802 ok
+W     0x05000604 = 0x007b0a08  -> wrote 0x007b0a08 read 0x007b0a08 ok
+W     0x0500060c = 0x40000000  -> wrote 0x40000000 read 0x40000000 ok
+W     0x05000610 = 0x0304200c  -> wrote 0x0304200c read 0x0304200c ok
+W     0x05000614 = 0x02460246  -> wrote 0x02460246 read 0x02460246 ok
+W     0x05000618 = 0xa2825246  -> wrote 0xa2825246 read 0xa2825246 ok
+W     0x0500061c = 0x9df50c20  -> wrote 0x9df50c20 read 0x9df50c20 ok
+W     0x05000624 = 0x00210000  -> wrote 0x00210000 read 0x00210000 ok
+W     0x05000804 = 0x009f0780  -> wrote 0x009f0780 read 0x009f0780 ok
+W     0x05000808 = 0x0000009f  -> wrote 0x0000009f read 0x0000009f ok
+W     0x0500080c = 0x000f0438  -> wrote 0x000f0438 read 0x000f0438 ok
+W     0x05000840 = 0x04390010  -> wrote 0x04390010 read 0x04390010 ok
+W     0x05000844 = 0x078000a3  -> wrote 0x078000a3 read 0x078000a3 ok
+W     0x05000854 = 0x00030001  -> wrote 0x00030001 read 0x00030001 ok
+W     0x05000858 = 0x04380010  -> wrote 0x04380010 read 0x04380010 ok
+W     0x0500085c = 0x078000a3  -> wrote 0x078000a3 read 0x078000a3 ok
+W     0x05000860 = 0x00000071  -> wrote 0x00000071 read 0x00000071 ok
+W     0x05000900 = 0x00800d44  -> wrote 0x00800d44 read 0x00800d44 ok
+W     0x05000910 = 0x02022000  -> wrote 0x02022000 read 0x02022000 ok
+W     0x05000914 = 0x0004000e  -> wrote 0x0004000e read 0x0004000e ok
+W     0x0500091c = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x05000920 = 0x70248077  -> wrote 0x70248077 read 0x70248077 ok
+W     0x05000924 = 0x00000007  -> wrote 0x00000007 read 0x00000007 ok
+W     0x05000930 = 0x40074022  -> wrote 0x40074022 read 0x40074022 ok
+W     0x05000934 = 0x84081020  -> wrote 0x84081020 read 0x84081020 ok
+W     0x05000938 = 0x01610063  -> wrote 0x01610063 read 0x01610063 ok
+W     0x0500093c = 0x84804692  -> wrote 0x84804692 read 0x84804692 ok
+W     0x05000970 = 0x00f58150  -> wrote 0x00f58150 read 0x00f58150 ok
+W     0x05000974 = 0xc000d021  -> wrote 0xc000d021 read 0xc000d021 ok
+W     0x05000980 = 0x02808000  -> wrote 0x02808000 read 0x02808000 ok
+W     0x050009c8 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x050009cc = 0x00000088  -> wrote 0x00000088 read 0x00000088 ok
+W     0x050009d0 = 0x00004000  -> wrote 0x00004000 read 0x00004000 ok
+W     0x05200004 = 0x40210000  -> wrote 0x40210000 read 0x40210000 ok
+W     0x0520000c = 0x078000a4 (no compare)  -> wrote 0x078000a4 read 0x078000a4 ok
+W     0x05200010 = 0x04380011  -> wrote 0x04380011 read 0x04380011 ok
+W     0x05200014 = 0x0020802d  -> wrote 0x0020802d read 0x0020802d ok
+W     0x05200018 = 0x00210022  -> wrote 0x00210022 read 0x00210022 ok
+W     0x05200020 = 0x078000a4  -> wrote 0x078000a4 read 0x078000a4 ok
+W     0x05200024 = 0x04380011  -> wrote 0x04380011 read 0x04380011 ok
+# step scaler [switch scaler] (20 §2.1, §3 S1 / S2 HY320; 91 O8, O9)
+W     0x05180000 = 0x0f008000  -> wrote 0x0f008000 read 0x0f008000 ok
+W     0x05180004 = 0x00100f00  -> wrote 0x00100f00 read 0x00100f00 ok
+W     0x05180008 = 0x43010000  -> wrote 0x43010000 read 0x43010000 ok
+W     0x05180014 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x05180020 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x0518002c = 0x00a80780  -> wrote 0x00a80780 read 0x00a80780 ok
+W     0x05180030 = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180034 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05180038 = 0x00100000  -> wrote 0x00100000 read 0x00100000 ok
+W     0x0518003c = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x05180040 = 0xc0000780  -> wrote 0xc0000780 read 0xc0000780 ok
+W     0x05180044 = 0x000000a4  -> wrote 0x000000a4 read 0x000000a4 ok
+W     0x05180050 = 0x00160438  -> wrote 0x00160438 read 0x00160438 ok
+W     0x0518005c = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180100 = 0x0f008000  -> wrote 0x0f008000 read 0x0f008000 ok
+W     0x05180104 = 0x00100f00  -> wrote 0x00100f00 read 0x00100f00 ok
+W     0x05180108 = 0x43010000  -> wrote 0x43010000 read 0x43010000 ok
+W     0x05180114 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x05180120 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x0518012c = 0x00a80780  -> wrote 0x00a80780 read 0x00a80780 ok
+W     0x05180130 = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180134 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05180138 = 0x00100000  -> wrote 0x00100000 read 0x00100000 ok
+W     0x0518013c = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x05180140 = 0xc0000780  -> wrote 0xc0000780 read 0xc0000780 ok
+W     0x05180144 = 0x000000a4  -> wrote 0x000000a4 read 0x000000a4 ok
+W     0x05180150 = 0x00160438  -> wrote 0x00160438 read 0x00160438 ok
+W     0x0518015c = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180200 = 0x0f008000  -> wrote 0x0f008000 read 0x0f008000 ok
+W     0x05180204 = 0x00100f00  -> wrote 0x00100f00 read 0x00100f00 ok
+W     0x05180208 = 0x43010000  -> wrote 0x43010000 read 0x43010000 ok
+W     0x05180214 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x05180220 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x0518022c = 0x00a80780  -> wrote 0x00a80780 read 0x00a80780 ok
+W     0x05180230 = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180234 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05180238 = 0x00100000  -> wrote 0x00100000 read 0x00100000 ok
+W     0x0518023c = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x05180240 = 0xc0000780  -> wrote 0xc0000780 read 0xc0000780 ok
+W     0x05180244 = 0x000000a4  -> wrote 0x000000a4 read 0x000000a4 ok
+W     0x05180250 = 0x00160438  -> wrote 0x00160438 read 0x00160438 ok
+W     0x0518025c = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180300 = 0x0f008000  -> wrote 0x0f008000 read 0x0f008000 ok
+W     0x05180304 = 0x00100f00  -> wrote 0x00100f00 read 0x00100f00 ok
+W     0x05180308 = 0x43010000  -> wrote 0x43010000 read 0x43010000 ok
+W     0x05180314 = 0x08000000  -> wrote 0x08000000 read 0x08000000 ok
+W     0x05180320 = 0x02000000  -> wrote 0x02000000 read 0x02000000 ok
+W     0x0518032c = 0x00a80780  -> wrote 0x00a80780 read 0x00a80780 ok
+W     0x05180330 = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+W     0x05180334 = 0x07800438  -> wrote 0x07800438 read 0x07800438 ok
+W     0x05180338 = 0x00100000  -> wrote 0x00100000 read 0x00100000 ok
+W     0x0518033c = 0x00010000  -> wrote 0x00010000 read 0x00010000 ok
+W     0x05180340 = 0xc0000780  -> wrote 0xc0000780 read 0xc0000780 ok
+W     0x05180344 = 0x000000a4  -> wrote 0x000000a4 read 0x000000a4 ok
+W     0x05180350 = 0x00160438  -> wrote 0x00160438 read 0x00160438 ok
+W     0x0518035c = 0x00010438  -> wrote 0x00010438 read 0x00010438 ok
+# step source-geometry [switch source-geometry] (20 §3 S2 HY320, §5.2)
+W     0x05140104 = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x05140108 = 0x04380000  -> wrote 0x04380000 read 0x04380000 ok
+W     0x0514011c = 0x04388002  -> wrote 0x04388002 read 0x04388002 ok
+W     0x05140124 = 0x07800000  -> wrote 0x07800000 read 0x07800000 ok
+W     0x05140128 = 0x04380000  -> wrote 0x04380000 read 0x04380000 ok
+W     0x05000224 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+W     0x05000444 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+W     0x05000544 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+W     0x05000804 = 0x009f0780  -> wrote 0x009f0780 read 0x009f0780 ok
+W     0x0500080c = 0x000f0438  -> wrote 0x000f0438 read 0x000f0438 ok
+W     0x05000844 = 0x078000a3  -> wrote 0x078000a3 read 0x078000a3 ok
+W     0x0500085c = 0x078000a3  -> wrote 0x078000a3 read 0x078000a3 ok
+W     0x05000278 = 0xe002021c  -> wrote 0xe002021c read 0xe002021c ok
+W     0x050002b8 = 0xe0020438  -> wrote 0xe0020438 read 0xe0020438 ok
+W     0x05000174 = 0x00960096  -> wrote 0x00960096 read 0x00960096 ok
+W     0x050001b4 = 0x00960096  -> wrote 0x00960096 read 0x00960096 ok
+W     0x05000274 = 0x00960096  -> wrote 0x00960096 read 0x00960096 ok
+W     0x050002b4 = 0x00960096  -> wrote 0x00960096 read 0x00960096 ok
+W     0x050000f0 = 0x63009696  -> wrote 0x63009696 read 0x63009696 ok
+W     0x05000210 = 0x63009696  -> wrote 0x63009696 read 0x63009696 ok
+W     0x050c028c = 0x000246c8  -> wrote 0x000246c8 read 0x000246c8 ok
+# step frame-source [switch frame-source] (10 §6.2; 20 §5.1; 91 O1)
+W     0x0500046c = 0x006f81c1  -> wrote 0x006f81c1 read 0x006f81c1 ok
+W     0x05000840 = 0x04390010  -> wrote 0x04390010 read 0x04390010 ok
+# step video-channel (10 §2, §4, §5 T1, §6 L1/L4, §6.2; 20 §3 S2 HY320; 91 O1, O3)
+W     0x05600140 = 0x83001900  -> wrote 0x83001900 read 0x83001900 ok
+W     0x05600144 = 0x00000001 (latch)  -> wrote 0x00000001 read 0x00000001 ok
+POLL  0x05600144 & 0x1 == 0x0 within 200000 us  -> ok after 2505 us (read 0x00000000)
+W     0x05600020 = 0x043f077f  -> wrote 0x043f077f read 0x043f077f ok
+W     0x05600024 = 0x00420077  -> wrote 0x00420077 read 0x00420077 ok
+W     0x05600040 = 0x00000780  -> wrote 0x00000780 read 0x00000780 ok
+W     0x05600044 = 0x00000f00  -> wrote 0x00000f00 read 0x00000f00 ok
+W     0x05600048 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+W     0x0560004c = 0x021c0780  -> wrote 0x021c0780 read 0x021c0780 ok
+W     0x05600030 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+W     0x05600050 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05600054 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05600018 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0560001c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05600028 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x0560002c = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05600034 = 0x00080808  -> wrote 0x00080808 read 0x00080808 ok
+W     0x05600060 = 0x00000001  -> wrote 0x00000001 read 0x00000001 ok
+W     0x05600064 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05600068 = 0x00000122  -> wrote 0x00000122 read 0x00000122 ok
+W     0x05600080 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05600094 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x056000a8 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+W     0x05600070 = 0x4b100000  -> wrote 0x4b100000 read 0x4b100000 ok
+W     0x05600074 = 0x4b100000  -> wrote 0x4b100000 read 0x4b100000 ok
+W     0x05600078 = 0x4b100000  -> wrote 0x4b100000 read 0x4b100000 ok
+W     0x0560007c = 0x4b100000  -> wrote 0x4b100000 read 0x4b100000 ok
+W     0x05600084 = 0x4b6fd000  -> wrote 0x4b6fd000 read 0x4b6fd000 ok
+W     0x05600088 = 0x4b6fd000  -> wrote 0x4b6fd000 read 0x4b6fd000 ok
+W     0x0560008c = 0x4b6fd000  -> wrote 0x4b6fd000 read 0x4b6fd000 ok
+W     0x05600090 = 0x4b6fd000  -> wrote 0x4b6fd000 read 0x4b6fd000 ok
+W     0x0560006c = 0x00000001 (latch)  -> wrote 0x00000001 read 0x00000001 ok
+W     0x05140508 = 0x04400000  -> wrote 0x04400000 read 0x04400000 ok
+W     0x05600010 = 0x03000013  -> wrote 0x03000013 read 0x03000013 ok
+W     0x05600014 = 0x00000001 (latch)  -> wrote 0x00000001 read 0x00000001 ok
+POLL  0x05600014 & 0x1 == 0x0 within 200000 us  -> ok after 1724 us (read 0x00000000)
+POLL  0x0560006c & 0x1 == 0x0 within 200000 us  -> ok after 5 us (read 0x00000000)
+# step raster-check [switch raster-check] (10 §6.3; 91 O1)
+MOVES 0x051c0174 & 0xffff within 100000 us  line counter moves  -> moved (first 0x000c00a8, last 0x000c00d2, 588 us)
+POLL  0x056000c0 & 0x1 == 0x1 within 100000 us  -> ok after 7 us (read 0x00000001)
+CHECK 0x0514fe74 & 0xffff0000 == 0x04640000  PROC_LOCK fe74 = programmed vertical total  -> read 0x04640003 ok
+CHECK 0x051c0148 & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x00000502 ok
+CHECK 0x051c014c & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x08980780 ok
+CHECK 0x051c0150 & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x00a20074 ok
+CHECK 0x051c0154 & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x000c001c ok
+CHECK 0x051c0158 & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x04650438 ok
+# step plane-select [switch plane-select] (10 §3, §6 L4)
+W     0x051c006c = 0x39000000  -> wrote 0x39000000 read 0x39000000 ok
+FIRST MIX access: M     0x058c0000 mask 0x10000000 val 0x00000000
+M     0x058c0000 mask 0x10000000 val 0x00000000  -> wrote 0x00000040 read 0x00000040 ok
+done: 1119 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+apply rc=0
+verify scan (10 §6.2 readout words, 10 §6.3 raster signs)
+PASS 0x05600014 & 0x00000001: read 0x00000000, want 0x00000000  [10 §6.2]
+PASS 0x0560006c & 0x00000001: read 0x00000000, want 0x00000000  [10 §6.2]
+PASS VCH_ARMED non-zero: [69, 69, 6a, 6a, 7c, 7c, 7c, 6a, 6a, 6a, 6a, 6a, 6a, 6a, 6a, 6a, 6a, 6a, 6a, 6a]  [10 §2, §6.2]
+PASS VCH_ARMED changing:   [10 §6.2]
+PASS 0x05600310 bit 21 toggling: bit 21 clear in 268514 of 2849401 reads in 1 s (9.4 %; measured 7-10 %), values [a00210, 800210, b00210, 900210]  [10 §6.1, §6.2, §6.3]
+PASS 0x05600320 non-zero: read 0x4c7ed000  [10 §6.2]
+PASS video vsync status events in 1 s: 66 (reference 65.5/s: the panel's own rate, 00 §4)  [10 §6.1, §6.3]
+PASS PROC_LOCK fe74 [31:16] = fe08 [31:16]: fe74 0x04640003, fe08 0x04640897  [10 §6.3]
+PASS PNL 0x051c0148 non-zero: 0x00000502  [10 §6.3]
+PASS PNL 0x051c014c non-zero: 0x08980780  [10 §6.3]
+PASS PNL 0x051c0150 non-zero: 0x00a20074  [10 §6.3]
+PASS PNL 0x051c0154 non-zero: 0x000c001c  [10 §6.3]
+PASS PNL 0x051c0158 non-zero: 0x04650438  [10 §6.3]
+PASS line counter PNL 0x051c0174 moving: 0x00990285 then 0x00a00095  [95 T1; 30 §4.5]
+verify scan: PASS
+scan rc=0
+INFO histogram sum 2073600, non-zero bins 25:2073600
+INFO histogram sum 2073600, non-zero bins 25:2073600
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram sum 2073600, non-zero bins 25:2073600
+INFO histogram sum 2073600, non-zero bins 25:2073600
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram sum 2073600, non-zero bins 25:2073600
+INFO histogram sum 2073600, non-zero bins 25:2073600
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+slot 0x4b100000 luma histogram (32 bins of 8, every 4th pixel/line): 11:129600
+slot 0x4b2ff000 luma histogram (32 bins of 8, every 4th pixel/line): 11:129600
+slot 0x4b4fe000 luma histogram (32 bins of 8, every 4th pixel/line): 11:129600
+CAP 104 00000000 a0c 00000000 548 0000c3f6 | 0x05600070 4b100000 0x084 4b6fd000 0x320 4c7ed000
+=== end

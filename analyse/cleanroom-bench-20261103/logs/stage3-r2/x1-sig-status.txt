@@ -1,0 +1,57 @@
+ok status
+mode            automatic
+config          /etc/h713/tv.conf: start=last; saved=auto in /var/lib/h713-tv/modus
+signal          1920x1080p60, 148.5 MHz (last measured)
+colour          BT.709, limited range
+picture         console, DRM master held
+source          auto
+cover           an opaque page hides the picture: h713-warp pauses, the video plane is off, the HDMI sound is muted
+bare            off
+nosignal        none
+want            none (h713-warp's word: the straight ring at once)
+buffer          1920x1080 NV16, line pitch 1920 on panel 1920x1080
+format          proportional (aspect 1)
+zoom            off
+                src-window absent (the whole picture), dst-window absent (the whole picture) (descriptor words 27..30 / 31..34)
+                plane 0,0 1920x1080 on panel 1920x1080
+picture values  7 presets from /etc/h713/tvconfig (h713-pq, 1018 ms), gamma 2.20, LUT 2048 bytes
+preset          standard (from the device data)
+gamma curve     computed here from this board's own curves (ProjectID 0x30)
+gamma           level 3 (2.2), colour temperature auto (normal); curves of ProjectID 0x30: normal cool warm
+                on the CRTC: normal, level 3, curve 2100a19f (17.9 ms, 1 sent, 0 refused)
+white balance   512 512 512 512 512 512 (R G B gain, R G B offset; 512 neutral), on the registers
+colour mgmt     0 entries changed
+                display firmware HY320
+saved           /var/lib/h713-tv/werte: preset=standard brightness=100 contrast=95 saturation=50 hue=50 sharpness=50 tnr=2 snr=1 dci=2 black=1 aspect=proportional zoom=off
+audio           silent (auto), volume 100 (-9.5 dB), HDMI trim 0.00 dB
+audio cards     hy310hdmi (card 1): Switch 0, Volume 362, Mute 0, Input Mute 1 | Codec (card 0): Source I2S, Rate 48000, DAC Volume 63, switch Line Out Playback Switch 1
+audio sounds    the box's own sounds: hw:hy310hdmi,0 (48 kHz, mixed into HDMI by the DSP), the DAC stays on I2S; PCM closed
+audio source    present=1 rate=48000 compressed=0 (events)
+audio msp       state=running
+audio level     0 0
+edid            block 0 of /lib/firmware/hy310-edid.bin served (17 VICs offered, all in the firmware's table)
+                no deep colour offered, a source sends 8 bit
+kernel          /sys/kernel/debug/sun50i-h713-hdmirx/status: No such file or directory
+cpu_comm        /sys/kernel/debug/cpu_comm/watch: No such file or directory
+arisc           /sys/kernel/debug/h713-arisc/status: No such file or directory
+hdcp            version:       2.2 (session stands) -- LINK 0x422=0x01 0x3c0=0x04 0x161=0x84
+hdcp            authenticated: yes (2.2 session, LINK 0x422[0]) -- rxstatus 0x41b/0x41c=0x00 0x00: message size 0, READY 0, REAUTH_REQ 0; link 0x6d=0x00 (the firmware's connect-event flag, no HDCP meaning)
+hdcp            key-1.4:       loaded (LINK 0x93=0x45)
+hdcp            key-2.2:       handed over at probe (THal_Vp_SetHDCP22Key accepted; 2.2 advertised to the source, LINK 0x41a[2]=1)
+hdcp            firmware:      E/HdcpRx   [10443] (HDCP2.2/THDMIRx_HDCP22.cpp 167)port2 HDCP_base:0x6840000 HDCP Process cost tick:88 (ring write pointer 2775)
+	Active width: 1920
+	Active height: 1080
+	Total width: 2200
+	Total height: 1125
+	Frame format: progressive
+	Polarities: -vsync -hsync
+	Pixelclock: 148500000 Hz (60.00 frames per second)
+	Horizontal frontporch: 0
+	Horizontal sync: 280
+	Horizontal backporch: 0
+	Vertical frontporch: 0
+	Vertical sync: 45
+	Vertical backporch: 0
+	Standards: 
+	CTA-861 VIC: 16
+	Flags: CE-video, has CTA-861 VIC
