@@ -750,6 +750,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
 - [ ] 2.147 **HY310-Nachmessung der Nachtpakete vom 26.10.2026** (alle nur am G-EU gemessen, `arbeit/nacht-20261026/PLAN.md`): ein HY310-Abbild aus `main` mit dem neuen Installer über den laufenden Stand (1.2b/2.137: Nutzerstand, Gate, Hostschlüssel; Sonoff für die Stromzyklen); 2.125 mit offenem Launcher alt/neu (Abbrüche mehr als 20 s auseinander); 2.113 Reiter Colour; 1.2a Journal über Boots; 2.130c - hat der HY310 einen eigenen Mausknoten?; 2.51 `h713-mic` (HIDRAW) und ob es ins Abbild soll (Marco); die Abnahme.
 - [ ] 2.148 Klein: **`test_mkimage_selftest` urteilt über das Abbild, das gerade in `installer/out` liegt** - am 26.10.2026 war das im Haupt-Checkout noch v0.96-beta (05.10.), dessen Tabelle `pq/audio_config.ini` nicht kennt: falsches Rot in `tor.sh --tests` (beiseite nach `arbeit/nacht-20261026/alt-installer-out/`, danach übersprungen). Vorschlag: ein Abbild, dessen Stempel einen anderen Commit nennt als HEAD, mit Hinweis überspringen statt urteilen.
 - [ ] 2.149 Klein: **Container `h713-build` neu mit `podman run --init`** (Builder-Bericht 26.10.2026: PID 1 ist `sleep infinity`, 130 Zombies aller Sitzungen; harmlos für die Bauten). Rezept `docs/build-container.md` - beim nächsten Neubau des Containers, mit Marco.
+- [ ] 2.150 **HDMI-Ton läuft unter dem Launcher** (Marco, 03.11.2026, HY310 mit Messabbild, Stick steckt, Neustart, Launcher offen:
+      Musik vom Stick hörbar, obwohl `h713-tv ctl status` `cover` und "muted under an opaque page" meldet, `Input Mute 1` am
+      `hy310hdmi`). Der Stumm-Pfad unter einer deckenden Seite war nie mit tönender Quelle gemessen (`docs/tools/h713-tv.md`,
+      17.10.: "the sound part was not measurable there - the source sent no sound"). Nicht aus minpeters Zweig: sein `h713-tv`-Diff
+      berührt den Mute-Pfad nicht (0 Treffer). Zu klären: wirkt `HDMI Input Mute Switch` auf den HDMI-Durchgang überhaupt, oder nur
+      auf die Mischung der eigenen Töne; Gegenprobe unter v0.97 (G-EU) steht aus. Marco 03.11.: "mute ist uninteressant" - also
+      klein, kein Blocker.
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
@@ -972,7 +979,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       **01.11.2026 Antwort gepostet** (Marco; `ANTWORT2-TEXT.md`): BROM-Frage beantwortet, 8801 richtiggestellt; erbeten sein
       `dtb` aus dem Paket bei LBA 24576 (Python-Einzeiler, sha256 muss mit `7db0a4d3` beginnen), freiwillig U-Boot- und
       ARISC-Kennung des Pakets bei LBA 32800. Danach, ohne Termin: Profil-Variante, 8801-Firmware in Extraktor, `layout.py`
-      und Treiberpfad, Gerätebaum aus seinem `dtb`, Testabbild über FEL.
+      und Treiberpfad, Gerätebaum aus seinem `dtb`, Testabbild über FEL. **Seine Antwort 03.11.2026 07:50Z:** nur die Ein-Taste am
+      Gehäuse (`getevent` am LRADC-Gerät: nur `KEY_POWER`), die acht Tasten im Baum sind Firmware-Erbe -> T08-Baum: Tastatur aus,
+      Ein-Taste PL4 wie HY300 Pro; **keine Fernbedienung mehr**, auf einem Testabbild wäre die Ein-Taste sein einziger Eingang,
+      der AIC8801 (WLAN/SSH) ist damit Voraussetzung für jeden Test. Bewertung des `dtb`: `BEWERTUNG-DTB.md` (Board-Pins = HY300
+      Pro, Display-Seite = HY320; §3a was für ein FEL-TEST fehlt). Noch nicht beantwortet.
 - [ ] 4.18 **HY320 (Issue #5 / PR #6, Melder GitHub `minpeter`, 31.10.2026): das erste Board, das ein Fremder selbst bis zum
       laufenden TEST-Abbild gebracht hat** - Profil, `boards/hy320/` (`partial`), Gerätebaum 0335, U-Boot-Seite im Fork
       (well0nez/u-boot#1, 5 Commits unter `CONFIG_H713_BOARD_HY320`), crust (well0nez/crust#1, Board-ID 4). Bewertung und
@@ -997,8 +1008,14 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       0337/0338 (Port aus dem Gerätebaum, andere Boards unverändert = Port 0), 0339-0348 soweit nur HY320 (Opt-in prüfen);
       seine Änderungen an **unseren** Dateien vorher lesen (`hy200_qz713df_a1_defconfig`, `install-projekt.sh`, `pstore.config`);
       Video-Ebene gilt dann auch für HY350/T08 als Hinweis (nicht gemessen).
-      (3) **offen, erst nach Messung an HY310 und G-EU (vorher/nachher, Marco):** 0336 (DDC-Porttabelle der Hersteller-ARISC,
-      alle Boards; EDID, 1080p60, Ton, HDCP am HDMI-Eingang), `h713-tv`, `h713-mode`. Ohne Messung nicht nach `main`.
+      (3) **erledigt 03.11.2026** (Marco: "ja alle 3"; Messung `arbeit/schritt3-messung-20261103/`, Protokoll `doku/228`): Messabbilder
+      `v0.97.2-mess0336` aus seinem Zweig auf HY310 und G-EU installiert (Secure Storage unverändert, Gate 1). **0336 bestätigt:**
+      vorher DDC-RAMs EDID/Zufall/EDID auf beiden, nachher dreimal EDID, Tabelle bei `0x15b6c` (HY310) und `0x15b7c` (G-EU) gefunden;
+      1080p60, Ton 48 kHz, HDCP 2.2 (G-EU mit `HDCP Process cost tick`) unverändert, drei `HDCP14_LoadKey time out` vorher wie
+      nachher. `h713-tv`-Tabelle erkennt die HY310-Firmware auf beiden. `h713-mode` nicht gemessen (kein Standby). Alle drei
+      in `main`. Nicht gemessen: HDCP 1.4 nach Messregel, Bild/Ton unter dem Launcher (Marco: Ton lief unter dem Launcher,
+      obwohl `h713-tv` "muted under an opaque page" meldet - eigener Punkt, s. 2.150). G-EU-Boot mit steckender Quelle zeigte 3x
+      `no lock` im Fenster zwischen HPD-Puls und zweiter EDID-Sequenz, vorher nicht vergleichbar (Quelle kam später).
       Offen im Issue #5: Video-Ebene (durch 0339/0340 gelöst, Issue noch offen), STK8BA58 (0341 jetzt da), PWM5 ohne Pad (Kommentar).
 
 ## 5 Installer und Werkzeuge

@@ -3,7 +3,7 @@
 **The patch files here are generated, not maintained** (since 12.09.2026, P3):
 `git format-patch --no-signature 8fe568cdfc46..<head>` in the submodule checkout
 `mainline/external/u-boot` (branch `h713-hy310`, base is cstenger's `h713`),
-last regenerated on 02.11.2026 at the head `26f974b8d6a` (110 patches: `0106`-`0110` are minpeter's HY320 commits of well0nez/u-boot#1, merged onto the fork's `h713-hy310` locally, the push pending). Verified the
+last regenerated on 02.11.2026 at the head `26f974b8d6a` (110 patches: `0106`-`0110` are minpeter's HY320 commits of well0nez/u-boot#1, merged onto the fork's `h713-hy310`, pushed 02.11.2026). Verified the
 way a mirror should be: applying all 110 from the base produces a tree with the same
 hash as the head (`48c416ec7c71`; before: 105 patches, head `c97e5c6bb78d`, tree `1d0b87cde693`; before that: 102 patches, head `daa35622b0bf`, tree `ca817b83e490`; before that: 101 patches, head `61ea018712c8`, tree `595b6941482e`). `0095` is the HDCP 1.4 key path, `0096` stages scp.bin (crust) in DRAM for BL31,
 `0097` names the gate word of a standby that did not finish (`doku/179`), `0098` - `0100` are the HDCP
