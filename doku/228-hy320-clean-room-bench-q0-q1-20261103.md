@@ -504,3 +504,9 @@ authentifiziert, EDID ausgeliefert, Ton 48 kHz; Launcher bedeckte das Bild bis z
 - Sichtfenster: ein Befehl `tools/window.sh` (feste Folge 1 -> Bench -> 2 -> 3 -> 4 -> 5 -> zurück, UTC-Zeitstempel),
   Zustand 5 mit diesem Modul. Wartet auf "ready" des Besitzers.
 - Ende: Umgebung = Referenz, Normalstart 7.3.1, RUN1, Sperre frei.
+
+## 26 Runde 12 (04.11.)
+
+- Modul `fa01d83e…`: 1-7 wie Runde 11; Schritt 8 14 PASS, 0 FAIL; Neuladen und Signalrückkehr ohne Timeout und ohne
+  "raster stall"; T3-05 Rückkehr 0,21 s nach TMDS. Alle 25 Commit-Zeilen sauber. Zustand 5 des Sichtfensters mit diesem Modul.
+  Gerät danach im Normalstart, Umgebung = Referenz, Sperre frei.
