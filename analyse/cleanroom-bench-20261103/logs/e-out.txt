@@ -1,0 +1,54 @@
+    35.629 VSYNC poll 1.0 s: first read 0x1, bit0 events 65, mean interval 15.26 ms, raw values seen 0x1
+TEST all of 12: FOLLOWS clean; white sum 2073600 top 2073600 hi 2073600; black sum 207360
+    38.834 STATE setup: low 107100 (55.78 lines) mid 0 high 1966500; bins 5:40377 6:66723 31:1966500; phase: vsync->rgb-done median 9.064 ms = 668 lines (min 9.056 max 9.068, 16 vsync, 17 rgb in 0.25 s)
+    39.149 ALIGN3 start: s=1940 r=303; video px 107100, RGB rows visible 1035.00, cols visible 1900.00; short col bands (80 px) [0:60.0]; short row bands (45 rows) [6:33.0 7:12.0]
+    40.866 ALIGN3 done: s=1920 r=1080; video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+    41.382 STATE now: low 518400 (270.00 lines) mid 1296000 high 259200; bins 1:86400 2:86400 3:86400 4:86400 7:86400 8:86400 9:86400 10:86400 11:86400 12:86400 13:86400 14:86400 15:86400 16:86400 17:86400 18:86400 19:86400 20:86400 21:86400 22:86400 23:86400 24:86400 25:86400 26:86400; phase: vsync->rgb-done median 13.785 ms = 1016 lines (min 13.779 max 13.790, 16 vsync, 16 rgb in 0.25 s)
+    41.668 ALN1 start: s=1920 r=1080; video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+    41.977 ALN1 h=2201 m=1 from video line 200: written at line 204, restored at 204; s 1920 -> 796 (moved +1076 columns), r 1080 -> 1079
+    42.271 ALN1 h=2201 m=1 from video line 200: written at line 203, restored at 203; s 796 -> 1872 (moved +1076 columns), r 1079 -> 1079
+    42.574 ALN1 h=2201 m=2 from video line 200: written at line 203, restored at 204; s 1872 -> 1211 (moved -661 columns), r 1079 -> 1049
+    42.851 ALN1 h=2201 m=5 from video line 200: written at line 203, restored at 206; s 1211 -> 1208 (moved -3 columns), r 1049 -> 1049
+    43.140 ALN1 h=2201 m=10 from video line 200: written at line 203, restored at 211; s 1208 -> 1200 (moved -8 columns), r 1049 -> 1049
+    43.431 ALN1 h=2201 m=25 from video line 200: written at line 203, restored at 226; s 1200 -> 1176 (moved -24 columns), r 1049 -> 1049
+    43.720 ALN1 h=2199 m=25 from video line 200: written at line 203, restored at 226; s 1176 -> 1199 (moved +23 columns), r 1049 -> 1049
+    44.010 ALN1 h=2199 m=10 from video line 200: written at line 203, restored at 211; s 1199 -> 1663 (moved +464 columns), r 1049 -> 1019
+    44.299 ALN1 h=2199 m=5 from video line 200: written at line 202, restored at 206; s 1663 -> 2127 (moved +464 columns), r 1019 -> 989
+    44.601 ALN1 h=2199 m=2 from video line 200: written at line 202, restored at 203; s 2127 -> 1053 (moved -1074 columns), r 989 -> 990
+    44.894 ALN1 h=2199 m=1 from video line 200: written at line 203, restored at 202; s 1053 -> 2178 (moved -1075 columns), r 990 -> 990
+    45.196 ALN1 h=2199 m=1 from video line 200: written at line 202, restored at 202; s 2178 -> 1103 (moved -1075 columns), r 990 -> 991
+    45.482 ALN1 h=2201 m=10 from video line 700: written at line 703, restored at 711; s 1103 -> 1567 (moved +464 columns), r 991 -> 961
+    45.771 ALN1 h=2199 m=10 from video line 700: written at line 702, restored at 711; s 1567 -> 2031 (moved +464 columns), r 961 -> 931
+    46.052 ALN1 h=2201 m=10 from video line 1100: written at line 1103, restored at 1111; s 2031 -> 2023 (moved -8 columns), r 931 -> 931
+    46.341 ALN1 h=2199 m=10 from video line 1100: written at line 1103, restored at 1111; s 2023 -> 2031 (moved +8 columns), r 931 -> 931
+    46.633 ALN1 h=2201 m=10 from video line 1120: written at line 1123, restored at 6; s 2031 -> 2022 (moved -9 columns), r 931 -> 931
+    46.922 ALN1 h=2199 m=10 from video line 1120: written at line 1123, restored at 6; s 2022 -> 2031 (moved +9 columns), r 931 -> 931
+    47.061 ALN1 end: s=2031 r=931; video px 201285, RGB rows visible 1035.00, cols visible 1809.00; short col bands (80 px) [0:0.0 1:49.0]; short row bands (45 rows) [20:31.0 21:14.0]
+    49.035 ALIGN3 done: s=1920 r=1080; video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+    49.542 STATE now: low 518400 (270.00 lines) mid 1296000 high 259200; bins 1:86400 2:86400 3:86400 4:86400 7:86400 8:86400 9:86400 10:86400 11:86400 12:86400 13:86400 14:86400 15:86400 16:86400 17:86400 18:86400 19:86400 20:86400 21:86400 22:86400 23:86400 24:86400 25:86400 26:86400; phase: vsync->rgb-done median 13.784 ms = 1016 lines (min 13.780 max 13.788, 16 vsync, 16 rgb in 0.25 s)
+=== Q-ALN-2 a: full re-enable at 1920x1080 (clean composer, measured pacing)
+done: 1119 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+    51.564 STATE setup: low 0 (0.00 lines) mid 0 high 2073600; bins 31:2073600; phase: vsync->rgb-done median 13.786 ms = 1016 lines (min 13.779 max 13.790, 17 vsync, 17 rgb in 0.25 s)
+    51.848 MEAS start: video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+=== Q-ALN-2 b: full enable at 1280x720 scaled
+done: 1119 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+    53.806 STATE setup: low 1920 (1.00 lines) mid 0 high 2071680; bins 5:720 6:1200 31:2071680; phase: vsync->rgb-done median 13.785 ms = 1016 lines (min 13.781 max 13.790, 17 vsync, 17 rgb in 0.25 s)
+    54.060 MEAS start: video px 1920, RGB rows visible 1079.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) [23:44.0]
+    54.304 ALIGN3 start: s=1920 r=1079; video px 1920, RGB rows visible 1079.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) [23:44.0]
+    54.819 ALIGN3 done: s=1920 r=1080; video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+    55.300 STATE now: low 518400 (270.00 lines) mid 1296000 high 259200; bins 1:86400 2:86400 3:86400 4:86400 7:86400 8:86400 9:86400 10:86400 11:86400 12:86400 13:86400 14:86400 15:86400 16:86400 17:86400 18:86400 19:86400 20:86400 21:86400 22:86400 23:86400 24:86400 25:86400 26:86400; phase: vsync->rgb-done median 13.772 ms = 1015 lines (min 13.749 max 13.775, 16 vsync, 17 rgb in 0.25 s)
+=== Q-ALN-2 c: back to 1920x1080
+done: 1119 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+    57.311 STATE setup: low 1920 (1.00 lines) mid 0 high 2071680; bins 5:720 6:1200 31:2071680; phase: vsync->rgb-done median 13.772 ms = 1015 lines (min 13.766 max 13.775, 16 vsync, 16 rgb in 0.25 s)
+    57.554 MEAS start: video px 1920, RGB rows visible 1079.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) [0:44.0]
+    57.805 ALIGN3 start: s=1920 r=1081; video px 1920, RGB rows visible 1079.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) [0:44.0]
+    58.316 ALIGN3 done: s=1920 r=1080; video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+=== Q-DRM-6
+Bus error
+    58.473 PITCH readback: wrote 0xffffffff reads 0x0000ffff
+    58.475 PITCH readback: wrote 0x0001fffc reads 0x0000fffc
+    58.477 PITCH readback: wrote 0x00010000 reads 0x00000000
+    58.478 PITCH readback: wrote 0x00000000 reads 0x00000000
+    58.599 PITCH pitch 7680: 0x170 written 0x1e00 reads 0x1e00, 0x174 0x4381e00; white rows every 7680 bytes; high (bin 31) 2073600, bin 0 0, other 0
+    58.721 PITCH pitch 8192: 0x170 written 0x2000 reads 0x2000, 0x174 0x4381e00; white rows every 8192 bytes; high (bin 31) 2073600, bin 0 0, other 0
+=== end

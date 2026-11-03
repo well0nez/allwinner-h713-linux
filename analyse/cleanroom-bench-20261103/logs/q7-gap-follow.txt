@@ -1,0 +1,29 @@
+=== after enable 3: does the picture follow the frame
+frame Black nv12 1920x1080 pitch 1920: luma 0x4c000000 chroma 0x4c1fa400
+frame written: luma 0x4c000000 chroma 0x4c1fa400 end 0x4c2f7600
+verify histogram, frame black (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:777600 6:1296000
+INFO histogram sum 2073600, non-zero bins 5:777600 6:1296000
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+PASS black: bins 5 and 6 only:   [10 §6.2]
+REF black bins 5/6 = 777600/1296000 (measured 777568/1296032)
+INFO 0x05140600 = 0x09160112  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: PASS
+frame White nv12 1920x1080 pitch 1920: luma 0x4c000000 chroma 0x4c1fa400
+frame written: luma 0x4c000000 chroma 0x4c1fa400 end 0x4c2f7600
+verify histogram, frame white (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 31:2073600
+INFO histogram sum 2073600, non-zero bins 31:2073600
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+PASS white: all in bin 31: bin31 2073600  [10 §6.2]
+INFO 0x05140600 = 0x0eb0058d  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0eb0058f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: PASS
+0x05600058 = 0x00000069
+0x05600058 = 0x0000006a
+0x05600058 = 0x0000006a
+0x05600058 = 0x0000006a
+0x05600058 = 0x0000006a

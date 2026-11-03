@@ -240,3 +240,32 @@ Abzug, Sperre frei.
   "rasters"), `95-test-procedures.md` (S1-T6). Werkzeuge und Logs in `analyse/cleanroom-bench-20261103/`.
 - Gerät: Normalboot, 6.18.38, Umgebung gleich der Referenz (`env-before-r6.txt`), GP5 `RUN1`, `h713-tv ctl status` ok,
   keine fehlgeschlagenen Units, Sperre frei. `/lib/firmware/h713/database.TSE` und `/root`-Werkzeuge bleiben (lead).
+
+## 11 Runde 7: DRM-Modul Runde 2 und 3, Q-DRM-6/7, Q-ALN-1..3
+
+- **Modul Runde 2** (`fb4e236`, -rust-Kern, B0, wie geschrieben; `notes/bench-results-drm.md`, Logs
+  `notes/bench-logs/2026-11-03-drm-r2/`): alles PASS bis auf das erwartete S1-T6 (U = 114345). Erste volle
+  Aktivierung des Boots sauber (`0 timeouts, 0 check failures`, kein Raster-Hänger), 16 Commits sauber, S1-T3 +656/10 s,
+  Pitch 8192 = 7680, `rmmod` stellt das Logo zurück (`0x178 = 0x6c100000`, `MIX 0x10000040`).
+- **Q-DRM-7** (drei frische Boots, Composer `vp-bench apply --pace`): nur 200 ms zwischen Tabellen oder nur 1 ms pro
+  Schreiben reicht, je drei volle Aktivierungen im selben Boot sauber, Bild folgt dem Rahmen. Ohne Pause: Raster läuft,
+  aber `0x05600310` Bit 21 steht (`0x00a00210`), auch nach einer späteren gepacten Aktivierung.
+- **Q-DRM-6**: `0x170` ist 16 Bit (`0xffffffff` -> `0xffff`, `0x12000` -> `0x2000`); die Abholung nimmt den Pitch in
+  16-Byte-Schritten (8196/8200 wie 8192, 7684 wie 7680); 8208..8448, 12288, 16384, 18000, 65532 ohne schwarze Zeilen.
+  Pitch-Probe zuerst mit Bus error (unausgerichtete memcpy auf `/dev/mem` mit O_SYNC), danach am Stück kopiert.
+- **Q-ALN-1**: Horizontal-Total wirkt zeilenweise: 2201 für m Zeilen (Schreiben 8 us nach dem Zeilenschritt des
+  Video-Zeilenzählers, zurück nach m Zeilen) schiebt um m Spalten (m = 8..800, 25 von 32), aber 7 von 32 Fenstern
+  sprangen um genau 65536 Pixeltakte (-30 Zeilen +464 Spalten) oder anders; sichere Schreibposition unbekannt; eine
+  Serie mit 24 kurzen Fenstern bewegte gar nichts (unverstanden).
+- **Q-ALN-2**: gleiche Geometrie neu aktiviert -> bleibt ausgerichtet; 1080p -> 720p verliert eine Zeile, ausgerichtet bei
+  720p 13,772 ms (1015 Zeilen); zurück wieder eine Zeile.
+- **Q-ALN-3**: ftrace fehlt im -rust-Kern; das Modul (IRQ-Zeitstempel) las 13,784/13,785 ms bei zeilengenau
+  ausgerichteten Zeilen (1080p) und 13,772 ms (720p) = die gepollten Werte; Unterschied der Leitungen < 0,002 ms.
+- **Modul Runde 3, Schritt 5** (`0af7d18`): `s1t6` meldet `align: vblank interrupt unavailable` (nicht ausgerichtet,
+  U = 122625 / mit align_cal aus dem vorigen Zustand 37800); beim Halten richtet `align=1` die Zeilen aus (9,064 ->
+  13,784 ms, 348 Zeilen in 4 Bildern; U = 37800 = 35 Spalten), `align_cal=1` Spalten 35 -> 10, U = 10800; 720p:
+  ohne Kalibrierung eine Zeile daneben (U = 39685), mit Kalibrierung Zeilen 1 -> 0 (13,772 ms).
+- Entwürfe: `cleanroom-held/drafts/05-rgb-plane-and-handoff.md` (§1.2 Pitch-Tabelle, §2.1 B9-B11),
+  `10-video-plane.md` (§6.3 Pacing-Zeilen und Text). Werkzeuge/Logs in `analyse/cleanroom-bench-20261103/`.
+- Gerät: Normalboot 6.18.38, Umgebung gleich `env-before-r7.txt`, GP5 `RUN1`, `h713-tv` ok, keine fehlgeschlagenen
+  Units, Sperre frei.

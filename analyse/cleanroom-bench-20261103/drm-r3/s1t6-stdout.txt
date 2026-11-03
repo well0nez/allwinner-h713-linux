@@ -1,0 +1,163 @@
+=== 0
+6.18.38-rust
+console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+ls: cannot access '/sys/kernel/tracing': No such file or directory
+=== module align=1 align_cal=0
++ insmod /root/h713_drm.ko bench=1 restore_logo=1 align=1 align_cal=0
+rc=0
+[   40.674719] h713-drm h713-drm: no clocks to hold: boot with clk_ignore_unused (spec 05 §4)
+[   40.679326] h713-drm h713-drm: handoff: RGB control 0x03001901, address 0x6c100000, irq enable 0x00000021; 0 clocks, reset none; h713/database.TSE loaded
+[   40.679744] [drm] Initialized h713-drm 1.0.0 for h713-drm on minor 1
+[   40.679958] h713_drm: bench device registered (rgb-done irq 334 = SPI 112, video-vsync irq 335 = SPI 110)
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/trace: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/filter: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/enable: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
++ /root/kms-test s1t6
+commit (with the driver's alignment) took 1344 ms; see the kernel log's "align (05 §2.1)" line
+FAIL S1-T6 alpha 0xff: want [(31, 2073600)]; bins 5:46038 6:76587 31:1950975; uncovered U = 122625
+FAIL S1-T6 alpha 0x80: want [(19, 2073600)]; bins 5:46114 6:76511 19:1950975; uncovered U = 122625
+FAIL S1-T6 alpha 0x40: want [(12, 2073600)]; bins 5:45983 6:76642 12:1950975; uncovered U = 122625
+PASS S1-T6 alpha 0x00: want [(5, 777600), (6, 1296000)]; bins 5:777600 6:1296000
+rc=1
+/root/run-s1t6.sh: 8: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+grep: /sys/kernel/tracing/trace: No such file or directory
+trace s1t6-cal0: 0 entries
+[    0.000000] SLUB: HWalign=64, Order=0-3, MinObjects=0, CPUs=4, Nodes=1
+[   42.745152] h713-drm h713-drm: [drm] align: vblank interrupt unavailable
+--- hold 1080p, both planes, alpha 255
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/trace: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/filter: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/enable: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+commit ok in 1958 ms: primary white (pitch 7680), overlay black 1920x1080 Nv12 (alpha 255)
+holding 16 s
+/root/run-s1t6.sh: 8: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+grep: /sys/kernel/tracing/trace: No such file or directory
+trace hold1080-cal0: 0 entries
+[   42.745152] h713-drm h713-drm: [drm] align: vblank interrupt unavailable
+[   46.604859] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 9.064 ms -> 13.784 ms (aligned 13.785); timing moved 348 lines in 4 frames, within 0.014 ms
++ /root/vp-bench verify hist --expect white --log /root/drm-bench3.log
+verify histogram, frame white (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:14040 6:23760 31:2035800
+INFO histogram sum 2073600, non-zero bins 5:14040 6:23760 31:2035800
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+FAIL white: all in bin 31: bin31 2035800  [10 §6.2]
+INFO 0x05140600 = 0x09110110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: 1 FAIL
+rc=1
+POLLED vsync status -> RGB done status: median 29.0423 ms (min 13.7784 max 90.0744, 33 vsync, 10 done)
+--- 720p (Q-ALN-2)
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/trace: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/filter: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/enable: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+commit ok in 1560 ms: primary white (pitch 7680), overlay black 1280x720 Nv12 (alpha 255)
+holding 16 s
+/root/run-s1t6.sh: 8: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+grep: /sys/kernel/tracing/trace: No such file or directory
+trace hold720-cal0: 0 entries
+[   46.604859] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 9.064 ms -> 13.784 ms (aligned 13.785); timing moved 348 lines in 4 frames, within 0.014 ms
+[   64.869001] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 13.785 ms -> 13.785 ms (aligned 13.785); timing moved 0 lines in 0 frames, within 0.014 ms
++ /root/vp-bench verify hist --expect white --log /root/drm-bench3.log
+verify histogram, frame white (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:15017 6:24668 31:2033915
+INFO histogram sum 2073600, non-zero bins 5:15017 6:24668 31:2033915
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+FAIL white: all in bin 31: bin31 2033915  [10 §6.2]
+INFO 0x05140600 = 0x09110110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: 1 FAIL
+rc=1
+POLLED none: 33 vsync 0 done
++ rmmod h713_drm
+rc=0
+[   64.869001] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 13.785 ms -> 13.785 ms (aligned 13.785); timing moved 0 lines in 0 frames, within 0.014 ms
+[   80.934703] h713-drm h713-drm: unload: logo 0x6c100000 (uboot-scanout@6c100000) restored: 0, 7 writes, 0 read-back mismatches
+=== module align=1 align_cal=1
++ insmod /root/h713_drm.ko bench=1 restore_logo=1 align=1 align_cal=1
+rc=0
+[   80.977768] h713-drm h713-drm: no clocks to hold: boot with clk_ignore_unused (spec 05 §4)
+[   80.979508] h713-drm h713-drm: handoff: RGB control 0x03001901, address 0x6c100000, irq enable 0x00000021; 0 clocks, reset none; h713/database.TSE loaded
+[   80.979901] [drm] Initialized h713-drm 1.0.0 for h713-drm on minor 1
+[   80.979971] h713_drm: bench device registered (rgb-done irq 334 = SPI 112, video-vsync irq 335 = SPI 110)
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/trace: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/filter: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/enable: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
++ /root/kms-test s1t6
+commit (with the driver's alignment) took 1344 ms; see the kernel log's "align (05 §2.1)" line
+FAIL S1-T6 alpha 0xff: want [(31, 2073600)]; bins 5:14040 6:23760 31:2035800; uncovered U = 37800
+FAIL S1-T6 alpha 0x80: want [(19, 2073600)]; bins 5:14310 6:23490 19:2035800; uncovered U = 37800
+FAIL S1-T6 alpha 0x40: want [(12, 2073600)]; bins 5:14175 6:23625 12:2035800; uncovered U = 37800
+PASS S1-T6 alpha 0x00: want [(5, 777600), (6, 1296000)]; bins 5:777600 6:1296000
+rc=1
+/root/run-s1t6.sh: 8: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+grep: /sys/kernel/tracing/trace: No such file or directory
+trace s1t6-cal1: 0 entries
+[   42.745152] h713-drm h713-drm: [drm] align: vblank interrupt unavailable
+[   46.604859] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 9.064 ms -> 13.784 ms (aligned 13.785); timing moved 348 lines in 4 frames, within 0.014 ms
+[   64.869001] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 13.785 ms -> 13.785 ms (aligned 13.785); timing moved 0 lines in 0 frames, within 0.014 ms
+[   83.019373] h713-drm h713-drm: [drm] align: vblank interrupt unavailable
+--- hold 1080p, both planes, alpha 255
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/trace: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/filter: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/enable: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+commit ok in 3140 ms: primary white (pitch 7680), overlay black 1920x1080 Nv12 (alpha 255)
+holding 16 s
+/root/run-s1t6.sh: 8: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+grep: /sys/kernel/tracing/trace: No such file or directory
+trace hold1080-cal1: 0 entries
+[   88.015780] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 13.784 ms -> 13.785 ms (aligned 13.785); timing moved 0 lines in 0 frames, within 0.014 ms
+[   88.015832] h713-drm h713-drm: [drm] align calibration: |columns| 35 -> 10 (45 horizontal steps, lattice of 25), |rows| 23 -> 0 (1102 lines moved); 51 register writes, 0 read-back mismatches
++ /root/vp-bench verify hist --expect white --log /root/drm-bench3.log
+verify histogram, frame white (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:4320 6:6480 31:2062800
+INFO histogram sum 2073600, non-zero bins 5:3780 6:7020 31:2062800
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: false
+FAIL white: all in bin 31: bin31 2062800  [10 §6.2]
+INFO 0x05140600 = 0x09110110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: 1 FAIL
+rc=1
+POLLED none: 33 vsync 0 done
+--- 720p (Q-ALN-2)
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/trace: Directory nonexistent
+/root/run-s1t6.sh: 6: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/filter: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/events/irq/irq_handler_entry/enable: Directory nonexistent
+/root/run-s1t6.sh: 7: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+commit ok in 2337 ms: primary white (pitch 7680), overlay black 1280x720 Nv12 (alpha 255)
+holding 16 s
+/root/run-s1t6.sh: 8: cannot create /sys/kernel/tracing/tracing_on: Directory nonexistent
+grep: /sys/kernel/tracing/trace: No such file or directory
+trace hold720-cal1: 0 entries
+[  107.042811] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 13.785 ms -> 13.772 ms (aligned 13.785); timing moved 0 lines in 0 frames, within 0.014 ms
+[  107.042863] h713-drm h713-drm: [drm] align calibration: |columns| 10 -> 10 (0 horizontal steps, lattice of 25), |rows| 1 -> 0 (1124 lines moved); 51 register writes, 0 read-back mismatches
++ /root/vp-bench verify hist --expect white --log /root/drm-bench3.log
+verify histogram, frame white (10 §6.2)
+INFO histogram sum 2073600, non-zero bins 5:4320 6:6480 31:2062800
+INFO histogram sum 2073600, non-zero bins 5:4320 6:6480 31:2062800
+PASS histogram sum = one 1920x1080 frame: 2073600  [10 §6.2; 30 §4.5]
+INFO histogram stable over 100 ms: true
+FAIL white: all in bin 31: bin31 2062800  [10 §6.2]
+INFO 0x05140600 = 0x09110110  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+INFO 0x05140604 = 0x0910010f  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+verify hist: 1 FAIL
+rc=1
+POLLED vsync status -> RGB done status: median 44.2867 ms (min 13.7679 max 181.6159, 33 vsync, 7 done)
++ rmmod h713_drm
+rc=0
+[  107.042863] h713-drm h713-drm: [drm] align calibration: |columns| 10 -> 10 (0 horizontal steps, lattice of 25), |rows| 1 -> 0 (1124 lines moved); 51 register writes, 0 read-back mismatches
+[  123.113481] h713-drm h713-drm: unload: logo 0x6c100000 (uboot-scanout@6c100000) restored: 0, 7 writes, 0 read-back mismatches
+=== end
