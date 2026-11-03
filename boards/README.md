@@ -18,7 +18,7 @@ for instance, lives under `hy200-qz713df-a1`.
 | [`hy300-pro`](hy300-pro/) | MagCubic HY300 Pro (2024) | DDR3 636 MHz | 1280×720 (0x34) | in test (`test11`, 22.10.2026; the owner's report outstanding) |
 | [`hy200-qz713df-a1`](hy200-qz713df-a1/) | HY300PRO-G-EU · "HY300 Pro+" (2025) · cstenger's bench board | DDR3 792 / 624 MHz | 1280×720 (0x34) | **verified** for both firmwares: `projector05061226` (HY300PRO-G-EU, 11.10.2026; a release image since `v0.97-beta`) and `projector09220931` ("HY300 Pro+" 2025, its owner's own build, issue #4, 30.10.2026) |
 | [`hy200-qz713-v2`](hy200-qz713-v2/) | "HY300 Pro+" (2025, LPDDR3) | LPDDR3 720 MHz | 1280×720 (0x34) | profile only |
-| [`hy300-t08`](hy300-t08/) | HY300 T08 (2024) | DDR3 640 MHz | 1280×720 (0x34) | profile only |
+| [`hy300-t08`](hy300-t08/) | HY300 T08 (2024); two firmwares, `ota20240419` and the issue #7 unit `unit202311` | DDR3 640 MHz | 1280×720 (0x34) | profile only; tree (0349) and U-Boot base since 03.11.2026, a TEST image is one build away |
 | [`hy320`](hy320/) | MagCubic HY320 (2024) | DDR3 792 MHz | 1920×1080 dual (0x30) | partial - TEST image boots on its owner's unit (31.10.2026): U-Boot logo, Linux, Wi-Fi, the RGB plane, and since 01.11.2026 the video plane with overlays over it (U-Boot writes three words of the L018's DE tail) |
 | [`hy350`](hy350/) | HY350 (2024) | DDR3 792 MHz | 1920×1080 (0x30) | profile only |
 | [`l018`](l018/) | L018 (2025) | DDR3 792 MHz | 1920×1080 dual (0x30) | **verified** (26.10.2026, `doku/222`; a release image since `v0.97.1-beta`); headphones and HDCP 2.2 not tested |

@@ -179,6 +179,19 @@ FILES = [File(*row) for row in (
     ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin",  "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_8800d80_u02.bin",  "wlan", True),
     ("lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin",           "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80.bin",           "wlan", True),
     ("lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin",       "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf_8800d80_u02.bin",       "wlan", True),
+    # the AIC8801's 10 files (the HY300 T08, issue #7; 01.11.2026) -> the same directory: the driver reads one
+    # CONFIG_AIC_FW_PATH whatever the chip, and asks for these plain names (fw_u02/fw_u03 tables). Optional like
+    # the D80's; a device has one set or the other, never both.
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig.txt",                  "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/aic_userconfig.txt",                  "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw.bin",                          "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw.bin",                          "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_rf.bin",                       "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fmacfw_rf.bin",                       "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid.bin",                         "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid.bin",                         "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_u03.bin",                     "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_adid_u03.bin",                     "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch.bin",                        "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch.bin",                        "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_u03.bin",                    "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_u03.bin",                    "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table.bin",                  "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table.bin",                  "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_u03.bin",              "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/fw_patch_table_u03.bin",              "wlan", True),
+    ("lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf.bin",                       "hy310-rootfs", "/lib/firmware/aic8800_fw/SDIO/aic8800D80/lmacfw_rf.bin",                       "wlan", True),
 )]
 
 # What a copied-in file is owned by and how it is allowed to be read. The device

@@ -128,8 +128,8 @@ firmware_pruefen() {
 	# chip gets them ZEROED - the file is there but empty. So do not look
 	# only at the directory, look into the file.
 	[ -d "$FIRMWARE" ] || fail "firmware missing: $FIRMWARE - it comes from your device's dump (h713-extract, Wi-Fi step). Without it the chip does not start."
-	set -- "$FIRMWARE"/fmacfw_*.bin
-	[ -f "$1" ] || fail "firmware missing: no fmacfw_*.bin in $FIRMWARE"
+	set -- "$FIRMWARE"/fmacfw*.bin               # fmacfw_8800d80*.bin (D80) or fmacfw.bin (AIC8801, the HY300 T08)
+	[ -f "$1" ] || fail "firmware missing: no fmacfw*.bin in $FIRMWARE"
 	if [ "$(head -c 16 "$1" | LC_ALL=C tr -d '\000' | wc -c)" -eq 0 ]; then
 		fail "$1 is a zeroed placeholder - this device has no Wi-Fi chip, or the installer ran without the Wi-Fi part of the dump. mode=off in $ENV_DATEI ends this message."
 	fi

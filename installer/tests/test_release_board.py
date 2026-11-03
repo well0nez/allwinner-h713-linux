@@ -41,7 +41,7 @@ class TheBoardInTheName(unittest.TestCase):
                            ("h713-hy200-qz713df-a1-projector05061226-v0.97-beta-media-desktop",
                             "hy200_qz713df_a1/projector05061226"),
                            ("h713-hy310-v0.5-beta", "hy310"),
-                           ("h713-hy300-t08-v0.11-TEST", "hy300_t08")):
+                           ("h713-hy300-t08-unit202311-v0.11-TEST", "hy300_t08/unit202311")):   # variants since 03.11.2026
             self.assertEqual(board_of_name(name), unit, name)
 
     def test_what_names_no_board(self):

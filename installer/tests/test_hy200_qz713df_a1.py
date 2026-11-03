@@ -299,7 +299,7 @@ class MkimageCutsForTheProfileSize(unittest.TestCase):
         example = os.path.join(fakedisk.FIXTURES, "release", "h713-hy310-v4-example.tabelle.json")
         with open(example, encoding="utf-8") as fh:
             frozen = json.load(fh)
-        for test_for in (None, "hy300_pro", "hy300_t08"):      # every other board: HY310 size
+        for test_for in (None, "hy300_pro", "hy300_t08/ota20240419"):   # every other board: HY310 size
             out, table = _build(os.path.join(self.tmp, str(test_for)), test_for)
             self.assertEqual(table["disk_sektoren"], HY310, test_for)
             self.assertEqual(table["partitionen"], frozen["partitionen"], test_for)
