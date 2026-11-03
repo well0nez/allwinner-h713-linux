@@ -97,6 +97,8 @@ snap("programmed +0.5 s")
 wr(CAP + 0x928, 0xE0020438)
 wr(CAP + 0x968, 0xE0020438)
 log("CAP7 outputs on (bit 31 of 0x928 and 0x968)")
+wr(CAP + 0x000, 0x3A7B)
+log(f"CAP7 top word +0x000 = {rd(CAP):08x} (0x3a7b as in the normal boot: starts the capture)")
 for k in range(6):
     time.sleep(0.5)
     snap(f"outputs on +{0.5 * (k + 1):.1f} s")

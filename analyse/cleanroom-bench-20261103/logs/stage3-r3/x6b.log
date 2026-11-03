@@ -1,0 +1,11 @@
+   106.819 === open /data/bench/x6b.log boot 457beb1e-6b7d-4a6d-89db-e5afb225358e cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   106.822 CAP +0x000 was 00000001; write 0x00003a7b (the normal boot value)
+   106.824 read back 00003a7b
+   107.078 CAP 000 00003a7b 100 00000707 104 000f014f a0c 00000000 548 04650898 | 0x05600320 4c7ed000 | slot0 luma mean 20.0 min 15 max 41 | fe64 13bbf166
+   107.331 CAP 000 00003a7b 100 00000707 104 001e020e a0c 00000000 548 04650898 | 0x05600320 4c3ef000 | slot0 luma mean 20.1 min 15 max 41 | fe64 16b7aa56
+   107.584 CAP 000 00003a7b 100 00000707 104 002d02d8 a0c 00000000 548 04650898 | 0x05600320 4c3ef000 | slot0 luma mean 20.1 min 16 max 41 | fe64 19b36345
+   107.837 CAP 000 00003a7b 100 00000707 104 003c03ac a0c 00000000 548 04650898 | 0x05600320 4c3ef000 | slot0 luma mean 20.2 min 16 max 41 | fe64 1caf1c35
+   108.091 CAP 000 00003a7b 100 00000707 104 004c001a a0c 00000001 548 04650898 | 0x05600320 4c3ef000 | slot0 luma mean 20.2 min 15 max 41 | fe64 1fddbf57
+   108.344 CAP 000 00003a7b 100 00000707 104 005b00ef a0c 00000001 548 04650898 | 0x05600320 4c3ef000 | slot0 luma mean 20.1 min 15 max 42 | fe64 22d97846
+   108.598 CAP 000 00003a7b 100 00000707 104 006a01c3 a0c 00000001 548 04650898 | 0x05600320 4c5ee000 | slot0 luma mean 20.2 min 15 max 42 | fe64 25d53136
+   108.851 CAP 000 00003a7b 100 00000707 104 00790299 a0c 00000001 548 04650898 | 0x05600320 4c5ee000 | slot0 luma mean 20.2 min 15 max 42 | fe64 28d0ea26

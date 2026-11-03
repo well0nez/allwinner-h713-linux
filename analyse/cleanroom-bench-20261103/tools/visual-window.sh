@@ -6,8 +6,11 @@
 #   2       (bench) h713_drm.ko bench=1 restore_logo=1 align_cal=1, P1 colour bars 1920x1080 on the video plane
 #   3       (bench) P1 under a white RGB plane at alpha 128 (the overlay after align_cal=1)
 #   4       (bench) rmmod h713_drm: the boot logo back
+#   5       (bench) the HDMI source through the clean path: EDID/hot-plug via the ARISC, receiver bring-up, capture into
+#           an own ring, channel 0 on ring slot 0 (hdmi-clean.sh; the source must be on)
 #   restore env back to the reference, normal boot
-# Needs /data/bench/{envrestore.py,blog.py} and /root/{h713_drm.ko,kms-test,vp-bench,vis.sh} on the device.
+# Needs /data/bench/{envrestore.py,blog.py,x5.py,cap7.py,hdmi-clean.sh,spx4-73.ko} and /root/{h713_drm.ko,kms-test,
+# vp-bench,vis.sh} on the device.
 set -eu
 S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=10 -o ConnectTimeout=8 -J root@192.168.0.180 root@192.168.4.1"
 D=$(dirname "$0")
@@ -33,10 +36,10 @@ bench)
 	fw_setenv h713_bench 1 && sync; (sleep 1; systemctl reboot) >/dev/null 2>&1 &'
 	waitup
 	;;
-2 | 3 | 4) $S "sh /root/vis.sh $1" ;;
+2 | 3 | 4 | 5) $S "sh /root/vis.sh $1" ;;
 restore)
 	$S 'python3 /data/bench/envrestore.py /data/bench/env-before-vis.txt; diff <(fw_printenv) /data/bench/env-before-vis.txt && echo ENV-OK'
 	"$0" 1
 	;;
-*) echo "usage: $0 ref|1|bench|2|3|4|restore" >&2; exit 2 ;;
+*) echo "usage: $0 ref|1|bench|2|3|4|5|restore" >&2; exit 2 ;;
 esac

@@ -1,0 +1,175 @@
+    43.953 === open /data/bench/x5v-bench.log boot b4861b7f-81e1-42fb-9a60-fca6e5fc256b cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    43.956 SIGNS start: 37a=00 377=00 001=00 005=00 007=00 0fc=3f 1ab..1af=00 00 00 00 00 ctl8fc=bf | timing 28..3f 000000000000000000000000000000000000000000000000 (htotal 0 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    43.958 X5 step 0: PLL_VIDEO1, CCU 0x02001d10..d64 and TVTOP as in the normal boot
+    43.960 W32 0x02001048 = a8006202 (was 28006202)
+    43.972 PLL_VIDEO1 0x02001048 = b8006202 (normal boot: b8006202)
+    43.974 W32 0x02001d10 = 81000005 (was 01000005)
+    43.976 W32 0x02001d18 = 81000004 (was 01000004)
+    43.978 W32 0x02001d24 = 80000007 (was 00000007)
+    43.980 W32 0x02001d28 = 80000002 (was 00000002)
+    43.982 W32 0x02001d2c = 80000005 (was 00000005)
+    43.984 W32 0x02001d30 = 80000004 (was 00000004)
+    43.986 W32 0x02001d34 = 80000004 (was 00000004)
+    43.988 W32 0x02001d38 = 8000000b (was 0000000b)
+    43.989 W32 0x02001d40 = 8000020a (was 0000020a)
+    43.991 W32 0x02001d48 = 80000002 (was 00000002)
+    43.993 W32 0x02001d4c = 80000002 (was 00000002)
+    43.995 W32 0x02001d50 = 81000002 (was 00000007)
+    43.997 W32 0x02001d58 = 80000002 (was 00000002)
+    43.998 W32 0x02001d5c = 8000020b (was 0000020b)
+    44.000 W32 0x02001d60 = 8000020b (was 0000020b)
+    44.002 W32 0x02001d64 = 00010001 (was 00000000)
+    44.004 W32 0x06e00008 = 00000504 (was 00000404)
+    44.006 W32 0x06e0001c = 00000001 (was 00000000)
+    44.008 SIGNS after step 0: 37a=00 377=00 001=00 005=00 007=00 0fc=3f 1ab..1af=00 00 00 00 00 ctl8fc=bf | timing 28..3f 000000000000000000000000000000000000000000000000 (htotal 0 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    44.010 X5 step 1: the 0x06841000 view's enables as in the normal boot (+0x001 = 0x05 opens RX_LINK for writes)
+    44.012 W8 0x06841001 = 05 (was 00)
+    44.014 W8 0x06841014 = 01 (was 00)
+    44.016 W8 0x06841015 = ff (was 00)
+    44.018 W8 0x06841016 = ff (was 00)
+    44.020 W8 0x06841017 = ff (was 00)
+    44.023 SIGNS after step 1: 37a=04 377=04 001=fe 005=40 007=00 0fc=bf 1ab..1af=3c 03 01 80 ee ctl8fc=bf | timing 28..3f 000000000000000000000000000000000000000000000000 (htotal 0 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    44.025 X5 H2: port select
+    44.027 W8 0x068008f1 = 80 (was 00)
+    44.029 W8 0x068008f2 = 29 (was 21)
+    44.031 W8 0x068008f4 = 80 (was 00)
+    44.032 W8 0x06840376 = 02 (was 00)
+    44.035 SIGNS after H2: 37a=04 377=04 001=fe 005=40 007=00 0fc=bf 1ab..1af=3c 03 01 91 ee ctl8fc=bf | timing 28..3f 000000000000000000000000000000000000000000000000 (htotal 0 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    44.036 X5 configuration: the firmware's no-signal bytes where the bench differs (HDCP, status, mirrors left out)
+    44.038 W8 0x068000a7 = 01 (was 00)
+    44.040 W8 0x068002a7 = 01 (was 01)
+    44.042 W8 0x068003a7 = 01 (was 01)
+    44.044 W8 0x068004a7 = 01 (was 01)
+    44.046 W8 0x068006a7 = 01 (was 01)
+    44.048 W8 0x068007a7 = 01 (was 01)
+    44.049 W8 0x06800ea7 = 01 (was 01)
+    44.051 W8 0x06800fa7 = 01 (was 01)
+    44.053 W8 0x068008fc = 33 (was bf)
+    44.055    read back b3
+    44.057 W8 0x06800af1 = 80 (was 80)
+    44.059 W8 0x06800af2 = 29 (was 29)
+    44.060 W8 0x06800af4 = 80 (was 80)
+    44.062 W8 0x06800afc = 33 (was b3)
+    44.064    read back b3
+    44.066 W8 0x06800bf1 = 80 (was 80)
+    44.068 W8 0x06800bf2 = 29 (was 29)
+    44.070 W8 0x06800bf4 = 80 (was 80)
+    44.071 W8 0x06800bfc = 33 (was b3)
+    44.073    read back b3
+    44.074 W8 0x06800cf1 = 80 (was 80)
+    44.076 W8 0x06800cf2 = 29 (was 29)
+    44.077 W8 0x06800cf4 = 80 (was 80)
+    44.078 W8 0x06800cfc = 33 (was b3)
+    44.079    read back b3
+    44.081 W8 0x06840000 = 00 (was c0)
+    44.082 W8 0x06840008 = 01 (was 00)
+    44.083 W8 0x06840016 = 00 (was 01)
+    44.085 W8 0x0684001a = 00 (was 01)
+    44.086 W8 0x06840040 = 07 (was 03)
+    44.087 W8 0x06840064 = 02 (was 0a)
+    44.088 W8 0x06840065 = 02 (was 0a)
+    44.090 W8 0x068400a1 = f0 (was fc)
+    44.091    read back fc
+    44.092 W8 0x068400b9 = 71 (was f0)
+    44.094 W8 0x068400c1 = 90 (was 80)
+    44.095 W8 0x068400c9 = 34 (was 14)
+    44.096 W8 0x068400fc = 37 (was bf)
+    44.099    read back b7
+    44.100 W8 0x06840186 = 00 (was ff)
+    44.102 W8 0x06840187 = 00 (was ff)
+    44.103 W8 0x068401a9 = 3f (was 3f)
+    44.105 W8 0x068401aa = 40 (was 40)
+    44.106 W8 0x068401ab = 18 (was 3c)
+    44.108    read back 3c
+    44.109 W8 0x068401ac = 10 (was 03)
+    44.110    read back 03
+    44.112 W8 0x068401ae = 80 (was 80)
+    44.113 W8 0x068401af = 0e (was ee)
+    44.114    read back ee
+    44.116 W8 0x068401b1 = 04 (was 00)
+    44.117 W8 0x06840310 = 61 (was 01)
+    44.118 W8 0x0684035e = 3a (was 3f)
+    44.120 W8 0x068403c5 = 02 (was 02)
+    44.121 SIGNS after the no-signal configuration: 37a=04 377=04 001=fe 005=40 007=00 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0000fffffffe0003fffe00000000000000020001fffd (htotal 65535 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    45.123 SIGNS +1 s: 37a=04 377=04 001=fe 005=40 007=00 0fc=b7 1ab..1af=3c 03 01 9f ee ctl8fc=b3 | timing 28..3f 08510000085108500003fffe00000000000000020001fffd (htotal 2129 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    45.125 X5 H3: PHY out of reset: 0x8fc/afc/bfc/cfc bit 7, RX_LINK +0x1b bits 2 and 4 cleared, +0xfc bit 7, EQ on
+    45.127 W8 0x068008fc = b3 (was b3)
+    45.129 W8 0x06800afc = b3 (was b3)
+    45.130 W8 0x06800bfc = b3 (was b3)
+    45.132 W8 0x06800cfc = b3 (was b3)
+    45.134 W8 0x0684001b = 01 (was 15)
+    45.135 W8 0x068400fc = b7 (was b7)
+    45.137 W8 0x068401b5 = 31 (was 21)
+    45.389 SIGNS after H3 +0.25 s: 37a=04 377=04 001=fe 005=40 007=00 0fc=b7 1ab..1af=3c 03 01 9e ee ctl8fc=b3 | timing 28..3f 08510000085108500003fffe00000000000000020001fffd (htotal 2129 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    45.642 SIGNS after H3 +0.50 s: 37a=04 377=04 001=fe 005=40 007=00 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0000fffffffe0003fffe00000000000000020001fffd (htotal 65535 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    45.895 SIGNS after H3 +0.75 s: 37a=04 377=04 001=fe 005=40 007=00 0fc=b7 1ab..1af=3c 03 01 9f ee ctl8fc=b3 | timing 28..3f ffff0000fffffffe0003fffe00000000000000020001fffd (htotal 65535 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    46.148 SIGNS after H3 +1.00 s: 37a=04 377=04 001=fe 005=40 007=00 0fc=b7 1ab..1af=3c 03 01 9f ee ctl8fc=b3 | timing 28..3f ffff0000fffffffe0003fffe00000000000000020001fffd (htotal 65535 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    46.150 X5 H4: activation +0x02 = 0x27 then 0x07
+    46.151 W8 0x06840002 = 27 (was 6e)
+    46.163 W8 0x06840002 = 07 (was 27)
+    46.416 SIGNS after H4 +0.25 s: 37a=04 377=04 001=fe 005=40 007=00 0fc=b7 1ab..1af=3c 03 01 9f ee ctl8fc=b3 | timing 28..3f ffff0000fffffffe0003fffe00000000000000020001fffd (htotal 65535 hact 0 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    46.669 SIGNS after H4 +0.50 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f a34f0004a34b00500009a2f2000000000000fffb00010004 (htotal 41807 hact 4 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    46.922 SIGNS after H4 +0.75 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 03 80 ee ctl8fc=b3 | timing 28..3f a34f0004a34b00500009a2f2000000000000fffb00010004 (htotal 41807 hact 4 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    47.175 SIGNS after H4 +1.00 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 9f ee ctl8fc=b3 | timing 28..3f ffff0004fffb5d00002ca2cf000000000000fffb00010004 (htotal 65535 hact 4 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    47.177 X5 H5: enables as with a locked 1080p60
+    47.179 W8 0x06840006 = 6a (was 6a)
+    47.181 W8 0x06840010 = 4d (was 00)
+    47.182 W8 0x06840012 = 27 (was 00)
+    47.184 W8 0x0684000c = 87 (was 00)
+    47.185 W8 0x0684000d = 8f (was 00)
+    47.187 W8 0x0684000b = 01 (was 00)
+    47.689 SIGNS after H5 +0.5 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0004fffb5d0010e0921b000000000000fffb00010004 (htotal 65535 hact 4 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    48.192 SIGNS after H5 +1.0 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0004fffb5d0010e0921b000000000000fffb00010004 (htotal 65535 hact 4 vtotal 0 vact 0) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    48.695 SIGNS after H5 +1.5 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0000ffffffffffff0001000f0003000c000700010004 (htotal 65535 hact 0 vtotal 15 vact 3) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    49.198 SIGNS after H5 +2.0 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0000ffffffffffff0001000f0003000c000700010004 (htotal 65535 hact 0 vtotal 15 vact 3) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    49.701 SIGNS after H5 +2.5 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0000ffffffff000bfff5000f0003000c000700010004 (htotal 65535 hact 0 vtotal 15 vact 3) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    50.203 SIGNS after H5 +3.0 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 81 ee ctl8fc=b3 | timing 28..3f ffff0000ffffffff015dfea3000f0003000c000700010004 (htotal 65535 hact 0 vtotal 15 vact 3) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    50.706 SIGNS after H5 +3.5 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 80 ee ctl8fc=b3 | timing 28..3f ffff0000ffffffff0848f7b8000f0003000c000700010004 (htotal 65535 hact 0 vtotal 15 vact 3) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    51.209 SIGNS after H5 +4.0 s: 37a=04 377=04 001=fe 005=41 007=68 0fc=b7 1ab..1af=3c 03 01 8e ee ctl8fc=b3 | timing 28..3f ffff0000ffffffff0020ffe0000f0003000c000700010004 (htotal 65535 hact 0 vtotal 15 vact 3) | aux1010=00000002 1014=00000005 | CAP 104=00000000 548=00000000 540=00000000 | PROC fe64=cd030c5d
+    51.211 X5 DONE
+    55.044 === open /data/bench/x5v-bench.log boot b4861b7f-81e1-42fb-9a60-fca6e5fc256b cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    55.047 SIGNS start: h 65535/0 v 15/3 000=00 001=fe 007=68 01d=e1 022=10 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    55.350 SIGNS +0.3 s: h 65535/0 v 15/3 000=00 001=fe 007=68 01d=e1 022=10 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    55.653 SIGNS +0.6 s: h 65535/0 v 15/3 000=00 001=fe 007=68 01d=e1 022=10 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    55.956 SIGNS +0.9 s: h 65535/0 v 15/3 000=00 001=fe 007=68 01d=e1 022=10 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    56.260 SIGNS +1.2 s: h 65535/0 v 15/3 000=00 001=fe 007=68 01d=e1 022=10 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    56.563 SIGNS +1.5 s: h 65535/0 v 15/3 000=00 001=fe 007=68 01d=e1 022=10 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    56.866 SIGNS +1.8 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e1 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    57.169 SIGNS +2.1 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e1 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    57.473 SIGNS +2.4 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e1 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    57.776 SIGNS +2.7 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e1 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    58.079 SIGNS +3.0 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e1 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    58.201 === open /data/bench/x5v-bench.log boot b4861b7f-81e1-42fb-9a60-fca6e5fc256b cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    58.204 SIGNS start: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e1 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    58.206 W8 0x06840000 = 00 (was 00) read back 00
+    58.208 W8 0x0684001d = e0 (was e1) read back e0
+    58.210 W8 0x06840022 = 11 (was 11) read back 11
+    58.212 W8 0x06840040 = 00 (was 07) read back 00
+    58.213 W8 0x068400a1 = fc (was fc) read back fc
+    58.215 W8 0x0684017e = 00 (was 00) read back 00
+    58.217 W8 0x06840180 = 00 (was 00) read back 00
+    58.219 W8 0x06840181 = 00 (was 39) read back 39
+    58.222 W8 0x06840182 = 00 (was de) read back de
+    58.224 W8 0x068403c5 = 02 (was 02) read back 02
+    58.526 SIGNS +0.3 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    58.829 SIGNS +0.6 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    59.132 SIGNS +0.9 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    59.435 SIGNS +1.2 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    59.739 SIGNS +1.5 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    60.042 SIGNS +1.8 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    60.360 SIGNS +2.1 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    60.670 SIGNS +2.4 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    60.972 SIGNS +2.7 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    61.276 SIGNS +3.0 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    65.103 === open /data/bench/x5v-bench.log boot b4861b7f-81e1-42fb-9a60-fca6e5fc256b cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    65.106 SIGNS start: h 27/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    65.409 SIGNS +0.3 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    65.712 SIGNS +0.6 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    66.015 SIGNS +0.9 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    66.318 SIGNS +1.2 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    66.621 SIGNS +1.5 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    66.924 SIGNS +1.8 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    67.227 SIGNS +2.1 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    67.530 SIGNS +2.4 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    67.833 SIGNS +2.7 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+    68.136 SIGNS +3.0 s: h 65535/1 v 18/0 000=00 001=fe 007=68 01d=e0 022=11 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d

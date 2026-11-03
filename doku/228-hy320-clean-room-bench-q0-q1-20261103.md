@@ -442,3 +442,21 @@ authentifiziert, EDID ausgeliefert, Ton 48 kHz; Launcher bedeckte das Bild bis z
   Jeder Zustand mit einem Befehl: `tools/visual-window.sh ref|1|bench|2|3|4|restore`.
 - Spec: 50 §4/§6a/Anhang B, 55 §7 (sauberes Repo `ff44e49`, WALL "not yet checked by lead"); 59 (gehalten) ergänzt.
 - Ende: Umgebung = Referenz (`diff` leer), Normalstart 7.3.1, `ctl status` ok, keine fehlgeschlagenen Units, RUN1, Sperre frei.
+
+## 22 X5 gelöst: Empfänger, Capture und Kanal 0 ohne display.bin
+
+- Normalstart, nur lesend: Relock der Firmware über `h713-tv ctl replug`, alle 8 ms abgetastet (`logs/stage3-r3/
+  relock1.log`, `relock1-seq.txt`): HPD tief -> Freigaben 0, `+0x000` Bit 6; ~300 ms später PHY-Reset (`0x8f1` 0x81 und
+  zurück, `+0x1b` 0x15 -> 0x01, `+0x1b5` 0x21 -> 0x31); TMDS 1,6 s später; 9 ms danach Freigaben, 8 ms danach `+0x000`
+  Bit 6 und `+0x1d` Bit 0 weg; H gültig 80 ms nach TMDS, V 30 ms nach H.
+- Nachgespielt (`x5j.py`, `x5k.py`): H rastet nur zufällig, V nie. Dann der Fund: `RX_CTL` ist 0x4000 groß (Alias alle
+  0x10000, `scanalias.py`), die Seiten 1-3 waren nie verglichen. Normal gegen Bench: genau zwei Bytes, `0x06801017 = 0x03`
+  und `0x0680101a = 0x20` (Bench 0). Mit beiden: Lock 2200/1920/1125/1080, stabil, übersteht einen HPD-Puls.
+- X6: Capture läuft erst mit `CAP +0x000 = 0x3a7b` (Normalwert; vorher 1): Bildzähler 60/s, `0x548 = 0x04650898`,
+  Schreibindex 0..2, alle drei Ringplätze mit dem Quellbild.
+- X7: Kanal 0 auf Platz 0 (vp-bench, NV16): Panel-Histogramm breit (Fächer 5..31) und wechselnd, vorher alles in Fach 25
+  (Markierung). Auf 6.18.38-rust und 7.3.1-rustbench (ARISC mit crust) gleich.
+- Sichtfenster: Zustände 2-5 in einem Bench-Start nacheinander probegefahren (P1, Overlay nach `align_cal=1`, Logo nach
+  `rmmod`, dann HDMI über den sauberen Pfad) - alle Rücklesungen gut. `tools/visual-window.sh ref|1|bench|2|3|4|5|restore`.
+- Spec: 50 §4/§6a, 55 §7 (sauberes Repo, WALL "not yet checked by lead"); 59 (gehalten) ergänzt.
+- Ende: Umgebung = Referenz, Normalstart 7.3.1, `ctl status` ok, keine fehlgeschlagenen Units, RUN1, Sperre frei.

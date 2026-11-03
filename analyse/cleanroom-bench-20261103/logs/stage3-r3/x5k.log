@@ -1,0 +1,41 @@
+   116.200 === open /data/bench/x5k.log boot b4861b7f-81e1-42fb-9a60-fca6e5fc256b cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   116.203 SIGNS start: h 65535/578 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   116.205 PHY reset, step a
+   116.207 W8 0x06840006 = 00 (was 6a) read back 00
+   116.209 W8 0x0684000c = 00 (was 87) read back 00
+   116.211 W8 0x0684000d = 00 (was 8f) read back 00
+   116.212 W8 0x06840010 = 00 (was 4d) read back 00
+   116.214 W8 0x06840012 = 00 (was 27) read back 00
+   116.216 W8 0x0684001b = 15 (was 01) read back 15
+   116.218 W8 0x0684001d = e1 (was e0) read back e1
+   116.221 W8 0x06840040 = 07 (was 00) read back 07
+   116.223 W8 0x068401b5 = 21 (was 31) read back 21
+   116.234 step b: port select 0x81, +0x1b 0x01, EQ on
+   116.236 W8 0x068008f1 = 81 (was 80) read back 81
+   116.239 W8 0x0684001b = 01 (was 15) read back 01
+   116.241 W8 0x068401b5 = 31 (was 21) read back 31
+   116.251 step c: port select back to 0x80
+   116.253 W8 0x068008f1 = 80 (was 81) read back 80
+   116.255 SIGNS after the PHY reset: h 39604/578 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   116.258 SIGNS TMDS wait ended after 0.000 s: h 50693/578 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   116.260 W8 0x06840006 = 6a (was 00) read back 6a
+   116.262 W8 0x0684000c = 87 (was 00) read back 87
+   116.264 W8 0x0684000d = 8f (was 00) read back 8f
+   116.266 W8 0x06840010 = 4d (was 00) read back 4d
+   116.268 W8 0x06840012 = 27 (was 00) read back 27
+   116.279 W8 0x06840000 = 00 (was 00) read back 00
+   116.281 W8 0x0684001d = e0 (was e1) read back e0
+   116.283 W8 0x06840040 = 00 (was 07) read back 00
+   116.285 W8 0x068400a1 = fc (was fe) read back fe
+   116.388 SIGNS lock step +0: h 2200/578 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   116.491 SIGNS lock step +1: h 52891/578 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   116.594 SIGNS lock step +2: h 65535/578 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   116.697 SIGNS lock step +3: h 24770/578 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   116.800 SIGNS lock step +4: h 65535/578 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   116.903 SIGNS lock step +5: h 65535/578 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   117.406 SIGNS lock step +6: h 2196/2 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   117.909 SIGNS lock step +7: h 6599/2 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   118.412 SIGNS lock step +8: h 65535/2 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   118.915 SIGNS lock step +9: h 6600/3 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   119.419 SIGNS lock step +10: h 65535/3 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
+   119.922 SIGNS lock step +11: h 39691/580 v 123/2 001=fe 007=68 9ab=3c 1a9=3f 1ab=3c 37a=04 | CAP 104=00000000 548=00000000 fe64=cd030c5d
