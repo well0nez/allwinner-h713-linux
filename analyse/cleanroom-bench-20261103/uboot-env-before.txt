@@ -1,0 +1,77 @@
+acm_mode=setenv stdin serial,usbacm; setenv stdout serial,usbacm; setenv stderr serial,usbacm
+arch=arm
+baudrate=115200
+board=sunxi
+board_name=sunxi
+boot_a_script=load ${devtype} ${devnum}:${distro_bootpart} ${scriptaddr} ${prefix}${script}; source ${scriptaddr}
+boot_efi_binary=load ${devtype} ${devnum}:${distro_bootpart} ${kernel_addr_r} efi/boot/bootaa64.efi; if fdt addr -q ${fdt_addr_r}; then bootefi ${kernel_addr_r} ${fdt_addr_r};else bootefi ${kernel_addr_r} ${fdtcontroladdr};fi
+boot_efi_bootmgr=if fdt addr -q ${fdt_addr_r}; then bootefi bootmgr ${fdt_addr_r};else bootefi bootmgr;fi
+boot_emmc=if ext4load mmc 1:5 0x60000000 h713-kernel.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw"; bootm 0x60000000; fi
+boot_extlinux=sysboot ${devtype} ${devnum}:${distro_bootpart} any ${scriptaddr} ${prefix}${boot_syslinux_conf}
+boot_net=dhcp; setenv bootargs "${bootargs_base} earlycon root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp"; tftpboot 0x60000000 ${serverip}:${bootfile}; bootm 0x60000000
+boot_net_usb_start=usb start
+boot_prefixes=/ /boot/
+boot_script_dhcp=boot.scr.uimg
+boot_scripts=boot.scr.uimg boot.scr
+boot_syslinux_conf=extlinux/extlinux.conf
+boot_targets=fel mmc_auto usb0 pxe dhcp 
+boot_vendor=mw.l 0x0709011c 0x001db007 && reset
+bootargs_base=console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10
+bootcmd=h713_disp init ${h713_project} logo; run boot_${h713_boot}; run boot_net
+bootcmd_dhcp=devtype=dhcp; run boot_net_usb_start; if dhcp ${scriptaddr} ${boot_script_dhcp}; then source ${scriptaddr}; fi;setenv efi_fdtfile ${fdtfile}; setenv efi_old_vci ${bootp_vci};setenv efi_old_arch ${bootp_arch};setenv bootp_vci PXEClient:Arch:00011:UNDI:003000;setenv bootp_arch 0xb;if dhcp ${kernel_addr_r}; then tftpboot ${fdt_addr_r} dtb/${efi_fdtfile};if fdt addr -q ${fdt_addr_r}; then bootefi ${kernel_addr_r} ${fdt_addr_r}; else bootefi ${kernel_addr_r} ${fdtcontroladdr};fi;fi;setenv bootp_vci ${efi_old_vci};setenv bootp_arch ${efi_old_arch};setenv efi_fdtfile;setenv efi_old_arch;setenv efi_old_vci;
+bootcmd_fel=if test -n ${fel_booted} && test -n ${fel_scriptaddr}; then echo '(FEL boot)'; source ${fel_scriptaddr}; fi
+bootcmd_mmc0=devnum=0; run mmc_boot
+bootcmd_mmc1=devnum=1; run mmc_boot
+bootcmd_mmc_auto=if test ${mmc_bootdev} -eq 1; then run bootcmd_mmc1; run bootcmd_mmc0; elif test ${mmc_bootdev} -eq 0; then run bootcmd_mmc0; run bootcmd_mmc1; fi
+bootcmd_pxe=run boot_net_usb_start; dhcp; if pxe get; then pxe boot; fi
+bootcmd_usb0=devnum=0; run usb_boot
+bootdelay=1
+bootfile=h713-kernel-netboot.fit
+bootm_size=0xa000000
+console=ttyS0,115200
+cpu=armv8
+dfu_alt_info_ram=kernel ram 0x40080000 0x1000000;fdt ram 0x4FA00000 0x100000;ramdisk ram 0x4FF00000 0x4000000
+distro_bootcmd=for target in ${boot_targets}; do run bootcmd_${target}; done
+efi_dtb_prefixes=/ /dtb/ /dtb/current/
+fastboot_mode=run serial_mode; fastboot usb 0; run serial_mode
+fastboot_raw_partition_bootloader=0x10 0x40
+fastboot_raw_partition_splstash=0x3880 0x40
+fastboot_raw_partition_uboot=0x10 0x40
+fastboot_raw_partition_ubootp=0x800 0x2800
+fdt_addr_r=0x4FA00000
+fdtfile=allwinner/allwinner/sun50i-h713-hy320.dtb
+fdtoverlay_addr_r=0x4FE00000
+fel=while itest.l *0x07090108 != 0x5aa5a55a; do mw.l 0x07090108 0x5aa5a55a; done; sleep 1; reset
+h713_boot=emmc
+h713_gate=1
+h713_mips_dev=1#hy310-boot
+h713_mips_path=mips
+h713_project=0x30
+kernel_addr_r=0x40080000
+kernel_comp_addr_r=0x44000000
+kernel_comp_size=0xb000000
+load_efi_dtb=load ${devtype} ${devnum}:${distro_bootpart} ${fdt_addr_r} ${prefix}${efi_fdtfile}
+loadaddr=0x42000000
+mmc_boot=if mmc dev ${devnum}; then devtype=mmc; run scan_dev_for_boot_part; fi
+nfsroot=/srv/h713-rootfs
+partitions=name=loader1,start=8k,size=32k,uuid=${uuid_gpt_loader1};name=loader2,size=984k,uuid=${uuid_gpt_loader2};name=esp,size=128M,bootable,uuid=${uuid_gpt_esp};name=system,size=-,uuid=${uuid_gpt_system};
+preboot=if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi
+pxefile_addr_r=0x4FD00000
+ramdisk_addr_r=0x4FF00000
+scan_dev_for_boot=echo Scanning ${devtype} ${devnum}:${distro_bootpart}...; for prefix in ${boot_prefixes}; do run scan_dev_for_extlinux; run scan_dev_for_scripts; done;run scan_dev_for_efi;
+scan_dev_for_boot_part=if env exists distro_bootpart; then setenv devplist ${distro_bootpart}; else part list ${devtype} ${devnum} -bootable devplist; env exists devplist || setenv devplist 1; fi; for distro_bootpart in ${devplist}; do if fstype ${devtype} ${devnum}:${distro_bootpart} bootfstype; then part uuid ${devtype} ${devnum}:${distro_bootpart} distro_bootpart_uuid ; run scan_dev_for_boot; fi; done; setenv devplist
+scan_dev_for_efi=setenv efi_fdtfile ${fdtfile}; for prefix in ${efi_dtb_prefixes}; do if test -e ${devtype} ${devnum}:${distro_bootpart} ${prefix}${efi_fdtfile}; then run load_efi_dtb; fi;done;run boot_efi_bootmgr;if test -e ${devtype} ${devnum}:${distro_bootpart} efi/boot/bootaa64.efi; then echo Found EFI removable media binary efi/boot/bootaa64.efi; run boot_efi_binary; echo EFI LOAD FAILED: continuing...; fi; setenv efi_fdtfile
+scan_dev_for_extlinux=if test -e ${devtype} ${devnum}:${distro_bootpart} ${prefix}${boot_syslinux_conf}; then echo Found ${prefix}${boot_syslinux_conf}; run boot_extlinux; echo EXTLINUX FAILED: continuing...; fi
+scan_dev_for_scripts=for script in ${boot_scripts}; do if test -e ${devtype} ${devnum}:${distro_bootpart} ${prefix}${script}; then echo Found U-Boot script ${prefix}${script}; run boot_a_script; echo SCRIPT FAILED: continuing...; fi; done
+scriptaddr=0x4FC00000
+serial_mode=setenv stdin serial; setenv stdout serial; setenv stderr serial
+serverip=192.168.8.123
+soc=sunxi
+stderr=serial
+stdin=serial
+stdout=serial
+switch_vendor=mmc dev 1 && mmc read 0x48000000 0x100 0x40 && itest.l *0x48000004 == 0x4e4f4765 && mmc write 0x48000000 0x10 0x40 && echo VENDOR FIRST STAGE INSTALLED - POWER CYCLE TO BOOT IT
+usb_boot=usb start; if usb dev ${devnum}; then devtype=usb; run scan_dev_for_boot_part; fi
+usb_ignorelist=0x1050:*,
+uuid_gpt_esp=c12a7328-f81f-11d2-ba4b-00a0c93ec93b
+uuid_gpt_system=b921b045-1df0-41c3-af44-4c6f280d3fae
