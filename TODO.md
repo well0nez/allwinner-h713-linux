@@ -993,10 +993,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `libmspsound` `c6e9cffc`; Vendor, Fingerprint, Display-Daten, DRAM-Block = OTA), `boards/hy300-t08/variants/`; **(3) Gerätebaum**
       Kernel **0349** `sun50i-h713-hy300-t08.dts` = HY300-Pro-Baum + elog/handoff der HY320 (0335), kein Tastatur-Knoten, kein
       mix-Fenster; gebaut (dtc, 0 Warnungen, die sieben anderen DTBs bytegleich); **(4) U-Boot** `hy300_t08_defconfig` + dts im
-      Fork-Zweig `versuch/t08` (hy300_pro_defconfig mit 640-MHz-Block/Baum/Kennung; baut release+installer; **nicht gepusht**,
-      Gitlink bleibt `26f974b8d6a` - ohne Push kein `build-all` für das Board); **(5)** `board.env` `KERNEL_DTB`/`UBOOT_BOARD`,
-      `uboot-prove-fragments.sh`-Matrix, README. Status bleibt `profile-only`; TEST-Abbild `--variant unit202311 --test-image`
-      sobald der Fork gepusht und der Gitlink gesetzt ist. Nicht gemessen: alles am Gerät (DRAM-Training, Panel 0x34 mit der
+      Fork `h713-hy310` `4f9fe56f46e` (hy300_pro_defconfig mit 640-MHz-Block/Baum/Kennung; baut release+installer; gepusht
+      03.11. auf Marcos Ja, Spiegel 111 Patches verifiziert, Gitlink gesetzt); **(5)** `board.env` `KERNEL_DTB`/`UBOOT_BOARD`,
+      `uboot-prove-fragments.sh`-Matrix, README. Status bleibt `profile-only`; TEST-Abbild `--variant unit202311 --test-image`: Bau 03.11., s. u. Nicht gemessen: alles am Gerät (DRAM-Training, Panel 0x34 mit der
       ADT-3-Firmware, 8801 mit unserem Treiber, HDMI-Port).
 - [ ] 4.18 **HY320 (Issue #5 / PR #6, Melder GitHub `minpeter`, 31.10.2026): das erste Board, das ein Fremder selbst bis zum
       laufenden TEST-Abbild gebracht hat** - Profil, `boards/hy320/` (`partial`), Gerätebaum 0335, U-Boot-Seite im Fork

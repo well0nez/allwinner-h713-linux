@@ -1,7 +1,7 @@
 From 15aa825283e8028a38b595d1e1043a212b25a881 Mon Sep 17 00:00:00 2001
 From: minpeter <62207008+minpeter@users.noreply.github.com>
 Date: Sat, 31 Oct 2026 14:23:28 +0900
-Subject: [PATCH 107/110] sunxi: h713: h713_conlog - U-Boot's console for Linux
+Subject: [PATCH 107/111] sunxi: h713: h713_conlog - U-Boot's console for Linux
  on a board without a UART
 
 With CONFIG_CONSOLE_RECORD, `h713_conlog <addr>` copies what U-Boot has

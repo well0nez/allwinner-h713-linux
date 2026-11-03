@@ -10,7 +10,7 @@ An H713 projector known from its stock firmware image and, since 31.10.2026, fro
 | Profile | `installer/h713/profiles/hy300_t08.py`, two variants: `ota20240419` (the stock OTA image), `unit202311` (the owner's unit) |
 | Image | TEST only: `release/build-all.sh --board hy300-t08 --variant unit202311 --test-image --version vX.Y` (its owner's firmware); nothing is published |
 | Kernel DTB | `sun50i-h713-hy300-t08` (kernel 0349, 03.11.2026): the HY300 Pro's tree with the "ADT-3 2024" firmware's elog and AFBD handoff words from the HY320; built with dtc, never booted |
-| U-Boot base | `hy300_t08_defconfig` (fork, 03.11.2026): `hy300_pro_defconfig` with this board's DRAM block at 640 MHz, its tree and its identification string; builds (release, installer), never run |
+| U-Boot base | `hy300_t08_defconfig` (fork `h713-hy310`, mirror `uboot-h713/0111`, 03.11.2026): `hy300_pro_defconfig` with this board's DRAM block at 640 MHz, its tree and its identification string; builds (release, installer), never run |
 | DRAM | DDR3 (type 3), 640 MHz, 1 GiB; the HY350 family's block (`tpr0..tpr2` 0x4a2195 / 0x2423190 / 0x8b061) |
 | Panel | 1280×720, single port, 62 MHz, declared project id `0x34`; display firmware "ADT-3 2024" (`22a7df11...`), the HY350's and HY320's |
 | Wi-Fi | **AIC8801** (SDIO `5449:0145`), not the AIC8800D80 of the other boards; its firmware set lies at the root of `vendor:/etc/firmware/` and `h713-extract` takes it since 03.11.2026 |
