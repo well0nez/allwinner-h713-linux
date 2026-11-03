@@ -65,6 +65,14 @@ def vfill(pat, *a):
         line = bytes([int(a[0], 0)]) * 1920
     elif pat == "q":
         line = b"\xeb" * 480 + b"\x10" * 1440
+    elif pat == "stripes":  # Y 64/192 in stripes of w columns
+        w = int(a[0])
+        line = bytes(64 if (c // w) % 2 == 0 else 192 for c in range(1920))
+    elif pat == "yuv":
+        y, u, v = (int(x, 0) for x in a[:3])
+        _vm[_vo:_vo + 1920 * 1080] = bytes([y]) * (1920 * 1080)
+        _vm[_vo + 1920 * 1080:_vo + 1920 * 1080 * 3 // 2] = bytes([u, v]) * (960 * 540)
+        return
     else:
         raise SystemExit(f"vfill {pat}")
     _vm[_vo:_vo + 1920 * 1080] = line * 1080
@@ -122,7 +130,7 @@ while i < len(args):
         n = {"grey": 1, "rgb": 3}.get(args[i + 1], 0)
         fill(*args[i + 1:i + 2 + n]); i += 2 + n
     elif c == "vfill":
-        n = 1 if args[i + 1] == "y" else 0
+        n = {"y": 1, "stripes": 1, "yuv": 3}.get(args[i + 1], 0)
         vfill(*args[i + 1:i + 2 + n]); i += 2 + n
     elif c == "sel":
         wr(PNL + 0x6C, 0x29000000 if args[i + 1] == "rgb" else 0x39000000); i += 2

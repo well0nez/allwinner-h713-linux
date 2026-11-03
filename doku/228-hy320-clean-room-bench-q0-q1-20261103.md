@@ -305,3 +305,22 @@ Niemand hat auf die Wand gesehen.
 - Entwürfe: `cleanroom-held/drafts/30-picture-processing.md` (§3.3, §4.1, §4.3, §4.5); Notizen in
   `cleanroom-held/90-open-questions.md` unter Q12, Q13, Q14, Q16.
 - Gerät: Normalboot 6.18.38, Umgebung gleich `env-before-r9.txt`, GP5 `RUN1`, `h713-tv` ok, Sperre frei.
+
+## 14 Runde 10: Q-PQ-6/7/8, DRM-Modul Runde 5, eine zurückgenommene Zeile
+
+- **Q-PQ-6**: `0x051405bc` [17:8] = feine Helligkeit (Runde 9); [7:0] = grobe Y-Verschiebung in 8-Bit-Codes, `0x80` = 0
+  (Y 128: `0x70`/`0x80`/`0x90`/`0xa0` -> 449/523/598/673; 0 schwarz, `0xff` weiß); die Kurve fasst [7:0] nicht an.
+- **Q-PQ-7**: Schärfe messbar mit Y-64/192-Streifen: `0x05140c4c` (12-Zustand `0x80780855`) treibt 4-Pixel-Streifen
+  von Fach 7/25 auf 3/28, `0x80aa00aa` auf 0/30; 0 oder [23:0] = 0 keine Wirkung; Bit 31 = dunkle Seite; [7:4] stärker
+  als [3:0]; `0x05140020` [11:6] ohne Wirkung.
+- **Q-PQ-8**: Farbton [9:0] dreht (Cb, Cr) um etwa -0,35 Grad je Einheit (+256 -> -91 Grad, -256 -> +90 Grad); Rot wird
+  bei +256 magenta-blau, bei -256 grün. Sättigung [23:16], `0x40` = 1,0, 0 = grau. WB-Tönungen pro Kanal wie Runde 9.
+- **Modul Runde 5** (`c50d31d`): Regression 1-5 PASS bis auf einen `verify scan`-Fehler (`0x310` Bit 21 in 20 Lesungen
+  nie gelöscht); S1-T6 mit `align_cal=1` PASS; `pqcheck` drei PASS, `pq:` ohne Fehler, Dumps wie erwartet, nur der
+  Commit "zurück auf Standard" ließ `0x05140508 = 0x04000000` (erwartet `0x04400000`); nach `rmmod` bleibt `0x051c00dc`
+  auf `0x06400800`.
+- **Zurückgenommen**: Bit 21 von `0x05600310` ist im laufenden Bild nur 7-10 % der Zeit gelöscht; ein 20-Lesungen-Test
+  verfehlt das etwa jedes siebte Mal. Die Zeile "ohne Pause bleibt `0x310` bei `0x00a00210`" (Runde 7, in 10 §6.3
+  gekreuzt) beruhte darauf; ein zweiter Boot ohne Pause: 10,1 % gelöscht, Bild folgt. Entwurf 10 §6.3 korrigiert.
+- Entwürfe: `drafts/30-picture-processing.md` (zusätzlich §3.3 [7:0], §3.4 Farbton/Sättigung, §3.5 Schärfe),
+  `drafts/10-video-plane.md` (§6.3 korrigiert). Gerät: Normalboot, Umgebung gleich `env-before-r10.txt`, `RUN1`, Sperre frei.
