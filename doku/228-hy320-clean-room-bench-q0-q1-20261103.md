@@ -460,3 +460,17 @@ authentifiziert, EDID ausgeliefert, Ton 48 kHz; Launcher bedeckte das Bild bis z
   `rmmod`, dann HDMI über den sauberen Pfad) - alle Rücklesungen gut. `tools/visual-window.sh ref|1|bench|2|3|4|5|restore`.
 - Spec: 50 §4/§6a, 55 §7 (sauberes Repo, WALL "not yet checked by lead"); 59 (gehalten) ergänzt.
 - Ende: Umgebung = Referenz, Normalstart 7.3.1, `ctl status` ok, keine fehlgeschlagenen Units, RUN1, Sperre frei.
+
+## 23 Antworten an die saubere Seite, Schreibindex, Bisektion (04.11.)
+
+- Q-CAP-1/Q-RX-1..3 als 55 §8 / 50 §8 (78 bzw. 91 Schreibzugriffe in Reihenfolge) - vom Lead übernommen (`46f4b58`).
+- Entwurf 57 (`cleanroom-held/drafts/`): die Aufrufe des ARISC-Treibers als Schnittstelle (Prototypen, Ports, Zeiten:
+  `edid_init` 0,64 s, `get_edid` 0,21 s, `hpd(RESET)` 0,83 s; Reihenfolgeregel AUX), ohne Befehlsformat der ARISC.
+- 55 §9 (`cap8.py`, `logs/stage3-r4/cap8.log`): `0x104` = Bildzähler/Zeilenzähler, `0xa0c` = gerade beschriebener Platz,
+  springt 3-4 Zeilen nach dem Bildwechsel; Zeile r wird bei Zeilenzähler r + 37 geschrieben. Kein Capture-Interrupt im
+  GIC-Pending sichtbar (nur SPI 21/95, auch mit Capture aus).
+- 50 §9 Bisektion (16 Bench-Starts, `x5min.py`, `bis.sh`, `logs/stage3-r4/bis.log`): nötig sind der Link-Öffner
+  `0x06841001`, die zwei Lock-Bytes `0x06801017/0x0680101a` und von der Ohne-Signal-Liste die Gruppen b (RX_CTL-Seiten
+  8/a/b/c), c (RX_LINK `+0x000..0x0fc`) für den Lock und e (`+0x310`, `+0x35e`, `+0x3c5`) für die Capture. Nicht nötig:
+  CCU/PLL/TVTOP, Port-Select, PHY-Reset, `+0x002`, die Freigaben, Gruppen a und d.
+- Ende: Umgebung = Referenz, Normalstart 7.3.1, RUN1, Sperre frei.
