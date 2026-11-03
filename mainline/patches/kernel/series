@@ -446,3 +446,4 @@
 0351-soc-sunxi-cpu-comm-linux-7.3-has-no-strncpy.patch
 0352-asoc-sun4i-codec-h713-linux-7.3-dapm-accessors.patch
 0353-misc-hy310-board-mgr-linux-7.3-cooling-id-and-iio-namespace.patch
+0354-media-h713-hdmirx-linux-7.3-system-percpu-wq.patch

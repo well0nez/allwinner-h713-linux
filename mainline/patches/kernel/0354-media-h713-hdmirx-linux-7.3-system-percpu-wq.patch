@@ -1,0 +1,110 @@
+media: h713-hdmirx: Linux 7.3 - system_percpu_wq instead of the deprecated system_wq
+
+7.3 warns about every work item queued on system_wq; system_percpu_wq is the same queue
+under its new name, so nothing changes in behaviour.
+
+diff --git a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+--- a/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
++++ b/drivers/media/platform/sunxi/sun50i-h713-hdmirx/sun50i-h713-hdmirx.c
+@@ -2103,7 +2103,7 @@
+ 	if (!h713_hdmirx_read_audio(rx, &a))
+ 		h713_hdmirx_audio_publish(rx, &a);
+ 
+-	queue_delayed_work(system_wq, &rx->audio_work,
++	queue_delayed_work(system_percpu_wq, &rx->audio_work,
+ 			   msecs_to_jiffies(H713_AUDIO_POLL_MS));
+ }
+ 
+@@ -2179,7 +2179,7 @@
+ 		}
+ 	}
+ 
+-	queue_delayed_work(system_wq, &rx->geometry_work,
++	queue_delayed_work(system_percpu_wq, &rx->geometry_work,
+ 			   msecs_to_jiffies(H713_GEOMETRY_POLL_MS));
+ }
+ 
+@@ -2234,7 +2234,7 @@
+ 	 */
+ 	if (READ_ONCE(rx->rearm_pending) && nargs && args &&
+ 	    args[0] == rx->source)
+-		mod_delayed_work(system_wq, &rx->rearm_retry_work,
++		mod_delayed_work(system_percpu_wq, &rx->rearm_retry_work,
+ 				 msecs_to_jiffies(H713_RETRY_SETTLE_MS));
+ 
+ 	h713_hdmirx_src_change(rx);
+@@ -2930,7 +2930,7 @@
+ 				 H713_RETRY_SETTLE_MS);
+ 			rx->rearm_pending = true;
+ 			rx->rearm_retries = 0;
+-			mod_delayed_work(system_wq, &rx->rearm_retry_work,
++			mod_delayed_work(system_percpu_wq, &rx->rearm_retry_work,
+ 					 msecs_to_jiffies(H713_RETRY_SETTLE_MS));
+ 			return;
+ 		}
+@@ -3051,7 +3051,7 @@
+ 	dev_info(rx->dev,
+ 		 "release: repeat %u without success, next attempt in %u ms\n",
+ 		 rx->rearm_retries, H713_RETRY_AGAIN_MS);
+-	queue_delayed_work(system_wq, &rx->rearm_retry_work,
++	queue_delayed_work(system_percpu_wq, &rx->rearm_retry_work,
+ 			   msecs_to_jiffies(H713_RETRY_AGAIN_MS));
+ }
+ 
+@@ -3113,7 +3113,7 @@
+ 	if (action != H713_AFBD_EVENT_DESCRIPTOR)
+ 		return NOTIFY_DONE;
+ 
+-	schedule_work(&rx->rearm_work);
++	queue_work(system_percpu_wq, &rx->rearm_work);
+ 
+ 	return NOTIFY_OK;
+ }
+@@ -5727,7 +5727,7 @@
+ 	 * at all: it would read nothing forever.
+ 	 */
+ 	if (rx->link && cpu_comm_firmware_up()) {
+-		queue_delayed_work(system_wq, &rx->audio_work, 0);
++		queue_delayed_work(system_percpu_wq, &rx->audio_work, 0);
+ 	} else if (rx->link) {
+ 		/* a bind without the restart: LINK would stop the bus */
+ 		WRITE_ONCE(rx->link_lost, true);
+@@ -5735,7 +5735,7 @@
+ 	}
+ 	/* the geometry poll needs only INCAP, which reads zero until the firmware runs */
+ 	if (cpu_comm_firmware_up())
+-		queue_delayed_work(system_wq, &rx->geometry_work,
++		queue_delayed_work(system_percpu_wq, &rx->geometry_work,
+ 				   msecs_to_jiffies(H713_GEOMETRY_POLL_MS));
+ 
+ 	platform_set_drvdata(pdev, rx);
+@@ -5834,7 +5834,7 @@
+  * stopped here as the firmware's memory_agent_onoff does, two frames before,
+  * 20 of 20 sleeps went through. Here and not later: from the park on INCAP
+  * no longer answers the CPU (a read in the noirq phase stopped the box).
+- * The repeat of a source switch reads INCAP too and runs on system_wq,
++ * The repeat of a source switch reads INCAP too and runs on system_percpu_wq,
+  * which does not freeze: it is stopped first.
+  */
+ #define H713_CAPTURE_DRAIN_MS	40
+@@ -5870,17 +5870,17 @@
+ 	if (rx->capture_stopped && cpu_comm_firmware_up()) {
+ 		h713_hdmirx_capture_enable(rx);
+ 		if (rx->rearm_pending)
+-			queue_delayed_work(system_wq, &rx->rearm_retry_work, 0);
++			queue_delayed_work(system_percpu_wq, &rx->rearm_retry_work, 0);
+ 	}
+ 	rx->capture_stopped = false;
+ 	if (cpu_comm_firmware_up())
+-		queue_delayed_work(system_wq, &rx->geometry_work,
++		queue_delayed_work(system_percpu_wq, &rx->geometry_work,
+ 				   msecs_to_jiffies(H713_GEOMETRY_POLL_MS));
+ 
+ 	if (!rx->link || READ_ONCE(rx->link_lost))
+ 		return 0;
+ 	if (cpu_comm_firmware_up()) {
+-		queue_delayed_work(system_wq, &rx->audio_work, 0);
++		queue_delayed_work(system_percpu_wq, &rx->audio_work, 0);
+ 		return 0;
+ 	}
+ 	WRITE_ONCE(rx->link_lost, true);
