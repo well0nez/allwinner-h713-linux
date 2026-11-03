@@ -143,3 +143,25 @@ Auftrag des Leads (WALL `fe3b521`, danach die Zusatzaufträge A/B). Spezifikatio
   bei 720p: `0x310` Bit 21 kippte nicht (bei 720p nie gemessen). Code nicht angefasst.
 - Fragen der sauberen Seite (Auftrag B): 40 §7 aus den Dateien beantwortet; Q-TSE-4/6 offen (nicht nötig für das Bild).
 - Gerät am Ende: Normalboot, `fw_printenv` gleich dem Abzug, GP5 `RUN1`, HDMI 1080p zurück, Zoom aus, WB neutral.
+
+## 7 Runde 4: Stufe 1 für den sauberen DRM-Treiber (Übergabe, RGB-Ebene, Interrupts, Takte, Mode)
+
+Spezifikation: `cleanroom-h713` `136933f` (neues 05, 95 Stufe-1-Tests). Gerätesperre `/tmp/h713-device.lock` für die
+Bench-Phase gehalten (mit RustInfra geteilt), danach Normalboot mit Release-Kern (`c5b9719a…`), Umgebung gleich dem
+Abzug, Sperre frei.
+
+- **Übergabezustand B0** (`r4.py handoff`): TCON/LVDS/OSD/RASTER/MIX/PNL/Kanal 2 gelesen; TCON ab `0x48` liest
+  `0xdeadabba`. Kanal 2: `0x150/0x154/0x160/0x170/0x174` wie Kanal 0 aufgebaut (1088er Höhe, 7680 Pitch), `0x178` = Logo
+  `0x6c100000`, Format `0x19` = XRGB8888 (Augenbeleg doku/227 §2).
+- **Bildrate exakt**: Fertig-Bit des RGB-Kanals 1310 Intervalle in 19.988 s -> 65.538 Hz, 15.2583 ms -> 162.21 MHz bei
+  2200x1125.
+- **Interrupts ohne Firmware** (GIC-Pending-Register `0x03021200+`, Leitungen in Linux nicht freigegeben): RGB-Fertig
+  `0x168` Bit 1 + Freigabe `0x16c` Bit 4 -> **SPI 112** (id 144), Pegel; Video-Vsync `0x0c0` Bit 0 + `0x0c4` Bit 0 -> SPI
+  110 (id 142), aber nur bei laufendem Video-Raster (Kanal 0 an + Init-Tabellen). Darum lief der Stufe-1-Treiber im
+  E5-Versuch in den vblank-Timeout: der DT nennt nur SPI 110. 132/132 Ereignisse je Leitung.
+- **RGB-Flip**: Inhalt sichtbar im Histogramm nur, wenn RGB über ein Videobild gemischt wird (`PNL_SEL 0x29000000`,
+  Alpha `0x051c0070`); Adresse allein wirkt nicht, Latch `0x144` wird an der nächsten Bildgrenze genommen (1.4-13.8 ms),
+  Adresse nach dem Latch im selben Bild gilt. 65.5 Zeilen bleiben beim Mischen unbedeckt (bekanntes "gerolltes" Overlay).
+- **Takte**: Boot ohne `clk_ignore_unused`/`pd_ignore_unused` (nur CCU gelesen): Video-PLL Bit 31, `db0`, `db4`, `db8`
+  Bit 31, `dc0` Bit 31, `dd8` Bit 0 weg; `dd8` Bit 16 bleibt. Der ganze RTC-Block las dabei `0x00010000` (Lesepfad
+  abgeschaltet) - GP5 also nicht prüfbar; nach dem angeforderten Neustart war GP5 wieder `RUN1` (Inhalt erhalten).
