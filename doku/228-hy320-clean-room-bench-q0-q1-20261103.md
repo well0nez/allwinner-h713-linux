@@ -384,3 +384,29 @@ Umgebung gleich `env-before-r13.txt`, `RUN1`, Sperre frei.
 - X1 teilweise: Normalboot (jetzt 7.3.1), ohne Signal (Xbox aus), 8-Bit-Dumps `RX_CTL`, `RX_LINK`, `0x06841000`, `AUX`,
   `CAP`, `TVTOP`, CCU `0x02001d00..`, PPU (`logs/x1-normal.log`). Der Teil mit Signal braucht die eingeschaltete Xbox
   (Besitzer).
+
+## 20 Runde 15: Stufe 3 auf dem Prüfstand (59 X3, X4, X6), ohne Quelle
+
+Einmal-Start B0 mit dem 6.18.38-rust-Kern (MIPS, cpu_comm, hdmirx, msp gesperrt; Watchdog wie §1), Konsole aus, also
+kein Signal. Werkzeuge: `analyse/cleanroom-bench-20261103/tools/{x346.sh,cap6.py,spx4/}`, Protokolle `logs/x346-*`,
+Vergleich mit dem Normalstart ohne Signal (`x1-normal.log`, `x2-normal.log`) in `logs/rx-bench-vs-normal.txt`.
+
+- X3: `RX_CTL 0x06800000..fff` und `RX_LINK 0x06840000..7ff`/`0x06841000..7ff` (8 bit), `0x068c0000..3ff`,
+  `0x05700000..88`, `0x06700000`, TVTOP, PPU, CCU `0x02001d00..dff` lesen ohne Hänger (jede erste Lesung vorher
+  protokolliert und gesynct). `RX_APLL` nicht gelesen. Ohne Firmware sind die Empfängerfenster nicht leer (94/206/79
+  Bytes ungleich 0); gegen den Normalstart ohne Signal weichen 31/42/15 Bytes ab. CCU `0x02001d10..d60` ohne Bit 31,
+  `0x02001d64 = 0` (mit Firmware Bit 31 überall, `0x00010001`); `0x06700000/04` lesen 0, TVTOP `+8 = 0x404`, `+0x1c = 0`.
+  `0x068c0000..` gleich bis auf die 8 Ringadresswörter. `0x07010120/124` = 0 bis zum EDID-Reset der ARISC.
+- X4: eigenes Hilfsmodul `spx4.ko` (Spec-Werkzeug, ruft die vorhandene ARISC-API): `arisc_hdmi_edid_init(1, hy310-edid.bin)`
+  = 0, `get_edid` liefert 256 Bytes zurück, Byte 168 `0x10 -> 0x20`, Byte 255 `0x24 -> 0x14` (die ARISC setzt die
+  physische Adresse des Ports und korrigiert die Prüfsumme), `hpd(1, reset)` = 0; danach `0x07091014 = 0x5`,
+  `0x07091b04 = 0x7`, `0x07010120/124 = 0x00010000/0x80000000`. EDID und Hot-Plug gehen also ohne display.bin.
+- X6: `cap6.py` schreibt die 75 Konfigurationswörter des 1080p60-Zustands mit eigenem Ring ab `0x4b100000` (Ring mit
+  `0x5a` gefüllt); alles liest sich zurück wie geschrieben. Ausgänge 2 s an (`0x928/0x968 = 0xe0020438`): nichts
+  bewegt sich (`0x104` = 0, `0xa0c` steht, Ring unbeschrieben, `0x05600320/324` = 0), `0x540 = 0x80000000`; Ausgänge
+  wieder aus ohne Folgen. Zweiter Durchlauf mit TVTOP `+8 = 0x504`: gleich. Ohne Quelle war nicht mehr zu erwarten.
+- Danach: Umgebung per `envrestore.py` exakt auf den Stand vor der Runde (`diff` leer), Normalstart 7.3.1,
+  `h713-tv ctl status` ok, keine fehlgeschlagenen Units, `0x07090114 = RUN1`, Sperre freigegeben.
+- Spec: 50 §6a + Anhang A, 55 §7 (sauberes Repo `43cca36`, WALL-Zeilen "not yet checked by lead"); 59 (gehalten)
+  um den Stand von X3/X4/X6 ergänzt.
+- Offen: alles mit Signal (X5, X7, Rest von X6, die Lock-Zeichen) braucht die Konsole an, also den Besitzer.
