@@ -1,0 +1,117 @@
+soc: sunxi: cpu_comm: Linux 7.3 has no strncpy()
+
+The driver fills fixed-width, zero-padded name fields in the rings it shares with the display firmware.
+cpu_comm_strncpy() is the 6.18 strncpy() with byte stores: those rings are device memory, and the first
+version of this patch (memcpy_and_pad()) died there with an alignment fault in InitCommSeqMem on the
+HY320's first 7.3.1 boot (03.11.2026); a watchdog reset brought the release kernel back.
+
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm.h b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+index b295df774..9bc78cf6d 100644
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm.h
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm.h
+@@ -851,4 +851,21 @@ void cpu_comm_kernel_deliver(const void *msg);
+ void cpu_comm_api_init(void);
+ void cpu_comm_api_exit(void);
+ 
++
++/*
++ * strncpy() as the 6.18 kernel had it, one byte store at a time: Linux 7.3 has no strncpy(), and the
++ * destinations are the shared rings the display firmware reads - device memory, where the wide unaligned
++ * stores of memcpy() fault (an alignment fault in InitCommSeqMem on the HY320, 03.11.2026).
++ */
++static inline void cpu_comm_strncpy(void *dest, const char *src, size_t n)
++{
++	volatile u8 *d = dest;
++	size_t i = 0;
++
++	for (; i < n && src[i]; i++)
++		d[i] = src[i];
++	for (; i < n; i++)
++		d[i] = 0;
++}
++
+ #endif /* _CPU_COMM_H_ */
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+index d4623cddc..78b110b83 100644
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_dev.c
+@@ -746,7 +746,7 @@ static long comm_fd_ioctl(struct file *file, unsigned int cmd, unsigned long arg
+ 				u8 *entry   = comp_pool + COMP_POOL_ENTRY_SIZE * slot;
+ 				u32 *entry32 = (u32 *)entry;
+ 
+-				strncpy((char *)(entry + 11), (char *)name, 15);
++				cpu_comm_strncpy((char *)(entry + 11), (char *)name, 15);
+ 				entry[8]  = 1;        /* attach_count = 1 */
+ 				entry[9]  = 1;        /* registered_flag */
+ 				entry[10] = (u8)slot; /* component_index */
+@@ -1173,7 +1173,7 @@ static long comm_fd_ioctl(struct file *file, unsigned int cmd, unsigned long arg
+ 					if (!msg_pool[idx + 258]) {
+ 						msg_pool[idx + 258] = 1; /* mark registered */
+ 						/* event name at msg_pool+8 + idx*32 */
+-						strncpy((char *)((u8 *)msg_pool + 8 + idx * 32),
++						cpu_comm_strncpy((char *)((u8 *)msg_pool + 8 + idx * 32),
+ 							(char *)buf, 32);
+ 						ret = idx;
+ 						break;
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_fifo.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_fifo.c
+index d890329ba..0ff3cf38a 100644
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_fifo.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_fifo.c
+@@ -43,7 +43,7 @@ void InitMsgFIFO(void *fifo_ptr, const char *prefix, const char *suffix,
+ 	char *name = (char *)f;
+ 
+ 	/* Build name: prefix + suffix, max 48 chars */
+-	strncpy(name, prefix, FIFO_NAME_LEN);
++	cpu_comm_strncpy(name, prefix, FIFO_NAME_LEN);
+ 	strlcat(name, suffix, FIFO_NAME_LEN);
+ 
+ 	/* f[12] = mode (offset 0x30) */
+diff --git a/drivers/soc/sunxi/cpu_comm/cpu_comm_mem.c b/drivers/soc/sunxi/cpu_comm/cpu_comm_mem.c
+index 80f89e15e..cdb75e8e0 100644
+--- a/drivers/soc/sunxi/cpu_comm/cpu_comm_mem.c
++++ b/drivers/soc/sunxi/cpu_comm/cpu_comm_mem.c
+@@ -835,7 +835,7 @@ void InitCommSeqMem(u32 cpu_id)
+ 	sock[40] = cc_ref(&sock[52]);	/* base_addr = ring buffer start */
+ 	sock[41] = 0;
+ 
+-	strncpy((char *)&sock[42], "FreeWait", 32);
++	cpu_comm_strncpy((char *)&sock[42], "FreeWait", 32);
+ 	sock[50] = 0;
+ 
+ 	/* Zero-fill the ring buffer (21 slots × 4 bytes = 84 bytes) */
+@@ -986,7 +986,7 @@ void InitCommSeqMem(u32 cpu_id)
+ 		fifo[6] = cc_ref(&sock[238]);	/* base_addr = VIRTUAL */
+ 		fifo[7] = 0;
+ 
+-		strncpy((char *)share_seq_r + 64, "CallCmd", 32);
++		cpu_comm_strncpy((char *)share_seq_r + 64, "CallCmd", 32);
+ 		*(u32 *)((u8 *)share_seq_r + 96) = 0;
+ 	}
+ 
+@@ -1011,7 +1011,7 @@ void InitCommSeqMem(u32 cpu_id)
+ 			fifo1[6] = cc_ref(&sock[291]);	/* VIRTUAL */
+ 			fifo1[7] = 0;
+ 
+-			strncpy((char *)share_seq_r1 + 64, "ReturnCmd", 32);
++			cpu_comm_strncpy((char *)share_seq_r1 + 64, "ReturnCmd", 32);
+ 			*(u32 *)((u8 *)share_seq_r1 + 96) = 0;
+ 		}
+ 	}
+@@ -1088,7 +1088,7 @@ void InitCommSeqMem(u32 cpu_id)
+ 
+ 			fifo[7] = 0;
+ 			memset_io((void __iomem *)((u8 *)seq + 64), 0, 40);
+-			strncpy((char *)seq + 64,
++			cpu_comm_strncpy((char *)seq + 64,
+ 				d == 0 ? "CallCmd" : "ReturnCmd", 32);
+ 			*(u32 *)((u8 *)seq + 96) = 0;
+ 		}
+@@ -1177,7 +1177,7 @@ void InitCommShareSeqMem(u32 cpu_id, u32 direction)
+ 
+ 		/* Name at offset 152 (0x98) from share_seq */
+ 		name = (i == 0) ? "FreeCall" : "FreeReturn";
+-		strncpy((char *)(seq + 152), name, 32);
++		cpu_comm_strncpy((char *)(seq + 152), name, 32);
+ 
+ 		/* Clear field_b8 */
+ 		*(u32 *)(seq + 184) = 0;

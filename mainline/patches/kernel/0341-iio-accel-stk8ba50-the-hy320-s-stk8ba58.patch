@@ -1,28 +1,39 @@
-From: well0nez <8986239+well0nez@users.noreply.github.com>
-Subject: iio: accel: stk8ba50: the HY320's STK8BA58
-
-The HY320's accelerometer at 0x18 on twi1 is a Sensortek STK8BA58 (stock
-tree: "stk,stk83xx", node stk8ba58@18). Read on the unit (01.11.2026,
-I2C reads only): register 0x00 is 0x87, the ID the vendor's stk83xx
-driver gives a data shift of 4 (12 bit); 0x0f is 0x03 (+-2 g), 0x10 is
-0x1f, 0x11 is 0x00; the pairs 0x02..0x07, read as 12 bits left justified,
-give -40/-390/935 at rest, |a| = 1020 LSB - one g at 1024 LSB/g. That is
-the STK8BA50's register map (data 0x02..0x07, RANGESEL 0x0f with codes
-3/5/8, BWSEL 0x10, POWMODE 0x11, SWRST 0x14) with 12-bit samples.
-
-So stk8ba50 learns a second chip: "sensortek,stk8ba58" / "stk8ba58", 12-bit
-channels (s12/16>>4) and its three ranges (+-2/4/8 g at 1024/512/256 LSB/g;
-the vendor driver switches a 16 g request to 8 g). The chip ID is checked
-for the STK8BA58 only and a mismatch is a warning. The driver gets an OF
-match table, so the module loads from the device tree.
-
-And the sampling frequency: STK8BA50_ACCEL_CHANNEL had a comma where an
-"|" belonged, which put IIO_CHAN_INFO_SAMP_FREQ into
-info_mask_shared_by_type_available and left the device without a
-sampling-frequency attribute, while sampling_frequency_available was
-there. It is shared by all channels now: "sampling_frequency", the name
-its _available attribute already has and the one h713-keystone writes.
-
+diff --git a/Documentation/devicetree/bindings/trivial-devices.yaml b/Documentation/devicetree/bindings/trivial-devices.yaml
+index 2de8eb09c..b0e7ba957 100644
+--- a/Documentation/devicetree/bindings/trivial-devices.yaml
++++ b/Documentation/devicetree/bindings/trivial-devices.yaml
+@@ -431,6 +431,8 @@ properties:
+           - sensortek,stk8312
+             # Sensortek 3 axis accelerometer
+           - sensortek,stk8ba50
++            # Sensortek 3 axis accelerometer
++          - sensortek,stk8ba58
+             # SGX Sensortech VZ89X Sensors
+           - sgx,vz89x
+             # SGX Sensortech VZ89TE Sensors
+diff --git a/drivers/iio/accel/Kconfig b/drivers/iio/accel/Kconfig
+index 4094299e2..3786b9c29 100644
+--- a/drivers/iio/accel/Kconfig
++++ b/drivers/iio/accel/Kconfig
+@@ -694,13 +694,13 @@ config STK8312
+ 	  will be called stk8312.
+ 
+ config STK8BA50
+-	tristate "Sensortek STK8BA50 3-Axis Accelerometer Driver"
++	tristate "Sensortek STK8BA50/STK8BA58 3-Axis Accelerometer Driver"
+ 	depends on I2C
+ 	select IIO_BUFFER
+ 	select IIO_TRIGGERED_BUFFER
+ 	help
+-	  Say yes here to get support for the Sensortek STK8BA50 3-axis
+-	  accelerometer.
++	  Say yes here to get support for the Sensortek STK8BA50 and STK8BA58
++	  3-axis accelerometers.
+ 
+ 	  Choosing M will build the driver as a module. If so, the module
+ 	  will be called stk8ba50.
+diff --git a/drivers/iio/accel/stk8ba50.c b/drivers/iio/accel/stk8ba50.c
+index 6c1e286c0..bf584748f 100644
 --- a/drivers/iio/accel/stk8ba50.c
 +++ b/drivers/iio/accel/stk8ba50.c
 @@ -1,10 +1,10 @@
@@ -37,8 +48,8 @@ its _available attribute already has and the one h713-keystone writes.
 + * STK8BA50 / STK8BA58 7-bit I2C address: 0x18.
   */
  
- #include <linux/i2c.h>
-@@ -20,6 +20,7 @@
+ #include <linux/array_size.h>
+@@ -26,6 +26,7 @@
  #include <linux/iio/triggered_buffer.h>
  #include <linux/iio/trigger_consumer.h>
  
@@ -46,7 +57,7 @@ its _available attribute already has and the one h713-keystone writes.
  #define STK8BA50_REG_XOUT			0x02
  #define STK8BA50_REG_YOUT			0x04
  #define STK8BA50_REG_ZOUT			0x06
-@@ -33,7 +34,6 @@
+@@ -39,7 +40,6 @@
  #define STK8BA50_MODE_NORMAL			0
  #define STK8BA50_MODE_SUSPEND			1
  #define STK8BA50_MODE_POWERBIT			BIT(7)
@@ -54,7 +65,7 @@ its _available attribute already has and the one h713-keystone writes.
  #define STK8BA50_RESET_CMD			0xB6
  #define STK8BA50_SR_1792HZ_IDX			7
  #define STK8BA50_DREADY_INT_MASK		0x10
-@@ -42,9 +42,17 @@
+@@ -48,8 +48,16 @@
  #define STK8BA50_ALL_CHANNEL_SIZE		6
  
  #define STK8BA50_DRIVER_NAME			"stk8ba50"
@@ -63,16 +74,15 @@ its _available attribute already has and the one h713-keystone writes.
  
  #define STK8BA50_SCALE_AVAIL			"0.0384 0.0767 0.1534 0.3069"
 +#define STK8BA58_SCALE_AVAIL			"0.009577 0.019154 0.038307"
- 
++
 +struct stk8ba50_scale {
 +	u8 reg_val;
 +	u32 scale_val;
 +};
-+
+ 
  /*
   * The accelerometer has four measurement ranges:
-  * +/-2g; +/-4g; +/-8g; +/-16g
-@@ -61,13 +69,21 @@
+@@ -67,13 +75,21 @@
   *
   * Locally, the range is stored as a table index.
   */
@@ -98,7 +108,7 @@ its _available attribute already has and the one h713-keystone writes.
  /* Sample rates are stored as { <register value>, <Hz value> } */
  static const struct {
  	u8 reg_val;
-@@ -84,8 +100,19 @@
+@@ -90,8 +106,19 @@ static const int stk8ba50_channel_table[] = {
  	STK8BA50_REG_ZOUT
  };
  
@@ -118,7 +128,7 @@ its _available attribute already has and the one h713-keystone writes.
  	struct mutex lock;
  	int range;
  	u8 sample_rate_idx;
-@@ -98,37 +125,47 @@
+@@ -104,37 +131,47 @@ struct stk8ba50_data {
  	} scan;
  };
  
@@ -175,7 +185,7 @@ its _available attribute already has and the one h713-keystone writes.
  	&iio_const_attr_sampling_frequency_available.dev_attr.attr,
  	NULL,
  };
-@@ -137,6 +174,16 @@
+@@ -143,6 +180,16 @@ static const struct attribute_group stk8ba50_attribute_group = {
  	.attrs = stk8ba50_attributes
  };
  
@@ -192,7 +202,7 @@ its _available attribute already has and the one h713-keystone writes.
  static int stk8ba50_read_accel(struct stk8ba50_data *data, u8 reg)
  {
  	int ret;
-@@ -234,7 +281,7 @@
+@@ -240,7 +287,7 @@ static int stk8ba50_read_raw(struct iio_dev *indio_dev,
  		return IIO_VAL_INT;
  	case IIO_CHAN_INFO_SCALE:
  		*val = 0;
@@ -201,7 +211,7 @@ its _available attribute already has and the one h713-keystone writes.
  		return IIO_VAL_INT_PLUS_MICRO;
  	case IIO_CHAN_INFO_SAMP_FREQ:
  		*val = stk8ba50_samp_freq_table
-@@ -260,8 +307,8 @@
+@@ -266,8 +313,8 @@ static int stk8ba50_write_raw(struct iio_dev *indio_dev,
  		if (val != 0)
  			return -EINVAL;
  
@@ -212,7 +222,7 @@ its _available attribute already has and the one h713-keystone writes.
  				index = i;
  				break;
  			}
-@@ -270,7 +317,7 @@
+@@ -276,7 +323,7 @@ static int stk8ba50_write_raw(struct iio_dev *indio_dev,
  
  		ret = i2c_smbus_write_byte_data(data->client,
  				STK8BA50_REG_RANGE,
@@ -221,7 +231,7 @@ its _available attribute already has and the one h713-keystone writes.
  		if (ret < 0)
  			dev_err(&data->client->dev,
  					"failed to set measurement range\n");
-@@ -308,6 +355,31 @@
+@@ -314,6 +361,31 @@ static const struct iio_info stk8ba50_info = {
  	.attrs			= &stk8ba50_attribute_group,
  };
  
@@ -253,7 +263,7 @@ its _available attribute already has and the one h713-keystone writes.
  static irqreturn_t stk8ba50_trigger_handler(int irq, void *p)
  {
  	struct iio_poll_func *pf = p;
-@@ -390,14 +462,28 @@
+@@ -396,14 +468,28 @@ static int stk8ba50_probe(struct i2c_client *client)
  
  	data = iio_priv(indio_dev);
  	data->client = client;
@@ -286,13 +296,13 @@ its _available attribute already has and the one h713-keystone writes.
  
  	/* Reset all registers on startup */
  	ret = i2c_smbus_write_byte_data(client,
-@@ -522,13 +608,21 @@
+@@ -522,13 +608,21 @@ static DEFINE_SIMPLE_DEV_PM_OPS(stk8ba50_pm_ops, stk8ba50_suspend,
  				stk8ba50_resume);
  
  static const struct i2c_device_id stk8ba50_i2c_id[] = {
--	{ "stk8ba50" },
-+	{ "stk8ba50", (kernel_ulong_t)&stk8ba50_chip_info },
-+	{ "stk8ba58", (kernel_ulong_t)&stk8ba58_chip_info },
+-	{ .name = "stk8ba50" },
++	{ .name = "stk8ba50", .driver_data = (kernel_ulong_t)&stk8ba50_chip_info },
++	{ .name = "stk8ba58", .driver_data = (kernel_ulong_t)&stk8ba58_chip_info },
  	{ }
  };
  MODULE_DEVICE_TABLE(i2c, stk8ba50_i2c_id);
@@ -310,7 +320,7 @@ its _available attribute already has and the one h713-keystone writes.
  	{ }
  };
  
-@@ -538,6 +632,7 @@
+@@ -538,6 +632,7 @@ static struct i2c_driver stk8ba50_driver = {
  	.driver = {
  		.name = "stk8ba50",
  		.pm = pm_sleep_ptr(&stk8ba50_pm_ops),
@@ -318,33 +328,3 @@ its _available attribute already has and the one h713-keystone writes.
  		.acpi_match_table = stk8ba50_acpi_id,
  	},
  	.probe =        stk8ba50_probe,
---- a/drivers/iio/accel/Kconfig
-+++ b/drivers/iio/accel/Kconfig
-@@ -677,13 +677,13 @@
- 	  will be called stk8312.
- 
- config STK8BA50
--	tristate "Sensortek STK8BA50 3-Axis Accelerometer Driver"
-+	tristate "Sensortek STK8BA50/STK8BA58 3-Axis Accelerometer Driver"
- 	depends on I2C
- 	select IIO_BUFFER
- 	select IIO_TRIGGERED_BUFFER
- 	help
--	  Say yes here to get support for the Sensortek STK8BA50 3-axis
--	  accelerometer.
-+	  Say yes here to get support for the Sensortek STK8BA50 and STK8BA58
-+	  3-axis accelerometers.
- 
- 	  Choosing M will build the driver as a module. If so, the module
- 	  will be called stk8ba50.
---- a/Documentation/devicetree/bindings/trivial-devices.yaml
-+++ b/Documentation/devicetree/bindings/trivial-devices.yaml
-@@ -380,6 +380,8 @@
-           - sensortek,stk8312
-             # Sensortek 3 axis accelerometer
-           - sensortek,stk8ba50
-+            # Sensortek 3 axis accelerometer
-+          - sensortek,stk8ba58
-             # SGX Sensortech VZ89X Sensors
-           - sgx,vz89x
-             # SGX Sensortech VZ89TE Sensors

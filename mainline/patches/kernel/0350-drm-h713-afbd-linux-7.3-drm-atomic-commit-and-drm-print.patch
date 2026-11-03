@@ -1,0 +1,62 @@
+drm/tiny: h713-afbd: Linux 7.3 - struct drm_atomic_commit and <drm/drm_print.h>
+
+The atomic state is struct drm_atomic_commit in 7.3; drm_print.h is no longer pulled in by the other
+headers; drm_property_replace_blob_from_id() takes a max_size (-1: none, as before).
+
+diff --git a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+index 49bbfd407..fc4c473da 100644
+--- a/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
++++ b/drivers/gpu/drm/tiny/sun50i-h713-afbd.c
+@@ -80,6 +80,7 @@
+ #include <drm/drm_fbdev_dma.h>
+ #include <drm/drm_fourcc.h>
+ #include <drm/drm_framebuffer.h>
++#include <drm/drm_print.h>
+ #include <drm/drm_gem_atomic_helper.h>
+ #include <drm/drm_gem_dma_helper.h>
+ #include <drm/drm_gem_framebuffer_helper.h>
+@@ -1375,7 +1376,7 @@ static bool h713_afbd_window_ok(const struct drm_property_blob *b,
+ }
+ 
+ static int h713_afbd_video_atomic_check(struct drm_plane *plane,
+-					struct drm_atomic_state *state)
++					struct drm_atomic_commit *state)
+ {
+ 	struct h713_afbd *h = to_h713(plane->dev);
+ 	const struct h713_plane_state *s;
+@@ -1492,7 +1493,7 @@ static int h713_afbd_video_atomic_check(struct drm_plane *plane,
+ }
+ 
+ static void h713_afbd_video_atomic_update(struct drm_plane *plane,
+-					  struct drm_atomic_state *state)
++					  struct drm_atomic_commit *state)
+ {
+ 	struct h713_afbd *h = to_h713(plane->dev);
+ 	struct h713_plane_state *s;
+@@ -1695,7 +1696,7 @@ static void h713_afbd_video_atomic_update(struct drm_plane *plane,
+ }
+ 
+ static void h713_afbd_video_atomic_disable(struct drm_plane *plane,
+-					   struct drm_atomic_state *state)
++					   struct drm_atomic_commit *state)
+ {
+ 	struct h713_afbd *h = to_h713(plane->dev);
+ 
+@@ -1777,7 +1778,7 @@ static int h713_afbd_video_set_property(struct drm_plane *plane,
+ 		return drm_property_replace_blob_from_id(plane->dev,
+ 				property == h->prop_src_window ?
+ 					&s->src_window : &s->dst_window,
+-				val, sizeof(struct h713_window), -1, &replaced);
++				val, sizeof(struct h713_window), -1, -1, &replaced);
+ 	}
+ 
+ 	return -EINVAL;
+@@ -2088,7 +2089,7 @@ static void h713_afbd_color_commit(struct h713_afbd *h,
+  * colour checks go on top of the generic device check instead.
+  */
+ static int h713_afbd_atomic_check(struct drm_device *drm,
+-				  struct drm_atomic_state *state)
++				  struct drm_atomic_commit *state)
+ {
+ 	struct h713_afbd *h = to_h713(drm);
+ 	struct drm_plane_state *primary;

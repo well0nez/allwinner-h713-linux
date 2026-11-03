@@ -212,6 +212,9 @@ fi
 # The kernel defconfig: board.env may name one; otherwise config/versions.env pins it (build.sh does the same).
 KDEF=${KERNEL_DEFCONFIG:-$(sed -n 's/^KERNEL_DEFCONFIG=\([^ #]*\).*/\1/p' "$MAINLINE/config/versions.env")}
 [[ -n "$KDEF" ]] || { echo "no KERNEL_DEFCONFIG in boards/$BOARD/board.env or config/versions.env" >&2; exit 2; }
+# The kernel release the tree is named after (build.sh: build/linux-<version>-<hash>/).
+KERNEL_VERSION=$(sed -n 's/^KERNEL_VERSION=\([^ #]*\).*/\1/p' "$MAINLINE/config/versions.env")
+[[ -n "$KERNEL_VERSION" ]] || { echo "no KERNEL_VERSION in config/versions.env" >&2; exit 2; }
 # The U-Boot base: board.env may name its defconfig outright (cstenger's boards do,
 # their UBOOT_BOARD is the hyphenated id and no defconfig name), else it is
 # <UBOOT_BOARD>_defconfig. Same resolution as mainline/build/build.sh; uboot-build.sh
@@ -556,7 +559,7 @@ if ((!KTAKEN)); then
 	# build.sh makes the tree, the DTB, the FIT and the module tree build/modroot.<hash>
 	in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh kernel" > "$OUT/kernel-build.log" 2>&1 || { tail -20 "$OUT/kernel-build.log"; die "kernel build failed (log: $OUT/kernel-build.log)"; }
 	grep -o 'applied [0-9]* series patches' "$OUT/kernel-build.log" | sed 's/^/    /' || true
-	TREE_NAME=$(basename "$(ls -dt "$MAINLINE"/build/linux-6.18.38-*/ | head -1)")
+	TREE_NAME=$(basename "$(ls -dt "$MAINLINE"/build/linux-$KERNEL_VERSION-*/ | head -1)")
 fi
 # The FIT names its configuration after the DTB (build.sh); an image for board X
 # must not quietly carry board Y's tree.
@@ -564,7 +567,7 @@ fi
 grep -q "conf-$KERNEL_DTB" "$OUT/h713-kernel.fit" || die "h713-kernel.fit carries no configuration conf-$KERNEL_DTB"
 TREE="$MAINLINE/build/$TREE_NAME"
 [[ -f "$TREE/Module.symvers" ]] || die "no built kernel tree under $MAINLINE/build/"
-H=${TREE_NAME#linux-6.18.38-}; H=${H:0:8}
+H=${TREE_NAME#linux-$KERNEL_VERSION-}; H=${H:0:8}
 MODROOT="$MAINLINE/build/modroot.$H"
 ((KTAKEN)) || stamp_write kernel TREE_NAME -- "$OUT/h713-kernel.fit" "$OUT/$KERNEL_DTB.dtb" "$MODROOT" "$TREE/Module.symvers"
 KREL=$(ls "$MODROOT/lib/modules" | head -1)

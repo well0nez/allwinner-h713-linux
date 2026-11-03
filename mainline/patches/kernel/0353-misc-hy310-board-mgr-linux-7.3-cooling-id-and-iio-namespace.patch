@@ -1,0 +1,26 @@
+misc: hy310-board-mgr: Linux 7.3 - cooling device id and the IIO_CONSUMER namespace
+
+devm_thermal_of_cooling_device_register() takes a cooling id instead of the node (the device's own node;
+id 0, which the two-cell cooling maps do not compare). The IIO consumer symbols are in IIO_CONSUMER.
+
+diff --git a/drivers/misc/hy310-board-mgr.c b/drivers/misc/hy310-board-mgr.c
+index bf705d832..005dd2b83 100644
+--- a/drivers/misc/hy310-board-mgr.c
++++ b/drivers/misc/hy310-board-mgr.c
+@@ -1610,7 +1610,7 @@ static int hy310_board_mgr_probe(struct platform_device *pdev)
+ 			break;
+ 	if (i < priv->num_fans) {
+ 		priv->cdev = devm_thermal_of_cooling_device_register(
+-			dev, np, "hy310-fan", priv, &hy310_cooling_ops);
++			dev, 0, "hy310-fan", priv, &hy310_cooling_ops);
+ 		if (IS_ERR(priv->cdev)) {
+ 			dev_warn(dev, "thermal cooling device registration failed: %ld\n",
+ 				 PTR_ERR(priv->cdev));
+@@ -1898,6 +1898,7 @@ static struct platform_driver hy310_board_mgr_driver = {
+ 
+ module_platform_driver(hy310_board_mgr_driver);
+ 
++MODULE_IMPORT_NS("IIO_CONSUMER");
+ MODULE_LICENSE("GPL");
+ MODULE_DESCRIPTION("HY310 Projector Board Management Driver");
+ MODULE_AUTHOR("HY310-DEV");

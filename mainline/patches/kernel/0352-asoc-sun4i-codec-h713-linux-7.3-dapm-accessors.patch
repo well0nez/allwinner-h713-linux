@@ -1,0 +1,72 @@
+ASoC: sun4i-codec: h713: Linux 7.3 DAPM accessors
+
+snd_soc_component_get_dapm() -> snd_soc_component_to_dapm(), snd_soc_kcontrol_component() ->
+snd_kcontrol_chip(), card->dapm is a pointer (snd_soc_card_to_dapm()).
+
+diff --git a/sound/soc/sunxi/sun4i-codec.c b/sound/soc/sunxi/sun4i-codec.c
+index f6494baf5..4611fd3b7 100644
+--- a/sound/soc/sunxi/sun4i-codec.c
++++ b/sound/soc/sunxi/sun4i-codec.c
+@@ -2344,7 +2344,7 @@ static int sun50i_h713_codec_i2s_arm(struct snd_soc_component *component,
+ 				     struct sun4i_codec *scodec)
+ {
+ 	struct snd_soc_dapm_context *dapm =
+-		snd_soc_component_get_dapm(component);
++		snd_soc_component_to_dapm(component);
+ 	int ret;
+ 
+ 	/*
+@@ -2393,7 +2393,7 @@ static void sun50i_h713_codec_i2s_disarm(struct snd_soc_component *component,
+ 					 struct sun4i_codec *scodec)
+ {
+ 	struct snd_soc_dapm_context *dapm =
+-		snd_soc_component_get_dapm(component);
++		snd_soc_component_to_dapm(component);
+ 
+ 	/*
+ 	 * Going back to the FIFO clears the selector and nothing else. The
+@@ -2438,7 +2438,7 @@ static int sun50i_h713_codec_dac_src_get(struct snd_kcontrol *kcontrol,
+ 					 struct snd_ctl_elem_value *ucontrol)
+ {
+ 	struct snd_soc_component *component =
+-		snd_soc_kcontrol_component(kcontrol);
++		snd_kcontrol_chip(kcontrol);
+ 	struct sun4i_codec *scodec =
+ 		snd_soc_card_get_drvdata(component->card);
+ 
+@@ -2451,7 +2451,7 @@ static int sun50i_h713_codec_dac_src_put(struct snd_kcontrol *kcontrol,
+ 					 struct snd_ctl_elem_value *ucontrol)
+ {
+ 	struct snd_soc_component *component =
+-		snd_soc_kcontrol_component(kcontrol);
++		snd_kcontrol_chip(kcontrol);
+ 	struct sun4i_codec *scodec =
+ 		snd_soc_card_get_drvdata(component->card);
+ 	unsigned int item = ucontrol->value.enumerated.item[0];
+@@ -2482,7 +2482,7 @@ static int sun50i_h713_codec_i2s_rate_get(struct snd_kcontrol *kcontrol,
+ 					  struct snd_ctl_elem_value *ucontrol)
+ {
+ 	struct snd_soc_component *component =
+-		snd_soc_kcontrol_component(kcontrol);
++		snd_kcontrol_chip(kcontrol);
+ 	struct sun4i_codec *scodec =
+ 		snd_soc_card_get_drvdata(component->card);
+ 	unsigned int i;
+@@ -2500,7 +2500,7 @@ static int sun50i_h713_codec_i2s_rate_put(struct snd_kcontrol *kcontrol,
+ 					  struct snd_ctl_elem_value *ucontrol)
+ {
+ 	struct snd_soc_component *component =
+-		snd_soc_kcontrol_component(kcontrol);
++		snd_kcontrol_chip(kcontrol);
+ 	struct sun4i_codec *scodec =
+ 		snd_soc_card_get_drvdata(component->card);
+ 	unsigned int item = ucontrol->value.enumerated.item[0];
+@@ -2957,7 +2957,7 @@ static const struct snd_soc_dapm_route sun50i_h713_codec_card_routes[] = {
+  */
+ static int sun50i_h713_codec_late_probe(struct snd_soc_card *card)
+ {
+-	return snd_soc_dapm_disable_pin(&card->dapm, "I2S In");
++	return snd_soc_dapm_disable_pin(snd_soc_card_to_dapm(card), "I2S In");
+ }
+ 
+ static struct snd_soc_card *sun50i_h713_codec_create_card(struct device *dev)
