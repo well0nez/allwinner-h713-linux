@@ -59,6 +59,37 @@ podman exec -u root h713-build bash -c '
 
 Repeat this whenever you recreate the container. A fresh container has LLVM 18 again.
 
+## Rust for the kernel
+
+Only for kernels built with the developer fragment `KERNEL_CONFIG=rust` (CONFIG_RUST, [kernel-rust.md](kernel-rust.md));
+the release build does not use it. Pinned: rustup-init 1.28.2 (checked against its SHA-256), the toolchain 1.89.0 with
+`rust-src` (the kernel compiles `core` itself from it), `rustfmt` and `clippy`, and `bindgen-cli` 0.72.1 from crates.io
+with its own `Cargo.lock`. rustc 1.89 is built on LLVM 20, the same major version as the clang above; bindgen loads that
+clang's `libclang-20` at run time. Kernel 6.18 asks for rustc >= 1.78 and bindgen >= 0.65.1
+(`scripts/min-tool-version.sh`). Everything goes into `/opt/rust`; the links in `/usr/local/bin` point at the toolchain's
+own binaries, not at rustup's proxies, so the unprivileged build user needs no `RUSTUP_HOME`:
+
+```bash
+podman exec -u root h713-build bash -c '
+  set -e
+  export RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo
+  curl -fsSL https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init -o /tmp/rustup-init
+  echo "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c  /tmp/rustup-init" | sha256sum -c -
+  chmod +x /tmp/rustup-init
+  /tmp/rustup-init -y --no-modify-path --profile minimal --default-toolchain 1.89.0 -c rust-src,rustfmt,clippy
+  rm /tmp/rustup-init
+  /opt/rust/cargo/bin/cargo install --locked --root /opt/rust/cargo bindgen-cli --version 0.72.1
+  tc=/opt/rust/rustup/toolchains/1.89.0-x86_64-unknown-linux-gnu/bin
+  for t in rustc rustdoc rustfmt cargo clippy-driver; do ln -sf $tc/$t /usr/local/bin/$t; done
+  ln -sf /opt/rust/cargo/bin/bindgen /usr/local/bin/bindgen
+  chmod -R a+rX /opt/rust'
+```
+
+Check, in any prepared kernel tree: `make ARCH=arm64 LLVM=1 rustavailable` says `Rust is available!`. Without this
+step a `KERNEL_CONFIG=rust` build stops after olddefconfig ("dropped what the fragments ask for: CONFIG_RUST=y").
+With it, a build without the fragment gains only the informational `CONFIG_RUSTC_*` / `CONFIG_RUST_IS_AVAILABLE`
+lines in its `.config`; no C source or C Makefile reads them (CONFIG_RUST stays off).
+
 ## The OpenRISC compiler for crust
 
 crust, the firmware of the SoC's small OR1K core ([ARISC](subsystems/arisc.md)), needs an `or1k-elf` GCC,

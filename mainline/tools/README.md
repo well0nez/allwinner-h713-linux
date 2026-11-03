@@ -7,6 +7,13 @@ libgcc, no libc) that crust, the firmware for the SoC's small OR1K core, is comp
 tarballs pinned by SHA-256. It runs in the `h713-build` container and `release/build-all.sh` calls it when the
 compiler is missing; see [docs/build-container.md](../../docs/build-container.md).
 
+## The C+Rust module demo
+
+`rshim-demo/` builds `h713_rshim_demo.ko`: one kernel module of a C object (`rshim_demo_main.c`: module init, an
+`ioremap`) and a Rust object (`rshim_demo_hw.rs`: two `extern "C"` functions, one of them a `readl`), linked together.
+It is the proof of the linkage pattern in [docs/kernel-rust.md](../../docs/kernel-rust.md) and builds out of tree against a
+kernel built with `KERNEL_CONFIG=rust`; its `Makefile` has the build line.
+
 ## Programs for the device
 
 Nine small C programs, each with a GPL-2.0 SPDX line, written to answer one question about the display or the

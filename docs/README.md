@@ -33,6 +33,7 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 | [Dead ends](dead-ends.md) | explanations ruled out on hardware |
 | [Kernel patches](kernel-patches.md) | the series, by section |
 | [The build container](build-container.md) | the one place anything is built |
+| [Kernel Rust](kernel-rust.md) | CONFIG_RUST, and how a C module calls a Rust hardware layer |
 
 **Subsystems:** [display](subsystems/display.md) · [MIPS](subsystems/mips.md) · [HDMI input](subsystems/hdmi-in.md) ·
 [audio](subsystems/audio.md) · [video decode](subsystems/video.md) · [GPU and the CPU clock](subsystems/gpu.md) ·
