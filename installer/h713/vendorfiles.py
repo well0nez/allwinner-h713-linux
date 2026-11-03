@@ -74,6 +74,17 @@ TEXT_CONFIG_KEYS = {"panel_config.ini": ("ProjectID", "PanelWidth", "PanelHeight
 # device, as with HDCP, ARISC and the MIPS firmware.
 AIC_FW_DIR = "/etc/firmware/aic8800d80"
 AIC_FW_TARGET = "lib/firmware/aic8800_fw/SDIO/aic8800D80"
+# The AIC8801 (SDIO 5449:0145; the HY300 T08 of issue #7, 01.11.2026) keeps its set at the root of
+# vendor:/etc/firmware/, beside the D80's and DC's subdirectories, under the plain names the driver's
+# fw_u02/fw_u03 tables ask for (aic_bsp_main.c: fmacfw.bin, fw_adid.bin, fw_patch.bin,
+# fw_patch_table.bin, and the _u03 three for a later chip revision; fmacfw_rf.bin and lmacfw_rf.bin
+# for the RF test mode; aic_userconfig.txt). The driver reads them from the same CONFIG_AIC_FW_PATH
+# directory, whatever the chip, so they go next to the D80's files; the names do not collide. Only
+# these names are taken, nothing else of /etc/firmware/ (the hdcp_*.bin lie there too).
+AIC8801_FW_DIR = "/etc/firmware"
+AIC8801_FW_FILES = ("aic_userconfig.txt", "fmacfw.bin", "fmacfw_rf.bin", "fw_adid.bin", "fw_adid_u03.bin",
+                    "fw_patch.bin", "fw_patch_u03.bin", "fw_patch_table.bin", "fw_patch_table_u03.bin",
+                    "lmacfw_rf.bin")
 
 # --------------------------------------------------------------------------------------------------
 # MIPS/display artefacts (tool 0.3, plan 108 §1/§2/§4.2/§4.5)

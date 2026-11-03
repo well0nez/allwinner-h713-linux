@@ -32,7 +32,8 @@ firmware), `lib/firmware/hy310-edid.bin`, `lib/firmware/h713/msp-patch.bin` (aud
 `boot/mips/*` (the 19 display artifacts U-Boot loads by
 name), `boot/bootlogo.bmp` (the vendor boot logo, added 15.09.2026),
 `lib/firmware/aic8800_fw/SDIO/aic8800D80/*` (Wi-Fi firmware, added 12.09.2026, `--no-wlan` to skip
-it), plus `MANIFEST.json` and `REPORT.txt`. The report is also written as `BERICHT.txt`, byte-identical;
+it; the AIC8800D80's set from `vendor:/etc/firmware/aic8800d80/`, or, since 03.11.2026, the AIC8801's ten files from
+the root of `vendor:/etc/firmware/` - the HY300 T08 - into the same directory, the one the driver reads), plus `MANIFEST.json` and `REPORT.txt`. The report is also written as `BERICHT.txt`, byte-identical;
 the German name goes out together with the German switches, after `v0.9`.
 
 ### `--profile <board>`: a panel row out of the board's own `panel_config.ini`

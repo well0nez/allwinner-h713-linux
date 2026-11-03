@@ -19,7 +19,6 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `STATUS.md` | `doku/114`, `doku/121`, `doku/134`, `doku/152`, `doku/157`, `doku/165`, `doku/174`, `doku/180`, `doku/181`, `doku/184`, `doku/200`, `doku/201`, `doku/203`, `doku/206`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/217`, `doku/218`, `doku/219`, `doku/220`, `doku/222`, `doku/60`, `doku/94` |
 | `boards/README.md` | `doku/121`, `doku/222` |
 | `boards/hy200-qz713df-a1/README.md` | `doku/136`, `doku/182`, `doku/184`, `doku/185`, `doku/219` |
-| `boards/hy300-t08/README.md` | `doku/121` |
 | `boards/hy310/README.md` | `doku/10`, `doku/121`, `doku/219` |
 | `boards/hy320/README.md` | `doku/228` |
 | `boards/l018/README.md` | `doku/220`, `doku/222` |
@@ -98,7 +97,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/h713/profiles/hy200_qz713_v2.py` | `doku/121` |
 | `installer/h713/profiles/hy200_qz713df_a1.py` | `doku/121`, `doku/136` |
 | `installer/h713/profiles/hy300_pro.py` | `doku/120`, `doku/121` |
-| `installer/h713/profiles/hy300_t08.py` | `doku/121` |
+| `installer/h713/profiles/hy300_t08.py` | `doku/121`, `doku/90` |
 | `installer/h713/profiles/hy310.py` | `doku/109`, `doku/120`, `doku/40` |
 | `installer/h713/profiles/hy320.py` | `doku/121` |
 | `installer/h713/profiles/hy350.py` | `doku/121` |
@@ -189,7 +188,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`118-handoff-20260913.md`](118-handoff-20260913.md) | Handoff | 2026-09-13 | Handoff 13.09.2026 - nach dem Release v0.5-beta | 1 |
 | [`119-plan-fremdgeraete-und-installer-fixes.md`](119-plan-fremdgeraete-und-installer-fixes.md) | Plan |  | Plan 119 - Fremde Geräte (HY300 Pro) und die Installer-Fehler aus Issue #1 | - |
 | [`120-plan-hy300pro.md`](120-plan-hy300pro.md) | Plan |  | Plan 120 - HY300 Pro: von „geht nicht" zu einem Test, den der Melder fahren kann | 4 |
-| [`121-plan-werkzeug-umbau.md`](121-plan-werkzeug-umbau.md) | Plan |  | Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards | 52 |
+| [`121-plan-werkzeug-umbau.md`](121-plan-werkzeug-umbau.md) | Plan |  | Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards | 51 |
 | [`122-handoff-werkzeug-umbau.md`](122-handoff-werkzeug-umbau.md) | Handoff |  | 122 - Handoff Werkzeug-Umbau (abgeschlossen 15.09.2026 mit Release v0.6-beta) | - |
 | [`123-handoff-20260915.md`](123-handoff-20260915.md) | Handoff | 2026-09-15 | 123 - Handoff 15.09.2026 (Werkzeug-Umbau abgeschlossen, Stufe 5 fremde Boards, Testabbild HY300 Pro) | - |
 | [`124-cstenger-abgleich-20260915.md`](124-cstenger-abgleich-20260915.md) | Abgleich | 2026-09-15 | 124 - Abgleich mit cstengers Zweig `h713-display-video-path` (sein Stand 12.09.2026) | - |
@@ -333,7 +332,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`87-gamma-ctm-kms.md`](87-gamma-ctm-kms.md) | Analyse |  | Gamma und Weißabgleich als KMS-Eigenschaften am H713-AFBD-CRTC | 3 |
 | [`88-v4l2-hdmirx.md`](88-v4l2-hdmirx.md) | Analyse |  | 88 - `sun50i-h713-hdmirx`: der HDMI-Eingang als V4L2-Gerät | 4 |
 | [`89-composition-block.md`](89-composition-block.md) | Analyse |  | Der Composition-Block bei `0x05000000` - gelesen am 07.09.2026 | 1 |
-| [`90-stock-referenz.md`](90-stock-referenz.md) | Analyse |  | Der Stock-Vergleich | 1 |
+| [`90-stock-referenz.md`](90-stock-referenz.md) | Analyse |  | Der Stock-Vergleich | 2 |
 | [`91-plan-drei-punkte.md`](91-plan-drei-punkte.md) | Plan |  | Plan: die drei offenen Punkte des Umschalters | - |
 | [`92-plan-de-scaler.md`](92-plan-de-scaler.md) | Plan |  | Plan - DE-Scaler und Auflösungsunterstützung | - |
 | [`93-todo-scaler-und-720p.md`](93-todo-scaler-und-720p.md) | Analyse |  | TODO - Scaler und 720p | - |

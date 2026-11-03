@@ -1,0 +1,149 @@
+From 4f9fe56f46ec8879f00148410c83609fea85ae14 Mon Sep 17 00:00:00 2001
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Date: Tue, 3 Nov 2026 22:59:29 +0100
+Subject: [PATCH 111/111] sunxi: h713: the HY300 T08 - board base defconfig and
+ device tree (issue #7)
+
+hy300_t08_defconfig is hy300_pro_defconfig with this board's DRAM block (640 MHz, tpr0..tpr2 and tpr11/tpr12 of the HY350 family, read off the owner's boot0 at LBA 16 and the stock OTA image), its device tree name and its identification string; sun50i-h713-hy300-t08.dts includes the bench board's tree and names the board. No shared file is touched. Nobody here has the board; a TEST image over FEL for its owner is the only build.
+
+Co-Authored-By: Claude Mythos 5.1 <noreply@anthropic.com>
+---
+ configs/hy300_t08_defconfig                   | 95 +++++++++++++++++++
+ .../arm64/allwinner/sun50i-h713-hy300-t08.dts | 26 +++++
+ 2 files changed, 121 insertions(+)
+ create mode 100644 configs/hy300_t08_defconfig
+ create mode 100644 dts/upstream/src/arm64/allwinner/sun50i-h713-hy300-t08.dts
+
+diff --git a/configs/hy300_t08_defconfig b/configs/hy300_t08_defconfig
+new file mode 100644
+index 00000000000..2d60a8bc7a9
+--- /dev/null
++++ b/configs/hy300_t08_defconfig
+@@ -0,0 +1,95 @@
++# HY300 T08 -- board base. Reported in issue #7 of well0nez/allwinner-h713-linux
++# by its owner (GitHub `smj-0712`); nobody here has ever held this board.
++#
++# Same shape as hy300_pro_defconfig: this file says what the hardware is, a role
++# fragment in configs/fragments/ says what a build is for, and build/uboot-build.sh
++# merges the two (docs/uboot/README.md, "Which defconfig"). Everything outside
++# the DRAM block, the device tree name and the identification string is the
++# HY310 base, unchanged.
++#
++# **No image is shipped for this board.** It is below `verified`; a TEST image
++# for its owner is the only build (boards/hy300-t08, doku/121 section 5).
++#
++# DRAM: DDR3 (type 3), 640 MHz. The 24 words of the vendor boot0 at LBA 16 of
++# the owner's eMMC dump (01.11.2026; the same block the stock OTA image
++# HY300_T08_OTA_2024-04-19-2028.img carries), as recorded in
++# installer/h713/profiles/hy300_t08.py ("dram") and boards/hy300-t08/uboot.config.
++#   - tpr0..tpr2 0x004a2195 / 0x02423190 / 0x0008b061 and tpr11/tpr12
++#     0x44440000 / 0x00005555 are this block's own (the HY350's and the T08's
++#     family, not the HY300 Pro's 0x482151 / 0x1b1a94d / 0x7004e).
++#   - para2 0x04000000 and tpr13 0xb4016103 are the pair every H713 defconfig
++#     of this fork carries (what the HY310 runs). The owner's LBA 16 block still
++#     has the unpatched image form (0 / 0x34010100); the patched pair stands
++#     only in his LBA 256 copy, which is the HY350's 792 MHz block and does not
++#     run (the BROM takes LBA 16 while it is valid). Not this board's own values.
++#   - CONFIG_DRAM_CLK=640 is his boot0's clock.
++# Not measured: whether our SPL trains this board's DRAM at all. The first run
++# is a TEST image over FEL, from RAM, nothing written to the eMMC.
++#
++# Panel: project 0x34, 1280x720 single port (panel_config.ini of the owner's
++# dump and of the OTA image): the "ADT-3 2024" display firmware's row 0x34 in
++# h713_mips.c. The lamp's PWM words are the HY300 Pro's (channel 5, 40 kHz).
++CONFIG_ARM=y
++CONFIG_ARCH_SUNXI=y
++CONFIG_DEFAULT_DEVICE_TREE="allwinner/sun50i-h713-hy300-t08"
++CONFIG_DRAM_CLK=640
++CONFIG_SPL=y
++CONFIG_IDENT_STRING=" HY300 T08"
++CONFIG_DRAM_SUNXI_DX_ODT=0x03030303
++CONFIG_DRAM_SUNXI_DX_DRI=0x0e0e0e0e
++CONFIG_DRAM_SUNXI_CA_DRI=0x1c12
++CONFIG_DRAM_SUNXI_ODT_EN=0x1
++CONFIG_DRAM_SUNXI_ZQ=0x007b7bfb
++CONFIG_DRAM_SUNXI_PARA1=0x000010f4
++CONFIG_DRAM_SUNXI_PARA2=0x04000000
++CONFIG_DRAM_SUNXI_MR0=0x00001c70
++CONFIG_DRAM_SUNXI_MR1=0x00000040
++CONFIG_DRAM_SUNXI_MR2=0x00000018
++CONFIG_DRAM_SUNXI_MR3=0x00000000
++CONFIG_DRAM_SUNXI_TPR0=0x004a2195
++CONFIG_DRAM_SUNXI_TPR1=0x02423190
++CONFIG_DRAM_SUNXI_TPR2=0x0008b061
++CONFIG_DRAM_SUNXI_TPR3=0xb4787896
++CONFIG_DRAM_SUNXI_TPR4=0x00000000
++CONFIG_DRAM_SUNXI_TPR5=0x48484848
++CONFIG_DRAM_SUNXI_TPR6=0x00000048
++CONFIG_DRAM_SUNXI_TPR7=0x1620121e
++CONFIG_DRAM_SUNXI_TPR8=0x00000000
++CONFIG_DRAM_SUNXI_TPR9=0x00000000
++CONFIG_DRAM_SUNXI_TPR10=0x00000000
++CONFIG_DRAM_SUNXI_TPR11=0x44440000
++CONFIG_DRAM_SUNXI_TPR12=0x00005555
++CONFIG_DRAM_SUNXI_TPR13=0xb4016103
++CONFIG_MACH_SUN50I_H713=y
++CONFIG_H713_POWERON_LIGHT_FAN=y
++CONFIG_H713_MIPS_BOOT=y
++CONFIG_SUNXI_DRAM_H713_DDR3_STOCK=y
++CONFIG_MMC_SUNXI_SLOT_EXTRA=2
++CONFIG_MMC0_CD_PIN=""
++# CONFIG_SYS_MALLOC_CLEAR_ON_INIT is not set
++CONFIG_SUPPORT_EMMC_BOOT=y
++CONFIG_USB_EHCI_HCD=y
++CONFIG_USB_OHCI_HCD=y
++# CONFIG_WATCHDOG is not set
++CONFIG_WDT=y
++CONFIG_USB_MUSB_GADGET=y
++CONFIG_CMD_USB_MASS_STORAGE=y
++# CONFIG_USB_ETHER is not set
++CONFIG_CONSOLE_MUX=y
++CONFIG_SYS_CONSOLE_IS_IN_ENV=y
++CONFIG_USB_FUNCTION_ACM=y
++# CONFIG_USB_FUNCTION_ACM_WAIT_FOR_CONNECTION is not set
++CONFIG_SYSRESET=y
++CONFIG_SYSRESET_PSCI=y
++CONFIG_CMD_POWEROFF=y
++CONFIG_FASTBOOT_CMD_OEM_POWEROFF=y
++CONFIG_PREBOOT="if itest.l *0x0709011c == 0xfa57b007; then mw.l 0x0709011c 0; run fastboot_mode; elif itest.l *0x0709011c == 0xb007c0de; then mw.l 0x0709011c 0; setenv bootdelay -1; fi"
++# CONFIG_ENV_IS_IN_FAT is not set
++CONFIG_ENV_IS_IN_MMC=y
++CONFIG_ENV_OFFSET=0x700000
++CONFIG_ENV_MMC_DEVICE_INDEX=1
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_SECTOR=0x800
++CONFIG_SYS_MMCSD_RAW_MODE_U_BOOT_DATA_PART_OFFSET=0x0
++CONFIG_H713_VENDOR_CHAINLOAD=y
++CONFIG_CMD_WDT=y
++CONFIG_CMD_GPIO=y
+diff --git a/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300-t08.dts b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300-t08.dts
+new file mode 100644
+index 00000000000..49f9e60ed3e
+--- /dev/null
++++ b/dts/upstream/src/arm64/allwinner/sun50i-h713-hy300-t08.dts
+@@ -0,0 +1,26 @@
++// SPDX-License-Identifier: (GPL-2.0+ OR MIT)
++/*
++ * "HY300 T08" projector (silkscreen HY300_T08_QZ713_V3), reported in issue #7
++ * of well0nez/allwinner-h713-linux by its owner. Nobody here has held one.
++ *
++ * Like the HY300 Pro's tree, this is an include of the bench board's rather
++ * than a copy, for the same reason: a board should boot a device tree named
++ * after itself, so that a boot log says which board it is running on. The
++ * DRAM clock and words that distinguish this board (640 MHz, the HY350's
++ * family block) live in configs/hy300_t08_defconfig, not here.
++ *
++ * What is *not* claimed by this file: the panel. It declares project id 0x34,
++ * 1280x720 single port (panel_config.ini); no node here describes a panel,
++ * the display coprocessor drives it from its own tables, and its "ADT-3 2024"
++ * firmware is the HY350's and HY320's (h713_mips.c).
++ *
++ * Nothing about this board has been measured as different from the bench
++ * board's tree, so nothing else is overridden.
++ */
++
++#include "sun50i-h713-hy200-qz713df-a1.dts"
++
++/ {
++	model = "MagCubic HY300 T08";
++	compatible = "magcubic,hy300-t08", "allwinner,sun50i-h713";
++};

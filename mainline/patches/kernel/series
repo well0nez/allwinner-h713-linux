@@ -440,3 +440,4 @@
 0346-arm64-dts-h713-hy320-crust-as-the-arisc-firmware-s-name.patch
 0347-arm64-dts-h713-hy320-the-display-mips-with-the-panel-s-supply-and-reset.patch
 0348-arm64-dts-h713-hy320-pb5-to-the-board-manager.patch
+0349-arm64-dts-h713-add-the-hy300-t08-board-dts.patch

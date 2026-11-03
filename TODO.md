@@ -984,6 +984,19 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Ein-Taste PL4 wie HY300 Pro; **keine Fernbedienung mehr**, auf einem Testabbild wäre die Ein-Taste sein einziger Eingang,
       der AIC8801 (WLAN/SSH) ist damit Voraussetzung für jeden Test. Bewertung des `dtb`: `BEWERTUNG-DTB.md` (Board-Pins = HY300
       Pro, Display-Seite = HY320; §3a was für ein FEL-TEST fehlt). Noch nicht beantwortet.
+      **03.11.2026 Vorbereitung am PC (Marco: "doch bitte"; `arbeit/t08-20261103/`, Zweig `versuch/t08-board`):** (1) **AIC8801**:
+      `h713-extract` nimmt den 8801-Satz (10 Dateien an der Wurzel von `vendor:/etc/firmware/`: `fmacfw.bin`, `fmacfw_rf.bin`,
+      `fw_adid[_u03].bin`, `fw_patch[_u03].bin`, `fw_patch_table[_u03].bin`, `lmacfw_rf.bin`, `aic_userconfig.txt`, die Namen der
+      Treibertabellen `fw_u02`/`fw_u03`) in dasselbe Zielverzeichnis wie den D80-Satz (ein `CONFIG_AIC_FW_PATH` für alle Chips),
+      `layout.py` 10 optionale Zeilen (55 Dateien), `h713-wifi` prüft `fmacfw*.bin`; **(2) Profil** `hy300_t08` mit Varianten
+      `ota20240419` (OTA) und `unit202311` (sein Gerät: U-Boot 2023-11-18 `b826243b`, ARISC 2023-11-23 `8cbc0706`, dtb `7db0a4d3`,
+      `libmspsound` `c6e9cffc`; Vendor, Fingerprint, Display-Daten, DRAM-Block = OTA), `boards/hy300-t08/variants/`; **(3) Gerätebaum**
+      Kernel **0349** `sun50i-h713-hy300-t08.dts` = HY300-Pro-Baum + elog/handoff der HY320 (0335), kein Tastatur-Knoten, kein
+      mix-Fenster; gebaut (dtc, 0 Warnungen, die sieben anderen DTBs bytegleich); **(4) U-Boot** `hy300_t08_defconfig` + dts im
+      Fork `h713-hy310` `4f9fe56f46e` (hy300_pro_defconfig mit 640-MHz-Block/Baum/Kennung; baut release+installer; gepusht
+      03.11. auf Marcos Ja, Spiegel 111 Patches verifiziert, Gitlink gesetzt); **(5)** `board.env` `KERNEL_DTB`/`UBOOT_BOARD`,
+      `uboot-prove-fragments.sh`-Matrix, README. Status bleibt `profile-only`; TEST-Abbild `--variant unit202311 --test-image`: Bau 03.11., s. u. Nicht gemessen: alles am Gerät (DRAM-Training, Panel 0x34 mit der
+      ADT-3-Firmware, 8801 mit unserem Treiber, HDMI-Port).
 - [ ] 4.18 **HY320 (Issue #5 / PR #6, Melder GitHub `minpeter`, 31.10.2026): das erste Board, das ein Fremder selbst bis zum
       laufenden TEST-Abbild gebracht hat** - Profil, `boards/hy320/` (`partial`), Gerätebaum 0335, U-Boot-Seite im Fork
       (well0nez/u-boot#1, 5 Commits unter `CONFIG_H713_BOARD_HY320`), crust (well0nez/crust#1, Board-ID 4). Bewertung und

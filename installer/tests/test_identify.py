@@ -20,6 +20,7 @@ from h713.identify import ISSUES, identify, match_profiles, report_device  # noq
 from h713.profiles import PROFILES, get                          # noqa: E402
 
 PLUS = "hy200_qz713df_a1/projector09220931"     # the 2025-09-22 firmware of the HY200 QZ713DF A1
+T08_OTA = "hy300_t08/ota20240419"               # the HY300 T08's stock OTA image (the issue #7 unit is unit202311)
 
 
 class Recorder(support.Recorder):
@@ -80,8 +81,8 @@ class HY300ProDevice(unittest.TestCase):
 
     def test_the_t08_image_does_not_look_like_the_pro(self):
         from h713.profiles import expected_features
-        profile, candidates, _matches = match_profiles(dict(expected_features(PROFILES["hy300_t08"])))
-        self.assertEqual((profile, candidates), ("hy300_t08", ["hy300_t08"]))
+        profile, candidates, _matches = match_profiles(dict(expected_features(get(T08_OTA))))
+        self.assertEqual((profile, candidates), (T08_OTA, [T08_OTA]))
 
 
 class Images(unittest.TestCase):
@@ -95,8 +96,9 @@ class Images(unittest.TestCase):
 
     def test_hy300_t08_image_is_profile_only(self):
         ident = identified("hy300-t08")
-        self.assertEqual((ident["profile"], ident["status"]), ("hy300_t08", "profile-only"))
-        self.assertEqual(ident["candidates"], ["hy300_t08"])
+        self.assertEqual((ident["profile"], ident["status"]), (T08_OTA, "profile-only"))
+        self.assertEqual(ident["variant"], "ota20240419")
+        self.assertEqual(ident["candidates"], [T08_OTA])
         log = Recorder()
         # profile-only is not a licence to write, whatever the fingerprint says.
         self.assertFalse(report_device(ident, log, writing=True))
@@ -106,13 +108,13 @@ class Images(unittest.TestCase):
         ident = identified("hy350")
         self.assertEqual(ident["profile"], "hy350")
         self.assertEqual(ident["candidates"], ["hy350"])
-        for other in ("hy300_t08", "hy300_pro"):
+        for other in (T08_OTA, "hy300_t08/unit202311", "hy300_pro"):
             self.assertNotIn(other, ident["candidates"])
         # ... although the fingerprint is the very same string as the T08's (finding 1).
         self.assertEqual(ident["features"]["build_fingerprint"],
-                         PROFILES["hy300_t08"]["expected"]["build_fingerprint"])
+                         get(T08_OTA)["expected"]["build_fingerprint"])
         for name in ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version", "sunxi_version"):
-            self.assertFalse(ident["matches"]["hy300_t08"][name], name)
+            self.assertFalse(ident["matches"][T08_OTA][name], name)
 
     def test_hy300_pro_plus_ddr3_is_the_qz713df_a1_profile(self):
         # The DDR3 image (0922) is one of the two stock firmwares of the HY200 QZ713DF A1, the
@@ -210,7 +212,7 @@ class Disks(unittest.TestCase):
     def test_adt3_disks_are_told_apart_without_android(self):
         # Boards nobody here has held, and their build.prop is out of reach on these disks:
         # boot0 and the boot package alone separate the T08 from the HY350 (finding 1).
-        for board, profile in (("hy300-t08", "hy300_t08"), ("hy350", "hy350")):
+        for board, profile in (("hy300-t08", T08_OTA), ("hy350", "hy350")):
             support.need(fakedisk.needs_adt3(board))
             ident = on_disk(self, fakedisk.make_adt3_disk, board)
             self.assertEqual((ident["profile"], ident["kind"]), (profile, "stock"), board)

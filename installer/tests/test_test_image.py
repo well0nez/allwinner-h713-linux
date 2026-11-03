@@ -334,7 +334,7 @@ class DeclaredProjectOnATestBoard(unittest.TestCase):
         import h713.identify
         from h713.source import FileSource
         ident = h713.identify.identify(FileSource(pathlib.Path(fakedisk.IMAGES["hy300-t08"])))
-        self.assertEqual(ident.get("profile"), "hy300_t08")
+        self.assertEqual(ident.get("profile"), "hy300_t08/ota20240419")   # the OTA image is that variant
         project = _tool_module()._declared_project(ident)
         self.assertEqual(project, "0x34")
 

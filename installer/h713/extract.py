@@ -31,7 +31,7 @@ from h713.panelrow import compare_with_profile, profile_from_ini
 from h713.profiles import PROFILES, UBOOT_FW_REVS, legacy_devices
 from h713.source import FileSource, SparseSource, Source
 from h713.util import hexdump_short, sha256_bytes, sha256_file
-from h713.vendorfiles import (AIC_FW_DIR, AIC_FW_TARGET, BOOT_ROOT_FILES, BOOT_ROOT_OUTPUT_DIR,
+from h713.vendorfiles import (AIC8801_FW_DIR, AIC8801_FW_FILES, AIC_FW_DIR, AIC_FW_TARGET, BOOT_ROOT_FILES, BOOT_ROOT_OUTPUT_DIR,
                               EDID_14, EDID_20, FALLBACK_MIPS_SOURCES,
                               MIPS_FEX, MIPS_FILES, MIPS_OUTPUT_DIR, MIPS_PART_KEYS, MIPS_PART_NAMES,
                               MIPS_PROJECTID, MIPS_SOURCE_DIR, MSP_LIB_CANDIDATES,
@@ -607,40 +607,54 @@ class Run:
                           + ([f"equals the '{board_id}' profile field for field"] if known and not differences else []))
 
     def extract_wlan(self):
-        """Take over the AIC8800D80 firmware from vendor:/etc/firmware/aic8800d80/.
+        """Take over the AIC8800 firmware: the D80's set from vendor:/etc/firmware/aic8800d80/, the
+        AIC8801's from the root of vendor:/etc/firmware/ (the HY300 T08, issue #7).
 
         Copied unchanged, file by file -- nothing is assembled and nothing is
-        renamed. If the directory is missing that is NO error: not every H713 device has
-        this radio chip. Reference values exist so far only for the hy310 profile; on a
-        device without a reference the files pass through as "not referenced", without
+        renamed. If a set is missing that is NO error: not every H713 device has
+        this radio chip, and no device has both. Reference values exist so far only for the hy310
+        profile; on a device without a reference the files pass through as "not referenced", without
         tipping the exit code (grade() skips artefacts without a reference entry).
         """
-        self.log.heading(f"WLAN firmware (= vendor:{AIC_FW_DIR}/)")
+        self.log.heading(f"WLAN firmware (= vendor:{AIC_FW_DIR}/ or the AIC8801's set in vendor:{AIC8801_FW_DIR}/)")
         if not self.open_vendor():
             self.log.warn("no vendor partition -- WLAN firmware not extracted")
             self.not_extracted.append("WLAN firmware (no vendor partition)")
             return
-        if not self.vendor.exists(AIC_FW_DIR):
-            self.log.info(f"{AIC_FW_DIR} not present -- this device has no AIC8800 firmware")
+        found = []
+        if self.vendor.exists(AIC_FW_DIR):
+            files = [e for e in self.vendor.ls(AIC_FW_DIR) if e.get("typ") != "d"]
+            if files:
+                found += [(AIC_FW_DIR, e) for e in files]
+            else:
+                self.log.warn(f"{AIC_FW_DIR} is empty")
+        else:
+            self.log.info(f"{AIC_FW_DIR} not present -- this device has no AIC8800D80 firmware")
+        if self.vendor.exists(AIC8801_FW_DIR):
+            names = {e["name"]: e for e in self.vendor.ls(AIC8801_FW_DIR) if e.get("typ") != "d"}
+            got = [names[n] for n in AIC8801_FW_FILES if n in names]
+            if got:
+                self.log.info(f"AIC8801 set in {AIC8801_FW_DIR}: {len(got)} of {len(AIC8801_FW_FILES)} files")
+                found += [(AIC8801_FW_DIR, e) for e in got]
+                missing = [n for n in AIC8801_FW_FILES if n not in names]
+                if missing:
+                    self.log.info(f"AIC8801 set: not there: {', '.join(missing)}")
+        if not found:
+            self.log.info("no AIC8800 firmware set found -- this device has no such chip, or another one")
             self.observations["aic8800_firmware"] = "not present"
-            return
-        files = [e for e in self.vendor.ls(AIC_FW_DIR) if e.get("typ") != "d"]
-        if not files:
-            self.log.warn(f"{AIC_FW_DIR} is empty")
-            self.not_extracted.append("WLAN firmware (directory empty)")
-            self.observations["aic8800_firmware"] = "directory empty"
+            self.not_extracted.append("WLAN firmware (no AIC8800 set in the vendor partition)")
             return
         self.observations["aic8800_firmware"] = sorted(
-            f"{e['name']} ({e['size']} B)" for e in files)
-        for e in sorted(files, key=lambda x: x["name"]):
-            b = self.vendor.read(f"{AIC_FW_DIR}/{e['name']}", self.tmp)
+            f"{d}/{e['name']} ({e['size']} B)" for d, e in found)
+        for d, e in sorted(found, key=lambda x: (x[0], x[1]["name"])):
+            b = self.vendor.read(f"{d}/{e['name']}", self.tmp)
             problems = []
             if len(b) != e["size"]:
                 problems.append(f"read {len(b)} B, the directory entry says {e['size']} B")
             if not b:
                 problems.append("empty file")
             self.store(f"{AIC_FW_TARGET}/{e['name']}", b,
-                       origin=f"vendor:{AIC_FW_DIR}/{e['name']}, taken over unchanged",
+                       origin=f"vendor:{d}/{e['name']}, taken over unchanged",
                        checks=problems or ["taken over unchanged"],
                        error=bool(problems))
 

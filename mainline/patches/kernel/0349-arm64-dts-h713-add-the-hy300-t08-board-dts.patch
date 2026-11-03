@@ -1,0 +1,100 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: add the HY300 T08 board dts
+
+The HY300 T08 (issue #7; silkscreen HY300_T08_QZ713_V3, DDR3 at 640 MHz,
+a 1280x720 single-port panel at project 0x34, "ADT-3 2024" display
+firmware) gets a device tree of its own, so that the DTB a TEST image for
+it boots is named after this board.
+
+Its owner's stock device tree (the boot package of his eMMC dump,
+01.11.2026) is the HY300 Pro's for everything on the board: the LEDs, the
+fan with its tacho on PH17, the focus motor on PH4..PH7 with the HY300
+Pro's tables and limiter PH14, the lamp's PWM channel 5 (panel_config.ini
+[PWMSetting]: channel 5, polarity 1, 40 kHz, vsync lock 1, duty 1..100,
+as on the HY300 Pro), the Wi-Fi and Bluetooth lines, the accelerometer
+node on twi1, the codec. It differs from the HY300 Pro's in three places,
+none of which reaches this tree: the focus motor's timing (the HY300
+Pro's values are what this tree carries already), a smaller decoder
+reservation (ours is the larger one), and a 150 MHz SDIO clock (ours is
+capped at 25 MHz). Its stock tree also switches on an eight-key LRADC
+keyboard; the owner checked the case: the power button is the only key,
+getevent on the stock system reports KEY_POWER and nothing else. So no
+keyboard node, the power key stays PL4 as on the HY300 Pro.
+
+What is not the HY300 Pro's is the display firmware: the T08 runs the
+"ADT-3 2024" display.bin (22a7df11...) of the HY350 and the HY320, not the
+HY300 Pro's. The two values the HY320 measured for that firmware (0335)
+come along: the elog ring and control block the firmware writes
+(<0x4b48ae00 0x4b271d9c> in ARM view), and the AFBD handoff words the
+firmware leaves after the logo (CTRL 0x03001901, VIDEO_CTRL 0x03000200,
+selector 0). The HY320's mix window (0340) is not named here: whether this
+board's panel block needs it is not known, and without the "mix" resource
+the driver writes nothing.
+
+Wi-Fi is an AIC8801 (SDIO 5449:0145), not the AIC8800D80; the driver
+tells the chips apart itself, the tree says nothing about it.
+
+Nothing on this board has been measured by us, and it has no serial
+console; its owner has no remote either, so a TEST image can only be
+reached over Wi-Fi. Built (dtc, against the series applied to 6.18.38);
+not booted.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -61,6 +61,7 @@ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy310.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300-pro.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-l018.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy320.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300-t08.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-a527-cubie-a5e.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-h728-x96qpro+.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-t527-avaota-a1.dtb
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-t08.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-t08.dts
+--- /dev/null
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-t08.dts
+@@ -0,0 +1,44 @@
++// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++/*
++ * MagCubic HY300 T08 projector (silkscreen HY300_T08_QZ713_V3; issue #7).
++ * Stock Android 10 of the ADT-3 vendor build 6245789; DDR3 at 640 MHz;
++ * 1280x720 single-port panel, project 0x34; "ADT-3 2024" display firmware.
++ *
++ * The HY300 Pro's tree: its owner's stock device tree (boot package of his
++ * eMMC dump, 01.11.2026) agrees with the HY300 Pro's on every pin and every
++ * table of the board - LEDs, fan and tacho PH17, focus motor PH4..PH7 with
++ * the HY300 Pro's timing and limiter PH14, lamp PWM 5, Wi-Fi/BT lines, the
++ * accelerometer on twi1, the codec. The eight-key LRADC keyboard its stock
++ * tree enables is firmware heritage: the case has the power button only
++ * (owner, getevent: KEY_POWER and nothing else), so no keyboard node here.
++ *
++ * What differs is the display firmware: the "ADT-3 2024" display.bin of
++ * the HY350 and HY320, not the HY300 Pro's. Its elog addresses and its
++ * AFBD handoff words are the ones the HY320 measured (0335). The HY320's
++ * mix window is not named: not known to be needed here; without the "mix"
++ * resource the AFBD driver writes nothing.
++ *
++ * Wi-Fi: an AIC8801, which the driver tells apart itself. Nothing on this
++ * board has been measured by us; it has no serial console, and its owner
++ * has no remote. The image built from this is a TEST image for its owner.
++ */
++
++#include "sun50i-h713-hy300-pro.dts"
++
++/ {
++	model = "MagCubic HY300 T08";
++	compatible = "magcubic,hy300-t08", "allwinner,sun50i-h713";
++};
++
++/* the "ADT-3 2024" firmware's elog ring and control block (0335, HY320) */
++&cpu_comm {
++	allwinner,elog = <0x4b48ae00 0x4b271d9c>;
++};
++
++/*
++ * What that firmware leaves in the AFBD after the logo (0335, HY320): CTRL,
++ * VIDEO_CTRL, selector. With the HY310's defaults the driver refused.
++ */
++&display {
++	allwinner,handoff-state = <0x03001901 0x03000200 0x00000000>;
++};
