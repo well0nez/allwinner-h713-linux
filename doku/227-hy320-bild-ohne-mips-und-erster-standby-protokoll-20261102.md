@@ -85,3 +85,29 @@ gestecktem USB, Vsync ohne MIPS, Wake über Taste/Fernbedienung, Zyklen, Brummen
 - Schleife 3: Zyklus 1 verloren, `/sys/fs/pstore` danach leer - der Fehlerweg endet in der Pforte, die die Schienen abschaltet,
   und der RAM-Inhalt ist weg. Deshalb jetzt `h713_gate=0` (ein Fehler startet gleich durch, pstore bleibt) und Schleife 4
   (`sbloop4`, 10 Zyklen, `/data/log/sbloop.log`). Nach der Auswertung `fw_setenv h713_gate 1` zurück.
+
+## 9 Ursache eingegrenzt: der MIPS-Neustart nach dem Aufwachen (03.11.2026)
+
+Alle Spuren auf dem Gerät unter `/data/log/standby-20261103/`.
+
+- Release-Kern, 15 Versuche mit `h713_gate=0`: 2 gut, 13 verloren (`sbsoak.log`). Jeder Verlust ist ein Hänger, kein
+  Neustart von selbst: mit abgeschaltetem Hardware-Watchdog (`RuntimeWatchdogSec=off`) stand die Box nach dem Aufwachen
+  schwarz, Fernbedienung ohne Wirkung, kein Ping - die "Neustarts" bisher waren systemds 16-s-Watchdog.
+- crust ist es nicht: der Vorlauf nach einem Verlust sagt Phase `released` (step 0x619) - der Kern hatte die Bestätigung
+  geschrieben, also PM_POST_SUSPEND erreicht. Kalt- statt Warmstart vor dem Versuch: ebenso verloren.
+- `pm_test` devices/platform/processors/core: alle rc=0 (`pmt*.log`). Ein späterer "Hänger" nach `devices` war nur das
+  WLAN (das Skript startete h713-wifi nicht neu; der Besitzer sah den Launcher) - Lehre: Erreichbarkeit ist kein Lebenszeichen.
+- Ein echter Schlaf über `/sys/power/state` ohne die systemd-Haken (`sbtrace.sh`, Zeile für Zeile mit `sync`): **8 von 8 gut**,
+  die MIPS bleibt geparkt. Über `systemctl suspend` (dann startet `h713-sleep-post` `h713-mips-restart`): **5 von 6 verloren**;
+  die drei Spuren mit Kernlog enden alle in `restart from parked`, mitten in den Schritten auf `0x0200160c` (Freigabe der MIPS).
+- Registervergleich wach (MIPS läuft) gegen geparkt nach dem Schlaf (`dsnap*.txt`: CCU, R_PRCM, DRAM COM/MC, SYS_CFG, PPU,
+  TV-Top): verschieden nur MIPS-Wörter, CCU-Laufzeitzustände (PLL_CPU, mmc2) und der TV-Top - `+0/+4/+8` (stellt der Neustart
+  wieder her) und `+0x1c` 1 -> 0. `+0x1c = 1` von Hand vor dem Neustart: hängt genauso (`rs1c.log`). Anders als beim HY310
+  (doku/172) bleibt DRAM-COM `+0x004` gleich.
+- Stand: auf dem HY320 hängt der Neustart von display.bin aus der Standby-Parkposition das SoC auf, die Ursache unter dem
+  TV-Top ist offen. Entscheidung (lead, 03.11.): nicht weiter verfolgen - der Clean-Room-Treiber (`docs/cleanroom.md`) startet
+  display.bin nicht, damit entfällt der Neustart.
+- Bis dahin am Gerät: Standby aus. `/etc/systemd/sleep.conf.d/10-h713.conf` sagt `AllowSuspend=no` (das Original liegt als
+  `/etc/h713/10-h713.conf.with-standby`; zurück: zurückkopieren). Gemessen: `systemctl suspend` -> "Sleep verb 'suspend' is
+  disabled by config", `h713-power can-standby` -> nein, die Taste schaltet aus. `h713_gate=1` wieder gesetzt, `sbsoak.service`
+  entfernt.
