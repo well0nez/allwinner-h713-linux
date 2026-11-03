@@ -281,3 +281,27 @@ Abzug, Sperre frei.
 - `align_cal=1`: Spalten 17 -> 8 (Gitter) -> 0 (ein Zeilenfenster, 0 Sprünge), Zeilen 23 -> 0; **S1-T6 PASS bei allen vier
   Alphas** (31/19/12 = 2073600, 5/6 = 777600/1296000), 720p ebenfalls 2073600. Kein Rastersprung -> Q-ALN-4 nicht nötig.
 - Gerät: Normalboot 6.18.38, Umgebung gleich `env-before-r8.txt`, GP5 `RUN1`, `h713-tv` ok, Sperre frei.
+
+## 13 Runde 9: Bildverarbeitung ohne Firmware (Gamma, Weißabgleich, Helligkeit/Kontrast)
+
+Ein Bench-Boot (Release-Kern), 12-Zustand, RGB-Ebene über Video ausgerichtet, Werkzeug `gam.py`, Log `g-bench.log`.
+Niemand hat auf die Wand gesehen.
+
+- **Histogramm** (Q13): ein Fach zählt max(R, G, B) nach Weißabgleich und Gamma, 10 Bit >> 5. **Sonden**:
+  `0x051c0304` = ein Pixel nach WB/Gamma (R [29:20], B [19:10], G [9:0], 10 Bit); `0x051c0144` = Videopfad davor.
+- **Gamma** (Q12): zwei Bänke; Bit 28 wählt die sichtbare, die Ports schreiben in die andere und nur mit Bit 30.
+  Ablauf: Bit 30 setzen, R/G/B je 512 Wörter, Bit 30 löschen, Bit 28 umschalten - fertig, ohne Bildwarten und ohne
+  23/22. Angewendet nur mit Bit 26 und [21:20] = 3 ([23:22]: 00 schwarz, 10 weiß, x1 Kurve); sonst exakt linear
+  (Bypass = neutral, Q14). Nichts löscht sich selbst - die binär abgeleitete Lesart von Q12 stimmt so nicht.
+  Nach B0 `e8 = 0`; die Panel-Init-Tabelle schreibt `0x00f00000` (Bypass); der 12-Zustand `0x14f00000` schaltet Bank 1
+  ein, die nach Warmstart noch die dritte Kurve des Besitzers hielt. Die drei Kurven: rotlastig, blaulastig,
+  fast neutral (Sonde).
+- **Weißabgleich** (Q16): jedes Feld wirkt vom ARM ohne Firmware auf seinen Kanal, auf RGB- und Videoebene, vor dem
+  Gamma; Verstärkung `0x800` = 1,0, Offset-Einheit = halber 10-Bit-Schritt.
+- **Helligkeit/Kontrast** (`pq_custom.TSE`): Helligkeit -> `PROC 0x051405bc` [17:8] (vorzeichenbehaftet, ~1,17
+  Stufen/Einheit), Kontrast -> drei Verstärkungen `0x05140d34` [27:16] grün, [11:0] blau, `0x05140d38` [11:0] rot
+  (`0x958` = 1,0), `0x05140d38` [27:16] = Schwarzwert `0x40`. Neutral wandelt Y begrenzt -> voll exakt (Y 128 -> 523).
+  Der 12-Zustand trägt Helligkeit +100 und Verstärkung `0xd8c` (Y 128 -> 928).
+- Entwürfe: `cleanroom-held/drafts/30-picture-processing.md` (§3.3, §4.1, §4.3, §4.5); Notizen in
+  `cleanroom-held/90-open-questions.md` unter Q12, Q13, Q14, Q16.
+- Gerät: Normalboot 6.18.38, Umgebung gleich `env-before-r9.txt`, GP5 `RUN1`, `h713-tv` ok, Sperre frei.
