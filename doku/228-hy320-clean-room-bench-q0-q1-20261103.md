@@ -361,3 +361,13 @@ Ein Bench-Boot (`t6c.py`, Log `t6c-bench.log`): 12-Zustand, ausgerichtet, dritte
 Schwarz 518400/1555200 in Fach 5/6 bzw. alles Fach 5; Weiß 31/31; P3 29/28; S1-T6 Alpha 0xff 31/31, 0x80 19/18, 0x40
 12/12, 0 wie Schwarz. Entwurf `drafts/95-test-procedures.md` (Tabelle nach den Stufe-1-Tests). Gerät: Normalboot,
 Umgebung gleich `env-before-r13.txt`, `RUN1`, Sperre frei.
+
+## 18 Runde 14: DRM-Modul Runde 8, Q-FLIP-1
+
+- `3d821fe`: alles PASS außer den erwarteten S1-T6-Spalten ohne Kalibrierung (U = 48600); 3930 Flips wieder 65,55/s;
+  S1-T6 mit `align_cal=1` PASS bei allen vier Alphas (Alpha 0 = 518400/1555200 bei Standardkurve); pqcheck 39 PASS,
+  0 FAIL; P1 zwischen zwei Lesungen: 11 Pixel (Dither 1) gegen 1255 (Standard-Dither).
+- **Q-FLIP-1**: Entlade-Zähler 684/3944/14 und 59/9/5: das Latch ist beim RGB-done-IRQ oder spätestens beim ersten
+  Poll 100 us danach genommen; 19 von 4715 Flips kamen zu spät für die Grenze. Entwurf 05 §2 R2a.
+- Start und Ende in `/srv/h713/notes/kernel-bump.md` vermerkt; Gerät: Normalboot, Umgebung gleich `env-before-r14.txt`,
+  `RUN1`, Sperre frei. Weitere Bench-Boots erst nach Freigabe durch den lead (Kernel-Spur).
