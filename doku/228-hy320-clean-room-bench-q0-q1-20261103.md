@@ -165,3 +165,23 @@ Abzug, Sperre frei.
 - **Takte**: Boot ohne `clk_ignore_unused`/`pd_ignore_unused` (nur CCU gelesen): Video-PLL Bit 31, `db0`, `db4`, `db8`
   Bit 31, `dc0` Bit 31, `dd8` Bit 0 weg; `dd8` Bit 16 bleibt. Der ganze RTC-Block las dabei `0x00010000` (Lesepfad
   abgeschaltet) - GP5 also nicht prüfbar; nach dem angeforderten Neustart war GP5 wieder `RUN1` (Inhalt erhalten).
+
+## 8 Nachtrag Runde 4: Prozess, Q-TSE-8, Q-VP-5/12/13, ein Speicherschaden
+
+- Prozess (Lead): neue Entwürfe gehören nach `/srv/h713/cleanroom-held/drafts/`, nicht ins saubere Repo. Das schon
+  eingecheckte 05 (`136933f`) mit `git revert` (`9e40ad5`) aus `cleanroom-h713` genommen; 00, 05, 95 als vollständige
+  Dateien in `drafts/`, dazu 12 und 40 mit den neuen Antworten. `136933f` bleibt in der Historie sichtbar.
+- Q-TSE-8: die Kopfzeile der Farbraum-Zeilen sind (0, Typ)-Paare ab `0x3cdfa` (davor `0xffffffff`); meine erste
+  Fassung hatte (Typ, 0).
+- Q-VP-5: Chroma-Gain der HY320-Firmware `0x04400000`; Bit 28 ohne sichtbare Wirkung im Histogramm; Gain 0 macht die
+  Balken grau (550000 Pixel wandern in drei Grau-Fächer).
+- Q-VP-12: `0x05001028` wechselt mit dem Zustand (`0xffffffff`, `0xff000001`, `0x3f000000`, `0xff000000`), ohne Wirkung
+  im Histogramm.
+- Q-VP-13: weder der 40- noch der 85-Wort-Satz gibt bei 720p die richtigen Flächen; mit 12s NRC-, PROC- und SCL-Wörtern
+  unter den S2-Wörtern exakt (25/50/50 %). `0x858` bleibt `0x04380010`.
+- **Speicherschaden** im Boot r5-2: NRC-Schreibkanäle an (S2-Wörter `0x278/0x2b8` und 12s NRC-Block), Pufferadressen
+  nicht gesetzt -> DMA ins RAM, danach Segfaults/"Illegal instruction" in Userspace, `systemctl reboot` stürzte ab.
+  Rückweg mit `sysrq s`/`b`: Normalboot, ext4-Journal sauber nachgezogen, keine fehlgeschlagenen Units, Release-FIT
+  `c5b9719a`, Umgebung gleich dem Abzug. In 12 §M.4 als Sicherheitsregel festgehalten.
+- Gerätesperre: mit RustInfra geteilt (`flock /tmp/h713-device.lock`); RustInfra hatte zwei Neustarts um 08:38
+  Gerätezeit unter der Sperre, ich danach. Sperre frei, RustInfra benachrichtigt.
