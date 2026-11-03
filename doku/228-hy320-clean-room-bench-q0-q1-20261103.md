@@ -510,3 +510,19 @@ authentifiziert, EDID ausgeliefert, Ton 48 kHz; Launcher bedeckte das Bild bis z
 - Modul `fa01d83e…`: 1-7 wie Runde 11; Schritt 8 14 PASS, 0 FAIL; Neuladen und Signalrückkehr ohne Timeout und ohne
   "raster stall"; T3-05 Rückkehr 0,21 s nach TMDS. Alle 25 Commit-Zeilen sauber. Zustand 5 des Sichtfensters mit diesem Modul.
   Gerät danach im Normalstart, Umgebung = Referenz, Sperre frei.
+
+## 27 Standby ohne display.bin, erste Versuche (04.11.)
+
+Bench B0 mit 7.3.1-rustbench, crust-h713 v5, `echo mem > /sys/power/state`, RTC +20 s, `h713_gate=0` für die Dauer.
+- s1 (sauberes Modul, `kms-test hdmi` läuft): verloren. crust beim nächsten Start: `phase reset, step 0x619, cause 2
+  (resuming budget over) ... 60000 ms` - CPUs freigegeben, Linux meldete sich nicht.
+- s2 (ohne Modul): zurück nach 20,46 s, rc 0, RTC-Wort RUN1; alle Anzeigeblöcke (vp-bench-Liste, 3265 Wörter) gleich bis
+  auf Zähler; das erste Lesen von `CAP 0x06940000` nach dem Aufwachen hängte das SoC (TV-Top im Schlaf zurückgesetzt),
+  16-s-Watchdog -> Normalstart.
+- s3 (ohne Modul, nur sichere Blöcke): WLAN-AP nach dem Aufwachen weg (mein Skript startete h713-wifi nicht neu, Fehler
+  von mir; doku/227 §6). Gerät seit ca. 18:40 UTC nicht erreichbar, nichts setzt es zurück; Besitzer um Stromzyklus gebeten
+  (Lead). Bis 20:13 UTC alle 5 min geprüft: weiter weg.
+- Seitdem in jedem Standby-Skript: `h713-wifi`-Neustart nach dem Aufwachen und ein Wächter (`systemd-run --on-active=600`,
+  Monotonuhr, ohne Schlafzeit), der ohne Host-Kontakt in den Normalstart neu startet. Werkzeuge `tools/stb.sh`, `rsm.py`,
+  `stbrun.sh`; Logs `logs/standby/`. Entwurf `cleanroom-held/drafts/60-standby-resume.md` (sauber `b862472`, WALL).
+- Offen am Gerät: `h713_gate` steht auf 0 (nach der Rückkehr auf 1 zurück, Umgebungsreferenz `/data/bench/env-before-stb.txt`).
