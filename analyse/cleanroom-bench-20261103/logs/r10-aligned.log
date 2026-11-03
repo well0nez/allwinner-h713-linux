@@ -1,0 +1,29 @@
+  1323.227 === open /data/bench/r10-aligned.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+  1323.479 ALIGNED phase: vsync->rgb-done median 13.7840 ms (min 13.7806 max 13.7874, n 16)
+  1323.481 ALIGNED raster words: RASTER 04640897 00001003 00000000 02000000 00088008 8fff0008 00200020 07800054 04380010 29000000 000000ff 00000010 04380010 07800054 00000100 OSD010 04640897 TCON020 04650898 PNL174 4a2d0137 PROCfe08 04640897
+  1323.571 ALIGNED white alpha 0xff: 31:2073600
+  1323.633 ALIGNED white alpha 0x80: 19:2073600
+  1323.695 ALIGNED white alpha 0x40: 12:2073600
+  1323.758 ALIGNED white alpha 0x00: 5:777600 6:1296000
+  1323.856 ALIGNED black alpha 0xff: 0:2073600
+  1323.919 ALIGNED black alpha 0x80: 3:2073600
+  1323.982 ALIGNED black alpha 0x40: 4:2073600
+  1324.044 ALIGNED black alpha 0x00: 5:777600 6:1296000
+  1324.128 ALIGNED grey80 alpha 0xff: 16:2073600
+  1324.205 ALIGNED grey80 alpha 0x80: 11:2073600
+  1324.268 ALIGNED grey80 alpha 0x40: 8:2073600
+  1324.331 ALIGNED grey80 alpha 0x00: 5:777600 6:1296000
+  1329.509 ALIGNED hold +5 s: white alpha 0xff 31:2073600; vsync->rgb-done median 13.7898 ms (min 13.7770 max 13.7959, n 6)
+  1334.672 ALIGNED hold +10 s: white alpha 0xff 31:2073600; vsync->rgb-done median 13.7851 ms (min 13.7823 max 13.7980, n 5)
+  1339.836 ALIGNED hold +15 s: white alpha 0xff 31:2073600; vsync->rgb-done median 13.7839 ms (min 13.5488 max 13.7893, n 6)
+  1345.000 ALIGNED hold +20 s: white alpha 0xff 31:2073600; vsync->rgb-done median 13.7832 ms (min 13.7788 max 13.7879, n 6)
+  1367.786 === open /data/bench/r10-aligned.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+  1367.981 WIN 0x525c01c 0x7800054->0x7800055 (rb 0x7800055): video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+  1368.236 WIN 0x525c034 0x7800054->0x7800055 (rb 0x7800055): video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+  1368.477 WIN 0x525c020 0x4380010->0x4380011 (rb 0x4380011): video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+  1368.717 WIN 0x525c030 0x4380010->0x4380011 (rb 0x4380011): video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+  1368.956 WIN 0x525c018 0x200020->0x200021 (rb 0x200021): video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+  1369.195 WIN 0x525c018 0x200020->0x210020 (rb 0x210020): video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+  1369.436 WIN 0x524c004 0x7800010->0x7800011 (rb 0x7800011): video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
+  1369.676 WIN 0x524c00c 0x7800780->0x7800781 (rb 0x7800781): video px 0, RGB rows visible 1093.49, cols visible 1942.98; short col bands (80 px) [0:78.9 1:78.9 2:78.9 3:78.9 4:78.9 5:78.9 6:78.9 7:78.9 8:78.9 9:78.9 10:78.9 11:78.9 12:78.9 13:79.0 14:79.0 15:79.0 16:79.0 17:79.0 18:79.0 19:79.0 20:79.0 21:79.0 22:79.0]; short row bands (45 rows) [0:44.4 1:44.4 2:44.4 3:44.4 4:44.4 5:44.4 6:44.4 7:44.4 8:44.4 9:44.4 10:44.4 11:44.4 12:44.4 13:44.4 14:44.4 15:44.4 16:44.4 17:44.4 18:44.4 19:44.4 20:44.4 21:44.4 22:44.4]
+  1369.868 WIN restored: video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []

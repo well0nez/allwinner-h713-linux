@@ -1,0 +1,24 @@
+   427.329 === open /data/bench/r10-restart.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   427.492 RESTART base phase 289.0 unc 376200 dx~280
+   427.725 RESTART 0x525c004 bit28 hold 0.02: phase 288.8 lines unc 376200 dx~280
+   427.959 RESTART 0x525c004 bit28 hold 0.02: phase 289.1 lines unc 376200 dx~280
+   428.192 RESTART 0x525c004 bit28 hold 0.02: phase 288.7 lines unc 376200 dx~280
+   428.426 RESTART 0x525c004 bit28 hold 0.02: phase 288.4 lines unc 376200 dx~280
+   428.659 RESTART 0x525c004 bit28 hold 0.02: phase 288.4 lines unc 376200 dx~280
+   428.893 RESTART 0x525c004 bit28 hold 0.02: phase 288.7 lines unc 376200 dx~280
+   429.024 === open /data/bench/r10-restart.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   429.187 RESTART base phase 288.7 unc 376200 dx~280
+   429.421 RESTART 0x524c014 bit28 hold 0.02: phase 288.7 lines unc 376200 dx~280
+   429.654 RESTART 0x524c014 bit28 hold 0.02: phase 288.6 lines unc 376200 dx~280
+   429.888 RESTART 0x524c014 bit28 hold 0.02: phase 289.0 lines unc 376200 dx~280
+   430.121 RESTART 0x524c014 bit28 hold 0.02: phase 289.0 lines unc 376200 dx~280
+   430.355 RESTART 0x524c014 bit28 hold 0.02: phase 288.6 lines unc 376200 dx~280
+   430.588 RESTART 0x524c014 bit28 hold 0.02: phase 288.8 lines unc 376200 dx~280
+   430.719 === open /data/bench/r10-restart.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   430.882 RESTART base phase 288.7 unc 376200 dx~280
+   431.116 RESTART 0x525c004 bit31 hold 0.02: phase 288.7 lines unc 376200 dx~280
+   431.349 RESTART 0x525c004 bit31 hold 0.02: phase 288.8 lines unc 376200 dx~280
+   431.583 RESTART 0x525c004 bit31 hold 0.02: phase 288.6 lines unc 376200 dx~280
+   431.817 RESTART 0x525c004 bit31 hold 0.02: phase 288.9 lines unc 376200 dx~280
+   432.050 RESTART 0x525c004 bit31 hold 0.02: phase 288.8 lines unc 376200 dx~280
+   432.284 RESTART 0x525c004 bit31 hold 0.02: phase 288.6 lines unc 376200 dx~280

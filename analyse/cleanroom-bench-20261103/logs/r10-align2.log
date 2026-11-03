@@ -1,0 +1,15 @@
+   982.549 === open /data/bench/r10-align2.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   982.697 ALIGN start: uncovered 376200, phase 0.3483 ms, RASTER 0x4640897
+   982.769 ALIGN A: 1 frames of 2199x1125 -> uncovered 263385
+   982.876 ALIGN B minus: step 1 rose to 269595; best 263385
+   982.982 ALIGN B minus: undone -> 376200
+   983.085 ALIGN B minus: after 1 steps uncovered 376200 (195.94 lines), phase 0.7189 ms
+   985.654 ALIGN B plus: step 24 rose to 213705; best 212670
+   985.761 ALIGN B plus: undone -> 214740
+   985.863 ALIGN B plus: after 24 steps uncovered 214740 (111.84 lines), phase 1.5900 ms
+   990.474 ALIGN C coarse: 60 frames of 2200x1100 -> uncovered 351412 (183.03 lines)
+   990.625 ALIGN C up: rose at step 1; undone -> 351412
+   990.727 ALIGN C up: after 1 steps uncovered 351412 (183.03 lines), phase 13.3858 ms
+   991.572 ALIGN C down: rose at step 10; undone -> 366180
+   991.674 ALIGN C down: after 10 steps uncovered 366180 (190.72 lines), phase 14.3100 ms
+   991.676 ALIGN DONE

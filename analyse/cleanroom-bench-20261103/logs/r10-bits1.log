@@ -1,0 +1,66 @@
+   359.361 === open /data/bench/r10-bits1.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+   359.524 BITS base: phase 288..295 v7 r6 unc 195.94
+   359.899 BITS 0x0525c004 0x00001003 bit 0 -> rb 0x00001002: phase 288..289 v7 r6 unc 195.94 | restored phase 289..289 v3 r3 unc 195.94
+   360.273 BITS 0x0525c004 0x00001003 bit 1 -> rb 0x00001001: phase 288..289 v6 r7 unc 195.94 | restored phase 288..289 v4 r3 unc 195.94
+   360.648 BITS 0x0525c004 0x00001003 bit 2 -> rb 0x00001007: phase 288..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   361.022 BITS 0x0525c004 0x00001003 bit 3 -> rb 0x0000100b: phase 288..289 v6 r7 unc 195.94 | restored phase 284..289 v4 r3 unc 195.94
+   361.396 BITS 0x0525c004 0x00001003 bit 4 -> rb 0x00001013: phase 288..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   361.769 BITS 0x0525c004 0x00001003 bit 5 -> rb 0x00001023: phase 288..289 v6 r7 unc 195.94 | restored phase 273..289 v4 r4 unc 195.94
+   362.144 BITS 0x0525c004 0x00001003 bit 6 -> rb 0x00001043: phase 289..289 v7 r6 unc 195.94 | restored phase 289..289 v3 r3 unc 195.94
+   362.518 BITS 0x0525c004 0x00001003 bit 7 -> rb 0x00001083: phase 288..289 v6 r7 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   362.892 BITS 0x0525c004 0x00001003 bit 8 -> rb 0x00001103: phase 288..289 v7 r7 unc 195.94 | restored phase 289..289 v3 r3 unc 195.94
+   363.266 BITS 0x0525c004 0x00001003 bit 9 -> rb 0x00001203: phase 287..289 v6 r6 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   363.641 BITS 0x0525c004 0x00001003 bit10 -> rb 0x00001403: phase 288..289 v7 r7 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   364.015 BITS 0x0525c004 0x00001003 bit11 -> rb 0x00001803: phase 288..289 v6 r6 unc 195.94 | restored phase 289..289 v3 r4 unc 195.94
+   364.389 BITS 0x0525c004 0x00001003 bit12 -> rb 0x00000003: phase 288..289 v7 r7 unc 1080.00 | restored phase 288..289 v3 r3 unc 195.94
+   364.765 BITS 0x0525c004 0x00001003 bit13 -> rb 0x00003003: phase 288..289 v6 r6 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   365.140 BITS 0x0525c004 0x00001003 bit14 -> rb 0x00005003: phase 288..289 v6 r7 unc 195.94 | restored phase 288..289 v4 r3 unc 195.94
+   365.514 BITS 0x0525c004 0x00001003 bit15 -> rb 0x00009003: phase 288..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   365.889 BITS 0x0525c004 0x00001003 bit16 -> rb 0x00011003: phase 288..289 v6 r7 unc 195.94 | restored phase 288..288 v4 r3 unc 195.94
+   366.263 BITS 0x0525c004 0x00001003 bit17 -> rb 0x00021003: phase 288..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   366.637 BITS 0x0525c004 0x00001003 bit18 -> rb 0x00041003: phase 288..290 v6 r7 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   367.012 BITS 0x0525c004 0x00001003 bit19 -> rb 0x00081003: phase 288..289 v7 r7 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   367.387 BITS 0x0525c004 0x00001003 bit20 -> rb 0x00101003: phase 289..289 v6 r6 unc 195.94 | restored phase 289..289 v3 r4 unc 195.94
+   367.761 BITS 0x0525c004 0x00001003 bit21 -> rb 0x00201003: phase 288..289 v7 r7 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   368.135 BITS 0x0525c004 0x00001003 bit22 -> rb 0x00401003: phase 288..289 v6 r6 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   368.510 BITS 0x0525c004 0x00001003 bit23 -> rb 0x00801003: phase 288..289 v7 r7 unc 195.94 | restored phase 289..289 v4 r3 unc 195.94
+   368.884 BITS 0x0525c004 0x00001003 bit24 -> rb 0x01001003: phase 289..290 v6 r6 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   369.257 BITS 0x0525c004 0x00001003 bit25 -> rb 0x02001003: phase 288..289 v7 r7 unc 195.94 | restored phase 288..289 v4 r3 unc 195.94
+   369.633 BITS 0x0525c004 0x00001003 bit26 -> rb 0x04001003: phase 289..290 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   370.016 BITS 0x0525c004 0x00001003 bit27 -> rb 0x08001003: phase 289..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   370.393 BITS 0x0525c004 0x00001003 bit28 -> rb 0x10001003: phase none v6 r0 unc 1080.00 | restored phase 289..289 v3 r4 unc 195.94
+   370.767 BITS 0x0525c004 0x00001003 bit29 -> rb 0x20001003: phase none v7 r0 unc 1080.00 | restored phase 289..289 v3 r3 unc 195.94
+   371.142 BITS 0x0525c004 0x00001003 bit30 -> rb 0x40001003: phase none v6 r0 unc 1080.00 | restored phase 288..289 v3 r4 unc 195.94
+   371.516 BITS 0x0525c004 0x00001003 bit31 -> rb 0x80001003: phase none v7 r0 unc 1080.00 | restored phase 289..289 v3 r3 unc 195.94
+   371.890 BITS 0x0524c014 0x00000300 bit 0 -> rb 0x00000301: phase 288..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   372.264 BITS 0x0524c014 0x00000300 bit 1 -> rb 0x00000302: phase 288..289 v7 r7 unc 195.94 | restored phase 288..289 v4 r3 unc 195.94
+   372.639 BITS 0x0524c014 0x00000300 bit 2 -> rb 0x00000304: phase 288..289 v7 r6 unc 195.94 | restored phase 289..289 v3 r3 unc 195.94
+   373.014 BITS 0x0524c014 0x00000300 bit 3 -> rb 0x00000308: phase 288..289 v6 r7 unc 195.94 | restored phase 288..289 v4 r3 unc 195.94
+   373.388 BITS 0x0524c014 0x00000300 bit 4 -> rb 0x00000310: phase 288..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   373.763 BITS 0x0524c014 0x00000300 bit 5 -> rb 0x00000320: phase 288..294 v6 r7 unc 195.94 | restored phase 233..289 v4 r4 unc 195.94
+   374.137 BITS 0x0524c014 0x00000300 bit 6 -> rb 0x00000340: phase 288..295 v7 r6 unc 195.94 | restored phase 289..289 v3 r3 unc 195.94
+   374.512 BITS 0x0524c014 0x00000300 bit 7 -> rb 0x00000380: phase 288..289 v6 r6 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   374.887 BITS 0x0524c014 0x00000300 bit 8 -> rb 0x00000200: phase 288..301 v7 r7 unc 195.94 | restored phase 267..288 v3 r3 unc 195.94
+   375.262 BITS 0x0524c014 0x00000300 bit 9 -> rb 0x00000100: phase 288..289 v6 r6 unc 195.94 | restored phase 289..289 v3 r4 unc 195.94
+   375.636 BITS 0x0524c014 0x00000300 bit10 -> rb 0x00000700: phase 288..292 v7 r7 unc 195.94 | restored phase 289..289 v4 r3 unc 195.94
+   376.009 BITS 0x0524c014 0x00000300 bit11 -> rb 0x00000b00: phase 288..289 v6 r6 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   376.384 BITS 0x0524c014 0x00000300 bit12 -> rb 0x00001300: phase 288..289 v7 r7 unc 195.94 | restored phase 289..289 v4 r3 unc 195.94
+   376.758 BITS 0x0524c014 0x00000300 bit13 -> rb 0x00002300: phase 288..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   377.133 BITS 0x0524c014 0x00000300 bit14 -> rb 0x00004300: phase 288..289 v6 r7 unc 195.94 | restored phase 288..289 v4 r3 unc 195.94
+   377.507 BITS 0x0524c014 0x00000300 bit15 -> rb 0x00008300: phase 288..289 v7 r6 unc 195.94 | restored phase 289..289 v3 r3 unc 195.94
+   377.881 BITS 0x0524c014 0x00000300 bit16 -> rb 0x00010300: phase 288..289 v6 r7 unc 195.94 | restored phase 289..289 v4 r3 unc 195.94
+   378.255 BITS 0x0524c014 0x00000300 bit17 -> rb 0x00020300: phase 288..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   378.629 BITS 0x0524c014 0x00000300 bit18 -> rb 0x00040300: phase 288..289 v6 r7 unc 195.94 | restored phase 289..289 v4 r3 unc 195.94
+   379.004 BITS 0x0524c014 0x00000300 bit19 -> rb 0x00080300: phase 266..289 v7 r6 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   379.379 BITS 0x0524c014 0x00000300 bit20 -> rb 0x00100300: phase 287..289 v6 r7 unc 195.94 | restored phase 288..290 v3 r4 unc 195.94
+   379.754 BITS 0x0524c014 0x00000300 bit21 -> rb 0x00200300: phase 288..289 v7 r7 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   380.128 BITS 0x0524c014 0x00000300 bit22 -> rb 0x00400300: phase 288..289 v6 r6 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   380.503 BITS 0x0524c014 0x00000300 bit23 -> rb 0x00800300: phase 288..289 v7 r7 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   380.877 BITS 0x0524c014 0x00000300 bit24 -> rb 0x01000300: phase 288..289 v6 r6 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   381.251 BITS 0x0524c014 0x00000300 bit25 -> rb 0x02000300: phase 287..289 v7 r7 unc 195.94 | restored phase 289..289 v4 r3 unc 195.94
+   381.624 BITS 0x0524c014 0x00000300 bit26 -> rb 0x04000300: phase 289..290 v6 r6 unc 195.94 | restored phase 288..289 v3 r4 unc 195.94
+   381.998 BITS 0x0524c014 0x00000300 bit27 -> rb 0x08000300: phase 289..290 v7 r7 unc 195.94 | restored phase 288..289 v3 r3 unc 195.94
+   382.372 BITS 0x0524c014 0x00000300 bit28 -> rb 0x10000300: phase none v6 r0 unc 1080.00 | restored phase 288..289 v3 r4 unc 195.94
+   382.746 BITS 0x0524c014 0x00000300 bit29 -> rb 0x20000300: phase none v7 r0 unc 1080.00 | restored phase 289..289 v3 r3 unc 195.94
+   383.119 BITS 0x0524c014 0x00000300 bit30 -> rb 0x40000300: phase none v6 r0 unc 1080.00 | restored phase 284..289 v3 r4 unc 195.94
+   383.493 BITS 0x0524c014 0x00000300 bit31 -> rb 0x80000300: phase none v7 r0 unc 1080.00 | restored phase 289..289 v3 r3 unc 195.94

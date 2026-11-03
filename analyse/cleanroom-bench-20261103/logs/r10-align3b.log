@@ -1,0 +1,27 @@
+  1231.435 === open /data/bench/r10-align3b.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+  1231.572 ALIGN3 start: s=1107 r=189; video px 376200, RGB rows visible 1035.00, cols visible 1640.00; short col bands (80 px) [13:67.0 14:0.0 15:0.0 16:0.0 17:53.0]; short row bands (45 rows) [4:8.7 5:36.3]
+  1232.196 ALIGN3 h 0: 16 x 2199x1125 -> s=233 r=137
+  1232.794 ALIGN3 h 1: 16 x 2201x1125 -> s=2034 r=129
+  1233.038 ALIGN3 h 2: 4 x 2201x1125 -> s=1934 r=127
+  1233.770 ALIGN3 h 3: 10 pairs -1 px -> s=1924 r=117
+  1234.136 ALIGN3 h 4: 4 pairs -1 px -> s=1921 r=113
+  1234.324 ALIGN3 h 5: 1 pairs -1 px -> s=1922 r=112
+  1234.565 ALIGN3 h 6: 2 pairs -1 px -> s=1920 r=110
+  1234.568 ALIGN3 horizontal done: s=1920 r=110; video px 86400, RGB rows visible 1035.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) [2:20.0 3:25.0]
+  1234.881 ALIGN3 v 0: 6 x 2200x1150 -> s=1920 r=1085
+  1235.157 ALIGN3 v 1: 5 x 2200x1126 -> s=1859 r=16
+  1235.330 ALIGN3 v 2: 2 x 2200x1150 -> s=1859 r=1091
+  1235.787 ALIGN3 v 3: 11 x 2200x1126 -> s=587 r=1020
+  1236.527 ALIGN3 v 4: 20 x 2200x1150 -> s=587 r=520
+  1237.270 ALIGN3 v 5: 20 x 2200x1150 -> s=587 r=20
+  1237.452 ALIGN3 v 6: 2 x 2200x1150 -> s=587 r=1095
+  1238.030 ALIGN3 v 7: 15 x 2200x1126 -> s=1051 r=1051
+  1238.773 ALIGN3 v 8: 20 x 2200x1150 -> s=1051 r=551
+  1239.509 ALIGN3 v 9: 20 x 2200x1150 -> s=1051 r=51
+  1239.723 ALIGN3 v 10: 3 x 2200x1150 -> s=1051 r=1101
+  1240.490 ALIGN3 v 11: 21 x 2200x1126 -> s=1515 r=1050
+  1241.226 ALIGN3 v 12: 20 x 2200x1150 -> s=1515 r=550
+  1241.966 ALIGN3 v 13: 20 x 2200x1150 -> s=243 r=1115
+  1242.131 ALIGN3 v 14: 1 x 2200x1150 -> s=243 r=1090
+  1242.549 ALIGN3 v 15: 10 x 2200x1126 -> s=243 r=1080
+  1242.551 ALIGN3 done: s=243 r=1080; video px 302643, RGB rows visible 1080.00, cols visible 1640.00; short col bands (80 px) [0:79.9 1:79.9 2:79.9 3:3.0 4:0.0 5:0.0 6:37.0]; short row bands (45 rows) [0:44.9]

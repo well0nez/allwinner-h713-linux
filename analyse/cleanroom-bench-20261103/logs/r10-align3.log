@@ -1,0 +1,13 @@
+  1014.976 === open /data/bench/r10-align3.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+  1015.124 ALIGN start: uncovered 366180, phase 14.3137 ms, RASTER 0x4640897
+  1015.126 ALIGN A: 0 frames of 2199x1125 -> uncovered 366180
+  1015.230 ALIGN B minus: step 1 rose to 367820; best 366180
+  1015.337 ALIGN B minus: undone -> 369460
+  1015.439 ALIGN B minus: after 1 steps uncovered 369460 (192.43 lines), phase 14.3385 ms
+  1015.535 ALIGN B plus: step 1 rose to 376200; best 369460
+  1015.642 ALIGN B plus: undone -> 376200
+  1015.745 ALIGN B plus: after 1 steps uncovered 376200 (195.94 lines), phase 14.7652 ms
+  1019.478 ALIGN C coarse: 60 frames of 2200x1150 -> uncovered 376200 (195.94 lines)
+  1025.171 ALIGN C down: rose at step 93 to 376200
+  1026.937 ALIGN C down: after 120 steps uncovered 321345 (167.37 lines), phase 9.0511 ms
+  1026.938 ALIGN DONE

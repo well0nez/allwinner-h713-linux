@@ -210,3 +210,33 @@ Abzug, Sperre frei.
   mit `8be200a` wieder herausgenommen; in der Historie sichtbar.
 - Gerät: Normalboot, Release-FIT `c5b9719a`, `h713_boot=emmc`, Umgebung gleich der Referenz nach `boot_rust`, GP5 `RUN1`,
   Sperre frei.
+
+## 10 Runde 6: RGB über Video - zwei Raster, Ausrichtung
+
+- Auftrag (lead): welche Wörter setzen Lage/Größe der RGB-Ebene im gemischten Pfad (05 §2 R4, S1-T6 scheitert bei
+  Alpha 255/128); erwartetes Histogramm für Alpha 128 über Schwarz.
+- Normalboot, nur lesend: `RASTER 0x0525c000..` und `OSD 0x0524c000..` gleich dem Bench-Zustand; `PNL 0x051c0000..007c`
+  der Firmware stehen nach dem 12-Satz (`minimize.py all`) schon da. Mit offener Seite (Launcher) ist die Videoebene aus
+  (RGB allein), die Lautstärke-Pille erschien in der Abtastung nicht über dem Video - kein Firmware-Zustand zum Kopieren
+  (doku/225 §3b: mit Firmware ebenfalls verrollt).
+- Bench (drei frische Boots, `r9.py`, `r10.py`, `meas.py`, `align3.py`): die fehlende Fläche ist immer
+  86400 + 1035·n Pixel (45 Zeilen + n Spalten; n = 14, 95, 57, Runde 4: 38). Mit Spalten- und Zeilenstreifen (24 Grau-
+  stufen, je eigenes Histogrammfach) sichtbar: es fehlen ganze RGB-Zeilen und -Spalten - genau 45 und 280, die Austastung
+  eines 2200x1125-Rasters. Die RGB-Ebene läuft auf ihrem eigenen Raster (`RASTER 0x000`), die Videoebene auf dem
+  Video-Raster; der Versatz der beiden ist die Lage des Overlays.
+- `RASTER 0x000` verschiebt nur das RGB-Raster: Vertikal-Total wird je Bild übernommen (ein Bild 2200x(1125+c), c=25..100,
+  schiebt um genau c Zeilen, Spalten bleiben; 13 von 14 Gruppen), Horizontal-Total je Zeile (ein Bild mit 2199/2201
+  schiebt um 1125 Spalten, aus Python manchmal daneben). Ein Bild nur 1 Zeile länger oder kürzer verschiebt auch die
+  Spalten (unbrauchbar). Kein statisches Wort (Fenster `RASTER 0x018..0x034`, `OSD 0x004`) und kein Bit in
+  `RASTER 0x004..0x038`, `OSD 0x000/008/014/018` koppelt die Raster.
+- **Ausgerichtet** (geschlossener Regelkreis über die Streifen, zwei Boots): weiß bei Alpha 0xff = Fach 31 alle 2073600,
+  0x80 = Fach 19, 0x40 = Fach 12, 0 = Fächer 5/6 (777600/1296000); schwarz 0/3/4, grau 0x80 16/11/8; 20 s stabil. Zeit
+  Video-Vsync -> RGB-done dann 13,784..13,786 ms (1016 Zeilen) in beiden Boots; direkt nach dem 12-Satz 9,064 ms (668
+  Zeilen) in beiden Boots, die Spaltenlage aber verschieden (57 und 95). Offen: hardwareseitiges Koppeln; Spaltenlage
+  nur über das Histogramm lesbar.
+- `h713_bench=`: die Variable ist nicht in der Umgebung (`fw_printenv | grep -c bench` = 0); `fw_printenv NAME` druckt
+  für jede unbekannte Variable `NAME=` mit Rückgabe 0 (geprüft mit `h713_no_such_var_xyz`). Harmlos, nichts zu löschen.
+- Entwürfe: `cleanroom-held/drafts/05-rgb-plane-and-handoff.md` (§2 R4 neu, §2.1 B1-B8 + Histogrammtabelle, §5 Zeile
+  "rasters"), `95-test-procedures.md` (S1-T6). Werkzeuge und Logs in `analyse/cleanroom-bench-20261103/`.
+- Gerät: Normalboot, 6.18.38, Umgebung gleich der Referenz (`env-before-r6.txt`), GP5 `RUN1`, `h713-tv ctl status` ok,
+  keine fehlgeschlagenen Units, Sperre frei. `/lib/firmware/h713/database.TSE` und `/root`-Werkzeuge bleiben (lead).

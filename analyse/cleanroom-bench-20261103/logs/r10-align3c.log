@@ -1,0 +1,51 @@
+  1278.132 === open /data/bench/r10-align3c.log boot a4b83ce2-76d7-4e58-a369-5eda9735d9e1 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+  1278.269 ALIGN3 start: s=243 r=1080; video px 302643, RGB rows visible 1080.00, cols visible 1640.00; short col bands (80 px) [0:79.9 1:79.9 2:79.9 3:3.0 4:0.0 5:0.0 6:37.0]; short row bands (45 rows) [0:44.9]
+  1278.885 ALIGN3 h 0: 16 x 2201x1125 -> s=2046 r=1072
+  1279.125 ALIGN3 h 1: 4 x 2201x1125 -> s=211 r=1040
+  1279.731 ALIGN3 h 2: 16 x 2201x1125 -> s=2011 r=1032
+  1279.915 ALIGN3 h 3: 2 x 2201x1125 -> s=1962 r=1031
+  1280.647 ALIGN3 h 4: 10 pairs -1 px -> s=1952 r=1021
+  1281.379 ALIGN3 h 5: 10 pairs -1 px -> s=1943 r=1011
+  1282.116 ALIGN3 h 6: 10 pairs -1 px -> s=198 r=971
+  1282.723 ALIGN3 h 7: 16 x 2201x1125 -> s=2002 r=963
+  1282.909 ALIGN3 h 8: 2 x 2201x1125 -> s=1954 r=962
+  1283.639 ALIGN3 h 9: 10 pairs -1 px -> s=208 r=922
+  1284.250 ALIGN3 h 10: 16 x 2201x1125 -> s=272 r=884
+  1284.862 ALIGN3 h 11: 16 x 2201x1125 -> s=2073 r=876
+  1285.166 ALIGN3 h 12: 6 x 2201x1125 -> s=1923 r=873
+  1285.471 ALIGN3 h 13: 3 pairs -1 px -> s=184 r=840
+  1286.082 ALIGN3 h 14: 16 x 2201x1125 -> s=1984 r=832
+  1286.272 ALIGN3 h 15: 2 x 2201x1125 -> s=1941 r=831
+  1286.997 ALIGN3 h 16: 10 pairs -1 px -> s=1928 r=821
+  1287.608 ALIGN3 h 17: 8 pairs -1 px -> s=184 r=783
+  1288.225 ALIGN3 h 18: 16 x 2201x1125 -> s=1986 r=775
+  1288.404 ALIGN3 h 19: 2 x 2201x1125 -> s=1937 r=774
+  1289.135 ALIGN3 h 20: 10 pairs -1 px -> s=191 r=734
+  1289.746 ALIGN3 h 21: 16 x 2201x1125 -> s=1991 r=726
+  1289.929 ALIGN3 h 22: 2 x 2201x1125 -> s=1942 r=725
+  1290.661 ALIGN3 h 23: 10 pairs -1 px -> s=196 r=685
+  1291.271 ALIGN3 h 24: 16 x 2201x1125 -> s=260 r=647
+  1291.882 ALIGN3 h 25: 16 x 2201x1125 -> s=2061 r=639
+  1292.127 ALIGN3 h 26: 4 x 2201x1125 -> s=1963 r=637
+  1292.859 ALIGN3 h 27: 10 pairs -1 px -> s=1955 r=627
+  1293.597 ALIGN3 h 28: 10 pairs -1 px -> s=210 r=587
+  1294.203 ALIGN3 h 29: 16 x 2201x1125 -> s=275 r=549
+  1294.814 ALIGN3 h 30: 16 x 2201x1125 -> s=2076 r=541
+  1295.122 ALIGN3 h 31: 6 x 2201x1125 -> s=1927 r=538
+  1295.668 ALIGN3 h 32: 7 pairs -1 px -> s=186 r=501
+  1296.279 ALIGN3 h 33: 16 x 2201x1125 -> s=1987 r=493
+  1296.464 ALIGN3 h 34: 2 x 2201x1125 -> s=1937 r=492
+  1297.194 ALIGN3 h 35: 10 pairs -1 px -> s=1926 r=482
+  1297.683 ALIGN3 h 36: 6 pairs -1 px -> s=184 r=446
+  1298.294 ALIGN3 h 37: 16 x 2201x1125 -> s=1986 r=438
+  1298.476 ALIGN3 h 38: 2 x 2201x1125 -> s=1936 r=437
+  1299.209 ALIGN3 h 39: 10 pairs -1 px -> s=191 r=397
+  1299.824 ALIGN3 h 40: 16 x 2201x1125 -> s=1993 r=389
+  1300.005 ALIGN3 h 41: 2 x 2201x1125 -> s=208 r=358
+  1300.615 ALIGN3 h 42: 16 x 2201x1125 -> s=273 r=320
+  1301.224 ALIGN3 h 43: 16 x 2201x1125 -> s=2074 r=312
+  1301.535 ALIGN3 h 44: 6 x 2201x1125 -> s=1926 r=309
+  1302.018 ALIGN3 h 45: 6 pairs -1 px -> s=1920 r=303
+  1302.020 ALIGN3 horizontal done: s=1920 r=303; video px 86400, RGB rows visible 1035.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) [6:33.0 7:12.0]
+  1302.271 ALIGN3 v 0: lengthened frames [100, 100, 100, 48] -> s=1920 r=1080
+  1302.274 ALIGN3 done: s=1920 r=1080; video px 0, RGB rows visible 1080.00, cols visible 1920.00; short col bands (80 px) []; short row bands (45 rows) []
