@@ -1,0 +1,15 @@
+7.3.1-rustbench
+h713.display=clean
+active
+active
+active
+active
+Apr 15 10:21:25 hy320 systemd[1]: Starting h713-tv@video1.service - HY310: HDMI input (video1) on the video plane...
+Apr 15 10:21:25 hy320 systemd[1]: Started h713-tv@video1.service - HY310: HDMI input (video1) on the video plane.
+Apr 15 10:21:25 hy320 h713-tv[416]: config          /etc/h713/tv.conf: start = last, saved -> the picture follows the signal; the mode is saved in /var/lib/h713-tv/modus
+Apr 15 10:21:25 hy320 h713-tv[416]: stack           clean: h713-drm + h713-hdmirx-clean, no display firmware
+Apr 15 10:21:25 hy320 h713-tv[416]: capture         /dev/video1 (h713_drm, h713-hdmirx-clean)
+Apr 15 10:21:25 hy320 h713-tv[416]: display         /dev/dri/card1 (h713-drm)
+Apr 15 10:21:25 hy320 h713-tv[416]: crtc            none drives a mode (the clean stack has no console to keep one) -- the panel's mode is set
+Apr 15 10:21:25 hy320 h713-tv[416]: crtc            42 on: mode 1920x1080 (1920x1080, 162210 kHz) of connector 66, no plane -- the panel is black
+DONE

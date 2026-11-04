@@ -1,0 +1,7 @@
+cmdline identical to before
+lsmod same
+ok status
+0
+0x07090114 = 0x52554e31
+ENV IDENTICAL
+ls: cannot access '/usr/local/sbin/h713-display': No such file or directory

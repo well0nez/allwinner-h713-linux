@@ -1,0 +1,17 @@
+== vendor with the f5105949 binaries
+7.3.1
+cmdline = before + module_blacklist=h713_drm
+lsmod: same module set
+running: the vendor stack (display.bin on the MIPS), the display driver sun50i-h713-afbd loaded
+next boot: the vendor stack (h713_display=vendor)
+active
+active
+active
+Apr 15 10:26:36 hy320 h713-tv[345]: capture         /dev/video1 (sun50i-h713-hdm, H713 HDMI receiver)
+Apr 15 10:26:36 hy320 h713-tv[345]: display         /dev/dri/card1 (sun50i-h713-afbd)
+Apr 15 10:26:39 hy320 h713-tv[345]: capture         needed: HDMI is the mode and on the wall
+signal          1920x1080p60, 148.5 MHz (last measured)
+picture         console, DRM master held
+cover           an opaque page hides the picture: h713-warp pauses, the video plane is off, the HDMI sound is muted
+audio           silent (auto), volume 100 (-9.5 dB), HDMI trim 0.00 dB
+audio source    present=1 rate=48000 compressed=0 (events)

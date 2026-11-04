@@ -1,0 +1,75 @@
++ systemctl start h713-tv@video1
+rc=0
++ h713-osd ctl launcher close
+ok
+rc=0
+=== state (picture on the wall)
+picture         plane on, DRM master held
+cover           none
+want            none (h713-warp's word: the straight ring at once)
+hdmi            capturing, 1920x1080 at 60000 mHz; video_source hdmi
+                frames: 594 from the source, 530 shown, 51 repeated, 0 skipped
+picture values  7 presets from /etc/h713/tvconfig (h713-pq, 615 ms), gamma 2.20, LUT 2048 bytes
+hdmi            capturing, 1920x1080 at 60000 mHz; video_source hdmi
+                frames: 712 from the source, 648 shown, 62 repeated, 0 skipped
+[  236.212116] h713-drm h713-drm: [drm] hdmi: the video plane shows the HDMI input
+[  237.363004] h713-drm h713-drm: [drm] hdmi: channel 0 shows the ring (slot 2), rotating at the video vsync
+INFO histogram sum 2073600, non-zero bins 5:1428830 6:501509 7:60475 8:1419 9:1995 10:2270 11:2311 12:3246 13:3899 14:11501 15:37769 16:13300 17:1490 18:904 19:518 20:210 21:152 22:84 23:54 24:55 25:2
+=== warp ring (risk): keystone
++ h713-warp ctl keystone set tl x 80
+ok tl_x = 80
+rc=0
+ok status
+warp            on
+keystone        tl 80,0 tr 0,0 bl 0,0 br 0,0 (per-mille, positive inward)
+picture         warped (h713-warp draws on the video plane), DRM master held
+want            ring (h713-warp's word: the straight ring waits up to 1000 ms for its claim)
+                frames: 1099 from the source, 675 shown, 64 repeated, 0 skipped
+picture values  7 presets from /etc/h713/tvconfig (h713-pq, 615 ms), gamma 2.20, LUT 2048 bytes
+Apr 15 10:23:35 hy320 h713-warp[247]: capture         /dev/video1, ring 1920x1080, line pitch 1920/1920, 2 dma-bufs per slot
+Apr 15 10:23:35 hy320 h713-warp[247]: peer            /run/h713-tv/ctl: three NV12 buffers 1920x1080, line pitch 1920, chroma at 2073600
+Apr 15 10:23:35 hy320 h713-warp[247]: warp            on: Mali-G31 (Panfrost) renders 1920x1080 NV12 onto the video plane
+Apr 15 10:23:35 hy320 h713-warp[247]: warp            paused: an opaque page hides the panel -- nothing is drawn (h713-tv switches the video plane off)
+Apr 15 10:23:35 hy320 h713-warp[247]: peer            to h713-tv: "warp want ring" -- the ring will be claimed when h713-tv lets it, the straight ring waits for it
+Apr 15 10:23:40 hy320 h713-warp[247]: peer            to h713-tv: "warp want none" -- no ring claim, h713-tv shows the straight ring at once
+Apr 15 10:23:40 hy320 h713-warp[247]: warp            off: the identity needs no GPU (bypass)
+Apr 15 10:25:13 hy320 h713-warp[247]: peer            to h713-tv: "warp want none" -- no ring claim, h713-tv shows the straight ring at once
+Apr 15 10:25:25 hy320 h713-warp[247]: trace           exchange at 248.621585: sendmsg 0.0 ms, poll 50.4 ms, recvmsg 0.4 ms (answer at 248.672321)
+Apr 15 10:25:25 hy320 h713-warp[247]: peer            /run/h713-tv/ctl: three NV12 buffers 1920x1080, line pitch 1920, chroma at 2073600
+Apr 15 10:25:25 hy320 h713-warp[247]: warp            on: Mali-G31 (Panfrost) renders 1920x1080 NV12 onto the video plane
+Apr 15 10:25:25 hy320 h713-warp[247]: peer            to h713-tv: "warp want ring" -- the ring will be claimed when h713-tv lets it, the straight ring waits for it
+[  247.449167] h713-drm h713-drm: [drm] hdmi: running: 668 source frames, 605 shown, 57 repeated, 0 skipped (0 bad write indices, 0 latch timeouts)
+[  248.649633] h713-drm h713-drm: [drm] hdmi: the video plane shows client buffers again; the input stays on for the open V4L2 file(s)
+[  249.721983] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x79000000 chroma 0x791fa400; rgb off 0x00000000 alpha 255
+[  249.722032] h713-drm h713-drm: [drm] commit: 0, 1151 ops, 1124 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[  249.723927] h713-drm h713-drm: [drm] gamma: LUT 68 loaded into the hidden bank: 0, 0 read-back mismatches
+[  249.732301] h713-drm h713-drm: pq: 17 words written in vblank: 0, 0 read-back mismatches
++ h713-warp ctl keystone set tl x 0
+ok tl_x = 0
+   note: the identity needs no GPU: h713-tv is on the ring (M10)
+rc=0
+=== client
++ systemctl start h713-kodi
+rc=0
++ h713-tv ctl warp
+ok warp on -- h713-warp draws a Wayland client, video plane 39, 1920x1080 NV12, line pitch 1920, 594 commits, 0 busy, 0 refused
+rc=0
+picture         warped (h713-warp draws on the video plane), DRM master held
+want            none (h713-warp's word: the straight ring at once)
+picture values  7 presets from /etc/h713/tvconfig (h713-pq, 615 ms), gamma 2.20, LUT 2048 bytes
++ systemctl stop h713-kodi
+rc=0
+=== way out
++ systemctl stop h713-tv@video1
+rc=0
+Apr 15 10:26:11 hy320 h713-tv[1502]: console         plane off, RGB channel and selector back, console unblanked
+Apr 15 10:26:11 hy320 systemd[1]: h713-tv@video1.service: Deactivated successfully.
+Apr 15 10:26:11 hy320 systemd[1]: Stopped h713-tv@video1.service - HY310: HDMI input (video1) on the video plane.
+Apr 15 10:26:11 hy320 systemd[1]: h713-tv@video1.service: Consumed 1.850s CPU time.
+[  292.258764] h713-drm h713-drm: [drm] hdmi: the video plane shows the HDMI input
+[  293.330268] h713-drm h713-drm: [drm] hdmi: channel 0 shows the ring (slot 2), rotating at the video vsync
+[  294.515841] h713-drm h713-drm: [drm] hdmi: the video plane shows client buffers again; the input stays on for the open V4L2 file(s)
+CAP 0x06940928 0xe0020438
+CAP 0x06940968 0xe0020438
+/root/ctest4.sh: 21: fuser: not found
+=== end

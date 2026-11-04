@@ -642,3 +642,19 @@ statt der Repo-Zeile (die `h713-kernel.fit` = 6.18.38 lädt). `bootcmd` = Repo-Z
   und `boot_emmc if ...`, die schon in der Referenz standen); Neustart: cmdline und lsmod wie vorher, RUN1, Sperre frei.
   Mein erster Versuch mit `fw_setenv -s` im Format "Name Wert" legte solche Leerzeichen-Schlüssel an (dieses
   `fw_setenv` erwartet `Name=Wert`); sofort entfernt, Umgebung danach Zeile für Zeile gesetzt.
+
+### 34a Zweiter sauberer Start mit dem QUERYCAP-Fix (f5105949)
+
+h713-tv `14c1744c`, h713-warp `ab85c264`, Regel `e1e0bba1` eingespielt, Teile und Umgebung wie in §34, Einmalpfad
+`rust73`, `set clean --kernel 7.3.1-rustbench`. Sauberer Start (`ctest3-out.txt`, `ctest4-out.txt`):
+
+- h713-tv@video1 von der Regel gestartet: `stack clean: h713-drm + h713-hdmirx-clean`, `capture /dev/video1 (h713_drm,
+  h713-hdmirx-clean)`, `display /dev/dri/card1 (h713-drm)`; `-n -d /dev/video1`: `signal present`, rc 0.
+- Regler, Preset, Weißabgleich (`0x051c00dc` 0x06400800 -> 0x08000800), Gamma (LUT-Ladezeilen), Ablehnungen (cm,
+  aspect, zoom, hdcp, rpc) wie dokumentiert; Verlust/Rückkehr per Hot-Plug-Halten und `replug` ok; Startseite offen.
+- `launcher close`: `picture plane on`, `cover none`, `channel 0 shows the ring`, 648 von 712 Bildern gezeigt, 0
+  übersprungen; Trapez `tl x 80`: `picture warped`, GPU zeichnet, zurück auf 0 -> Bypass; Kodi: `warp on`, 594 commits.
+- Rückweg: Neustart -> vendor (h713_boot `emmc`, h713_display `vendor`), cmdline = vorher + `module_blacklist=h713_drm`,
+  gleiche Modulmenge, h713-tv (neue Binärdatei) mit `sun50i-h713-hdm` / afbd wie vorher.
+- Ende: Originale (h713-tv `c6c28b91`, h713-warp `1dad95fc`, Regel `43d9870c`, Units) und Umgebung zurück, Neustart:
+  cmdline und lsmod identisch, RUN1, keine fehlgeschlagenen Units.
