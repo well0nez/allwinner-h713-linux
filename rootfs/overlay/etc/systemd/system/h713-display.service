@@ -3,7 +3,7 @@ Description=H713 clean display stack: h713_drm after sun50i-h713-arisc (h713-dis
 Documentation=file:/usr/local/share/doc/h713-linux/README
 # Only on a clean boot: U-Boot's bootcmd puts h713.display=clean on the command line when h713_display=clean
 # (docs/subsystems/display-stacks.md). On the vendor stack this unit is skipped and nothing of it runs.
-# h713_drm is loaded here, not by udev: the release device tree has no node for it (bench=1 registers the device),
+# h713_drm is loaded here, not by udev: the HY320's device tree has its node disabled (bench=1 registers the device),
 # and it has to come after the ARISC driver, its EDID/hot-plug provider. Its receiver node h713-hdmirx-clean then
 # starts h713-tv@ through 99-h713-tv.rules, as the vendor receiver does.
 # When h713_drm cannot load on this kernel, the step sets h713_display back to vendor (the next boot has a picture)

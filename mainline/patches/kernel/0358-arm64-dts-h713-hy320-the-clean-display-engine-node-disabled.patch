@@ -1,0 +1,56 @@
+From: minpeter <62207008+minpeter@users.noreply.github.com>
+Subject: arm64: dts: h713: hy320: the clean display engine node, disabled
+
+The node of the binding allwinner,sun50i-h713-display-engine (0355) for h713_drm (0356), as the clean
+repository's HY320 overlay (drivers/h713-drm/dts/sun50i-h713-hy320-display.dtso) has it, with status
+"disabled". The vendor stack keeps the blocks, the clocks and the ppu domains 1/2 (&display, &mips, &hdmirx,
+tvcap); a disabled node creates no device and no consumer, so its boot is unchanged. A clean boot loads h713_drm
+with bench=1 (CONFIG_DRM_H713_BENCH), the form that has run on the HY320; the driver's DT path (clocks, reset and
+power domains held, the CCU words left to the clock driver) has not run yet and stays off until it has.
+
+diff --git a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+index 7a91c94fb..69ceba453 100644
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy320.dts
+@@ -224,3 +224,41 @@ accelerometer@18 {
+ 		compatible = "sensortek,stk8ba58";
+ 	};
+ };
++
++/*
++ * The clean display stack's node for h713_drm (drivers/gpu/drm/h713, the
++ * binding allwinner,sun50i-h713-display-engine), taken from the clean
++ * repository's HY320 overlay (cleanroom-h713 drivers/h713-drm/dts/
++ * sun50i-h713-hy320-display.dtso) as it stands. Disabled: the vendor stack
++ * (&display, &mips, &hdmirx, tvcap) keeps these blocks, clocks and the ppu
++ * domains 1/2 to itself, and a disabled node is no device and no consumer.
++ * A clean boot (h713_display=clean) loads h713_drm with bench=1, which
++ * registers the same resources without clocks or reset - the only form
++ * that has run on the HY320 (bench rounds since 03.11.2026). Enabling the
++ * node is the driver's untested DT path (clocks, reset and power domains
++ * held, the CCU words left to the clock driver); h713-display then passes
++ * no bench=1.
++ */
++&{/soc} {
++	display-engine@5600000 {
++		compatible = "allwinner,sun50i-h713-display-engine";
++		reg = <0x05600000 0x1000>, <0x051c0000 0x10000>, <0x05140000 0x10000>,
++		      <0x05180000 0x1000>, <0x05000000 0x2000>, <0x050c0000 0x1000>,
++		      <0x05200000 0x1000>, <0x058c0000 0x2000>, <0x05880000 0x1000>,
++		      <0x06940000 0x1000>, <0x0525c000 0x1000>, <0x05208000 0x2000>,
++		      <0x06800000 0x4000>, <0x06840000 0x2000>, <0x06e00000 0x1000>;
++		reg-names = "scanout", "pnl", "proc", "scl", "nrc", "dei",
++			    "border", "mix", "tcon", "cap", "raster", "gamma",
++			    "rxctl", "rxlink", "tvtop";
++		interrupts = <0 112 4>, <0 110 4>;	/* GIC_SPI, IRQ_TYPE_LEVEL_HIGH */
++		interrupt-names = "rgb-done", "video-vsync";
++		clocks = <&ccu 7>, <&ccu 125>, <&ccu 126>, <&ccu 127>, <&ccu 128>, <&ccu 129>,
++			 <&ccu 119>, <&ccu 120>, <&ccu 124>;
++		clock-names = "pll-video2", "deint", "panel", "svp-dtl", "afbd", "bus-disp",
++			      "tcd3", "vincap-dma", "bus-tvcap";
++		resets = <&ccu 57>;
++		power-domains = <&ppu 1>, <&ppu 2>;
++		power-domain-names = "tvfe", "tvcap";
++		status = "disabled";
++	};
++};

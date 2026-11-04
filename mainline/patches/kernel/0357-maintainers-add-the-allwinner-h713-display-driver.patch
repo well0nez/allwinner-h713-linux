@@ -1,0 +1,26 @@
+From: minpeter <62207008+minpeter@users.noreply.github.com>
+Subject: MAINTAINERS: Add entry for the Allwinner H713 display driver
+
+Add the maintainer of the H713 display driver and its DT binding.
+
+Taken from the clean repository's series (cleanroom-h713 drivers/h713-drm/patches/, git format-patch
+against v6.18, source state 5fd6cd6), applied to the 7.3.1 tree of this series and regenerated from it.
+
+diff --git a/MAINTAINERS b/MAINTAINERS
+index 782389bd5..dfa79ad3f 100644
+--- a/MAINTAINERS
++++ b/MAINTAINERS
+@@ -8040,6 +8040,13 @@ S:	Supported
+ T:	git https://gitlab.freedesktop.org/drm/misc/kernel.git
+ F:	drivers/gpu/drm/sun4i/sun8i*
+ 
++DRM DRIVER FOR ALLWINNER H713 DISPLAY ENGINE
++M:	minpeter <62207008+minpeter@users.noreply.github.com>
++L:	dri-devel@lists.freedesktop.org
++S:	Maintained
++F:	Documentation/devicetree/bindings/display/allwinner,sun50i-h713-display-engine.yaml
++F:	drivers/gpu/drm/h713/
++
+ DRM DRIVER FOR APPLE TOUCH BARS
+ M:	Aun-Ali Zaidi <admin@kodeit.net>
+ M:	Aditya Garg <aditya.garg@linux.dev>

@@ -22,6 +22,11 @@ CONFIG_MODULES=y
 CONFIG_MODULE_UNLOAD=y
 CONFIG_CMA=y
 
+# Kernel Rust (docs/kernel-rust.md): h713_drm below is a C module with a Rust hardware layer. Needs the pinned Rust
+# toolchain of the build container; the defconfig meets CONFIG_RUST's other conditions (no MODVERSIONS, RANDSTRUCT,
+# DEBUG_INFO_BTF, CFI, KASAN).
+CONFIG_RUST=y
+
 # --- Network and Bluetooth
 CONFIG_NET=y
 CONFIG_PACKET=y
@@ -192,6 +197,14 @@ CONFIG_DRM_PANEL_LVDS=y
 CONFIG_DRM_PANEL_EDP=y
 CONFIG_DRM_PANEL_SIMPLE=y
 CONFIG_DRM_SIMPLE_BRIDGE=y
+
+# h713_drm (0355-0358), the clean display stack's driver (docs/subsystems/display-stacks.md): a module that only
+# h713-display.service loads, on a boot with h713_display=clean; the vendor boot's command line refuses it
+# (module_blacklist=h713_drm). The bench mode is in: the HY320's node of it is disabled (0358), so the clean boot
+# loads it with bench=1, the form that has run on the device.
+CONFIG_DRM_H713=m
+CONFIG_DRM_H713_BENCH=y
+
 CONFIG_DRM_PANFROST=m
 CONFIG_FB=y
 CONFIG_FB_VIRTUAL=y

@@ -1,0 +1,184 @@
+From: minpeter <62207008+minpeter@users.noreply.github.com>
+Subject: dt-bindings: display: Add Allwinner H713 display engine
+
+The display path of the Allwinner H713 projector SoC from DRAM to the
+panel: the scanout engine (a video channel for NV12/NV16 and an RGB
+channel for XRGB8888), noise reduction/composition, video processing,
+scaler, deinterlacer, border and panel processing, the gamma look-up
+table and the mixer, behind one node. The panel timing is set up by the
+boot loader and only read.
+
+The raster, gamma, rxctl, rxlink and tvtop register ranges are optional:
+without them the RGB plane is not aligned over the video plane, there is
+no gamma look-up table, and there is no HDMI input.
+
+Taken from the clean repository's series (cleanroom-h713 drivers/h713-drm/patches/, git format-patch
+against v6.18, source state 5fd6cd6), applied to the 7.3.1 tree of this series and regenerated from it.
+
+diff --git a/Documentation/devicetree/bindings/display/allwinner,sun50i-h713-display-engine.yaml b/Documentation/devicetree/bindings/display/allwinner,sun50i-h713-display-engine.yaml
+new file mode 100644
+index 000000000..fefa4b299
+--- /dev/null
++++ b/Documentation/devicetree/bindings/display/allwinner,sun50i-h713-display-engine.yaml
+@@ -0,0 +1,161 @@
++# SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++%YAML 1.2
++---
++$id: http://devicetree.org/schemas/display/allwinner,sun50i-h713-display-engine.yaml#
++$schema: http://devicetree.org/meta-schemas/core.yaml#
++
++title: Allwinner H713 display engine
++
++maintainers:
++  - minpeter <62207008+minpeter@users.noreply.github.com>
++
++description: |
++  The display path of the Allwinner H713 projector SoC from DRAM to the
++  panel: the scanout engine with its video channel (NV12/NV16) and RGB
++  channel (XRGB8888), the noise-reduction/composition, video processing,
++  scaler, deinterlacer, border and panel processing blocks, the gamma
++  look-up table and the mixer. The panel timing (timing controller, LVDS)
++  is set up by the boot loader and adopted; the timing controller is only
++  read. The SoC's display co-processor is not used.
++
++  The video path writes into DRAM buffers of its own (noise reduction),
++  and the HDMI input's capture block into a ring of three frames. Both
++  must lie inside no-map reserved-memory regions, which the driver checks
++  before it uses them.
++
++  The HDMI receiver (rxctl, rxlink, tvtop) and the capture block (cap)
++  feed the video plane from the HDMI input; EDID and hot-plug are served
++  by another processor and are not part of this node.
++
++properties:
++  compatible:
++    const: allwinner,sun50i-h713-display-engine
++
++  reg:
++    minItems: 10
++    items:
++      - description: scanout engine (video channel, RGB channel)
++      - description: panel processing, with its frame-lock registers
++      - description: video processing, with its frame-lock registers
++      - description: video scaler
++      - description: noise reduction and composition
++      - description: deinterlacer
++      - description: border stage
++      - description: mixer
++      - description: timing controller (read only)
++      - description: capture block (the data-path reset; the HDMI capture)
++      - description: RGB raster totals (to line the RGB plane up with the video)
++      - description: gamma look-up table write ports (red, green, blue)
++      - description: HDMI receiver control bytes
++      - description: HDMI receiver link bytes
++      - description: TV top clock and reset words of the receiver and capture
++
++  reg-names:
++    minItems: 10
++    items:
++      - const: scanout
++      - const: pnl
++      - const: proc
++      - const: scl
++      - const: nrc
++      - const: dei
++      - const: border
++      - const: mix
++      - const: tcon
++      - const: cap
++      - const: raster
++      - const: gamma
++      - const: rxctl
++      - const: rxlink
++      - const: tvtop
++
++  interrupts:
++    items:
++      - description: RGB channel frame done (the vertical blank)
++      - description: video vsync (only while the video channel is on)
++
++  interrupt-names:
++    items:
++      - const: rgb-done
++      - const: video-vsync
++
++  clocks:
++    minItems: 6
++    items:
++      - description: video PLL 2
++      - description: deinterlacer clock
++      - description: panel processing clock
++      - description: video processing clock (also needed to read the HDMI receiver)
++      - description: scanout clock
++      - description: display bus gate
++      - description: HDMI capture core clock
++      - description: HDMI capture DMA clock (the ring is written only with it)
++      - description: HDMI receiver and capture bus gate
++
++  clock-names:
++    items:
++      - const: pll-video2
++      - const: deint
++      - const: panel
++      - const: svp-dtl
++      - const: afbd
++      - const: bus-disp
++      - const: tcd3
++      - const: vincap-dma
++      - const: bus-tvcap
++
++  resets:
++    maxItems: 1
++    description: display bus reset, kept deasserted
++
++  power-domains:
++    items:
++      - description: TV front end (HDMI receiver)
++      - description: TV capture
++
++  power-domain-names:
++    items:
++      - const: tvfe
++      - const: tvcap
++
++required:
++  - compatible
++  - reg
++  - reg-names
++  - interrupts
++  - interrupt-names
++  - clocks
++  - clock-names
++
++additionalProperties: false
++
++examples:
++  - |
++    #include <dt-bindings/interrupt-controller/arm-gic.h>
++
++    display-engine@5600000 {
++        compatible = "allwinner,sun50i-h713-display-engine";
++        reg = <0x05600000 0x1000>, <0x051c0000 0x10000>,
++              <0x05140000 0x10000>, <0x05180000 0x1000>,
++              <0x05000000 0x2000>, <0x050c0000 0x1000>,
++              <0x05200000 0x1000>, <0x058c0000 0x2000>,
++              <0x05880000 0x1000>, <0x06940000 0x1000>,
++              <0x0525c000 0x1000>, <0x05208000 0x2000>,
++              <0x06800000 0x4000>, <0x06840000 0x2000>,
++              <0x06e00000 0x1000>;
++        reg-names = "scanout", "pnl", "proc", "scl", "nrc", "dei",
++                    "border", "mix", "tcon", "cap", "raster", "gamma",
++                    "rxctl", "rxlink", "tvtop";
++        interrupts = <GIC_SPI 112 IRQ_TYPE_LEVEL_HIGH>,
++                     <GIC_SPI 110 IRQ_TYPE_LEVEL_HIGH>;
++        interrupt-names = "rgb-done", "video-vsync";
++        clocks = <&ccu 7>, <&ccu 125>, <&ccu 126>,
++                 <&ccu 127>, <&ccu 128>, <&ccu 129>,
++                 <&ccu 119>, <&ccu 120>, <&ccu 124>;
++        clock-names = "pll-video2", "deint", "panel", "svp-dtl", "afbd",
++                      "bus-disp", "tcd3", "vincap-dma", "bus-tvcap";
++        resets = <&ccu 57>;
++        power-domains = <&ppu 1>, <&ppu 2>;
++        power-domain-names = "tvfe", "tvcap";
++    };
++...

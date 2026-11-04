@@ -132,8 +132,8 @@ def loadable(rel):
     """None when the kernel REL can load h713_drm, else why not (one line)."""
     f = module_file(rel, MODULE)
     if f is None:
-        return ("the kernel %s has no %s (/lib/modules/%s/modules.dep): the release kernel is built without it until it "
-                "has CONFIG_RUST; the 7.3.1-rustbench kernel with the clean repository's module can" % (rel, MODULE, rel))
+        return ("the kernel %s has no %s (/lib/modules/%s/modules.dep): it is built without CONFIG_RUST and "
+                "CONFIG_DRM_H713 (the release kernel has both since 7.3.1, 05.11.2026)" % (rel, MODULE, rel))
     vm = vermagic(f)
     if vm is None:
         return "%s carries no vermagic that can be read" % f
@@ -269,7 +269,7 @@ def load():
         if rc != 0:
             why = "modprobe %s%s: exit %d %s" % (MODULE, " bench=1" if bench else "", rc, err.strip())
         else:
-            print("%s loaded after %s (%s)" % (MODULE, PROVIDER, "bench=1: no device tree node %s" % COMPATIBLE.decode()
+            print("%s loaded after %s (%s)" % (MODULE, PROVIDER, "bench=1: no enabled device tree node %s" % COMPATIBLE.decode()
                                                 if bench else "the device tree's node"))
             for n, ok, loss in firmware():
                 if not ok:
