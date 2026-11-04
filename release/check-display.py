@@ -6,10 +6,12 @@ This gate judges the ARTEFACTS: release/build-all.sh runs it in step 10 with the
 rootfs tar.
 
   release/check-display.py --env hy310-env-release.bin --rootfs hy310-rootfs.tar
-  release/check-display.py --env mainline/external/u-boot/board/sunxi/hy310.env      (the source, before a build)
+  release/check-display.py --env mainline/external/u-boot/board/sunxi/hy310.env [--define CONFIG_CONSOLE_RECORD]
+                                                                                   (the source, before a build)
 
---env takes the 64 KiB image (CRC), U-Boot's u-boot-initial-env (k=v lines) or a board .env source (joined the way
-scripts/env2string.awk joins it). The boot command is run in a small model of U-Boot's hush (if/then/else/fi, test,
+--env takes the 64 KiB image (CRC), U-Boot's u-boot-initial-env (k=v lines) or a board .env source (its #ifdef lines
+taken with the --define symbols set, then joined the way scripts/env2string.awk joins it). The boot command is run in
+a small model of U-Boot's hush (if/then/else/fi, test,
 setenv, run; ext4load and the rest succeed, bootm ends the boot) for every h713_display (unset, vendor, clean,
 something else) on both boot paths, and what it does must be: clean = `h713_disp init <project> noboot logo` and the
 kernel refusing the five firmware drivers with the word userspace reads; anything else = today's `h713_disp init
@@ -58,13 +60,25 @@ def check(good, ok_msg, fail_msg):
 
 # --- the environment ---------------------------------------------------------------------------------------------
 
-def env_source(text):
-    """A board .env file as scripts/env2string.awk makes it: C comments out, a line that starts with NAME= starts a
-    variable, any other line is appended with its leading blanks dropped and one space in front."""
+def env_source(text, defined=()):
+    """A board .env file as U-Boot's build makes it: the preprocessor's #ifdef/#ifndef/#else/#endif with DEFINED as
+    the CONFIG_ symbols that are set, C comments out; then scripts/env2string.awk: a line that starts with NAME= starts
+    a variable, any other line is appended with its leading blanks dropped and one space in front."""
     text = re.sub(r"/\*.*?\*/", " ", text, flags=re.S)
-    out, var = {}, None
+    out, var, live = {}, None, []
     for line in text.splitlines():
-        if not line.strip() or line.startswith("#"):
+        d = re.match(r"^\s*#\s*(ifdef|ifndef|else|endif)\b\s*(\w*)", line)
+        if d:
+            if d.group(1) in ("ifdef", "ifndef"):
+                live.append((d.group(2) in defined) == (d.group(1) == "ifdef"))
+            elif d.group(1) == "else":
+                live[-1] = not live[-1]
+            else:
+                live.pop()
+            continue
+        if line.lstrip().startswith("#"):
+            raise ValueError("a preprocessor line this model does not take: %r" % line.strip())
+        if not all(live) or not line.strip():
             continue
         m = re.match(r"^([^ \t=][^ =]*)=(.*)$", line)
         if m:
@@ -76,7 +90,7 @@ def env_source(text):
     return {k: v for k, v in out.items() if v}
 
 
-def env_load(path):
+def env_load(path, defined=()):
     with open(path, "rb") as f:
         data = f.read()
     if len(data) == 0x10000 and struct.unpack("<I", data[:4])[0] == zlib.crc32(data[4:]) & 0xffffffff:
@@ -89,7 +103,7 @@ def env_load(path):
         return out
     text = data.decode("utf-8", "replace")
     if path.endswith(".env"):
-        return env_source(text)
+        return env_source(text, defined)
     return dict(line.split("=", 1) for line in text.splitlines() if "=" in line)
 
 
@@ -146,11 +160,13 @@ class Booted(Exception):
 
 
 class Hush:
-    """Runs a boot script; records every h713_disp and the bootargs bootm boots with."""
+    """Runs a boot script; records every h713_disp, where h713_conlog ran (the number of h713_disp before it) and the
+    bootargs bootm boots with."""
 
     def __init__(self, env):
         self.env = dict(env)
         self.disp = []
+        self.conlog = []
         self.bootargs = None
         self.depth = 0
 
@@ -222,13 +238,17 @@ class Hush:
         if w[0] == "h713_disp":
             self.disp.append(w[1:])
             return True
+        if w[0] == "h713_conlog":
+            self.conlog.append(len(self.disp))
+            return True
         if w[0] == "bootm":
             self.bootargs = self.env.get("bootargs", "")
             raise Booted()
-        return True                          # ext4load, dhcp, tftpboot, mmc, h713_conlog, saveenv: they succeed
+        return True                          # ext4load, dhcp, tftpboot, mmc, saveenv: they succeed
 
 
-def boot(env, display, path):
+def run_boot(env, display, path):
+    """The Hush that ran bootcmd with h713_display=DISPLAY (None: unset) and h713_boot=PATH, up to bootm."""
     e = dict(env)
     e.pop(KEY, None)
     if display is not None:
@@ -239,6 +259,11 @@ def boot(env, display, path):
         h.run_script(e.get("bootcmd", ""))
     except Booted:
         pass
+    return h
+
+
+def boot(env, display, path):
+    h = run_boot(env, display, path)
     return h.disp, h.bootargs
 
 
@@ -251,7 +276,8 @@ def check_env(env):
         lines = {}
         for display in (None, "vendor", "clean", "Clean"):
             try:
-                disp, args = boot(env, display, path)
+                h = run_boot(env, display, path)
+                disp, args = h.disp, h.bootargs
             except ValueError as e:
                 fail("bootcmd with %s=%s on boot_%s: %s" % (KEY, display, path, e))
                 continue
@@ -276,6 +302,10 @@ def check_env(env):
                       % (name, path, disp, " ".join(bl + [x for x in w if x == MARK]) or "no display words", project, MODULE))
                 rest = [x for x in w if x != "module_blacklist=" + MODULE]
             lines[display] = rest
+            if h.conlog:
+                check(h.conlog == [1], "%s, boot_%s: h713_conlog after the display init" % (name, path),
+                      "%s, boot_%s: h713_conlog ran %s - wanted once, after the display init" % (
+                          name, path, ", ".join("after %d h713_disp" % n for n in h.conlog)))
         if len({tuple(v) for v in lines.values()}) > 1:
             fail("boot_%s: the stacks' command lines differ beyond the display words: %s" % (
                 path, "; ".join("%s: %s" % (k, " ".join(v)) for k, v in lines.items())))
@@ -397,8 +427,10 @@ def main(argv=None):
     a = argparse.ArgumentParser(description=__doc__.split("\n\n")[0])
     a.add_argument("--env", required=True)
     a.add_argument("--rootfs")
+    a.add_argument("--define", action="append", default=[], metavar="CONFIG_X",
+                   help="a CONFIG_ symbol set for a .env source's #ifdef (the board base's, e.g. CONFIG_CONSOLE_RECORD)")
     o = a.parse_args(argv)
-    check_env(env_load(o.env))
+    check_env(env_load(o.env, o.define))
     if o.rootfs:
         check_rootfs(rootfs(o.rootfs))
     else:

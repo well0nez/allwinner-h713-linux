@@ -69,6 +69,9 @@ u32 flags (bit 0: the record overflowed) - and sets `${filesize}`. It writes not
 A place on the eMMC for the log is not assigned yet; the unused tail of `hy310-uboot` is not one, since
 U-Boot may fill that partition (boards/hy320/README.md). Measured on the HY320 on 31.10.2026: 69 lines
 from `Core:` to "display initialised".
+Since 04.11.2026 `board/sunxi/hy310.env` puts `h713_conlog` followed by `mmc dev 1; mmc write <addr> 0x2800 0x400` into
+`bootcmd`, after the `h713_display` branch, wherever the base sets `CONFIG_CONSOLE_RECORD`: the per-boot write ruled out
+above, open (boards/hy320/README.md).
 
 ## h713_logo - replay the vendor boot-logo register table (diagnostic)
 

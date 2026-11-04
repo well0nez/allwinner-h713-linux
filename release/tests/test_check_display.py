@@ -112,6 +112,29 @@ class CheckDisplay(unittest.TestCase):
         self.assertEqual(args, BEFORE + " h713.display=clean module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,"
                                         "sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd")
 
+    def test_the_hy320_environment_logs_the_console_after_either_init(self):
+        # hy320_defconfig sets CONFIG_CONSOLE_RECORD: its bootcmd carries h713_conlog, the others' do not
+        m = load()
+        plain, hy320 = m.env_load(ENV), m.env_load(ENV, ["CONFIG_CONSOLE_RECORD"])
+        self.assertNotIn("h713_conlog", plain["bootcmd"])
+        self.assertIn('fi; h713_conlog 0x45000000; mmc dev 1; mmc write 0x45000000 0x2800 0x400; run boot_${h713_boot}',
+                      hy320["bootcmd"])
+        self.assertIn("h713_display", hy320["bootcmd"])           # h713-display set clean takes it
+        for display in ("vendor", "clean"):
+            h = m.run_boot(hy320, display, "emmc")
+            self.assertEqual((h.conlog, h.bootargs), ([1], m.boot(plain, display, "emmc")[1]))
+        rc, out = self.gate("--env", ENV, "--define", "CONFIG_CONSOLE_RECORD")
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ok    h713_display=clean, boot_emmc: h713_conlog after the display init", out)
+
+    def test_a_console_log_before_the_display_init_fails(self):
+        m = load()
+        env = m.env_load(ENV)
+        env["bootcmd"] = "h713_conlog 0x45000000; " + env["bootcmd"]
+        rc, out = self.gate("--env", self.env_file("".join("%s=%s\n" % kv for kv in env.items())))
+        self.assertEqual(rc, 1)
+        self.assertIn("h713_conlog ran after 0 h713_disp - wanted once, after the display init", out)
+
     def test_the_mkenvimage_form_reads_the_same(self):
         m = load()
         env = m.env_load(ENV)

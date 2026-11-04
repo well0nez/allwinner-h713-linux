@@ -58,14 +58,16 @@ the vendor kernel half - the vendor drivers without `display.bin`.
 
 **What `set clean` refuses**, each with its reason, writing nothing:
 
-- a kernel that cannot load `h713_drm`: no `h713_drm` in `/lib/modules/<release>/modules.dep` (the release kernel has
-  none until it is built with `CONFIG_RUST`, below), or one whose `vermagic` is another kernel's or differs from
-  `sun50i-h713-arisc`'s (the clean repository's 7.3.1-rustbench module copied into the release tree). The kernel is the
+- a kernel that cannot load `h713_drm`: no `h713_drm` in `/lib/modules/<release>/modules.dep` (neither a release
+  image's 6.18.38 nor the HY320's normal 7.3.1 has one until it is built with `CONFIG_RUST`, below), or one whose
+  `vermagic` is another kernel's or differs from `sun50i-h713-arisc`'s (the clean repository's 7.3.1-rustbench module
+  copied into the normal kernel's tree). The kernel is the
   running one, or the one `--kernel` names for a one-shot boot path into another;
 - a missing `/lib/firmware/h713-mips/database.TSE` (no picture without it; the other files only cost a feature and are
   named as notes);
 - a saved environment whose `bootcmd` does not read `h713_display` (one of an older U-Boot, or a `bootcmd` set by hand,
-  such as the HY320's `h713_conlog` one), or whose boot path (`boot_${h713_boot}`) does not append
+  such as the HY320's `h713_conlog` one from before the switch; the HY320's image `bootcmd` logs the console and reads
+  the key), or whose boot path (`boot_${h713_boot}`) does not append
   `${h713_display_args}`;
 - an environment `fw_printenv` cannot read (`set vendor` refuses that one too): `fw_setenv` on it would write an
   environment of this key alone, and U-Boot would stop at its prompt.
@@ -92,22 +94,30 @@ resources itself (no clocks, no reset). Its options are `/etc/modprobe.d/h713-dr
 
 ## What depends on the kernel
 
-The switch, the userspace half and the gate are in place; a release image still cannot run the clean stack, and
-`h713-display set clean` says so on it:
+The switch, the userspace half and the gate are in place; neither a release image nor the HY320's normal 7.3.1 boot can
+run the clean stack yet, and `h713-display set clean` says so on them:
 
-- **`CONFIG_RUST` in the release kernel**, and `h713_drm` built in that tree (`CONFIG_DRM_H713=m`; the module is a C shell
-  with a Rust hardware layer). Until then the module exists only for the 7.3.1-rustbench kernel (`cleanroom-h713`,
-  `drivers/target/kmod/7.3/h713-drm/h713_drm.ko`, built with the bench mode) and loads only there. Once the release tree
-  builds it, `release/check-display.py` also checks that its `vermagic` is the image's kernel's.
+- **`CONFIG_RUST` in the normal kernel** - the release's, and the HY320's 7.3.1 of the kernel lane (branch
+  `kernel-7.3`) - and `h713_drm` built in that tree (`CONFIG_DRM_H713=m`; the module is a C shell with a Rust hardware
+  layer, `h713_compat.h` takes 6.18 and 7.3). Until then the module
+  exists only for the 7.3.1-rustbench kernel (`cleanroom-h713`, `drivers/target/kmod/7.3/h713-drm/h713_drm.ko`, built
+  with the bench mode) and loads only there. Once the normal tree builds it, `release/check-display.py` also checks that
+  its `vermagic` is the image's kernel's.
+- **Every boot path appends `${h713_display_args}`**: the repository's `boot_emmc`/`boot_net` do; the HY320's own
+  `boot_emmc` (`h713-kernel-7.3.fit`) and the one-shot paths of [kernel-rust](../kernel-rust.md) are device
+  environment, set by hand, and need the same word at the end of their `bootargs`.
 - **The device tree node** (`drivers/h713-drm/dts/sun50i-h713-hy320-display.dtso`): with it the driver holds its clocks
   and power domains and `h713-display load` passes no `bench=1`.
 
 ## Device test
 
 On the HY320 (the only board the clean driver has run on), with a 1080p60 source on HDMI. The test boots the
-7.3.1-rustbench kernel once, on the clean stack, and comes back to the release kernel on the vendor stack by itself.
+7.3.1-rustbench kernel once, on the clean stack, and comes back to the device's normal kernel on the vendor stack by
+itself. The HY320's normal kernel is **7.3.1** since 03.11.2026 (the kernel lane's; the device's own `boot_emmc` loads
+`h713-kernel-7.3.fit`), not 6.18.38, which a release image's `boot_emmc` loads as `h713-kernel.fit`; the messages below
+are the HY320's.
 
-**0. Before.** On the release image, vendor stack: `cat /proc/cmdline > /root/cmdline-before; fw_printenv >
+**0. Before.** On the normal boot, vendor stack: `cat /proc/cmdline > /root/cmdline-before; fw_printenv >
 /root/env-before; lsmod > /root/lsmod-before`.
 
 **1. The pieces.** From an image built with this change, or by hand from the repository:
@@ -121,18 +131,21 @@ and `h713-hdcp-key.service` -> `/etc/systemd/system/`, `userspace/h713-power/h71
 `ln -s /boot/mips /lib/firmware/h713-mips`, `ln -s ../h713-display.service /etc/systemd/system/sysinit.target.wants/`,
 `systemctl daemon-reload`. And the environment of this U-Boot (the U-Boot binary itself is unchanged; the lines are in
 `board/sunxi/hy310.env`, or `u-boot-initial-env` of a build): `fw_setenv` `bootcmd`, `boot_emmc`, `boot_net` with the new
-values and `fw_setenv h713_display vendor`. For U-Boot's own record of `noboot` on this board without a UART, put
-`h713_conlog 0x45000000; mmc dev 1; mmc write 0x45000000 0x2800 0x400;` after the `fi;` of `bootcmd`
-([HY320](../../boards/hy320/README.md), "U-Boot's console without a UART").
+values and `fw_setenv h713_display vendor`, one `fw_setenv NAME VALUE` each (this `fw_setenv` takes no `-s` file of
+"NAME VALUE" lines: that leaves keys with a space in the name). The HY320's `bootcmd` is the one with
+`h713_conlog 0x45000000; mmc dev 1; mmc write 0x45000000 0x2800 0x400;` after the `fi;` (`hy310.env` under
+`CONFIG_CONSOLE_RECORD`, which only `hy320_defconfig` sets; [HY320](../../boards/hy320/README.md), "U-Boot's console
+without a UART"): it records `noboot` on this board without a UART. The HY320's `boot_emmc` keeps its
+`h713-kernel-7.3.fit` and gets ` ${h713_display_args}` at the end of its `bootargs` instead of the repository's line.
 
 **2. Vendor, unchanged.** `reboot`. Proof: `/proc/cmdline` is `cmdline-before` plus ` module_blacklist=h713_drm`;
 `h713-display status` says `running: the vendor stack ..., sun50i-h713-afbd loaded`, `next boot: the vendor stack
-(h713_display=vendor)` and `h713_drm on this kernel (6.18.38): no - ... CONFIG_RUST ...`; `systemctl show -p
+(h713_display=vendor)` and `h713_drm on this kernel (7.3.1): no - ... CONFIG_RUST ...`; `systemctl show -p
 ConditionResult h713-display` = `no`, `h713-hdcp-key` active (exited); `h713-tv@video1` shows the picture as before.
 
-**3. The refusal.** `h713-display set clean` -> exit 1, `not clean: the kernel 6.18.38 has no h713_drm ...`; `fw_printenv
-h713_display` still `vendor`. With the clean repository's module copied into the release tree for a moment
-(`/lib/modules/6.18.38/extra/`, `depmod`): `... was built for the kernel 7.3.1-rustbench, this one is 6.18.38 (vermagic
+**3. The refusal.** `h713-display set clean` -> exit 1, `not clean: the kernel 7.3.1 has no h713_drm ...`; `fw_printenv
+h713_display` still `vendor`. With the clean repository's module copied into the normal kernel's tree for a moment
+(`/lib/modules/7.3.1/extra/`, `depmod`): `... was built for the kernel 7.3.1-rustbench, this one is 7.3.1 (vermagic
 mismatch)`; remove it again and `depmod`.
 
 **4. The module and the one-shot path.** `h713_drm.ko` to `/lib/modules/7.3.1-rustbench/extra/`, `depmod -a
@@ -142,7 +155,7 @@ Then
 ```
 fw_setenv boot_rust73 'setenv h713_boot emmc; setenv h713_display vendor; saveenv; wdt dev watchdog@2051000; wdt start 16000; if ext4load mmc 1:5 0x60000000 h713-kernel-rustbench73.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw ${h713_display_args}"; bootm 0x60000000; fi'
 fw_setenv h713_boot rust73
-h713-display set clean                                # refused: still judged against the running 6.18.38
+h713-display set clean                                # refused: still judged against the running 7.3.1
 h713-display set clean --kernel 7.3.1-rustbench       # h713_display = clean, from the next boot on
 h713-display status                                   # next boot: the clean stack (h713_display=clean)
 reboot
@@ -164,16 +177,18 @@ the boot after it the vendor one again, as `h713_boot`.
 | picture | `journalctl -b -u 'h713-tv@*' \| head`; `h713-tv ctl status` | `stack clean: h713-drm + h713-hdmirx-clean ...`; `hdmi capturing, 1920x1080 ...` - then the steps of [h713-tv, "Device test on a clean-stack boot"](../tools/h713-tv.md#device-test-on-a-clean-stack-boot) |
 | the way back is set | `h713-display status`; `fw_printenv h713_boot h713_display` | `running: the clean stack ..., h713_drm loaded`, `next boot: the vendor stack (h713_display=vendor)`, `a reboot switches to the vendor stack`; `emmc`, `vendor` |
 
-**6. The safety net** (one dark boot; optional). On the release kernel: `fw_setenv h713_display clean` (past the tool's
+**6. The safety net** (one dark boot; optional). On the normal kernel: `fw_setenv h713_display clean` (past the tool's
 checks), `reboot`. The logo stays, no picture; over ssh `systemctl --failed` names `h713-display.service`,
-`journalctl -u h713-display` says `the clean stack cannot run on 6.18.38: the kernel 6.18.38 has no h713_drm ...;
+`journalctl -u h713-display` says `the clean stack cannot run on 7.3.1: the kernel 7.3.1 has no h713_drm ...;
 h713_display set back to vendor`, `fw_printenv h713_display` = `vendor`. `reboot`: the vendor stack with its picture.
 
-**7. Back.** `reboot` onto the release kernel: step 2's proofs again, `/proc/cmdline` = `cmdline-before` plus
+**7. Back.** `reboot` onto the normal kernel: step 2's proofs again, `/proc/cmdline` = `cmdline-before` plus
 ` module_blacklist=h713_drm`. `saveenv` in `boot_rust73` saved U-Boot's runtime variables too: `fw_setenv
 h713_display_args`, then the list of [kernel-rust](../kernel-rust.md) ("One-shot boot"); `fw_printenv` against
 `env-before` then differs by the new `bootcmd`, `boot_emmc`, `boot_net`, `h713_display` and `boot_rust73`.
 
 Host tests: `rootfs/tests/test_h713_display.py` (the tool against a made-up root and environment),
-`release/tests/test_check_display.py` (the gate, with the board environment and the overlay's files),
-`installer/tests/test_env_from_device.py` (the carry-over). Not run on a device yet.
+`release/tests/test_check_display.py` (the gate, with the board environment, the HY320's `CONFIG_CONSOLE_RECORD` one, and
+the overlay's files), `installer/tests/test_env_from_device.py` (the carry-over). On the HY320 (04.11.2026, normal
+kernel 7.3.1, `doku/228` §34/§34a): every step above as expected, the clean stack end to end with the picture, the
+keystone on the HDMI picture and Kodi through `h713-warp`, after the receiver's QUERYCAP fix (`f5105949`).
