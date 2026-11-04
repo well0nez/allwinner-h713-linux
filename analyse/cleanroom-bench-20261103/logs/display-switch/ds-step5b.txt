@@ -1,0 +1,28 @@
+== h713-tv
+inactive active active 
+-- No entries --
+== dmesg hdmi
+error: /run/h713-tv/ctl: No such file or directory -- is h713-tv running? (systemctl status 'h713-tv@*')
+[    5.034867] h713-drm h713-drm: hdmi: TV top 0x00111111 / 0x01111117 / 0x404 as the boot loader set it up
+[    5.034899] h713-drm h713-drm: hdmi: input offered; ring 0x4b100000+0xbf5400 inside no-map region mips-firmware@4b100000; EDID/hot-plug by the provider (spec 57)
+[    5.109097] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x2; 1080p60 only)
+[    5.121382] h713-drm h713-drm: [drm] hdmi: off (the last V4L2 file closed)
+== way back
+running: the clean stack (h713.display=clean on the command line), h713_drm loaded
+next boot: the vendor stack (h713_display=vendor)
+h713_drm on this kernel (7.3.1-rustbench): loadable
+firmware for h713_drm: h713-mips/database.TSE ok, h713-mips/pq_custom.TSE ok, h713-mips/ProjectID_0x0030.TSE ok, hy310-edid.bin ok
+a reboot switches to the vendor stack
+h713_boot=emmc
+h713_display=vendor
+== warp
+Apr 15 10:12:54 hy320 systemd[1]: Started h713-warp.service - HY310: keystone warp on the GPU.
+Apr 15 10:12:55 hy320 h713-warp[246]: config          /etc/h713/warp.conf: warp = on, corners 0,0 0,0 0,0 0,0 (tl tr bl br, per-mille), mode front
+Apr 15 10:12:55 hy320 h713-warp[246]: control         /run/h713-warp/ctl (h713-warp ctl help)
+Apr 15 10:12:55 hy320 h713-warp[246]: wayland         /run/h713-warp/wayland: 1920x1080, 70 dma-buf formats (Kodi's AR30 AFBC offered), wl_shm, xdg-shell, presentation; client rate full
+Apr 15 10:12:55 hy320 h713-warp[246]: warp            bypass: the identity needs no GPU: h713-tv is on the ring (M10)
+ok status
+overlay         none
+muted           no
+channel         not claimed (h713-tv not running, or no event yet)
+matrix          identity (straight)

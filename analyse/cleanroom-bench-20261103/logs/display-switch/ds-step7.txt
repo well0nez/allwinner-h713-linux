@@ -1,0 +1,19 @@
+== back
+7.3.1
+console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=h713_drm
+cmdline = before + module_blacklist=h713_drm
+lsmod: same module set
+running: the vendor stack (display.bin on the MIPS), the display driver sun50i-h713-afbd loaded
+next boot: the vendor stack (h713_display=vendor)
+ConditionResult=no
+
+ConditionResult=yes
+active
+active
+active
+signal          1920x1080p60, 148.5 MHz (last measured)
+picture         console, DRM master held
+cover           an opaque page hides the picture: h713-warp pauses, the video plane is off, the HDMI sound is muted
+audio source    present=1 rate=48000 compressed=0 (events)
+Apr 15 10:17:28 hy320 h713-tv[348]: display         /dev/dri/card1 (sun50i-h713-afbd)
+Apr 15 10:18:10 hy320 h713-tv[348]: timing          status: head 0.0, colour 0.0, display 0.0, picture 0.1, audio 53.7 ms

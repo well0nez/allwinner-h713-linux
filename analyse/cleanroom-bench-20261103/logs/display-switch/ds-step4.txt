@@ -1,0 +1,21 @@
+/lib/firmware/h713-mips/ProjectID_0x0030.TSE
+/lib/firmware/h713-mips/database.TSE
+/lib/firmware/h713-mips/pq_custom.TSE
+/lib/firmware/hy310-edid.bin
+boot_rust73=setenv h713_boot emmc; setenv h713_display vendor; saveenv; wdt dev watchdog@2051000; wdt start 16000; if ext4load mmc 1:5 0x60000000 h713-kernel-rustbench73.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw ${h713_display_args}"; bootm 0x60000000; fi
+h713_boot=rust73
+== set clean (running 7.3.1)
+h713-display: not clean: the kernel 7.3.1 has no h713_drm (/lib/modules/7.3.1/modules.dep): the release kernel is built without it until it has CONFIG_RUST; the 7.3.1-rustbench kernel with the clean repository's module can
+rc=1
+== set clean --kernel 7.3.1-rustbench
+h713_display = clean, from the next boot on (h713-display status shows what runs now)
+the clean stack has no HDCP, no colour management, no aspect/zoom and no HDMI keystone yet (docs/subsystems/display-stacks.md)
+reboot to switch: the vendor stack runs until then
+rc=0
+h713_display=clean
+== status
+running: the vendor stack (display.bin on the MIPS), the display driver sun50i-h713-afbd loaded
+next boot: the clean stack (h713_display=clean)
+h713_drm on this kernel (7.3.1): no - the kernel 7.3.1 has no h713_drm (/lib/modules/7.3.1/modules.dep): the release kernel is built without it until it has CONFIG_RUST; the 7.3.1-rustbench kernel with the clean repository's module can
+firmware for h713_drm: h713-mips/database.TSE ok, h713-mips/pq_custom.TSE ok, h713-mips/ProjectID_0x0030.TSE ok, hy310-edid.bin ok
+a reboot switches to the clean stack

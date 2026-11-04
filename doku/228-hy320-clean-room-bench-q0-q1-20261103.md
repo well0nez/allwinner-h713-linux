@@ -612,3 +612,33 @@ mit gepatchtem DSP). Ergebnisse (Entwurf 70 v2, §2a/§3a/§4.6/§6.4/§9a; 79 �
 - Sauber 5fd6cd6 (Modul dbd25d04) schreibt die Empfängerfolge 3 s nach dem Hot-Plug auch ohne TMDS: 3 von 3 Starts im
   Fehlerzustand (`0x8fc = 0x3f` vorher) locken in 6,0 s, 3 von 3 im Normalzustand ebenso; Schritt 9 a/b/c wieder grün.
 - Entwurf 50 §4a (Zusatz) an der Wand; sauber f9c9072. Gerät: Normalstart, Umgebung = Referenz.
+
+## 34 Gerätetest der Stapelwahl h713_display (cd15b82b, U-Boot-Umgebung d68fbcab97e, Modul dbd25d04) (04.11.)
+
+Rohdaten `analyse/cleanroom-bench-20261103/logs/display-switch/ds-step*.txt`. Kernel der Normalstarts hier 7.3.1 (nicht
+6.18.38; `boot_emmc` lädt `h713-kernel-7.3.fit`), daher wurde `boot_emmc` des Geräts um `${h713_display_args}` ergänzt
+statt der Repo-Zeile (die `h713-kernel.fit` = 6.18.38 lädt). `bootcmd` = Repo-Zeile mit `h713_conlog ...` nach `fi;`.
+
+- Ablehnungen vor dem Umbau: gespeicherter `bootcmd` ohne `h713_display` (wie auf dem Gerät) und die HY320-`h713_conlog`-Form
+  -> beide `not clean: the saved bootcmd does not read h713_display ...`, rc 1, nichts geschrieben.
+- Schritt 2 (vendor): `/proc/cmdline` = vorher + ` module_blacklist=h713_drm`, gleiche Modulmenge, `status` vendor,
+  `h713-display` übersprungen, `h713-hdcp-key` aktiv, h713-tv mit afbd, Bild/Ton wie vorher, conlog zeigt den MIPS-Start.
+- Schritt 3: `set clean` auf 7.3.1 -> `the kernel 7.3.1 has no h713_drm`, rc 1; Modul kurz in 7.3.1/extra -> `built for
+  7.3.1-rustbench, this one is 7.3.1 (vermagic mismatch)`; `set vendor` -> `already`.
+- Schritt 4: `set clean` abgelehnt (laufender 7.3.1), `set clean --kernel 7.3.1-rustbench` -> clean, `status` next boot clean.
+- Schritt 5 (clean): 7.3.1-rustbench, `h713.display=clean module_blacklist=...`; keine afbd/hdmirx/cpu_comm/mips/msp;
+  conlog `MIPS held in reset (noboot)`; `h713_drm loaded after sun50i-h713-arisc (bench=1 ...)`; Optionen = h713-drm.conf;
+  `h713-mips/database.TSE loaded`; hdcp-key/tv-rescue/sleep-pre/post übersprungen; Rückweg gesetzt (`emmc`, `vendor`).
+  **Fehler:** h713-tv@video1 bricht ab: `/dev/video1 does not belong to "h713-hdmirx-cle" but to "h713_drm"` - der
+  QUERYCAP-Fix der sauberen Seite (8e24be3: driver `h713_drm`, card `h713-hdmirx-clean`) passt nicht zu h713-tv/h713-warp
+  (vergleichen QUERYCAP.driver mit 15 Zeichen von `h713-hdmirx-clean`). Außerdem fehlten dem Gerät die neue udev-Regel
+  (Schritt-1-Liste nennt sie nicht) - aus dem Repo installiert. HDMI über die CRTC mit dbd25d04 (kms-test): capturing in
+  6,2 s. Mit dem Runde-13-Modul über `h713-display load`: h713-tv `stack clean`, Startseite/OSD, nach `launcher close`
+  Bild an (`plane on`, 293 gezeigt), d.h. der Rest der Kette trägt.
+- Schritt 6 (Sicherheitsnetz, 7.3.1 mit clean): Logo, `h713-display.service` failed, `the clean stack cannot run on 7.3.1
+  ...; h713_display set back to vendor`; nächster Start vendor.
+- Schritt 7: zurück, cmdline/lsmod wie Schritt 2.
+- Ende: Dateien und Umgebung auf den Stand vorher (auch zwei alte Fehl-Schlüssel mit Leerzeichen im Namen, `boot_618 ...`
+  und `boot_emmc if ...`, die schon in der Referenz standen); Neustart: cmdline und lsmod wie vorher, RUN1, Sperre frei.
+  Mein erster Versuch mit `fw_setenv -s` im Format "Name Wert" legte solche Leerzeichen-Schlüssel an (dieses
+  `fw_setenv` erwartet `Name=Wert`); sofort entfernt, Umgebung danach Zeile für Zeile gesetzt.

@@ -1,0 +1,46 @@
+rmmod=0
+h713_drm loaded after sun50i-h713-arisc (bench=1: no device tree node allwinner,sun50i-h713-display-engine)
+load=0
+active
+Apr 15 10:16:38 hy320 h713-tv[809]: osd             claimed: two 1920x1080 ARGB8888 buffers, line pitch 7680, primary plane 35, console framebuffer 0
+Apr 15 10:16:38 hy320 h713-tv[809]: timing          a control command took 17.3 ms to serve (no re-evaluation) 0.0 ms to re-evaluate
+Apr 15 10:16:38 hy320 h713-tv[809]: nosignal       h713-osd is told: no signal -- its page "No signal on HDMI"
+Apr 15 10:16:38 hy320 h713-tv[809]: timing          the loop body took 17.4 ms before polling again
+Apr 15 10:16:38 hy320 h713-tv[809]: osd             an opaque page over black -- there is no picture under it
+Apr 15 10:16:38 hy320 h713-tv[809]: cover           an opaque page is on the wall -- the video plane goes off under it
+Apr 15 10:16:38 hy320 h713-tv[809]: capture         not needed: an opaque page covers the panel
+Apr 15 10:16:40 hy320 h713-tv[809]: event           SOURCE_CHANGE (changes 0x1, seq 0)
+Apr 15 10:16:40 hy320 h713-tv[809]: signal          1920x1080p60, 148.5 MHz
+Apr 15 10:16:40 hy320 h713-tv[809]: ring            1920x1080 NV16, line pitch 1920 on panel 1920x1080 (the driver's, shown by video_source hdmi)
+Apr 15 10:16:40 hy320 h713-tv[809]: nosignal       the signal is back (1920x1080p60, 148.5 MHz)
+Apr 15 10:16:40 hy320 h713-tv[809]: nosignal       h713-osd is told: the signal is back -- the page goes
+ok status
+mode            automatic
+config          /etc/h713/tv.conf: start=last; saved=auto in /var/lib/h713-tv/modus
+signal          1920x1080p60, 148.5 MHz (last measured)
+colour          BT.709, limited range
+picture         console, DRM master held
+source          auto
+cover           an opaque page hides the picture: h713-warp pauses, the video plane is off, the HDMI sound is muted
+bare            off
+nosignal        none
+want            none (h713-warp's word: the straight ring at once)
+buffer          1920x1080 NV16, line pitch 1920 on panel 1920x1080
+zoom            off (the clean stack: no aspect, no zoom -- the video plane takes the whole frame)
+stack           clean: h713-drm + h713-hdmirx-clean -- no display firmware: no HDCP, no colour management, no HDMI audio, no popup over the picture
+hdmi            capturing, 1920x1080 at 60000 mHz; video_source buffer
+                frames: 256 from the source, 0 shown, 0 repeated, 0 skipped
+picture values  7 presets from /etc/h713/tvconfig (h713-pq, 638 ms), gamma 2.20, LUT 2048 bytes
+preset          standard (from the device data)
+gamma curve     computed here from this board's own curves (ProjectID 0x30)
+gamma           level 3 (2.2), colour temperature auto (normal); curves of ProjectID 0x30: normal cool warm
+                on the CRTC: normal, level 3, curve 2100a19f (27.9 ms, 1 sent, 0 refused)
+white balance   512 512 512 512 512 512 (R G B gain, R G B offset; 512 neutral), on the CRTC
+colour mgmt     0 entries changed
+                white balance on h713-drm's wb_* CRTC properties; colour management not available: the clean display stack has no colour management
+                sent 1 white balance, 0 colour management, 0 repairs; last: 512 512 512 512 512 512
+saved           /var/lib/h713-tv/werte: preset=standard brightness=100 contrast=95 saturation=50 hue=50 sharpness=50 tnr=2 snr=1 dci=2 black=1 aspect=proportional zoom=off
+audio           off -- missing: the card "hy310hdmi" with "HDMI Audio Switch"/"HDMI Playback Volume"/"HDMI Mute Switch" (kernel 0137) (aplay -l shows the cards, amixer -c N content
+edid            block 0 of /lib/firmware/hy310-edid.bin served (1 VICs offered, all in the firmware's table)
+                no deep colour offered, a source sends 8 bit
+arisc           /sys/kernel/debug/h713-arisc/status: No such file or directory

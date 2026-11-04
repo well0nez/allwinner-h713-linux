@@ -1,0 +1,12 @@
+== set clean on 7.3.1
+h713-display: not clean: the kernel 7.3.1 has no h713_drm (/lib/modules/7.3.1/modules.dep): the release kernel is built without it until it has CONFIG_RUST; the 7.3.1-rustbench kernel with the clean repository's module can
+rc=1
+h713_display=vendor
+== module copied into 7.3.1
+h713-display: not clean: h713_drm was built for the kernel 7.3.1-rustbench, this one is 7.3.1 (vermagic mismatch)
+rc=1
+h713_display=vendor
+0
+== set vendor
+h713_display = vendor already (h713-display status shows what runs now)
+rc=0

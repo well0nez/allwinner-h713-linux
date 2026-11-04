@@ -1,0 +1,30 @@
+== cmdline
+console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=h713_drm
+cmdline = before + module_blacklist=h713_drm
+== status
+running: the vendor stack (display.bin on the MIPS), the display driver sun50i-h713-afbd loaded
+next boot: the vendor stack (h713_display=vendor)
+h713_drm on this kernel (7.3.1): no - the kernel 7.3.1 has no h713_drm (/lib/modules/7.3.1/modules.dep): the release kernel is built without it until it has CONFIG_RUST; the 7.3.1-rustbench kernel with the clean repository's module can
+firmware for h713_drm: h713-mips/database.TSE ok, h713-mips/pq_custom.TSE ok, h713-mips/ProjectID_0x0030.TSE ok, hy310-edid.bin ok
+rc=0
+== units
+ConditionResult=no
+active
+active
+active
+ConditionResult=yes
+
+ConditionResult=no
+== modules
+lsmod: same module set
+== picture
+signal          1920x1080p60, 148.5 MHz (last measured)
+picture         console, DRM master held
+cover           an opaque page hides the picture: h713-warp pauses, the video plane is off, the HDMI sound is muted
+picture values  7 presets from /etc/h713/tvconfig (h713-pq, 944 ms), gamma 2.20, LUT 2048 bytes
+audio source    present=1 rate=48000 compressed=0 (events)
+Apr 15 10:09:17 hy320 h713-tv[343]: capture         /dev/video1 (sun50i-h713-hdm, H713 HDMI receiver)
+Apr 15 10:09:17 hy320 h713-tv[343]: display         /dev/dri/card1 (sun50i-h713-afbd)
+Apr 15 10:09:20 hy320 h713-tv[343]: timing          a capture event's evaluation held the loop 150.6 ms
+Apr 15 10:09:20 hy320 h713-tv[343]: capture         needed: HDMI is the mode and on the wall
+bash: line 1: strings: command not found

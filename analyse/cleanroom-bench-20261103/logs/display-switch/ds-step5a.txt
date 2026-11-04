@@ -1,0 +1,53 @@
+== kernel and words
+7.3.1-rustbench
+console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw h713.display=clean module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd
+== no firmware path
+(end)
+== noboot record
+H713 disp: loading vendor artifacts from mmc 1#hy310-boot:mips
+H713 MIPS: workspace cleared (cfg@0x4be01000, tse@0x4be41000 kept)
+H713 MIPS: display.bin SHA-256 22a7df113fce3fa182926268de8c7551a107f0c3bc2932f0940bd58b8f424835
+H713 MIPS: firmware identity accepted (ADT-3 2024)
+H713 disp: config/TSE windows published for MIPS
+H713 disp: groups from the file (14388 bytes): prologue 0x017c..0x044c, timing 0x0db4..0x0f84, de 0x1fdc..0x22dc
+H713 disp: project 0x30, panel 1920x1080 dual-port
+H713 disp: groups from the file (14388 bytes): prologue 0x017c..0x044c, timing 0x0db4..0x0f84, de 0x1fdc..0x22dc
+H713 disp: project 0x30, panel 1920x1080 dual-port
+H713 disp: project 0x30 -> prologue 1, timing 2, de 0
+H713 disp: FIFO status 0x00000002; reset applied
+H713 disp: MIPS held in reset (noboot); display driven by the ARM sequence alone
+H713 disp: LVDS PHY tail applied: 00000000 00000000 08000800 08000000
+H713 disp: sequence complete, LVDS FIFO status=0x00000000
+H713 disp: boot logo up at 0x6c100000 with the firmware running; MIPS reset=00000000 status=00000000 scan=034401c6
+H713 disp: display initialised from the ARM sequence alone; scanrate, regscan and clkfind can run now. Power-cycle before another init.
+== the load
+Apr 15 10:12:54 hy320 systemd[1]: Starting h713-display.service - H713 clean display stack: h713_drm after sun50i-h713-arisc (h713-display load)...
+Apr 15 10:12:55 hy320 h713-display[237]: h713_drm loaded after sun50i-h713-arisc (bench=1: no device tree node allwinner,sun50i-h713-display-engine)
+Apr 15 10:12:55 hy320 systemd[1]: Finished h713-display.service - H713 clean display stack: h713_drm after sun50i-h713-arisc (h713-display load).
+h713_drm              151552  0
+sun50i_h713_arisc      65536  1 h713_drm
+== options
+fw=h713-mips/database.TSE
+edid_fw=hy310-edid.bin
+hdmi_port=1
+pq_fw=h713-mips/pq_custom.TSE
+gamma_fw=h713-mips/ProjectID_0x0030.TSE
+logo_fw=h713-mips/LogoRegData.bin
+ring_base=1259339776
+restore_logo=Y
+bench=Y
+[    0.557288] systemd[1]: systemd 257.13-1~deb13u1 running in system mode (+PAM +AUDIT +SELINUX +APPARMOR +IMA +IPE +SMACK +SECCOMP +GCRYPT -GNUTLS +OPENSSL +ACL +BLKID +CURL +ELFUTILS +FIDO2 +IDN2 -
+[    5.034899] h713-drm h713-drm: hdmi: input offered; ring 0x4b100000+0xbf5400 inside no-map region mips-firmware@4b100000; EDID/hot-plug by the provider (spec 57)
+[    5.043615] h713-drm h713-drm: handoff: RGB control 0x03001901, address 0x6c100000, irq enable 0x00000021; 0 clocks, reset none; h713-mips/database.TSE loaded
+== skipped units
+ConditionResult=no
+
+ConditionResult=no
+
+ConditionResult=no
+
+ConditionResult=no
+ls: cannot access '/run/hy310/firmware': No such file or directory
+  UNIT LOAD ACTIVE SUB DESCRIPTION
+
+0 loaded units listed.

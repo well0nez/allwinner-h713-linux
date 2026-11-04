@@ -1,0 +1,17 @@
+== safety net
+7.3.1
+console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw h713.display=clean module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd
+  UNIT                 LOAD   ACTIVE SUB    DESCRIPTION
+● h713-display.service loaded failed failed H713 clean display stack: h713_drm after sun50i-h713-arisc (h713-display load)
+
+Legend: LOAD   → Reflects whether the unit definition was properly loaded.
+Apr 15 10:17:25 hy320 systemd[1]: Starting h713-display.service - H713 clean display stack: h713_drm after sun50i-h713-arisc (h713-display load)...
+Apr 15 10:17:26 hy320 h713-display[237]: h713-display: the clean stack cannot run on 7.3.1: the kernel 7.3.1 has no h713_drm (/lib/modules/7.3.1/modules.dep): the release kernel is built without it until it has CONFIG_RUST; the 7.3.1-rustbench kernel with the 
+Apr 15 10:17:26 hy320 h713-display[237]: h713-display: h713_display set back to vendor: the next boot runs the vendor stack
+Apr 15 10:17:26 hy320 systemd[1]: h713-display.service: Main process exited, code=exited, status=1/FAILURE
+Apr 15 10:17:26 hy320 systemd[1]: h713-display.service: Failed with result 'exit-code'.
+Apr 15 10:17:26 hy320 systemd[1]: Failed to start h713-display.service - H713 clean display stack: h713_drm after sun50i-h713-arisc (h713-display load).
+h713_display=vendor
+running: the clean stack (h713.display=clean on the command line), h713_drm NOT loaded (journalctl -u h713-display)
+next boot: the vendor stack (h713_display=vendor)
+0

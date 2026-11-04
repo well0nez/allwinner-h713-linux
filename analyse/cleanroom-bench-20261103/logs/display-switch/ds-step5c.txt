@@ -1,0 +1,22 @@
+7.3.1-rustbench
+h713.display=clean
+active
+failed
+active
+Apr 15 10:14:47 hy320 systemd[1]: Starting h713-tv@video1.service - HY310: HDMI input (video1) on the video plane...
+Apr 15 10:14:47 hy320 systemd[1]: Started h713-tv@video1.service - HY310: HDMI input (video1) on the video plane.
+Apr 15 10:14:47 hy320 h713-tv[364]: config          /etc/h713/tv.conf: start = last, saved -> the picture follows the signal; the mode is saved in /var/lib/h713-tv/modus
+Apr 15 10:14:47 hy320 h713-tv[364]: stack           clean: h713-drm + h713-hdmirx-clean, no display firmware
+Apr 15 10:14:48 hy320 h713-tv[366]: h713-pq: LUT written: /run/h713-tv/gamma-laufzeit.bin (2048 byte, channel r, exponent 2.2)
+Apr 15 10:14:48 hy320 h713-tv[364]: error: /dev/video1 does not belong to "h713-hdmirx-cle" but to "h713_drm"
+Apr 15 10:14:48 hy320 systemd[1]: h713-tv@video1.service: Main process exited, code=exited, status=1/FAILURE
+Apr 15 10:14:48 hy320 systemd[1]: h713-tv@video1.service: Failed with result 'exit-code'.
+Apr 15 10:14:48 hy320 systemd[1]: h713-tv@video1.service: Consumed 1.516s CPU time.
+Apr 15 10:14:48 hy320 systemd[1]: h713-tv@video1.service: Triggering OnFailure= dependencies.
+Apr 15 10:14:54 hy320 systemd[1]: h713-tv@video1.service: Scheduled restart job, restart counter is at 1.
+Apr 15 10:14:54 hy320 systemd[1]: Starting h713-tv@video1.service - HY310: HDMI input (video1) on the video plane...
+Apr 15 10:14:54 hy320 systemd[1]: Started h713-tv@video1.service - HY310: HDMI input (video1) on the video plane.
+Apr 15 10:14:54 hy320 h713-tv[447]: config          /etc/h713/tv.conf: start = last, saved -> the picture follows the signal; the mode is saved in /var/lib/h713-tv/modus
+Apr 15 10:14:54 hy320 h713-tv[447]: stack           clean: h713-drm + h713-hdmirx-clean, no display firmware
+Apr 15 10:14:54 hy320 h713-tv[448]: h713-pq: LUT written: /run/h713-tv/gamma-laufzeit.bin (2048 byte, channel r, exponent 2.2)
+error: /run/h713-tv/ctl: No such file or directory -- is h713-tv running? (systemctl status 'h713-tv@*')
