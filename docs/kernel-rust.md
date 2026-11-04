@@ -17,12 +17,13 @@ how the project builds such a module, and what the Rust part may and may not do.
 The recipe is in [build-container.md](build-container.md) ("Rust for the kernel"); `make ARCH=arm64 LLVM=1
 rustavailable` in a kernel tree says `Rust is available!`.
 
-## The fragment
+## CONFIG_RUST in the release kernel
 
-`mainline/patches/kernel/board/rust.config` is one line, `CONFIG_RUST=y`. The HY320/HY200 defconfig already meets the
-other conditions of `config RUST` (no MODVERSIONS, RANDSTRUCT, DEBUG_INFO_BTF, CFI, KASAN; LTO none). Built with
-`BOARD=hy320 KERNEL_CONFIG=rust build.sh kernel` (one fresh tree, about four minutes on 24 threads), the `.config`
-differs from the release tree's only in the Rust lines:
+Since 05.11.2026 (7.3.1) the image's defconfig, `mainline/patches/kernel/board/hy200_qz713df_a1_defconfig`, has
+`CONFIG_RUST=y` itself, for the clean display driver `h713_drm` (`CONFIG_DRM_H713=m`, kernel `0355`-`0358`,
+[display stacks](subsystems/display-stacks.md)). The defconfig meets the other conditions of `config RUST` (no
+MODVERSIONS, RANDSTRUCT, DEBUG_INFO_BTF, CFI, KASAN; LTO none). Against the 7.3.1 release tree before it, the `.config`
+differs only in the Rust lines and the two `DRM_H713` ones:
 
 ```
 CONFIG_RUSTC_VERSION=108900
@@ -32,11 +33,17 @@ CONFIG_RUST=y
 CONFIG_RUSTC_VERSION_TEXT="rustc 1.89.0 (29483883e 2025-08-04)"
 CONFIG_BINDGEN_VERSION_TEXT="bindgen 0.72.1"
 CONFIG_RUST_OVERFLOW_CHECKS=y
+CONFIG_DRM_H713=m
+CONFIG_DRM_H713_BENCH=y
 ```
 
 (plus the derived `CONFIG_RUSTC_HAS_*`, `CONFIG_RUSTC_SUPPORTS_ARM64`, `CONFIG_HAVE_CFI_ICALL_NORMALIZE_INTEGERS_RUSTC`).
-The compressed Image grows from 7.60 to 7.79 MB (the `kernel` crate and `core`). It is a developer fragment, not part of
-an image.
+The compressed Image grows from 7 848 526 to 8 055 416 bytes (the `kernel` crate and `core`), the module set by
+`h713_drm.ko` alone. Every release build therefore needs the container's Rust toolchain.
+
+*Superseded 05.11.2026:* CONFIG_RUST came from a developer fragment, `board/rust.config` (`KERNEL_CONFIG=rust`, one line
+`CONFIG_RUST=y`, "not part of an image"); on 6.18.38 it grew the Image from 7.60 to 7.79 MB. The release has the line
+now, so the fragment changed nothing any more and was removed.
 
 ## How a C module calls Rust: one module, both objects
 
@@ -60,7 +67,7 @@ h713_rshim_demo-y := rshim_demo_main.o rshim_demo_hw.o     # .c and .rs
 - One Rust crate root per module is the rule. Two `.rs` objects in one module do link (tried), but they are two crates
   that can only reach each other through `extern "C"`. Everything else in Rust becomes `mod` submodules of the one root.
 
-On the HY320 (test kernel 6.18.38 with `rust.config`, module built out of tree with `mainline/tools/rshim-demo/Makefile`):
+On the HY320 (test kernel 6.18.38 with the former `rust.config`, module built out of tree with `mainline/tools/rshim-demo/Makefile`):
 
 ```
 # uname -v; grep -c rust_helper_readl /proc/kallsyms
@@ -136,20 +143,22 @@ What such a crate must not use:
 ## Build and load
 
 ```bash
-podman exec h713-build sh -c 'cd /work && BOARD=hy320 KERNEL_CONFIG=rust mainline/build/build.sh kernel'
-podman exec h713-build make -C /work/mainline/tools/rshim-demo KDIR=/work/mainline/build/linux-6.18.38-<hash of the rust tree>
+podman exec h713-build sh -c 'cd /work && BOARD=hy320 mainline/build/build.sh kernel'
+podman exec h713-build make -C /work/mainline/tools/rshim-demo KDIR=/work/mainline/build/linux-7.3.1-<hash of the tree>
 ```
 
-`KERNEL_CONFIG=rust` keeps the release name `6.18.38`, so its kernel and modules can only *replace* the release ones
-(that is how the demo above was loaded: `/boot/h713-kernel.fit` and `/lib/modules/6.18.38` swapped, then swapped
-back). For anything longer, use the side-by-side kernel below.
+The release tree has `CONFIG_RUST`, so a module with a Rust part builds against it and loads into the release kernel
+(`vermagic: 7.3.1 SMP preempt mod_unload aarch64`); `h713_drm` is built in that tree itself. Until 05.11.2026 this took
+`KERNEL_CONFIG=rust`, a tree of the release's name whose kernel and modules could only *replace* the release ones (that
+is how the demo above was loaded on 6.18.38: `/boot/h713-kernel.fit` and `/lib/modules/6.18.38` swapped, then swapped
+back).
 
 ## A Rust kernel next to the release
 
-`board/rustbench.config` is `rust.config` plus `CONFIG_LOCALVERSION="-rust"`: the kernel calls itself `6.18.38-rust`,
-its modules live in `/lib/modules/6.18.38-rust`, and a module built against its tree says `vermagic: 6.18.38-rust`
-and is refused by the release kernel (and the other way round). Apart from that line its `.config` equals the
-`rust` tree's. On the HY320 it sits next to the release kernel; the normal boot (`bootcmd`, `/boot/h713-kernel.fit`,
+`board/rustbench.config` is `CONFIG_RUST=y` plus `CONFIG_LOCALVERSION="-rust"`: the kernel calls itself `<version>-rust`
+(`6.18.38-rust`, on 7.3.1 `7.3.1-rust`), its modules live in `/lib/modules/<version>-rust`, and a module built against
+its tree says `vermagic: <version>-rust` and is refused by the release kernel (and the other way round). Apart from that
+line its `.config` equals the release tree's. On the HY320 it sits next to the release kernel; the normal boot (`bootcmd`, `/boot/h713-kernel.fit`,
 `/lib/modules/6.18.38`) is untouched.
 
 Build (the aic8800 Wi-Fi modules in a copy of their tree, so that `build/out/modules/` keeps the release builds):
@@ -195,7 +204,7 @@ Tested on the HY320 (03.11.2026): one-shot boot -> `uname -r` `6.18.38-rust`, `h
 
 On 7.3.1 the device carries three kernels: the default 7.3.1 (`boot_emmc`), the kernel lane's own `7.3.1-rust`
 (`rustbench.config`), and the display lane's bench kernel. So that the bench never shares a module directory with the
-kernel lane, `board/rustbench73.config` is `rust.config` plus `CONFIG_LOCALVERSION="-rustbench"`: kernel release
+kernel lane, `board/rustbench73.config` is `CONFIG_RUST=y` plus `CONFIG_LOCALVERSION="-rustbench"`: kernel release
 `7.3.1-rustbench`, FIT `/boot/h713-kernel-rustbench73.fit`, modules `/lib/modules/7.3.1-rustbench` (in-tree modules and
 `extra/aic8800_{bsp,fdrv,btlpm}.ko` with aic8800 0011, the 7.3 `probe_peer` fix - without it the access point answers no
 authentication). Apart from that line its `.config` equals the `7.3.1-rust` tree's.
@@ -226,3 +235,21 @@ Tested on the HY320 (03.11.2026, default boot 7.3.1): one-shot boot -> `uname -r
 again, aic8800 loaded, `wlan0` up as the access point (192.168.4.1); the next reboot came up on the default 7.3.1,
 `h713-tv ctl status` ok, environment equal to before plus `boot_rustbench73`. `h713_drm.ko` built against the tree says
 `vermagic: 7.3.1-rustbench SMP preempt mod_unload aarch64`.
+
+## 7.3.1: the release kernel with Rust (05.11.2026)
+
+The release kernel itself has `CONFIG_RUST` and `h713_drm` (above, "CONFIG_RUST in the release kernel"). On the HY320
+it is the normal boot: `/boot/h713-kernel-7.3.fit` (`boot_emmc`), modules `/lib/modules/7.3.1` with `h713_drm.ko` and
+`extra/aic8800_{bsp,fdrv,btlpm}.ko`; the 7.3.1 without Rust before it stays as `/boot/h713-kernel-7.3-prev.fit` with the
+one-shot
+
+```
+boot_73prev=setenv h713_boot emmc; saveenv; wdt dev watchdog@2051000; wdt start 16000; if ext4load mmc 1:5 0x60000000 h713-kernel-7.3-prev.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw ${h713_display_args}"; bootm 0x60000000; fi
+```
+
+and its modules as `/lib/modules/7.3.1.prev`. Both kernels call themselves `7.3.1`, so the previous one reads the new
+module tree; for more than a look, swap the two directories as well. Installed with a one-shot boot of the new FIT
+first (as `h713-kernel-7.3-next.fit`), then renamed into place. Tested on the HY320 (`doku/229`): boot, Wi-Fi access
+point, the module set of before plus nothing loaded (the vendor stack refuses `h713_drm` on its command line), 426
+`rust_helper` symbols, and both display stacks on the normal boot. `rustbench73` stays for bench builds of modules the
+release does not carry.

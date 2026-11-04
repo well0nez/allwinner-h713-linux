@@ -12,7 +12,7 @@ compiler is missing; see [docs/build-container.md](../../docs/build-container.md
 `rshim-demo/` builds `h713_rshim_demo.ko`: one kernel module of a C object (`rshim_demo_main.c`: module init, an
 `ioremap`) and a Rust object (`rshim_demo_hw.rs`: two `extern "C"` functions, one of them a `readl`), linked together.
 It is the proof of the linkage pattern in [docs/kernel-rust.md](../../docs/kernel-rust.md) and builds out of tree against a
-kernel built with `KERNEL_CONFIG=rust`; its `Makefile` has the build line.
+kernel tree with `CONFIG_RUST` (the release tree since 7.3.1); its `Makefile` has the build line.
 
 ## Programs for the device
 

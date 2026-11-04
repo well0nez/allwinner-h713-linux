@@ -16,7 +16,7 @@ installed on it the same day.
 | Panel | project id `0x30`, 1920x1080 **dual port**, HTotal 2200, VTotal 1125, **164 MHz**, Hsync 2, Vsync 8, HBP 148, VBP 12, InvDCLK 1, InvHSync 2 - its `panel_config.ini` (Reserve0, and the identical copy in vendor) |
 | Lamp | `[PWMSetting]` channel 5, polarity 1 (low active), 40 kHz, vsync lock 1, duty 1..100, default 50 - the HY300 Pro's words with another default |
 | Display firmware | `display.bin` 1 252 128 B, `22a7df11...` ("ADT-3 2024", the HY350's and HY300 T08's); only in `vendor:/etc/display/mips` - `bootloader_a/_b` are FAT16 without `mips/` |
-| Display stack | **vendor** (`display.bin`) by default; the **clean** one (`h713_drm`, no display firmware) per boot with `h713-display set clean` - only where the kernel can load `h713_drm`: today the 7.3.1-rustbench bench kernel, not the unit's normal 7.3.1 (`boot_emmc` -> `h713-kernel-7.3.fit`, since 03.11.2026) and not a release image's 6.18.38. Its image `bootcmd` logs U-Boot's console (below) and reads the key. Device-tested 04.11.2026 end to end (`doku/228` §34/§34a; [display stacks](../../docs/subsystems/display-stacks.md)) |
+| Display stack | **vendor** (`display.bin`) by default; the **clean** one (`h713_drm`, no display firmware) per boot with `h713-display set clean`. Since 05.11.2026 the unit's normal boot (`boot_emmc` -> `h713-kernel-7.3.fit`) is the 7.3.1 release kernel with `CONFIG_RUST` and `h713_drm` (=m, kernel `0355`-`0358`, its device tree node disabled, so `bench=1`); the previous 7.3.1 stays as `h713-kernel-7.3-prev.fit` (one-shot `boot_73prev`). Both stacks proven on that boot, vendor -> clean -> vendor and the safety net (`doku/229`); the HDMI picture on this kernel still unseen (no source signal then). Its image `bootcmd` logs U-Boot's console (below) and reads the key. Before: device-tested 04.11.2026 end to end on the 7.3.1-rustbench kernel (`doku/228` §34/§34a; [display stacks](../../docs/subsystems/display-stacks.md)) |
 | eMMC | 15 269 888 sectors, 25 partitions, a single `Reserve0` at LBA 7062528; `super` 6291456 sectors (the HY350's 5242880), so everything from `misc` on sits 1048576 sectors later than there |
 | Stock | an Android 11 system (`eng.projector.20241024.162050`, ARMv7 kernel 5.4.99) on the ADT-3 Android 10 vendor build 6245789; vendor U-Boot 2018.05-00018 of 19.04.2024, ARISC of the same day |
 | Wi-Fi | AIC8800D80 on SDIO (its firmware set is the HY310's, some `_u02` files differ) |
@@ -163,7 +163,8 @@ mmc write 0x45000000 0x2800 0x400` under `CONFIG_CONSOLE_RECORD`, which only thi
 That is the per-boot eMMC write the paragraph above rules out; whether it stays or goes back to RAM only is open.
 The other boards' `bootcmd` has no `h713_conlog`. `h713-display set clean` refuses a hand-set `bootcmd` that ignores
 the key ([display stacks](../../docs/subsystems/display-stacks.md)); `fw_setenv bootcmd` with the image's line (its
-`u-boot-initial-env`) replaces it.
+`u-boot-initial-env`) replaces it. The unit's saved environment carries the image's
+line since 05.11.2026 (`doku/229` §2).
 
 ## What we do not know
 
