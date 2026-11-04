@@ -111,6 +111,24 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
   than the panel sits in the middle (letterbox), never scaled, and gets the configure once more - cage misses the
   first one and would stay at 1280x720 (measured 15.10.2026). With `warp = off` the client is shown without
   keystone. The client is drawn through the GPU even at the identity: the video plane takes NV12 only.
+- **NV12 client buffers** (05.11.2026): the format table also offers `NV12` with the modifier LINEAR, when the render
+  node imports R8 and GR88 (it does on the HY320: 71 formats instead of 70). That is a video decoder's surface as libva's
+  v4l2_request exports it for cedrus - two planes, Y at pitch x height, CbCr at its own offset (1920 x 1088 for a
+  1080-line picture in a 1088-line surface), one dma-buf or two. Both planes are checked against the dma-buf before
+  anything is imported (Y: offset + pitch x h, CbCr: offset + pitch x ceil(h / 2), each pitch a multiple of 64 and at
+  least the line), one plane, mismatched modifiers or flags are refused as for RGB. The planes are imported as the ring's
+  slots are, Y as R8 and CbCr as GR88 at half size, and drawn with the ring's own two passes - a bare fetch each, no
+  colour maths, the edge band, letterbox, keystone, zoom and mode as for any client; RGB clients are drawn as before.
+  Release, the frame callbacks and the presentation are unchanged, so the decoder recycles a surface once the render
+  fence of the frame that read it has signalled. `ctl trace N gpu` counts client frames too since that day. Measured on
+  the HY320 (05.11.2026, keystone 0,0 0,0 106,100 65,108, 1080p panel): `h713-airplay-show --feed` with a 1080p60
+  H.264 clip handed every decoded surface over as it was (1220 as NV12 surfaces, 0 converted), the warp presented 59.1
+  pictures a second, the presenter showed 1219 of 1237 decoded frames; the GPU took 6.55 ms a frame on average (10.6 at
+  most, 180 frames, devfreq at 200 MHz, die 86.6 C), the warp's thread 1.1 ms of CPU for the draw. A test client with a
+  known pattern in four GBM buffers: the dump showed its eight luma bars byte for byte (16, 47 ... 233), 6.93 ms of GPU
+  a frame (60 frames). Converting NV12 to RGB in the presenter and then warping the RGB had cost 14-21 ms of GPU a frame
+  and about 25 pictures a second (presenter lane, the same day). The ring's 1.78 ms of "What a frame costs" is a 720p
+  panel at 348 MHz; 2.25 times the pixels at 200 MHz is the same cost per pixel.
 - **Limits:** four connections (a fifth gets an error and is closed), eight surfaces and eight imported dma-bufs per client, a buffer
   larger than the panel is refused, a buffer before the first configure is a protocol error; a client that goes
   away keeps the panel for two seconds (a cage restart), then the warp gives it back. A dma-buf shorter than the
@@ -118,8 +136,15 @@ master (measured on the HY310 on 15.10.2026, `doku/211` §10).
   lines of 16, AFBC a 16-byte header per superblock plus the whole body, as mesa's panfrost lays it out; a test client had a
   20-KB buffer described as 1920x1080 AFBC fault the GPU. A `wl_shm` line shorter than 4 x width is a protocol
   error (libwayland checks only stride >= width), and a `wl_shm` picture goes up in one call (measured 15.10.2026).
+  Since 05.11.2026 the eight imported dma-bufs are those no `wl_buffer` holds any more (kept for a client that wraps
+  each frame anew, as cage does); the ones a `wl_buffer` holds count up to 32, so that a decoder's pool of surfaces,
+  one `wl_buffer` each, is taken (20 NV12 buffers of one client, host test and HY320). *Superseded 05.11.2026:*
+  "eight imported dma-bufs per client" for all of them - the ninth a client held was refused.
 - **Status:** `ctl status` has three more lines, `wayland` (clients, toplevel, formats), `client` (taken,
   presented, discarded, busy, released, imports) and `pictures` (of the toplevel on the panel, one held under a page).
+  Since 05.11.2026 `wayland` also says `NV12 offered` or `missing`, and `client` ends with the format of the toplevel's
+  last picture: `format NV12 linear` for a decoder's surfaces, `format AR30 modifier 0x800000000000062` for Kodi's,
+  `format wl_shm`, or `format none yet`.
 
 ## Under an opaque page - the pause
 

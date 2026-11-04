@@ -51,7 +51,7 @@ struct conn {
 
 static struct {
 	uint32_t clock, serial, tranche;
-	int w, h, refresh, cfg_w, cfg_h, table_hits;
+	int w, h, refresh, cfg_w, cfg_h, table_hits, nv12_hits;
 	bool fullscreen, configured, closed, table, device, fb_done, out_done, done, released, presented, failed, created;
 	dev_t dev;
 } ev;
@@ -92,8 +92,10 @@ static void fb_table(void *d, struct zwp_linux_dmabuf_feedback_v1 *f, int32_t fd
 	(void)d;
 	(void)f;
 	ev.table = e != MAP_FAILED && size % 16 == 0;
-	for (i = 0; ev.table && i < size / 16; i++)
+	for (i = 0; ev.table && i < size / 16; i++) {
 		ev.table_hits += e[i].format == DRM_FORMAT_ARGB2101010 && e[i].modifier == 0x0800000000000062ull;
+		ev.nv12_hits += e[i].format == DRM_FORMAT_NV12 && e[i].modifier == DRM_FORMAT_MOD_LINEAR;
+	}
 	if (e != MAP_FAILED)
 		munmap((void *)e, size);
 	close(fd);
@@ -323,6 +325,66 @@ static int dmabuf_sized(struct conn *c, int w, int h, uint32_t fourcc, uint64_t 
 	return ev.created ? 1 : ev.failed ? 0 : -1;
 }
 
+/*
+ * N1: an NV12 buffer as a video decoder exports it - Y at 0 in a memfd of size0 bytes, CbCr at off_c in the same memfd
+ * (size1 0) or at 0 in one of its own of size1 bytes; both pitches `pitch`, LINEAR; `planes` 1 leaves CbCr out
+ */
+struct nv12 {
+	const char *what;
+	int w, h, planes, want;		/* want: 1 created, 0 failed */
+	uint32_t pitch, off_c;
+	size_t size0, size1;
+};
+
+static struct zwp_linux_buffer_params_v1 *nv12_params(struct conn *c, const struct nv12 *k)
+{
+	struct zwp_linux_buffer_params_v1 *p = zwp_linux_dmabuf_v1_create_params(c->dmabuf);
+	int fd = memfd(k->size0), fd_c = k->size1 ? memfd(k->size1) : fd;
+
+	zwp_linux_buffer_params_v1_add(p, fd, 0, 0, k->pitch, 0, 0);
+	if (k->planes > 1)
+		zwp_linux_buffer_params_v1_add(p, fd_c, 1, k->size1 ? 0 : k->off_c, k->pitch, 0, 0);
+	if (fd_c != fd)
+		close(fd_c);
+	close(fd);
+	return p;
+}
+
+/* as dmabuf_sized: 1 created, 0 failed, -1 no answer */
+static int nv12_create(struct conn *c, const struct nv12 *k)
+{
+	struct zwp_linux_buffer_params_v1 *p = nv12_params(c, k);
+	int ms = 1000;
+
+	ev.created = ev.failed = false;
+	zwp_linux_buffer_params_v1_add_listener(p, &params_l, c);
+	zwp_linux_buffer_params_v1_create(p, k->w, k->h, DRM_FORMAT_NV12, 0);
+	while (!ev.created && !ev.failed && ms > 0 && wl_display_roundtrip(c->d) >= 0)
+		ms -= 10;
+	zwp_linux_buffer_params_v1_destroy(p);
+	return ev.created ? 1 : ev.failed ? 0 : -1;
+}
+
+/* create_immed of a short NV12 on a connection of its own: the protocol error invalid_wl_buffer, as for RGB */
+static bool nv12_immed_error(const char *path, const struct nv12 *k)
+{
+	const struct wl_interface *iface = NULL;
+	struct conn x;
+	uint32_t id, got;
+	bool ok;
+
+	if (!connect_to(&x, path) || !x.dmabuf)
+		return false;
+	zwp_linux_buffer_params_v1_create_immed(nv12_params(&x, k), k->w, k->h, DRM_FORMAT_NV12, 0);
+	wl_display_roundtrip(x.d);
+	got = wl_display_get_protocol_error(x.d, &iface, &id);
+	ok = wl_display_get_error(x.d) == EPROTO && iface == &zwp_linux_buffer_params_v1_interface &&
+	     got == ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_INVALID_WL_BUFFER;
+	wl_display_disconnect(x.d);
+	usleep(100000);
+	return ok;
+}
+
 static struct wl_buffer *shmbuf(struct conn *c, int w, int h)
 {
 	return shmbuf_stride(c, w, h, w * 4);
@@ -446,7 +508,8 @@ int main(int argc, char **argv)
 	xdg_wm_base_add_listener(c.wm, &wm_l, NULL);
 	wl_display_roundtrip(c.d);
 	CHECK(ev.clock == CLOCK_MONOTONIC, "presentation clock %u = CLOCK_MONOTONIC", ev.clock);
-	CHECK(ev.fb_done && ev.table && ev.table_hits == 1 && ev.tranche == 6, "feedback: table with AR30 + AFBC, one tranche of %u", ev.tranche);
+	CHECK(ev.fb_done && ev.table && ev.table_hits == 1 && ev.tranche == 7, "feedback: table with AR30 + AFBC, one tranche of %u", ev.tranche);
+	CHECK(ev.nv12_hits == 1, "feedback: NV12 LINEAR in the table (a decoder's surfaces)");
 	CHECK(ev.device, "feedback: main and target device = the render node's dev_t");
 	CHECK(ev.out_done && ev.w > 0 && ev.h > 0 && ev.refresh > 59000 && ev.refresh < 60000, "output %dx%d @ %d mHz", ev.w, ev.h, ev.refresh);
 
@@ -536,6 +599,59 @@ int main(int argc, char **argv)
 		CHECK(dmabuf_sized(&c, 1920, 1080, DRM_FORMAT_ARGB2101010, 0x0800000000000062ull, 7680, 20480) == 0,
 		      "20 KB described as 1920x1080 AFBC (the GPU fault of 15.10.2026) failed");
 		CHECK(wl_display_get_error(c.d) == 0, "the client lives on after the refusals");
+	}
+
+	/*
+	 * N1: NV12 from a video decoder - two planes, Y pitch x h and CbCr pitch x h/2 from its offset, both checked against
+	 * the dma-buf before anything is imported; one plane, a pitch that is no multiple of 64 and a picture larger than
+	 * the panel are refused. 1920x1080 in a 1088-line surface is what libva's v4l2_request exports for cedrus.
+	 */
+	{
+		const uint32_t sf = 1920u * 1088;
+		const struct nv12 k[] = {
+			{ "NV12 1920x1080 in a 1088-line surface, one dma-buf", 1920, 1080, 2, 1, 1920, sf, sf + 1920u * 540, 0 },
+			{ "... its CbCr one byte short", 1920, 1080, 2, 0, 1920, sf, sf + 1920u * 540 - 1, 0 },
+			{ "NV12 in two dma-bufs", 1920, 1080, 2, 1, 1920, 0, 1920u * 1080, 1920u * 540 },
+			{ "... Y one byte short of pitch x 1080", 1920, 1080, 2, 0, 1920, 0, 1920u * 1080 - 1, 1920u * 540 },
+			{ "... CbCr one byte short of pitch x 540", 1920, 1080, 2, 0, 1920, 0, 1920u * 1080, 1920u * 540 - 1 },
+			{ "NV12 with one plane", 1920, 1080, 1, 0, 1920, sf, sf + 1920u * 540, 0 },
+			{ "NV12 1000x300, pitch 1000 (not a multiple of 64)", 1000, 300, 2, 0, 1000, 300000, 450000, 0 },
+			{ "NV12 1279x719 (CbCr 640x360, pitch 1280)", 1279, 719, 2, 1, 1280, 1280u * 719, 1280u * 1079, 0 },
+			{ "... its CbCr one line short", 1279, 719, 2, 0, 1280, 1280u * 719, 1280u * 1078, 0 },
+		};
+		const struct nv12 big = { "NV12 wider than the panel", ev.w + 64, ev.h, 2, 0, (uint32_t)ev.w + 64,
+					  ((uint32_t)ev.w + 64) * (uint32_t)ev.h,
+					  ((uint32_t)ev.w + 64) * (uint32_t)ev.h * 3 / 2, 0 };
+		const struct nv12 *frame = &k[0];
+		struct wl_buffer *pool[20];
+		unsigned int j;
+
+		for (j = 0; j < sizeof(k) / sizeof(k[0]); j++)
+			CHECK(nv12_create(&c, &k[j]) == k[j].want, "%s: %s", k[j].what, k[j].want ? "created" : "failed");
+		CHECK(nv12_create(&c, &big) == 0, "%s (%dx%d): failed", big.what, big.w, big.h);
+		CHECK(nv12_immed_error(path, &k[1]), "a short NV12 through create_immed: error invalid_wl_buffer");
+		CHECK(wl_display_get_error(c.d) == 0, "the client lives on after the NV12 refusals");
+
+		/* the decoder's surface on the panel: imported as Y and CbCr at their offsets, taken, released */
+		ev.released = false;
+		b = zwp_linux_buffer_params_v1_create_immed(nv12_params(&c, frame), frame->w, frame->h, DRM_FORMAT_NV12, 0);
+		wl_buffer_add_listener(b, &buf_l, NULL);
+		wl_display_roundtrip(c.d);
+		CHECK(server_says("nv12 1920x1080 0/1920 2088960/1920", 1000), "NV12 imported: Y at 0, CbCr at 1920 x 1088");
+		wl_surface_attach(s, b, 0, 0);
+		wl_surface_commit(s);
+		wl_display_flush(c.d);
+		CHECK(server_says("frame", 2000) && wait_for(&c, &ev.released, 2000), "the NV12 buffer is drawn and released at the render fence");
+
+		/* a decoder's pool, one wl_buffer per surface: more than the eight imports of a client that wraps anew */
+		for (j = 0; j < 20; j++)
+			pool[j] = zwp_linux_buffer_params_v1_create_immed(nv12_params(&c, frame), frame->w, frame->h,
+									    DRM_FORMAT_NV12, 0);
+		wl_display_roundtrip(c.d);
+		CHECK(wl_display_get_error(c.d) == 0, "a pool of 20 NV12 wl_buffers is taken");
+		for (j = 0; j < 20; j++)
+			wl_buffer_destroy(pool[j]);
+		wl_display_roundtrip(c.d);
 	}
 
 	struct wl_surface *s2 = wl_compositor_create_surface(c.comp);

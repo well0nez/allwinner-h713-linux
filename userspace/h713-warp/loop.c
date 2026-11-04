@@ -714,9 +714,11 @@ static int client_answer(struct runtime *r, int rc, double t0, const char *why)
 int warp_client_frame(struct runtime *r, const struct gl_image *im, int *render, int *flip)
 {
 	char why[WARP_WHY];
-	double t0 = now_s();
+	double t0 = now_s(), t1;
 	float m[16];
 	int fence, rc;
+	bool tracing = r->check.trace > 0;
+	unsigned int c0 = tracing ? thread_us() : 0, c1 = 0, c2 = 0;
 
 	*render = *flip = -1;
 	if (!warp_client_live(r))
@@ -732,9 +734,29 @@ int warp_client_frame(struct runtime *r, const struct gl_image *im, int *render,
 		return 2;
 	}
 	r->fails = 0;
+	if (tracing)
+		c1 = thread_us();
 	fence = gl_fence();
+	t1 = now_s();
+	if (tracing)
+		c2 = thread_us();
 	*render = fence >= 0 ? dup(fence) : -1;
 	rc = peer_frame(&r->peer, r->target, fence, flip, why, sizeof(why));
+	/* "trace N" counts client frames too (05.11.2026), with "gpu" the render fence waited out as for the ring */
+	if (tracing) {
+		double gpu_ms = -1;
+		unsigned int c3 = thread_us();
+
+		r->check.trace--;
+		if (r->check.trace_gpu && fence >= 0) {
+			struct pollfd pf = { .fd = fence, .events = POLLIN };
+
+			if (poll(&pf, 1, 15) > 0)
+				gpu_ms = (now_s() - t1) * 1e3;
+		}
+		info("trace           client cost us: draw %u, fence %u, h713-tv %u | gpu busy %.2f ms (submit to fence%s)",
+		     c1 - c0, c2 - c1, c3 - c2, gpu_ms, gpu_ms < 0 ? ": not waited, \"trace N gpu\"" : "");
+	}
 	if (fence >= 0)
 		close(fence);
 	return client_answer(r, rc, t0, why);

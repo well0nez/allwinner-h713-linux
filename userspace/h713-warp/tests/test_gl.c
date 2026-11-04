@@ -35,6 +35,11 @@
  *     with the daemon's luma shader and a 4 px edge: every pixel against the
  *     CPU reference of T1c; then the edge off, byte-exact.
  *
+ * T1e an NV12 client buffer (05.11.2026), BYTE-EXACT. Y as R8 and CbCr as RG8 at half width and half height, both
+ *     sampled GL_LINEAR as gl.c's texture() does, through the identity with the ring's own luma and chroma shaders
+ *     into a full-size and a half-size target - what gl_draw_client does for NV12 at the panel's size: every Y, Cb
+ *     and Cr byte must arrive unchanged, nothing converted, nothing resampled.
+ *
  * The daemon is an ES2 program; this driver asks for an ES3 context where it
  * can get one, because R8/RG8 textures are core there and the ES2 way round
  * it (GL_EXT_texture_rg) is not on every driver. The shaders are version 100
@@ -494,6 +499,64 @@ static int t1d(void)
 	return bad != 0 || bad_off != 0;
 }
 
+/* one NV12 plane through one of the ring's passes, read back: `ch` channels of every pixel against the source */
+static long t1e_plane(const char *fs, GLint internal, GLenum format, int ch, int w, int h,
+		      const unsigned char *src)
+{
+	unsigned char *out = malloc((size_t)w * h * 4);
+	GLuint prog = program(fs);
+	long bad = 0;
+	int i, k;
+
+	if (!prog || !fbo_new(w, h)) {
+		free(out);
+		return -1;
+	}
+	tex_new(internal, format, w, h, src, ch == 1 ? 0 : 1);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MIN_FILTER, GL_LINEAR);
+	glTexParameteri(GL_TEXTURE_2D, GL_TEXTURE_MAG_FILTER, GL_LINEAR);
+	glUseProgram(prog);
+	glUniform1i(glGetUniformLocation(prog, "u_y"), 0);
+	glUniform1i(glGetUniformLocation(prog, "u_c"), 1);
+	draw(prog, w, h, MODE_FRONT);
+	glReadPixels(0, 0, w, h, GL_RGBA, GL_UNSIGNED_BYTE, out);
+	for (i = 0; i < w * h; i++)
+		for (k = 0; k < ch; k++)
+			bad += out[(size_t)i * 4 + (size_t)k] != src[(size_t)i * (size_t)ch + (size_t)k];
+	free(out);
+
+	return bad;
+}
+
+static int t1e(void)
+{
+	const int w = 256, h = 128;
+	unsigned char *y = malloc((size_t)w * h), *c = malloc((size_t)w * h / 2);
+	long by, bc;
+	int i;
+
+	if (!es3) {
+		printf("SKIP T1e: R8/RG8 textures without a dma-buf need ES3\n");
+		free(y);
+		free(c);
+		return 0;
+	}
+	for (i = 0; i < w * h; i++)
+		y[i] = (unsigned char)(16 + (i * 7 + i / w * 3) % 220);
+	for (i = 0; i < w * h / 2; i += 2) {
+		c[i] = (unsigned char)(16 + (i * 5) % 225);		/* Cb */
+		c[i + 1] = (unsigned char)(240 - (i * 3) % 225);	/* Cr */
+	}
+	by = t1e_plane(gl_luma_shader, GL_R8_EXT, GL_RED_EXT, 1, w, h, y);
+	bc = t1e_plane(gl_chroma_shader, GL_RG8_EXT, GL_RG_EXT, 2, w / 2, h / 2, c);
+	printf("%s T1e NV12 client through the ring's passes byte-exact: Y %ld of %d, CbCr %ld of %d bytes differ\n",
+	       by || bc ? "FAIL" : "ok", by, w * h, bc, w * h / 2);
+	free(y);
+	free(c);
+
+	return by != 0 || bc != 0;
+}
+
 int main(void)
 {
 	int rc = t1c();
@@ -503,6 +566,7 @@ int main(void)
 	rc |= t1a();
 	rc |= t1b();
 	rc |= t1d();
+	rc |= t1e();
 
 	return rc;
 }

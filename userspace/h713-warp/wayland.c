@@ -48,7 +48,12 @@
 
 #define MAX_CLIENTS	4	/* connections that see the globals */
 #define MAX_SURFACES	8	/* surfaces per client */
-#define MAX_IMPORTS	8	/* imported dma-bufs per client (imports, not wl_buffer objects) */
+/*
+ * Imported dma-bufs per client that no wl_buffer holds any more, kept for a client that wraps each frame anew (cage);
+ * those a wl_buffer holds count up to MAX_BUFFERS (05.11.2026: a video decoder's pool of NV12 surfaces, one wl_buffer
+ * each, is larger than eight - until then eight imports per client were all there was)
+ */
+#define MAX_IMPORTS	8
 #define MAX_BUFFERS	32	/* wl_buffer objects per client: each holds an fd */
 #define MAX_FORMATS	128
 #define HOLD_MS		2000	/* the panel stays the client's this long after it is gone: a cage restart */
@@ -71,6 +76,10 @@ struct import {			/* one imported dma-buf, found again by its inode (cage wraps 
 	uint32_t fourcc, offset, pitch;
 	uint64_t modifier;
 	int w, h, fd, refs;		/* fd: our dup, so the inode stays this dma-buf's while the entry lives */
+	dev_t dev_c;			/* NV12: the CbCr plane, as plane 0 (fd_c -1 for one plane) */
+	ino_t ino_c;
+	uint32_t offset_c, pitch_c;
+	int fd_c;
 	unsigned long used;		/* the least recently used goes first */
 	struct gl_image *im;
 };
@@ -118,7 +127,10 @@ struct server {
 	struct wl_listener created;
 	int clients, nfmt, table_fd;
 	struct gl_format fmt[MAX_FORMATS];
-	bool kodi_format, stopping, live, ready, busy;
+	bool kodi_format, nv12_format, stopping, live, ready, busy;
+	uint32_t top_fourcc;			/* the format of the toplevel's last picture taken, 0 none; wl_shm: top_shm */
+	uint64_t top_mod;
+	bool top_shm;
 	dev_t dev;
 	unsigned int pw, ph;
 	struct wl_list imports, outputs, toplevels;
@@ -229,14 +241,37 @@ static void import_free(struct server *s, struct import *imp)
 	wl_list_remove(&imp->link);
 	gl_image_free(imp->im);
 	close(imp->fd);
+	if (imp->fd_c >= 0)
+		close(imp->fd_c);
 	free(imp);
 	warp_gl_idle(s->r);
 }
 
+/* no wl_buffer holds it any more: it stays for the client's next wrap of the same dma-buf while the client has at
+ * most MAX_IMPORTS, else it goes (a decoder's pool that was let go is not kept alive here) */
 static void import_unref(struct server *s, struct import *imp)
 {
-	if (--imp->refs <= 0 && !imp->owner)
+	struct import *o;
+	int count = 0;
+
+	if (--imp->refs > 0)
+		return;
+	wl_list_for_each(o, &s->imports, link)
+		count += imp->owner && o->owner == imp->owner;
+	if (!imp->owner || count > MAX_IMPORTS)
 		import_free(s, imp);
+}
+
+/* the GPU's image of an import: one plane, or NV12's two as R8 + GR88 */
+static struct gl_image *import_image(const struct import *imp, char *why, size_t n)
+{
+	const struct gl_plane pl[2] = {
+		{ imp->fd, imp->offset, imp->pitch }, { imp->fd_c, imp->offset_c, imp->pitch_c },
+	};
+
+	if (imp->fourcc == DRM_FORMAT_NV12)
+		return gl_image_nv12(pl, imp->w, imp->h, why, n);
+	return gl_image_dmabuf(imp->fd, imp->fourcc, imp->modifier, imp->w, imp->h, imp->offset, imp->pitch, why, n);
 }
 
 static void wbuf_free(struct wbuf *b)
@@ -330,8 +365,7 @@ static struct gl_image *image_for(struct server *s, struct wbuf *b)
 			imp->im = NULL;
 		}
 		if (!imp->im)
-			imp->im = gl_image_dmabuf(imp->fd, imp->fourcc, imp->modifier, imp->w, imp->h,
-						  imp->offset, imp->pitch, why, sizeof(why));
+			imp->im = import_image(imp, why, sizeof(why));
 		if (!imp->im)
 			warn("wayland         %s", why);
 		imp->used = ++s->lru;
@@ -460,12 +494,21 @@ static void watch_flip(struct server *s, int flip)
 	}
 }
 
+/* what the toplevel's pictures are, for "ctl status" */
+static void note_format(struct server *s, const struct wbuf *b)
+{
+	s->top_shm = !b->imp;
+	s->top_fourcc = b->imp ? b->imp->fourcc : 0;
+	s->top_mod = b->imp ? b->imp->modifier : 0;
+}
+
 /* the pending buffer under a page: taken as a frame would take it (callbacks done, feedback discarded: it is not
  * shown), held instead of drawn; the one held before goes back */
 static void take_held(struct server *s)
 {
 	struct wbuf *b = s->pending;
 
+	note_format(s, b);
 	s->pending = NULL;
 	s->ready = false;
 	s->take_due = 0;
@@ -496,6 +539,7 @@ static void take(struct server *s)
 		take_held(s);
 		return;
 	}
+	note_format(s, b);
 	im = image_for(s, b);
 
 	s->pending = NULL;
@@ -678,6 +722,8 @@ static void top_lost(struct server *s, bool destroyed)
 	}
 	s->held_at = 0;
 	s->pictures = 0;
+	s->top_fourcc = 0;
+	s->top_shm = false;
 	s->ready = false;
 	if (destroyed) {
 		s->top = wl_list_empty(&s->toplevels) ? NULL : container_of(s->toplevels.next, struct wsurf, tl_link);
@@ -1187,10 +1233,10 @@ static void bind_presentation(struct wl_client *c, void *data, uint32_t version,
 
 struct params {
 	struct server *s;
-	int fd;
-	uint32_t offset, pitch;
-	uint64_t modifier;
-	bool set, used, extra;
+	int fd, fd_c;			/* planes 0 and 1 (NV12's CbCr), -1 none */
+	uint32_t offset, pitch, offset_c, pitch_c;
+	uint64_t modifier, modifier_c;
+	bool set, set_c, used, extra;
 };
 
 static void params_add(struct wl_client *c, struct wl_resource *res, int32_t fd, uint32_t idx, uint32_t offset,
@@ -1199,16 +1245,24 @@ static void params_add(struct wl_client *c, struct wl_resource *res, int32_t fd,
 	struct params *p = wl_resource_get_user_data(res);
 
 	(void)c;
-	if (p->used || idx >= 4 || (idx == 0 && p->set)) {
+	if (p->used || idx >= 4 || (idx == 0 && p->set) || (idx == 1 && p->set_c)) {
 		close(fd);
 		wl_resource_post_error(res, p->used ? ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_ALREADY_USED :
 				       idx >= 4 ? ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_PLANE_IDX :
 				       ZWP_LINUX_BUFFER_PARAMS_V1_ERROR_PLANE_SET, "plane %u", idx);
 		return;
 	}
-	if (idx > 0) {			/* the RGB formats here have one plane: create says so */
+	if (idx > 1) {			/* RGB has one plane here, NV12 two: create says so */
 		close(fd);
 		p->extra = true;
+		return;
+	}
+	if (idx == 1) {			/* NV12's CbCr; for RGB create refuses it */
+		p->fd_c = fd;
+		p->offset_c = offset;
+		p->pitch_c = stride;
+		p->modifier_c = (uint64_t)hi << 32 | lo;
+		p->set_c = true;
 		return;
 	}
 	p->fd = fd;
@@ -1218,15 +1272,20 @@ static void params_add(struct wl_client *c, struct wl_resource *res, int32_t fd,
 	p->set = true;
 }
 
-/* the import of this dma-buf: found again by its inode, else made - at most MAX_IMPORTS per client, unused ones go first */
+/*
+ * the import of this dma-buf: found again by its inode (NV12: both planes'), else made - beyond MAX_IMPORTS of the
+ * client one no wl_buffer holds goes first, and at MAX_BUFFERS held ones there is no more
+ */
 static struct import *import_get(struct server *s, struct wl_client *c, const struct params *p, uint32_t fourcc,
 				 int w, int h, char *why, size_t n)
 {
 	struct import *imp, *lru = NULL;
-	struct stat st;
+	struct stat st, st_c;
+	bool two = fourcc == DRM_FORMAT_NV12;
 	int count = 0;
 
-	if (fstat(p->fd, &st)) {
+	memset(&st_c, 0, sizeof(st_c));
+	if (fstat(p->fd, &st) || (two && fstat(p->fd_c, &st_c))) {
 		snprintf(why, n, "fstat: %s", strerror(errno));
 		return NULL;
 	}
@@ -1235,7 +1294,8 @@ static struct import *import_get(struct server *s, struct wl_client *c, const st
 			continue;
 		if (imp->dev == st.st_dev && imp->ino == st.st_ino && imp->fourcc == fourcc &&
 		    imp->modifier == p->modifier && imp->w == w && imp->h == h && imp->offset == p->offset &&
-		    imp->pitch == p->pitch) {
+		    imp->pitch == p->pitch && (!two || (imp->dev_c == st_c.st_dev && imp->ino_c == st_c.st_ino &&
+							imp->offset_c == p->offset_c && imp->pitch_c == p->pitch_c))) {
 			imp->refs++;
 			imp->used = ++s->lru;
 			s->hits++;
@@ -1245,17 +1305,17 @@ static struct import *import_get(struct server *s, struct wl_client *c, const st
 		if (imp->refs <= 0 && (!lru || imp->used < lru->used))
 			lru = imp;
 	}
-	if (count >= MAX_IMPORTS && !lru) {
-		snprintf(why, n, "more than %d dma-bufs in use", MAX_IMPORTS);
+	if (count >= MAX_IMPORTS && lru) {
+		import_free(s, lru);
+	} else if (count >= MAX_BUFFERS) {
+		snprintf(why, n, "more than %d dma-bufs in use", MAX_BUFFERS);
 		return NULL;
 	}
-	if (count >= MAX_IMPORTS)
-		import_free(s, lru);
 	if (!gl_ready(s, why, n))
 		return NULL;
 	imp = calloc(1, sizeof(*imp));
-	if (!imp || !(imp->im = gl_image_dmabuf(p->fd, fourcc, p->modifier, w, h, p->offset, p->pitch, why, n))) {
-		free(imp);
+	if (!imp) {
+		snprintf(why, n, "out of memory");
 		warp_gl_idle(s->r);
 		return NULL;
 	}
@@ -1269,6 +1329,26 @@ static struct import *import_get(struct server *s, struct wl_client *c, const st
 	imp->w = w;
 	imp->h = h;
 	imp->fd = fcntl(p->fd, F_DUPFD_CLOEXEC, 0);
+	imp->dev_c = st_c.st_dev;
+	imp->ino_c = st_c.st_ino;
+	imp->offset_c = p->offset_c;
+	imp->pitch_c = p->pitch_c;
+	imp->fd_c = two ? fcntl(p->fd_c, F_DUPFD_CLOEXEC, 0) : -1;
+	if (imp->fd < 0 || (two && imp->fd_c < 0)) {
+		snprintf(why, n, "dup of the dma-buf: %s", strerror(errno));
+		imp->im = NULL;
+	} else {
+		imp->im = import_image(imp, why, n);
+	}
+	if (!imp->im) {
+		if (imp->fd >= 0)
+			close(imp->fd);
+		if (imp->fd_c >= 0)
+			close(imp->fd_c);
+		free(imp);
+		warp_gl_idle(s->r);
+		return NULL;
+	}
 	imp->refs = 1;
 	imp->used = ++s->lru;
 	wl_list_insert(&s->imports, &imp->link);
@@ -1333,8 +1413,10 @@ static void params_create(struct wl_client *c, struct wl_resource *res, uint32_t
 	struct wl_resource *br;
 	struct import *imp = NULL;
 	char why[WARP_WHY] = "";
-	uint64_t need = 0;
-	off_t size;
+	bool nv12 = fourcc == DRM_FORMAT_NV12;	/* Y and CbCr, two planes of one modifier */
+	uint32_t cw = ((uint32_t)w + 1) / 2, ch = ((uint32_t)h + 1) / 2;	/* NV12: the CbCr pairs */
+	uint64_t need = 0, need_c = 0;
+	off_t size, size_c = 1;
 	int i;
 
 	if (p->used) {
@@ -1350,22 +1432,32 @@ static void params_create(struct wl_client *c, struct wl_resource *res, uint32_t
 		if (s->fmt[i].fourcc == fourcc && s->fmt[i].modifier == p->modifier)
 			break;
 	size = lseek(p->fd, 0, SEEK_END);
+	if (nv12 && p->set_c)
+		size_c = lseek(p->fd_c, 0, SEEK_END);
 	if (i == s->nfmt)
 		snprintf(why, sizeof(why), "%.4s modifier 0x%llx is not offered", (const char *)&fourcc,
 			 (unsigned long long)p->modifier);
-	else if (flags || p->extra)
-		snprintf(why, sizeof(why), "one plane, no flags (y-invert, interlaced)");
+	else if (flags || p->extra || p->set_c != nv12 || (nv12 && p->modifier_c != p->modifier))
+		snprintf(why, sizeof(why), "%s, no flags (y-invert, interlaced)",
+			 nv12 ? "NV12: two planes of one modifier" : "one plane");
 	else if (w < 1 || h < 1 || (unsigned int)w > s->pw || (unsigned int)h > s->ph)
 		snprintf(why, sizeof(why), "%dx%d does not fit the panel %ux%u", w, h, s->pw, s->ph);
 	else if (p->modifier == DRM_FORMAT_MOD_LINEAR &&
-		 (p->pitch % 64 || p->pitch < (uint32_t)w * (fourcc == DRM_FORMAT_RGB565 ? 2 : 4)))
+		 (p->pitch % 64 || p->pitch < (uint32_t)w * (nv12 ? 1 : fourcc == DRM_FORMAT_RGB565 ? 2 : 4)))
 		snprintf(why, sizeof(why), "pitch %u for %d pixels (a multiple of 64)", p->pitch, w);
-	else if (size <= 0)
+	else if (nv12 && (p->pitch_c % 64 || p->pitch_c < 2 * cw))
+		snprintf(why, sizeof(why), "NV12 CbCr pitch %u for %u pairs (a multiple of 64)", p->pitch_c, cw);
+	else if (size <= 0 || size_c <= 0)
 		snprintf(why, sizeof(why), "the dma-buf's size cannot be read");
-	else if (!(need = bytes_needed(fourcc, p->modifier, w, h, p->offset, p->pitch)) || need > (uint64_t)size)
+	else if (!(need = bytes_needed(nv12 ? DRM_FORMAT_R8 : fourcc, p->modifier, w, h, p->offset, p->pitch)) ||
+		 need > (uint64_t)size)
 		snprintf(why, sizeof(why), "%dx%d %.4s modifier 0x%llx at offset %u needs %llu bytes, the dma-buf has %lld",
 			 w, h, (const char *)&fourcc, (unsigned long long)p->modifier, p->offset,
 			 (unsigned long long)need, (long long)size);
+	else if (nv12 && (need_c = bytes_needed(DRM_FORMAT_GR88, p->modifier, (int)cw, (int)ch, p->offset_c,
+						p->pitch_c)) > (uint64_t)size_c)
+		snprintf(why, sizeof(why), "NV12 CbCr %ux%u at offset %u needs %llu bytes, the dma-buf has %lld", cw, ch,
+			 p->offset_c, (unsigned long long)need_c, (long long)size_c);
 	else if (wc && wc->buffers >= MAX_BUFFERS)
 		snprintf(why, sizeof(why), "more than %d wl_buffers", MAX_BUFFERS);
 	else
@@ -1411,6 +1503,8 @@ static void params_destroyed(struct wl_resource *res)
 
 	if (p->fd >= 0)
 		close(p->fd);
+	if (p->fd_c >= 0)
+		close(p->fd_c);
 	free(p);
 }
 
@@ -1422,7 +1516,7 @@ static void create_params(struct wl_client *c, struct wl_resource *res, uint32_t
 		wl_client_post_no_memory(c);
 		return;
 	}
-	p->fd = -1;
+	p->fd = p->fd_c = -1;
 	p->s = wl_resource_get_user_data(res);
 	if (!resource(c, &zwp_linux_buffer_params_v1_interface, wl_resource_get_version(res), id, &params_impl, p,
 		      params_destroyed))
@@ -1620,6 +1714,8 @@ static bool formats(struct server *s)
 			break;
 		if (e.format == DRM_FORMAT_ARGB2101010 && e.modifier == AFBC_KODI)
 			s->kodi_format = true;
+		if (e.format == DRM_FORMAT_NV12)
+			s->nv12_format = true;
 	}
 	if (s->table_fd < 0 || i < s->nfmt) {
 		warn("wayland         the format table: %s -- wl_shm only", strerror(errno));
@@ -1708,8 +1804,8 @@ struct server *server_start(const char *path, struct runtime *r)
 		wl_global_create(s->dpy, &zwp_linux_dmabuf_v1_interface, 4, s, bind_dmabuf);
 	s->tick = wl_event_loop_add_timer(s->loop, tick_cb, s);
 	s->hold = wl_event_loop_add_timer(s->loop, hold_cb, s);
-	info("wayland         %s: %ux%u, %d dma-buf formats (Kodi's AR30 AFBC %s), wl_shm, xdg-shell, presentation; client rate %s",
-	     path, s->pw, s->ph, s->nfmt, s->kodi_format ? "offered" : "missing",
+	info("wayland         %s: %ux%u, %d dma-buf formats (Kodi's AR30 AFBC %s, NV12 %s), wl_shm, xdg-shell, presentation; client rate %s",
+	     path, s->pw, s->ph, s->nfmt, s->kodi_format ? "offered" : "missing", s->nv12_format ? "offered" : "missing",
 	     r->client_rate > 1 ? "half" : "full");
 	return s;
 }
@@ -1736,6 +1832,8 @@ void server_stop(struct server *s)
 		wl_list_remove(&imp->link);
 		gl_image_free(imp->im);
 		close(imp->fd);
+		if (imp->fd_c >= 0)
+			close(imp->fd_c);
 		free(imp);
 	}
 	gl_image_free(s->shm);
@@ -1884,19 +1982,32 @@ void server_recheck(struct server *s, double at)
 
 void server_status(const struct server *s, struct textbuf *t)
 {
+	char fmt[48];
+
 	if (!s) {
 		text_add(t, "wayland         no server\n");
 		return;
 	}
-	text_add(t, "wayland         %s: %d client%s, %s; %d dma-buf formats, Kodi's AR30 AFBC %s\n", s->path,
+	/* the toplevel's last picture: "NV12 linear" for a decoder's surfaces drawn as the ring is */
+	if (s->top_shm)
+		snprintf(fmt, sizeof(fmt), "wl_shm");
+	else if (!s->top_fourcc)
+		snprintf(fmt, sizeof(fmt), "none yet");
+	else if (s->top_mod == DRM_FORMAT_MOD_LINEAR)
+		snprintf(fmt, sizeof(fmt), "%.4s linear", (const char *)&s->top_fourcc);
+	else
+		snprintf(fmt, sizeof(fmt), "%.4s modifier 0x%llx", (const char *)&s->top_fourcc,
+			 (unsigned long long)s->top_mod);
+	text_add(t, "wayland         %s: %d client%s, %s; %d dma-buf formats, Kodi's AR30 AFBC %s, NV12 %s\n", s->path,
 		 s->clients, s->clients == 1 ? "" : "s",
 		 !s->top ? "no toplevel" : server_shown(s) ? (s->live ? "a toplevel on the panel" :
 							      "a toplevel waiting for h713-tv") :
-		 "a toplevel without a picture", s->nfmt, s->kodi_format ? "offered" : "missing");
+		 "a toplevel without a picture", s->nfmt, s->kodi_format ? "offered" : "missing",
+		 s->nv12_format ? "offered" : "missing");
 	text_add(t, "client          %lu taken, %lu presented, %lu discarded, %lu busy, %lu released, %lu asked again; "
-		 "%lu imports (%lu found again); rate %s, flip period %.2f ms\n", s->taken, s->presented,
+		 "%lu imports (%lu found again); rate %s, flip period %.2f ms; format %s\n", s->taken, s->presented,
 		 s->discarded, s->busys, s->released, s->asked, s->imports_made, s->hits,
-		 s->r->client_rate > 1 ? "half" : "full", s->period * 1e3);
+		 s->r->client_rate > 1 ? "half" : "full", s->period * 1e3, fmt);
 	text_add(t, "pictures        %ld of the toplevel on the panel%s\n", server_pictures(s),
 		 s->held ? ", the newest held under the page" : "");
 }

@@ -1089,8 +1089,10 @@ int gl_fence(void)
 /* ---------------- the Wayland client ------------------------ */
 
 struct gl_image {
-	EGLImageKHR img;		/* a client dma-buf; EGL_NO_IMAGE_KHR for the wl_shm texture */
+	EGLImageKHR img;		/* a client dma-buf (NV12: its Y as R8); EGL_NO_IMAGE_KHR for the wl_shm texture */
 	GLuint tex;
+	EGLImageKHR img_c;		/* NV12: its CbCr as GR88, drawn by the ring's chroma pass; else EGL_NO_IMAGE_KHR */
+	GLuint tex_c;
 	int w, h;
 	unsigned int gen;		/* gl_gen at its making */
 };
@@ -1116,7 +1118,7 @@ int gl_formats(struct gl_format *out, int max, char *why, size_t n)
 	EGLint fmt[128], nf = 0, nm, i, j, k = 0;
 	EGLuint64KHR mod[64];
 	EGLBoolean ext[64];
-	unsigned int r;
+	unsigned int r, planes = 0;	/* planes: 1 R8, 2 GR88 among the formats */
 
 	if (!gl_up || !has_ext(eglQueryString(dpy, EGL_EXTENSIONS), "EGL_EXT_image_dma_buf_import_modifiers") ||
 	    !qf || !qm || !qf(dpy, 128, fmt, &nf)) {
@@ -1135,6 +1137,15 @@ int gl_formats(struct gl_format *out, int max, char *why, size_t n)
 			if (!nm && k < max)	/* the format with the driver's own layout only */
 				out[k++] = (struct gl_format){ RGB[r], DRM_FORMAT_MOD_INVALID };
 		}
+	/*
+	 * NV12 (05.11.2026, a video decoder's surfaces): imported as the ring's slots are, Y as R8 and CbCr as GR88 with
+	 * no modifier, so it is offered when the node takes both, and LINEAR only - the planes of a tiled or AFBC NV12
+	 * are not two R8/GR88 images in those layouts.
+	 */
+	for (i = 0; i < nf; i++)
+		planes |= (uint32_t)fmt[i] == DRM_FORMAT_R8 ? 1u : (uint32_t)fmt[i] == DRM_FORMAT_GR88 ? 2u : 0u;
+	if (planes == 3 && k < max)
+		out[k++] = (struct gl_format){ DRM_FORMAT_NV12, DRM_FORMAT_MOD_LINEAR };
 	why[0] = '\0';
 
 	return k;
@@ -1178,6 +1189,34 @@ struct gl_image *gl_image_dmabuf(int fd, uint32_t fourcc, uint64_t modifier, int
 		return NULL;
 	}
 	im->tex = texture(im->img, 0);
+	im->w = w;
+	im->h = h;
+
+	return im;
+}
+
+struct gl_image *gl_image_nv12(const struct gl_plane pl[2], int w, int h, char *why, size_t n)
+{
+	struct gl_image *im = gl_up ? image_new() : NULL;
+
+	if (!im) {
+		snprintf(why, n, gl_up ? "out of memory" : "the render node is not open");
+		return NULL;
+	}
+	im->img = image(DRM_FORMAT_R8, w, h, pl[0].fd, (int)pl[0].offset, (int)pl[0].pitch);
+	if (im->img != EGL_NO_IMAGE_KHR)
+		im->img_c = image(DRM_FORMAT_GR88, (w + 1) / 2, (h + 1) / 2, pl[1].fd, (int)pl[1].offset,
+				  (int)pl[1].pitch);
+	if (im->img_c == EGL_NO_IMAGE_KHR) {
+		snprintf(why, n, "R8 + GR88 import of a %dx%d NV12 buffer (pitches %u, %u): egl 0x%x", w, h,
+			 pl[0].pitch, pl[1].pitch, eglGetError());
+		if (im->img != EGL_NO_IMAGE_KHR)
+			p_img_del(dpy, im->img);
+		free(im);
+		return NULL;
+	}
+	im->tex = texture(im->img, 0);
+	im->tex_c = texture(im->img_c, 1);
 	im->w = w;
 	im->h = h;
 
@@ -1270,13 +1309,18 @@ void gl_image_free(struct gl_image *im)
 		glDeleteTextures(1, &im->tex);
 		if (im->img != EGL_NO_IMAGE_KHR)
 			p_img_del(dpy, im->img);
+		if (im->tex_c)
+			glDeleteTextures(1, &im->tex_c);
+		if (im->img_c != EGL_NO_IMAGE_KHR)
+			p_img_del(dpy, im->img_c);
 	}
 	free(im);
 }
 
-/* one pass of the client's picture into one plane, the soft border over it as for the ring */
+/* one pass of the client's picture into one plane, the soft border over it as for the ring; an NV12 picture's
+ * planes on units 0 and 1, where the ring's passes read them */
 static void client_pass(GLuint fbo, int fw, int fh, float c0, float c1, struct pass_state *p,
-			struct pass_state *edge, GLuint tex, const float m[16])
+			struct pass_state *edge, const struct gl_image *im, const float m[16])
 {
 	int e[2];
 	float ef[2];
@@ -1290,22 +1334,28 @@ static void client_pass(GLuint fbo, int fw, int fh, float c0, float c1, struct p
 	glClear(GL_COLOR_BUFFER_BIT);
 	pass_use(p, m, ef);
 	glActiveTexture(GL_TEXTURE0);
-	glBindTexture(GL_TEXTURE_2D, tex);
+	glBindTexture(GL_TEXTURE_2D, im->tex);
+	if (im->tex_c) {
+		glActiveTexture(GL_TEXTURE1);
+		glBindTexture(GL_TEXTURE_2D, im->tex_c);
+	}
 	quad_use();
 	glDrawArrays(GL_TRIANGLE_STRIP, 0, 4);
 	if (e[0] > 0)
 		edge_draw(edge, e, m);
 }
 
-/* the client's frame: Y at full size, CbCr at half, video black around the quad (letterbox and keystone alike) */
+/* the client's frame: Y at full size, CbCr at half, video black around the quad (letterbox and keystone alike); RGB
+ * through the colour maths, NV12 through the ring's two bare fetches */
 bool gl_draw_client(int target_index, const struct gl_image *im, const float m[16], char *why, size_t n)
 {
+	bool nv12 = im->tex_c != 0;
 	GLenum err;
 
 	client_pass(target[target_index].fbo[0], (int)panel_w, (int)panel_h, 16.0f / 255.0f, 0.0f,
-		    &pass_rgb_y, &pass_edge_y, im->tex, m);
+		    nv12 ? &pass_luma : &pass_rgb_y, &pass_edge_y, im, m);
 	client_pass(target[target_index].fbo[1], (int)panel_w / 2, (int)panel_h / 2, 128.0f / 255.0f,
-		    128.0f / 255.0f, &pass_rgb_c, &pass_edge_c, im->tex, m);
+		    128.0f / 255.0f, nv12 ? &pass_chroma : &pass_rgb_c, &pass_edge_c, im, m);
 	err = glGetError();
 	if (err) {
 		snprintf(why, n, "client draw: gl 0x%x", err);
