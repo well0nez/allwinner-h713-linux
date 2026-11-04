@@ -1,0 +1,21 @@
+h713-airplay-fairplay
+=====================
+
+src/playfair.rs, src/garble.rs, src/md5.rs and data/*.array are vendored from fcast's apple-fairplay crate:
+
+  origin:   https://github.com/futo-org/fcast  (crates/apple-fairplay)
+  commit:   ea3982b31d751957e3cb6a114ee65504c7b91105
+  license:  GPL-3.0-only (the crate's Cargo.toml; the fcast repository's top-level LICENSE is MIT,
+            Copyright (c) 2023 FUTO, but this crate is a port of GPL-3.0 code and is licensed GPL-3.0-only)
+  authors:  FUTO and the fcast contributors
+
+apple-fairplay is a pure-Rust port of PlayFair (https://github.com/EstebanKubata/playfair, GPL-3.0),
+the same code UxPlay carries as lib/playfair (https://github.com/FDH2/UxPlay).
+
+Changes made here: the FairPlay wrapper (lib.rs) was rewritten against this crate's API and Error type
+instead of anyhow; the cipher modules got SPDX/origin headers and pub(crate) visibility; nothing in the
+cipher was changed. The phase-1 reply blobs and the phase-2 header are the same bytes as UxPlay's
+lib/fairplay_playfair.c (v1.73.7, commit df67c212a433cf6dda3676dd40c097900d24e645).
+
+tests/uxplay_driver.c links against UxPlay's lib/fairplay_playfair.c (LGPL-2.1+, Copyright (C) 2018
+Juho Vaha-Herttua) and lib/playfair (GPL-3.0) at test time only; none of that code is included here.

@@ -1,4 +1,5 @@
 # SPDX-License-Identifier: GPL-3.0-only
+# src/{playfair,garble,md5}.rs and data/ are fcast's apple-fairplay (GPL-3.0-only), see NOTICE.
 [package]
 name = "h713-airplay-fairplay"
 description = "FairPlay SAP v2.5 (fp-setup) on the receiver's side: the two handshake answers and the 72-byte ekey to the 16-byte AES key"
@@ -9,5 +10,9 @@ rust-version.workspace = true
 
 [lib]
 name = "fairplay"
+
+[features]
+# `fairplay::fixtures`: complete handshakes with known keys, for the test sender.
+test-sender = []
 
 [dependencies]
