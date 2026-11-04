@@ -45,7 +45,8 @@ pub fn interface_names(addrs: &[String]) -> Vec<String> {
     names
 }
 
-/// The network of wlan0 from wifi.env: only its `mode=` and `ssid=` lines are looked at, nothing else.
+/// The fallback when nl80211 reports nothing: wlan0's network from wifi.env, if this user may read it (0600 root
+/// on the device). Only its `mode=` and `ssid=` lines are looked at, nothing else.
 pub fn wifi(path: &Path) -> Vec<String> {
     let Ok(text) = std::fs::read_to_string(path) else { return Vec::new() };
     let (mut mode, mut ssid) = (None, None);

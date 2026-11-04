@@ -13,6 +13,7 @@ mod link;
 mod mdns;
 mod mirror;
 mod net;
+mod nl80211;
 mod ntp;
 mod pairing;
 mod presenter;

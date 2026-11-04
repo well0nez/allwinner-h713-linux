@@ -25,7 +25,10 @@ fn wifi_env() -> std::path::PathBuf {
 
 pub fn status(sh: &Shared) -> Status {
     let addrs = crate::net::addrs(&sh.config.interfaces);
-    let wifi = crate::net::wifi(&wifi_env());
+    let mut wifi = crate::nl80211::ssids();
+    if wifi.is_empty() {
+        wifi = crate::net::wifi(&wifi_env());
+    }
     let mut mdns = sh.mdns.lock().unwrap().clone();
     if mdns == "published" {
         for name in crate::net::interface_names(&addrs) {
