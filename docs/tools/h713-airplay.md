@@ -13,8 +13,9 @@ h713-airplay ctl watch           # one line per change of the state, until the c
 journalctl -u h713-airplay -u h713-airplay-show
 ```
 
-In development (branch `feat/hy320-airplay`, 05.11.2026), profile `desktop`: host tests only, nothing of it measured on a box yet
-([Measured](#measured)).
+In development (branch `feat/hy320-airplay`), profile `desktop`. Measured on the HY320 on 05.11.2026 with the receiver's own test
+sender through the whole protocol - not yet with an iPhone ([Measured](#measured), `doku/230`). *Superseded 05.11.2026:* "host
+tests only, nothing of it measured on a box yet".
 
 ## The two units
 
@@ -169,14 +170,25 @@ enabled.
 
 ## Measured
 
-Nothing on a box yet. To be filled after the device's acceptance:
+On the HY320, 05.11.2026 (`doku/230`), with `h713-airplay sendtest` on the box itself sending a 1080p60 clip with sound through the
+whole protocol (`/info`, `fp-setup`, SETUP/RECORD, the encrypted mirror stream, TEARDOWN) to 127.0.0.1:7000 - not yet with an
+iPhone:
 
-- From Screen Mirroring on the phone to its picture on the wall: not measured yet.
-- Glass to wall (the phone's screen to the projected picture): not measured yet.
-- The receiver idle (CPU, wakeups, memory): not measured yet.
-- The presenter: hardware decode, frames per second, dropped frames over ten minutes, H.264 and H.265: not measured yet.
-- Sound against the picture, and its delay: not measured yet.
-- The ways in and out - the launcher closing when a stream comes, the waiting page ending with 16, the launcher after the phone
-  stops, HDMI input, Kodi over a stream, Home and Screen Mirroring over it, a second phone taking over, a standby during a stream: not
-  measured yet (h713-keys' side: host tests, `tests/test_keys.py`).
-- The senders and their versions (iPhone, iPad, Mac; iOS 27): not measured yet.
+- The receiver idle: 0 ticks of CPU in 60 s (`utime` + `stime`), freshly started and again after four streams; 9 threads, all
+  asleep; 3.6 MB resident fresh, 4.3 MB after. No presenter.
+- Found from another machine on `h713`: `_airplay._tcp` and `_raop._tcp` at 192.168.4.1:7000 with `features`, `pk` and `pw=false`;
+  `GET /info` answers 200 with one 1920x1080 display at 60 Hz.
+- The presenter, 1080p60: 60.0 pictures/s on the wall for H.264 and for H.265, handed to h713-warp as the decoder's NV12 surfaces
+  (one GPU pass, 6.55 ms a frame: [h713-warp](h713-warp.md)); 59.99 decoded/s on the video engine; 33 of 1472 (H.264) and 23 of
+  1462 (H.265) decoded frames replaced by a newer one before they were shown; the presenter's reported latency 23 and 19 ms;
+  1.9-2.0 % of one core for the presenter, 1.3-1.5 % for the receiver; 34-37 MB resident; ALSA running.
+- The ways in and out: a stream closes an open launcher, stops Kodi, and stops the waiting page (h713-keys does, so the page ends
+  with 15, not 16); `h713-mode hdmi` ends it without a launcher; Home opens the launcher over it with `AirPlay` in the header; a
+  standby during a stream ends it, and after the wake the presenter finds no session and the launcher opens; a second sender takes
+  over (two test senders on the box: the first is cut off within 8 s); when the sender stops, the launcher opens with HDMI input
+  chosen, h713-warp has no client and no process is left.
+- From Screen Mirroring on the phone to its picture on the wall, glass to wall, sound against the picture, dropped frames over ten
+  minutes, the senders and their versions (iPhone, iPad, Mac; iOS 27): not measured yet.
+
+*Superseded 05.11.2026:* "Nothing on a box yet", and "not measured yet" for the receiver idle, the presenter (hardware decode,
+frames per second, H.264 and H.265) and the ways in and out (h713-keys' side then: host tests, `tests/test_keys.py`).

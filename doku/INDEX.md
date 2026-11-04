@@ -36,7 +36,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/board-mgr.md` | `doku/00`, `doku/171`, `doku/220`, `doku/60` |
 | `docs/subsystems/cpu-comm.md` | `doku/165`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/182`, `doku/203`, `doku/206`, `doku/210`, `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/85`, `doku/96` |
 | `docs/subsystems/crypto-engine.md` | `doku/112`, `doku/114` |
-| `docs/subsystems/display-stacks.md` | `doku/227` |
+| `docs/subsystems/display-stacks.md` | `doku/227`, `doku/228` |
 | `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/192`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |
 | `docs/subsystems/focus-motor.md` | `doku/220`, `doku/94` |
@@ -49,6 +49,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/standby.md` | `doku/162`, `doku/163`, `doku/165`, `doku/166`, `doku/167`, `doku/168`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/179`, `doku/181`, `doku/184`, `doku/185`, `doku/188`, `doku/190`, `doku/203`, `doku/213`, `doku/219` |
 | `docs/subsystems/video.md` | `doku/212`, `doku/62`, `doku/64`, `doku/76`, `doku/78` |
 | `docs/subsystems/wifi.md` | `doku/134`, `doku/193`, `doku/195`, `doku/60` |
+| `docs/tools/h713-airplay.md` | `doku/230` |
 | `docs/tools/h713-arisc.md` | `doku/181`, `doku/219` |
 | `docs/tools/h713-autofocus.md` | `doku/134`, `doku/220` |
 | `docs/tools/h713-cam.md` | `doku/61`, `doku/94` |
@@ -300,8 +301,9 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md`](225-hy320-videoebene-hdmi-port1-abstimmung-protokoll-20261101.md) | Protokoll | 2026-11-01 | 225 HY320: Videoebene, HDMI an Port 1, Abgleich gegen Stock - Protokoll | 1 |
 | [`226-hy320-crust-von-linux-geladen-protokoll-20261101.md`](226-hy320-crust-von-linux-geladen-protokoll-20261101.md) | Protokoll | 2026-11-01 | 226 HY320: crust als ARISC-Firmware, von Linux geladen - Protokoll | - |
 | [`227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md`](227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md) | Protokoll | 2026-11-02 | 227 HY320: Bild ohne display.bin, und der erste Standby über crust - Protokoll | 3 |
-| [`228-hy320-clean-room-bench-q0-q1-20261103.md`](228-hy320-clean-room-bench-q0-q1-20261103.md) | Analyse | 2026-11-03 | 228 HY320: Clean-Room-Bench, Q0 und Q1 - Protokoll | 3 |
-| [`228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md`](228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md) | Protokoll | 2026-11-03 | 228 - Messung Schritt 3: minpeters 0336 (DDC-Porttabelle), `h713-tv`-Tabelle und `h713-mode` an HY310 und HY300PRO-G-EU (03.11.2026) | 3 |
+| [`228-hy320-clean-room-bench-q0-q1-20261103.md`](228-hy320-clean-room-bench-q0-q1-20261103.md) | Analyse | 2026-11-03 | 228 HY320: Clean-Room-Bench, Q0 und Q1 - Protokoll | 4 |
+| [`228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md`](228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md) | Protokoll | 2026-11-03 | 228 - Messung Schritt 3: minpeters 0336 (DDC-Porttabelle), `h713-tv`-Tabelle und `h713-mode` an HY310 und HY300PRO-G-EU (03.11.2026) | 4 |
+| [`230-hy320-airplay-bildschirmspiegelung-protokoll-20261105.md`](230-hy320-airplay-bildschirmspiegelung-protokoll-20261105.md) | Protokoll | 2026-11-05 | 230 HY320: AirPlay-Bildschirmspiegelung (h713-airplay) - Protokoll | 1 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
 | [`40-display.md`](40-display.md) | Analyse |  | Der Display-Pfad | 8 |
 | [`50-befehle.md`](50-befehle.md) | Analyse |  | Befehlssammlung | 4 |
@@ -458,7 +460,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 
 ## 3 Eintraege, die niemand zitiert
 
-57 von 288 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
+57 von 289 (ohne die 84 Nachtlog-Seiten, die als Belege nicht zitiert werden muessen). Das ist kein Vorwurf - ein Journal darf Material tragen, das nie in eine Doku geflossen ist. Es ist die Liste, auf die man schaut, wenn man etwas als ueberholt markieren will; was oben in der Datei bereits einen Ueberholt-Marker traegt, ist mit (ueberholt) gekennzeichnet.
 
 * `01-arbeitsbereich.md` (ueberholt)
 * `104-plan-standby-stufe2.md` (ueberholt)
