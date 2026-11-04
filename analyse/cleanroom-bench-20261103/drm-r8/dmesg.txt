@@ -498,7 +498,7 @@
 [   41.648533] h713-drm h713-drm: [drm] pq: controls 0x0 and gamma: 1 words written now (no vblank): 0, 0 read-back mismatches
 [   52.269635] h713-drm h713-drm: [drm] gamma: LUT 60 loaded into the hidden bank: 0, 0 read-back mismatches
 [   52.269945] h713-drm h713-drm: pq: 1 words written in vblank: 0, 0 read-back mismatches
-[   55.989740] apm vif idx=0, found=1, mac addr=d6:6b:38:a9:e7:a5
+[   55.989740] apm vif idx=0, found=1, mac addr=xx:xx:xx:xx:xx:xx
 [   62.912169] h713-drm h713-drm: [drm] gamma: LUT 59 loaded into the hidden bank: 0, 0 read-back mismatches
 [   62.920216] h713-drm h713-drm: pq: 1 words written in vblank: 0, 0 read-back mismatches
 [  125.224897] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x77500000 chroma 0x776fa400; rgb on 0x76d00000 alpha 255
@@ -515,7 +515,7 @@
 [  145.106621] h713-drm h713-drm: [drm] commit: 0, 1151 ops, 1124 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
 [  145.107803] h713-drm h713-drm: [drm] gamma: LUT 59 loaded into the hidden bank: 0, 0 read-back mismatches
 [  145.121205] h713-drm h713-drm: pq: 17 words written in vblank: 0, 0 read-back mismatches
-[  155.633465] apm vif idx=0, found=1, mac addr=d6:6b:38:a9:e7:a5
+[  155.633465] apm vif idx=0, found=1, mac addr=xx:xx:xx:xx:xx:xx
 [  176.248248] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x76d00000 chroma 0x76efa400; rgb off 0x00000000 alpha 255
 [  176.248300] h713-drm h713-drm: [drm] commit: 0, 1151 ops, 1124 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
 [  176.250171] h713-drm h713-drm: [drm] gamma: LUT 60 loaded into the hidden bank: 0, 0 read-back mismatches
@@ -583,7 +583,7 @@
 [  298.619376] h713-drm h713-drm: [drm] align calibration: |columns| 45 -> 5 by the lattice (2 horizontal steps) -> 0 by 1 line windows (0 raster jumps undone), |rows| 1 -> 0 (1124 lines moved); 51 register writes, 0 read-back mismatches
 [  301.503277] h713-drm h713-drm: [drm] video: NV12 1280x720 pitch 1280 luma 0x77500000 chroma 0x775e1000; rgb on 0x76d00000 alpha 255
 [  301.503328] h713-drm h713-drm: [drm] commit: 0, 1155 ops, 1127 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
-[  301.855554] apm vif idx=0, found=1, mac addr=d6:6b:38:a9:e7:a5
+[  301.855554] apm vif idx=0, found=1, mac addr=xx:xx:xx:xx:xx:xx
 [  302.739036] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 13.786 ms -> 13.772 ms (aligned 13.772); timing moved 1124 lines in 12 frames, rows aligned
 [  302.739091] h713-drm h713-drm: [drm] align calibration: |columns| 0 -> 0 by the lattice (0 horizontal steps) -> 0 by 0 line windows (0 raster jumps undone), |rows| 0 -> 0 (0 lines moved); 51 register writes, 0 read-back mismatches
 [  302.741023] h713-drm h713-drm: [drm] gamma: LUT 61 loaded into the hidden bank: 0, 0 read-back mismatches
@@ -673,7 +673,7 @@
 [  364.367854] h713-drm h713-drm: [drm] commit: 0, 1151 ops, 1124 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
 [  364.369725] h713-drm h713-drm: [drm] gamma: LUT 59 loaded into the hidden bank: 0, 0 read-back mismatches
 [  364.382380] h713-drm h713-drm: pq: 17 words written in vblank: 0, 0 read-back mismatches
-[  368.109137] apm vif idx=0, found=1, mac addr=d6:6b:38:a9:e7:a5
+[  368.109137] apm vif idx=0, found=1, mac addr=xx:xx:xx:xx:xx:xx
 [  370.409598] h713-drm h713-drm: flip events: 59 at the RGB done, 9 after polling the latch (at most 1 x 100 us), 5 waited for the next RGB done
 [  370.409640] h713-drm h713-drm: unload: picture controls at their defaults, LUT off: 1 words: 0, 0 read-back mismatches
 [  370.409683] h713-drm h713-drm: unload: logo 0x6c100000 (uboot-scanout@6c100000) restored: 0, 7 writes, 0 read-back mismatches

@@ -3814,7 +3814,7 @@ p1 defaults rc=0
 === 7 unload
 + rmmod h713_drm
 rc=0
-[  368.109137] apm vif idx=0, found=1, mac addr=d6:6b:38:a9:e7:a5
+[  368.109137] apm vif idx=0, found=1, mac addr=xx:xx:xx:xx:xx:xx
 [  370.409598] h713-drm h713-drm: flip events: 59 at the RGB done, 9 after polling the latch (at most 1 x 100 us), 5 waited for the next RGB done
 [  370.409640] h713-drm h713-drm: unload: picture controls at their defaults, LUT off: 1 words: 0, 0 read-back mismatches
 [  370.409683] h713-drm h713-drm: unload: logo 0x6c100000 (uboot-scanout@6c100000) restored: 0, 7 writes, 0 read-back mismatches
