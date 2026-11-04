@@ -2,10 +2,11 @@
 """check-display.py -- do the U-Boot environment and the rootfs agree on the two display stacks?
 
 docs/subsystems/display-stacks.md: the environment key h713_display picks the stack per boot, vendor by default.
-This gate judges the ARTEFACTS: release/build-all.sh runs it in step 10 with the release environment image and the
-rootfs tar.
+This gate judges the ARTEFACTS: release/build-all.sh runs it in step 10 with the release environment image, the
+rootfs tar, the kernel defconfig and the built kernel's .config.
 
-  release/check-display.py --env hy310-env-release.bin --rootfs hy310-rootfs.tar
+  release/check-display.py --env hy310-env-release.bin --rootfs hy310-rootfs.tar \
+      --defconfig mainline/patches/kernel/board/hy200_qz713df_a1_defconfig --kernel-config <kernel tree>/.config
   release/check-display.py --env mainline/external/u-boot/board/sunxi/hy310.env [--define CONFIG_CONSOLE_RECORD]
                                                                                    (the source, before a build)
 
@@ -19,7 +20,9 @@ kernel refusing the five firmware drivers with the word userspace reads; anythin
 rootfs must carry the other half: h713-display (its word and module name the environment's), its unit run on that word
 only, the units that talk to the firmware skipped on it, h713_drm's firmware through /boot/mips, every blacklisted name
 a module the image has, and an h713_drm, where the image has one, built for the image's kernel. The installer must
-carry h713_display over. Exit 0 = may be released, 1 = do not release.
+carry h713_display over. When the defconfig asks for CONFIG_RUST=y / CONFIG_DRM_H713=m, the built .config must carry
+them and the rootfs must carry h713_drm for its kernel - kconfig drops both without a word when the build container
+has no Rust toolchain. Exit 0 = may be released, 1 = do not release.
 """
 import argparse
 import os
@@ -36,6 +39,7 @@ CLEAN_REFUSED = ("hy310_cpu_comm", "sun50i_h713_hdmirx", "sun50i_h713_mips", "su
 MODULE = "h713_drm"
 PROVIDER = "sun50i_h713_arisc"
 SKIPPED_ON_CLEAN = ("h713-hdcp-key.service", "h713-tv-rescue.service", "h713-sleep-pre.service", "h713-sleep-post.service")
+KCONFIG_WANTED = ("CONFIG_RUST=y", "CONFIG_DRM_H713=m")
 fails = 0
 
 
@@ -348,7 +352,30 @@ def unit(parts, name):
     return v.decode(errors="replace") if isinstance(v, bytes) else None
 
 
-def check_rootfs(parts):
+def config_lines(path):
+    """The CONFIG_X=... lines of a defconfig or .config."""
+    with open(path) as f:
+        return {l.strip() for l in f if l.startswith("CONFIG_")}
+
+
+def check_kernel_config(defconfig, kconfig):
+    """Does the built kernel carry what the defconfig asks for the clean stack? True when it asks for h713_drm."""
+    want = [l for l in KCONFIG_WANTED if l in config_lines(defconfig)]
+    if not want:
+        note("%s asks for none of %s: an image without h713_drm" % (os.path.basename(defconfig), ", ".join(KCONFIG_WANTED)))
+        return False
+    if kconfig is None:
+        fail("%s asks for %s, but no --kernel-config to hold the built kernel against" % (os.path.basename(defconfig),
+                                                                                         ", ".join(want)))
+    else:
+        lost = [l for l in want if l not in config_lines(kconfig)]
+        check(not lost, "the kernel's .config carries %s" % ", ".join(want),
+              "the kernel's .config lacks %s, which %s asks for: kconfig dropped it (CONFIG_RUST without the build "
+              "container's Rust toolchain?)" % (", ".join(lost), os.path.basename(defconfig)))
+    return "CONFIG_DRM_H713=m" in want
+
+
+def check_rootfs(parts, need_drm=False):
     tool = parts.get("usr/local/sbin/h713-display")
     if check(isinstance(tool, bytes), "rootfs carries h713-display", "rootfs carries no /usr/local/sbin/h713-display"):
         t = tool.decode(errors="replace")
@@ -402,8 +429,12 @@ def check_rootfs(parts):
         drm = [k for k in parts if k.startswith("lib/modules/%s/" % rel) and re.search(r"/%s\.ko" % MODULE, k)]
         arisc = [k for k in parts if k.startswith("lib/modules/%s/" % rel) and re.search(r"/sun50i[-_]h713[-_]arisc\.ko", k)]
         if MODULE not in names or not drm:
-            note("%s carries no %s: h713-display set clean refuses on this kernel (CONFIG_DRM_H713 needs CONFIG_RUST, "
-                 "the kernel lane's)" % (rel, MODULE))
+            if need_drm:
+                fail("%s carries no %s, but the kernel's defconfig builds it (CONFIG_DRM_H713=m): the clean stack would "
+                     "be refused on this image" % (rel, MODULE))
+            else:
+                note("%s carries no %s: h713-display set clean refuses on this kernel (CONFIG_DRM_H713 needs CONFIG_RUST)"
+                     % (rel, MODULE))
             continue
         vm = vermagic(parts[drm[0]], drm[0])
         avm = vermagic(parts[arisc[0]], arisc[0]) if arisc else None
@@ -429,10 +460,13 @@ def main(argv=None):
     a.add_argument("--rootfs")
     a.add_argument("--define", action="append", default=[], metavar="CONFIG_X",
                    help="a CONFIG_ symbol set for a .env source's #ifdef (the board base's, e.g. CONFIG_CONSOLE_RECORD)")
+    a.add_argument("--defconfig", help="the kernel defconfig of the image (patches/kernel/board/<KERNEL_DEFCONFIG>)")
+    a.add_argument("--kernel-config", help="the .config of the kernel tree the image's kernel and modules come from")
     o = a.parse_args(argv)
     check_env(env_load(o.env, o.define))
+    need_drm = check_kernel_config(o.defconfig, o.kernel_config) if o.defconfig else False
     if o.rootfs:
-        check_rootfs(rootfs(o.rootfs))
+        check_rootfs(rootfs(o.rootfs), need_drm)
     else:
         note("no --rootfs: the userspace half not judged")
     check_installer()

@@ -864,8 +864,11 @@ python3 "$ROOT/release/check-crust.py" --board "$BOARD" \
 	     die "crust gate failed (log: $OUT/crust-gate.log)"; }
 # The display stacks (release/check-display.py, docs/subsystems/display-stacks.md): the release environment's bootcmd run
 # for h713_display unset/vendor/clean on both boot paths (vendor: display.bin and h713_drm refused; clean: noboot and the
-# five firmware drivers refused, the two command lines differing in those words only), and the rootfs's half of it.
+# five firmware drivers refused, the two command lines differing in those words only), and the rootfs's half of it; and
+# the kernel: what the defconfig asks for the clean stack (CONFIG_RUST, CONFIG_DRM_H713) in its .config and h713_drm in
+# the rootfs - kconfig drops both without a word when the container has no Rust toolchain.
 python3 "$ROOT/release/check-display.py" --env "$OUT/hy310-env-release.bin" --rootfs "$ROOTFS/out/hy310-rootfs.tar" \
+	--defconfig "$MAINLINE/patches/kernel/board/$KDEF" --kernel-config "$TREE/.config" \
 	> "$OUT/display-gate.log" 2>&1 \
 	&& info "display gate: green$(grep -q 'carries no h713_drm' "$OUT/display-gate.log" && echo ' (vendor only: the kernel carries no h713_drm)')" \
 	|| { grep -E "FAIL" "$OUT/display-gate.log" | sed 's/^/    /'

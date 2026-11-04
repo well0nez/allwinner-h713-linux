@@ -87,9 +87,13 @@ podman exec -u root h713-build bash -c '
 ```
 
 Check, in any prepared kernel tree: `make ARCH=arm64 LLVM=1 rustavailable` says `Rust is available!`. Without this
-step kconfig drops `CONFIG_RUST` from the release defconfig without a word, and `CONFIG_DRM_H713` with it: the kernel
-builds, but has no `h713_drm` (look for `CONFIG_RUST=y` in the tree's `.config`). A `KERNEL_CONFIG=rustbench*` build
-stops after olddefconfig instead ("dropped what the fragments ask for: CONFIG_RUST=y").
+step kconfig drops `CONFIG_RUST` from the release defconfig without a word, and `CONFIG_DRM_H713` with it - the kernel
+would build without `h713_drm`. So the kernel stage of `build.sh` stops right after the configuration when the `.config`
+lacks any line of the defconfig (`mainline/build/kconfig-check.sh`: "kconfig dropped what hy200_qz713df_a1_defconfig
+asks for ...: CONFIG_RUST=y, CONFIG_DRM_H713=m, CONFIG_DRM_H713_BENCH=y", tried with the toolchain off the `PATH`), and
+after `modules_install` when `h713_drm.ko` is missing where `.config` builds it; `release/check-display.py` holds the
+image to the same (`--defconfig`, `--kernel-config`, step 10 of `build-all.sh`). A `KERNEL_CONFIG=rustbench*` build
+stops the same way ("dropped what the fragments ask for: CONFIG_RUST=y").
 
 ## Rust for h713-airplay (the desktop profile)
 

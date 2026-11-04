@@ -3,6 +3,7 @@ mainline/build/*
 !mainline/build/build.sh
 !mainline/build/uboot-build.sh
 !mainline/build/uboot-prove-fragments.sh
+!mainline/build/kconfig-check.sh
 mainline/patches-snapshots/
 # Kernel trees, rootfs staging and local scratch directly under mainline/
 mainline/linux-*/

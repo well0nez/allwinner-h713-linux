@@ -20,6 +20,8 @@ BEFORE = ("console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=
           "root=PARTLABEL=hy310-rootfs rw")
 VENDOR_MODULES = ("hy310_cpu_comm", "sun50i-h713-hdmirx", "sun50i-h713-mips", "sun50i-h713-msp", "sun50i-h713-afbd",
                   "sun50i-h713-arisc")
+# the image's kernel defconfig: CONFIG_RUST=y and CONFIG_DRM_H713=m since 7.3.1 (05.11.2026)
+DEFCONFIG = os.path.join(REPO, "mainline", "patches", "kernel", "board", "hy200_qz713df_a1_defconfig")
 
 
 def load():
@@ -193,6 +195,45 @@ class CheckDisplay(unittest.TestCase):
                             .write(self.tmp.name))
         self.assertEqual(rc, 0, out)
         self.assertIn("ok    7.3.1-rustbench: h713_drm built for this kernel", out)
+
+    def config(self, name, *lines):
+        p = os.path.join(self.tmp.name, name)
+        with open(p, "w") as f:
+            f.write("".join(l + "\n" for l in lines))
+        return p
+
+    def test_a_kernel_that_lost_rust_fails(self):
+        # the release defconfig asks for both; kconfig without the Rust toolchain leaves CONFIG_RUST out and DRM_H713 with it
+        built = self.config(".config", "CONFIG_DRM=y", "# CONFIG_RUST is not set")
+        rc, out = self.gate("--env", ENV, "--rootfs", Tar(kernel="7.3.1").write(self.tmp.name),
+                            "--defconfig", DEFCONFIG, "--kernel-config", built)
+        self.assertEqual(rc, 1)
+        self.assertIn("the kernel's .config lacks CONFIG_RUST=y, CONFIG_DRM_H713=m", out)
+        self.assertIn("7.3.1 carries no h713_drm, but the kernel's defconfig builds it", out)
+
+    def test_an_image_without_h713_drm_fails_where_the_kernel_builds_it(self):
+        built = self.config(".config", "CONFIG_RUST=y", "CONFIG_DRM_H713=m")
+        rc, out = self.gate("--env", ENV, "--rootfs", Tar(kernel="7.3.1").write(self.tmp.name),
+                            "--defconfig", DEFCONFIG, "--kernel-config", built)
+        self.assertEqual(rc, 1)
+        self.assertIn("ok    the kernel's .config carries CONFIG_RUST=y, CONFIG_DRM_H713=m", out)
+        self.assertIn("FAIL  7.3.1 carries no h713_drm, but the kernel's defconfig builds it", out)
+        rc, out = self.gate("--env", ENV, "--rootfs", Tar(kernel="7.3.1", drm="7.3.1").write(self.tmp.name),
+                            "--defconfig", DEFCONFIG, "--kernel-config", built)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("ok    7.3.1: h713_drm built for this kernel", out)
+
+    def test_a_defconfig_without_the_clean_stack_asks_nothing(self):
+        plain = self.config("defconfig", "CONFIG_DRM=y")
+        rc, out = self.gate("--env", ENV, "--rootfs", Tar().write(self.tmp.name), "--defconfig", plain)
+        self.assertEqual(rc, 0, out)
+        self.assertIn("asks for none of CONFIG_RUST=y, CONFIG_DRM_H713=m", out)
+        self.assertIn("6.18.38 carries no h713_drm", out)
+
+    def test_a_defconfig_that_asks_needs_the_kernel_config(self):
+        rc, out = self.gate("--env", ENV, "--defconfig", DEFCONFIG)
+        self.assertEqual(rc, 1)
+        self.assertIn("but no --kernel-config to hold the built kernel against", out)
 
 
 if __name__ == "__main__":
