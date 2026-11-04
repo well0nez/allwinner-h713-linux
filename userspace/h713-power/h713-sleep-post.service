@@ -6,6 +6,9 @@
 [Unit]
 Description=H713: after a sleep the picture path and the mode from before come back (h713-mode sleep-post)
 After=suspend.target
+# Not on the clean display stack (h713.display=clean): nothing parked to restart, nothing that sleep-pre ended. The Wi-Fi
+# check of sleep-post (HY320: wlan0 down after a sleep) does not run there either - standby is not offered on a release.
+ConditionKernelCommandLine=!h713.display=clean
 
 [Service]
 Type=oneshot

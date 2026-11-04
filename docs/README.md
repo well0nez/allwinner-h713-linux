@@ -40,7 +40,8 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 [picture quality](subsystems/pq.md) · [cpu_comm](subsystems/cpu-comm.md) · [ARISC and crust](subsystems/arisc.md) ·
 [power: off, the gate, standby](subsystems/standby.md) · [the remote and the keys](subsystems/remote.md) ·
 [Wi-Fi and Bluetooth](subsystems/wifi.md) · [focus motor](subsystems/focus-motor.md) · [board manager](subsystems/board-mgr.md) ·
-[crypto engine](subsystems/crypto-engine.md) · [HDCP](subsystems/hdcp.md) · [eMMC layout](subsystems/emmc-layout.md)
+[crypto engine](subsystems/crypto-engine.md) · [HDCP](subsystems/hdcp.md) · [eMMC layout](subsystems/emmc-layout.md) ·
+[display stacks: vendor or clean](subsystems/display-stacks.md)
 
 **Tools on the device:** [h713-tv](tools/h713-tv.md) · [h713-keys](tools/h713-keys.md) · [h713-osd](tools/h713-osd.md) ·
 [h713-settings](tools/h713-settings.md) · [h713-power](tools/h713-power.md) · [h713-desktop](tools/h713-desktop.md) ·
@@ -48,7 +49,8 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 [h713-autofocus](tools/h713-autofocus.md) · [h713-cam](tools/h713-cam.md) · [h713-panel](tools/h713-panel.md) ·
 [h713-wifi](tools/h713-wifi.md) · [h713-remote-pair](tools/h713-remote-pair.md) · [h713-arisc](tools/h713-arisc.md) ·
 [h713-mips-restart](tools/h713-mips-restart.md) · [h713-cpufreq](tools/h713-cpufreq.md) · [h713-features](tools/h713-features.md) ·
-[h713-pq](tools/h713-pq.md) · [h713-fel](tools/h713-fel.md) · [h713-lamp](tools/h713-lamp.md)
+[h713-pq](tools/h713-pq.md) · [h713-fel](tools/h713-fel.md) · [h713-lamp](tools/h713-lamp.md) ·
+[h713-display](subsystems/display-stacks.md)
 
 **On your PC:** [h713-install](tools/h713-install.md) · [h713-extract](tools/h713-extract.md) ·
 [h713-mkimage](tools/h713-mkimage.md) · [h713-hdcpkey](tools/h713-hdcpkey.md) · [h713-probe](tools/h713-probe.md)

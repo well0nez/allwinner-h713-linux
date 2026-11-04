@@ -135,6 +135,20 @@ class CarryEnv(unittest.TestCase):
         self.assertEqual((rc, env["h713_gate"]), (0, "0"))
         self.assertIn("read off the device and not saved -- --dump keeps a copy", self.log.text)
 
+    def test_the_display_stack_is_carried_and_the_rest_comes_from_the_image(self):
+        # h713-display set clean on the device; the image's bootcmd is the one that reads it
+        image = {"h713_gate": "1", "h713_display": "vendor", "bootcmd": "if test \"${h713_display}\" = clean; then ..."}
+        rc, env = self.run_it(image, {"h713_gate": "1", "h713_display": "clean", "bootcmd": "old"})
+        self.assertEqual(rc, 0)
+        self.assertEqual(env["h713_display"], "clean")
+        self.assertEqual(env["bootcmd"], image["bootcmd"])
+        self.assertIn("OK Environment: carried over from the device: h713_display=clean (image: vendor)",
+                      self.log.lines)
+
+    def test_a_device_that_never_chose_keeps_the_image_default(self):
+        rc, env = self.run_it({"h713_gate": "1", "h713_display": "vendor"}, {"h713_gate": "1"})
+        self.assertEqual((rc, env["h713_display"]), (0, "vendor"))
+
 
 class TheDumpStep(unittest.TestCase):
     """_dump() of h713-install: whichever way step 3 goes on our layout, the environment the

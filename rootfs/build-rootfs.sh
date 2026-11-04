@@ -579,7 +579,7 @@ dry_run() {
     - leave/set the root password locked ("*"); you get in over the autologin
       on ttyS0, over ssh only with the key from the installer
     - link the units: serial-getty@ttyS0, hy310-zram-swap, hy310-ssh-host-keys,
-      h713-hdcp-key, h713-wifi
+      h713-hdcp-key, h713-display (runs on a clean-stack boot only), h713-wifi
     - make /data and /etc/h713/tvconfig (tvconfig stays EMPTY)
     - empty /var/lib/apt/lists and /var/cache/apt (107 §8: no apt update at
       build time -- 40 MiB of lists, stale on the first day)
@@ -781,6 +781,10 @@ link_unit /etc/systemd/system/hy310-ssh-host-keys.service \
 # this line nobody loads it -- the device would stay without a picture.
 link_unit /etc/systemd/system/h713-hdcp-key.service \
 	etc/systemd/system/sysinit.target.wants h713-hdcp-key.service
+# h713-display: on a boot with h713.display=clean (U-Boot, h713_display=clean) it loads h713_drm after the ARISC
+# driver; on the vendor stack its ConditionKernelCommandLine skips it (docs/subsystems/display-stacks.md).
+link_unit /etc/systemd/system/h713-display.service \
+	etc/systemd/system/sysinit.target.wants h713-display.service
 # h713-wifi: reads /etc/h713/wifi.env and brings up an AP, a station or nothing.
 # The packages' own hostapd/wpa_supplicant units are masked in the overlay (-> /dev/null).
 link_unit /etc/systemd/system/h713-wifi.service \
@@ -790,7 +794,7 @@ link_unit /etc/systemd/system/h713-bluetooth.service \
 	etc/systemd/system/multi-user.target.wants h713-bluetooth.service
 link_unit /etc/systemd/system/h713-remote-pair.service \
 	etc/systemd/system/multi-user.target.wants h713-remote-pair.service
-info "units linked: serial-getty@ttyS0, hy310-zram-swap, hy310-ssh-host-keys, h713-hdcp-key, h713-wifi, h713-bluetooth, h713-remote-pair"
+info "units linked: serial-getty@ttyS0, hy310-zram-swap, hy310-ssh-host-keys, h713-hdcp-key, h713-display, h713-wifi, h713-bluetooth, h713-remote-pair"
 
 # 4g. resolv.conf has to be a real file, not a symlink to systemd-resolved --
 # that service does not exist here, isc-dhcp-client writes into it itself
@@ -921,6 +925,11 @@ t "hy310-logs is the alias"   test "$(readlink "$TREE/usr/local/sbin/hy310-logs"
 t "zram unit linked"          test -L "$TREE/etc/systemd/system/swap.target.wants/hy310-zram-swap.service"
 t "HDCP unit linked"         test -L "$TREE/etc/systemd/system/sysinit.target.wants/h713-hdcp-key.service"
 t "hdmirx autoload blocked"  test -f "$TREE/etc/modprobe.d/h713-hdcp-key.conf"
+# The display stack (docs/subsystems/display-stacks.md; release/check-display.py judges the same in the artefacts)
+t "display unit linked"       test -L "$TREE/etc/systemd/system/sysinit.target.wants/h713-display.service"
+t "h713-display executable"   test -x "$TREE/usr/local/sbin/h713-display"
+t "h713_drm reads /boot/mips" test "$(readlink "$TREE/usr/lib/firmware/h713-mips")" = /boot/mips
+t "HDCP unit not on clean"    grep -qx 'ConditionKernelCommandLine=!h713.display=clean' "$TREE/etc/systemd/system/h713-hdcp-key.service"
 t "swappiness=180"            grep -q 'vm.swappiness *= *180' "$TREE/etc/sysctl.d/99-hy310-zram.conf"
 t "tvconfig empty"            test -z "$(ls -A "$TREE/etc/h713/tvconfig")"
 t "/data present"             test -d "$TREE/data"

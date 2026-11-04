@@ -1,0 +1,303 @@
+#!/usr/bin/env python3
+"""h713-display - which display stack a boot runs: the vendor's (display.bin on the MIPS) or the clean one (h713_drm).
+
+The U-Boot environment key h713_display decides, at every boot: "vendor" (the default, and anything that is not "clean")
+starts display.bin and refuses h713_drm; "clean" keeps the MIPS in reset, refuses the five drivers that talk to the
+firmware and puts h713.display=clean on the kernel command line, which h713-display.service reads to load h713_drm
+(docs/subsystems/display-stacks.md). `set vendor` and `set clean` write the key with fw_setenv and take effect at the
+next boot; `set clean` refuses when this kernel (or the one --kernel names: a one-shot boot path into another kernel)
+cannot load h713_drm, database.TSE is missing, or the saved environment's boot path does not read the key. `status`
+says which stack runs and what the next boot runs. `load` is the boot step of h713-display.service: on a clean boot it
+loads sun50i-h713-arisc and h713_drm, and when that cannot work on this kernel it sets h713_display back to vendor, so
+that the next boot has a picture again.
+Commands: status, set vendor|clean [--kernel RELEASE], load. Exit: 0, 1 not possible or not written, 2 usage.
+Tests only: H713_DISPLAY_ROOT goes before /proc, /sys, /lib and /etc; H713_UNAME_R replaces the running kernel's release.
+"""
+import argparse
+import gzip
+import lzma
+import os
+import re
+import subprocess
+import sys
+
+ROOT = os.environ.get("H713_DISPLAY_ROOT", "/")
+KEY = "h713_display"
+MARK = "h713.display=clean"                                 # bootcmd's word on the clean stack's command line
+MODULE = "h713_drm"
+PROVIDER = "sun50i-h713-arisc"                              # the EDID/hot-plug provider h713_drm depends on
+CONF = "etc/modprobe.d/h713-drm.conf"
+COMPATIBLE = b"allwinner,sun50i-h713-display-engine"        # without such a node h713_drm needs bench=1
+# The firmware names h713_drm requests (its module parameters), the module's own defaults where the conf says nothing.
+# database.TSE is the one without which there is no picture (the video plane stays off); the others cost a feature.
+FIRMWARE = (("fw", "h713/database.TSE", "no picture: the video plane stays off"),
+            ("pq_fw", "h713/pq_custom.TSE", "no picture controls"),
+            ("gamma_fw", "h713/ProjectID_0x0030.TSE", "no gamma curve"),
+            ("edid_fw", "hy310-edid.bin", "the HDMI input offers the EDID the ARISC holds"))
+
+
+def path(*parts):
+    return os.path.join(ROOT, *parts)
+
+
+def read(p, default=""):
+    try:
+        with open(p) as f:
+            return f.read().strip()
+    except OSError:
+        return default
+
+
+def run(argv):
+    """(exit code, stdout, stderr) of a tool; 127 when it is not there. The one seam the tests replace."""
+    try:
+        p = subprocess.run(argv, stdout=subprocess.PIPE, stderr=subprocess.PIPE, text=True)
+    except OSError as e:
+        return 127, "", "%s: %s" % (argv[0], e.strerror)
+    return p.returncode, p.stdout, p.stderr
+
+
+def env_get(key):
+    """The saved U-Boot environment's value of KEY, or None when it is not set (or not readable)."""
+    rc, out, _ = run(["fw_printenv", "-n", key])
+    return out.rstrip("\n") if rc == 0 else None
+
+
+def env_set(key, value):
+    """fw_setenv KEY VALUE, read back. None when it took, else the reason."""
+    rc, _, err = run(["fw_setenv", key, value])
+    if rc != 0:
+        return "fw_setenv %s %s: exit %d%s" % (key, value, rc, (", " + err.strip()) if err.strip() else "")
+    got = env_get(key)
+    return None if got == value else "fw_setenv %s %s: reads back %r" % (key, value, got)
+
+
+def running():
+    """"clean" when this boot's command line carries bootcmd's clean word, else "vendor"."""
+    return "clean" if MARK in read(path("proc/cmdline")).split() else "vendor"
+
+
+def release():
+    return os.environ.get("H713_UNAME_R") or os.uname().release
+
+
+def options():
+    """{parameter: value} of the `options h713_drm` lines in the modprobe.d file (the last one wins)."""
+    got = {}
+    for line in read(path(CONF)).splitlines():
+        w = line.split("#", 1)[0].split()
+        if w[:2] in (["options", MODULE], ["options", MODULE.replace("_", "-")]):
+            got.update(x.split("=", 1) for x in w[2:] if "=" in x)
+    return got
+
+
+def firmware():
+    """[(name, present, what is lost without it)] for the files h713_drm will request."""
+    opt = options()
+    out = []
+    for param, default, loss in FIRMWARE:
+        name = opt.get(param, default)
+        present = any(os.path.isfile(path(d, name)) for d in ("lib/firmware", "usr/lib/firmware"))
+        out.append((name, present, loss))
+    return out
+
+
+def module_file(rel, name):
+    """The module NAME's file under /lib/modules/REL as modules.dep names it, or None."""
+    base = path("lib/modules", rel)
+    for line in read(os.path.join(base, "modules.dep")).splitlines():
+        f = line.split(":", 1)[0]
+        if re.fullmatch(re.escape(name.replace("-", "_")) + r"\.ko(\.(xz|gz|zst))?",
+                        os.path.basename(f).replace("-", "_")):
+            return path(f.lstrip("/")) if os.path.isabs(f) else os.path.join(base, f)
+    return None
+
+
+def vermagic(f):
+    """vermagic= of a module file (plain, .xz or .gz; modinfo for anything else), or None."""
+    try:
+        if f.endswith((".ko", ".xz", ".gz")):
+            with open(f, "rb") as fh:
+                data = fh.read()
+            data = lzma.decompress(data) if f.endswith(".xz") else gzip.decompress(data) if f.endswith(".gz") else data
+            m = re.search(rb"(?:^|\0)vermagic=([^\0]*)\0", data)
+            return m.group(1).decode(errors="replace") if m else None
+    except (OSError, lzma.LZMAError, EOFError, ValueError):
+        return None
+    rc, out, _ = run(["modinfo", "-F", "vermagic", f])
+    return out.strip() or None if rc == 0 else None
+
+
+def loadable(rel):
+    """None when the kernel REL can load h713_drm, else why not (one line)."""
+    f = module_file(rel, MODULE)
+    if f is None:
+        return ("the kernel %s has no %s (/lib/modules/%s/modules.dep): the release kernel is built without it until it "
+                "has CONFIG_RUST; the 7.3.1-rustbench kernel with the clean repository's module can" % (rel, MODULE, rel))
+    vm = vermagic(f)
+    if vm is None:
+        return "%s carries no vermagic that can be read" % f
+    if vm.split()[:1] != [rel]:
+        return "%s was built for the kernel %s, this one is %s (vermagic mismatch)" % (MODULE, vm.split()[0] if vm else "-", rel)
+    p = module_file(rel, PROVIDER)
+    pvm = vermagic(p) if p else None
+    if p is None:
+        return "the kernel %s has no %s, which %s needs for the EDID and the hot-plug" % (rel, PROVIDER, MODULE)
+    if pvm is not None and pvm != vm:
+        return "%s's vermagic %r is not this kernel's %r (vermagic mismatch)" % (MODULE, vm, pvm)
+    return None
+
+
+def boot_path_reads_key():
+    """None when the saved environment branches on h713_display and its boot path appends the words, else why not."""
+    bootcmd = env_get("bootcmd")
+    if bootcmd is None:
+        return ("the saved environment has no bootcmd fw_printenv can read: fw_setenv would write an environment that "
+                "holds nothing but this key")
+    if KEY not in bootcmd:
+        return ("the saved bootcmd does not read %s (an environment of an older U-Boot, or one set by hand): the key "
+                "would change nothing - reinstall, or put this image's bootcmd back" % KEY)
+    boot = env_get("h713_boot") or "emmc"
+    script = env_get("boot_" + boot) or ""
+    if "${h713_display_args}" not in script:
+        return ("boot_%s (h713_boot=%s) does not append ${h713_display_args} to the kernel command line: the kernel would "
+                "load the vendor's drivers without display.bin" % (boot, boot))
+    return None
+
+
+def dt_node():
+    """True when the device tree has an enabled node h713_drm binds to."""
+    for d in ("sys/firmware/devicetree/base", "proc/device-tree"):
+        top = path(d)
+        if not os.path.isdir(top):
+            continue
+        for dirpath, _, files in os.walk(top):
+            if "compatible" not in files:
+                continue
+            try:
+                with open(os.path.join(dirpath, "compatible"), "rb") as f:
+                    if COMPATIBLE not in f.read().split(b"\0"):
+                        continue
+                with open(os.path.join(dirpath, "status"), "rb") as f:
+                    status = f.read().rstrip(b"\0")
+            except FileNotFoundError:
+                status = b"okay"
+            except OSError:
+                continue
+            if status in (b"okay", b"ok"):
+                return True
+        return False
+    return False
+
+
+def loaded(name):
+    return os.path.isdir(path("sys/module", name.replace("-", "_")))
+
+
+def status():
+    now = running()
+    rel = release()
+    if now == "clean":
+        print("running: the clean stack (%s on the command line), %s %s" % (
+            MARK, MODULE, "loaded" if loaded(MODULE) else "NOT loaded (journalctl -u h713-display)"))
+    else:
+        print("running: the vendor stack (display.bin on the MIPS), the display driver %s" % (
+            "sun50i-h713-afbd loaded" if loaded("sun50i_h713_afbd") else "sun50i-h713-afbd not loaded"))
+    want = env_get(KEY)
+    nxt = "clean" if want == "clean" else "vendor"
+    why = boot_path_reads_key()
+    if why and want == "clean":
+        print("next boot: the vendor stack - %s=clean is set, but %s" % (KEY, why))
+    else:
+        print("next boot: the %s stack (%s)" % (nxt, "%s=%s" % (KEY, want) if want is not None else "no %s in the saved environment" % KEY))
+    can = loadable(rel)
+    print("%s on this kernel (%s): %s" % (MODULE, rel, "loadable" if can is None else "no - " + can))
+    print("firmware for %s: %s" % (MODULE, ", ".join("%s %s" % (n, "ok" if ok else "MISSING") for n, ok, _ in firmware())))
+    if nxt != now:
+        print("a reboot switches to the %s stack" % nxt)
+    return 0
+
+
+def set_value(choice, rel=None):
+    """REL: the kernel the next boot runs (a one-shot boot path into another kernel), else the running one."""
+    why = boot_path_reads_key()
+    if choice == "clean":
+        refused = [x for x in (why, loadable(rel or release())) if x]
+        # FIRMWARE[0], database.TSE: without it the clean stack shows no picture
+        refused += ["/lib/firmware/%s is missing: %s" % (n, loss) for n, ok, loss in firmware()[:1] if not ok]
+        if refused:
+            for r in refused:
+                print("h713-display: not clean: %s" % r, file=sys.stderr)
+            return 1
+    elif env_get("bootcmd") is None:
+        # vendor is what every bootcmd without the key runs; only an unreadable environment refuses it
+        print("h713-display: not written: %s" % why, file=sys.stderr)
+        return 1
+    if env_get(KEY) == choice:
+        print("%s = %s already (h713-display status shows what runs now)" % (KEY, choice))
+    else:
+        err = env_set(KEY, choice)
+        if err:
+            print("h713-display: %s not written: %s (root?)" % (KEY, err), file=sys.stderr)
+            return 1
+        print("%s = %s, from the next boot on (h713-display status shows what runs now)" % (KEY, choice))
+    if choice == "clean":
+        for n, ok, loss in firmware()[1:]:
+            if not ok:
+                print("note: /lib/firmware/%s is missing: %s" % (n, loss))
+        print("the clean stack has no HDCP, no colour management, no aspect/zoom and no HDMI keystone yet "
+              "(docs/subsystems/display-stacks.md)")
+    if choice != running():
+        print("reboot to switch: the %s stack runs until then" % running())
+    return 0
+
+
+def load():
+    """The boot step: on a clean boot, sun50i-h713-arisc then h713_drm; when that cannot work, back to vendor."""
+    if running() != "clean":
+        print("vendor stack (no %s on the command line): nothing to load" % MARK)
+        return 0
+    rel = release()
+    why = loadable(rel)
+    if why is None:
+        rc, _, err = run(["modprobe", PROVIDER])
+        if rc != 0:
+            why = "modprobe %s: exit %d %s" % (PROVIDER, rc, err.strip())
+    if why is None:
+        bench = [] if dt_node() else ["bench=1"]
+        rc, _, err = run(["modprobe", MODULE] + bench)
+        if rc != 0:
+            why = "modprobe %s%s: exit %d %s" % (MODULE, " bench=1" if bench else "", rc, err.strip())
+        else:
+            print("%s loaded after %s (%s)" % (MODULE, PROVIDER, "bench=1: no device tree node %s" % COMPATIBLE.decode()
+                                                if bench else "the device tree's node"))
+            for n, ok, loss in firmware():
+                if not ok:
+                    print("note: /lib/firmware/%s is missing: %s" % (n, loss))
+            return 0
+    print("h713-display: the clean stack cannot run on %s: %s" % (rel, why), file=sys.stderr)
+    err = env_set(KEY, "vendor")
+    print("h713-display: %s" % ("%s set back to vendor: the next boot runs the vendor stack" % KEY if err is None else
+                                "%s NOT set back to vendor (%s): set it by hand, or the next boot is dark too" % (KEY, err)),
+          file=sys.stderr)
+    return 1
+
+
+def main(argv=None):
+    p = argparse.ArgumentParser(prog="h713-display", description=__doc__.split("\n\n")[1])
+    sub = p.add_subparsers(dest="command", required=True)
+    sub.add_parser("status", help="which stack runs, which the next boot runs, whether this kernel can load h713_drm")
+    s = sub.add_parser("set", help="the stack for the next boot: vendor or clean")
+    s.add_argument("choice", choices=("vendor", "clean"))
+    s.add_argument("--kernel", metavar="RELEASE",
+                   help="judge h713_drm against this kernel's /lib/modules/RELEASE, the one the next boot runs "
+                        "(default: the running kernel)")
+    sub.add_parser("load", help="the boot step of h713-display.service (clean boots only)")
+    a = p.parse_args(argv)
+    if a.command == "set":
+        return set_value(a.choice, a.kernel)
+    return load() if a.command == "load" else status()
+
+
+if __name__ == "__main__":
+    sys.exit(main())

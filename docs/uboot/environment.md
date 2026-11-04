@@ -11,6 +11,8 @@ device that has ever been touched before trusting it.
 |---|---|---|---|
 | `h713_boot` | `emmc` | which of `boot_emmc`/`boot_net` `bootcmd` runs | `net` forces the network path |
 | `h713_gate` | `1` | the power-on gate, on or off (`power-gate.md`) | `0` disables the gate without a rebuild |
+| `h713_display` | `vendor` | the display stack: `vendor` (and anything but `clean`) starts `display.bin`, `clean` holds the MIPS in reset for `h713_drm` ([display stacks](../subsystems/display-stacks.md)); carried over a reinstall | `h713-display set vendor\|clean` on the device, never by hand: it refuses what cannot run |
+| `h713_display_args` | set by `bootcmd` | the kernel words of this boot's stack, which `boot_emmc` and `boot_net` append: `module_blacklist=h713_drm`, or `h713.display=clean module_blacklist=hy310_cpu_comm,...,sun50i_h713_afbd` | never: `bootcmd` sets it at every boot |
 | `h713_project` | `0x30` | the vendor project/panel ID `h713_disp init` loads | only if the display firmware ever needs to target different hardware |
 | `h713_mips_dev` | `1#hy310-boot` | partition the display-firmware artifacts load from, by name | `1:2` on a device that still has the vendor FAT partition |
 | `h713_mips_path` | `mips` | directory on that partition | rarely - only if the artifacts move |
@@ -18,7 +20,7 @@ device that has ever been touched before trusting it.
 | `serverip` | `192.168.8.123` | TFTP/NFS server `boot_net` talks to | development only |
 | `nfsroot` | `/srv/h713-rootfs` | NFS export `boot_net` mounts as root | development only |
 | `bootargs_base` | `console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10` | kernel command line shared by both boot paths; `panic=10` (since `v0.96-beta`) reboots ten seconds after a kernel panic instead of hanging with the lamp on - no watchdog daemon runs | rarely |
-| `bootcmd` | `h713_disp init ${h713_project} logo; run boot_${h713_boot}; run boot_net` | bring the display up with the boot logo, then boot the path `h713_boot` names, falling through to the network | drop the word `logo` to boot with a black panel until Linux; a missing `/boot/bootlogo.bmp` only costs a warning |
+| `bootcmd` | `if test "${h713_display}" = clean; then h713_disp init ${h713_project} noboot logo; setenv h713_display_args "h713.display=clean module_blacklist=..."; else h713_disp init ${h713_project} logo; setenv h713_display_args "module_blacklist=h713_drm"; fi; run boot_${h713_boot}; run boot_net` | bring the display up with the boot logo (the vendor stack: with `display.bin`), then boot the path `h713_boot` names, falling through to the network | drop the word `logo` to boot with a black panel until Linux; a missing `/boot/bootlogo.bmp` only costs a warning |
 
 **`serverip`, `nfsroot` and `bootfile` are development defaults, not a general feature:** they point at
 the bench network this project was built on and resolve to nothing anywhere else. A device shipped to a
@@ -27,7 +29,8 @@ you want the network path at all.
 
 ## `boot_emmc` against `boot_net`
 
-Both start from `bootargs_base` and add different things on top. `boot_emmc` - the shipping path - reads
+Both start from `bootargs_base` and add different things on top, and both end with `${h713_display_args}`, the display
+stack's words. `boot_emmc` - the shipping path - reads
 `h713-kernel.fit` from the eMMC (`ext4load mmc 1:5`), boots at `loglevel=4`, roots from
 `PARTLABEL=hy310-rootfs`, and deliberately drops `earlycon`: a production console does not need to see
 the decompressor run. `boot_net` instead fetches `bootfile` from `serverip` over TFTP and mounts

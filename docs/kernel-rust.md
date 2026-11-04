@@ -171,7 +171,7 @@ then `depmod -a 6.18.38-rust`.
 **One-shot boot.** The environment has a `boot_rust` next to `boot_emmc`:
 
 ```
-boot_rust=setenv h713_boot emmc; saveenv; wdt dev watchdog@2051000; wdt start 16000; if ext4load mmc 1:5 0x60000000 h713-kernel-rust.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw"; bootm 0x60000000; fi
+boot_rust=setenv h713_boot emmc; saveenv; wdt dev watchdog@2051000; wdt start 16000; if ext4load mmc 1:5 0x60000000 h713-kernel-rust.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw ${h713_display_args}"; bootm 0x60000000; fi
 ```
 
 `bootcmd` runs `boot_${h713_boot}`, so `fw_setenv h713_boot rust` + `reboot` boots the `-rust` FIT once. `boot_rust`
@@ -181,6 +181,11 @@ U-Boot and the kernel's watchdog driver; systemd keeps it fed after that. Afterw
 besides `h713_boot` (runtime variables): `fw_setenv fdtcontroladdr`, `fw_setenv mmc_bootdev`, `fw_setenv serial#`, and
 `fdtfile` back to its old value (`allwinner/allwinner/sun50i-h713-hy320.dtb` on the HY320). A bench boot that needs
 the Rust kernel loads `h713-kernel-rust.fit` instead of `h713-kernel.fit` in its own load line.
+
+With the display-stack switch (U-Boot `h713_display`, [display stacks](subsystems/display-stacks.md)) a boot path ends
+its `bootargs` with `${h713_display_args}`, as above, or a clean boot gets the clean stack's U-Boot half and the
+vendor's kernel half. A `boot_rust` set before the switch existed lacks it, and `h713-display set clean` refuses it.
+The clean stack's one-shot into 7.3.1-rustbench, `boot_rust73`, is in that page's device test.
 
 Tested on the HY320 (03.11.2026): one-shot boot -> `uname -r` `6.18.38-rust`, `h713_boot=emmc` again, aic8800 loaded,
 `wlan0` up as the access point (192.168.4.1), no failed units; the next reboot came up on the release kernel

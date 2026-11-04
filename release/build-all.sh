@@ -813,6 +813,14 @@ python3 "$ROOT/release/check-crust.py" --board "$BOARD" \
 	&& info "crust gate: green ($(sed -n 's/^crust: //p' "$OUT/crust-gate.log"))" \
 	|| { grep -E "FAIL|Error" "$OUT/crust-gate.log" | sed 's/^/    /'
 	     die "crust gate failed (log: $OUT/crust-gate.log)"; }
+# The display stacks (release/check-display.py, docs/subsystems/display-stacks.md): the release environment's bootcmd run
+# for h713_display unset/vendor/clean on both boot paths (vendor: display.bin and h713_drm refused; clean: noboot and the
+# five firmware drivers refused, the two command lines differing in those words only), and the rootfs's half of it.
+python3 "$ROOT/release/check-display.py" --env "$OUT/hy310-env-release.bin" --rootfs "$ROOTFS/out/hy310-rootfs.tar" \
+	> "$OUT/display-gate.log" 2>&1 \
+	&& info "display gate: green$(grep -q 'carries no h713_drm' "$OUT/display-gate.log" && echo ' (vendor only: the kernel carries no h713_drm)')" \
+	|| { grep -E "FAIL" "$OUT/display-gate.log" | sed 's/^/    /'
+	     die "display gate failed (log: $OUT/display-gate.log)"; }
 # The licence notices (TODO 7.20 e), in the artefact: the rootfs tar carries the README that says where the source is, and its SOURCES
 # names this image's boot chain and kernel - every line write_sources gives now, but the repository's commit and date.
 NOTICE_TAR=$(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./usr/local/share/doc/h713-linux/SOURCES 2>/dev/null) || die "the rootfs carries no SOURCES (licence notices, build-rootfs.sh --notice)"

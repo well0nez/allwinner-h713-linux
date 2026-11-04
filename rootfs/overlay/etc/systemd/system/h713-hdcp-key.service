@@ -8,6 +8,10 @@ DefaultDependencies=no
 After=local-fs.target dev-disk-by\x2dpartlabel-hy310\x2dkeys.device
 Wants=dev-disk-by\x2dpartlabel-hy310\x2dkeys.device
 ConditionPathExists=/sys/module/firmware_class/parameters/path
+# Not on the clean display stack (h713_display=clean, docs/subsystems/display-stacks.md): it has no HDCP, and this unit's
+# modprobe of the vendor receiver would pull in cpu_comm and start the MIPS. The command line refuses those drivers there
+# anyway (module_blacklist=); the condition keeps the unit from trying.
+ConditionKernelCommandLine=!h713.display=clean
 
 [Service]
 Type=oneshot

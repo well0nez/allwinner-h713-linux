@@ -35,7 +35,7 @@ StartLimitBurst=3
 # when the start limit is reached: a SIGKILL of the one running process already starts the rescue at once (HY310,
 # 16.10.2026; "Failed with result 'signal'", "Triggering OnFailure= dependencies"), and the restart after RestartSec follows.
 # The rescue restarts h713-warp too, so whatever is BindsTo= the warp (Kodi, the desktop) ends with it. On the clean stack
-# there is no MIPS: h713-mips-restart refuses at once (no sun50i-h713-mips driver) and the rescue changes nothing.
+# there is no MIPS: the rescue unit is skipped (ConditionKernelCommandLine=!h713.display=clean), the restart= alone remains.
 OnFailure=h713-tv-rescue.service
 
 [Service]
