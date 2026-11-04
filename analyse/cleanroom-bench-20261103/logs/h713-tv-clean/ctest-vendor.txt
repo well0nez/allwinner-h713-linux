@@ -1,0 +1,31 @@
+0
+Apr 15 07:12:40 hy320 systemd[1]: Starting h713-tv@video1.service - HY310: HDMI input (video1) on the video plane...
+Apr 15 07:12:41 hy320 systemd[1]: Started h713-tv@video1.service - HY310: HDMI input (video1) on the video plane.
+Apr 15 07:12:41 hy320 h713-tv[343]: config          /etc/h713/tv.conf: start = last, saved -> the picture follows the signal; the mode is saved in /var/lib/h713-tv/modus
+Apr 15 07:12:41 hy320 h713-tv[343]: capture         /dev/video1 (sun50i-h713-hdm, H713 HDMI receiver)
+Apr 15 07:12:41 hy320 h713-tv[343]: display         /dev/dri/card1 (sun50i-h713-afbd)
+Apr 15 07:12:41 hy320 h713-tv[343]: crtc            38, mode 1920x1080
+Apr 15 07:12:41 hy320 h713-tv[343]: plane           40, NV16, mode hdmi-ring, format proportional, zoom windows
+Apr 15 07:12:41 hy320 h713-tv[358]: h713-pq: LUT written: /run/h713-tv/gamma-laufzeit.bin (2048 byte, channel r, exponent 2.2)
+Apr 15 07:12:42 hy320 h713-tv[343]: picture values  7 presets and gamma 2.20 from /etc/h713/tvconfig (h713-pq, 964 ms)
+Apr 15 07:12:42 hy320 h713-tv[343]: gamma           this board's own curves (ProjectID 0x30): normal cool warm
+Apr 15 07:12:42 hy320 h713-tv[343]: gamma           level 3 (2.2), colour temperature auto (normal), after the start: curve 2100a19f, 35.8 ms
+Apr 15 07:12:42 hy320 h713-tv[343]: preset          standard: mode=1 brightness=50 contrast=50 saturation=50 hue=50 sharpness=50 tnr=2 snr=1 dci=2 black=1 (from the device data)
+signal          1920x1080p60, 148.5 MHz (last measured)
+picture         console, DRM master held
+cover           an opaque page hides the picture: h713-warp pauses, the video plane is off, the HDMI sound is muted
+picture values  7 presets from /etc/h713/tvconfig (h713-pq, 964 ms), gamma 2.20, LUT 2048 bytes
+white balance   512 512 512 512 512 512 (R G B gain, R G B offset; 512 neutral), on the registers
+colour mgmt     0 entries changed
+kernel          /sys/kernel/debug/sun50i-h713-hdmirx/status: No such file or directory
+hdcp            version:       2.2 (session stands) -- LINK 0x422=0x01 0x3c0=0x04 0x161=0x84
+hdcp            authenticated: yes (2.2 session, LINK 0x422[0]) -- rxstatus 0x41b/0x41c=0x00 0x00: message size 0, READY 0, REAUTH_REQ 0; link 0x6d=0x00 (the fi
+hdcp            key-1.4:       loaded (LINK 0x93=0x45)
+hdcp            key-2.2:       handed over at probe (THal_Vp_SetHDCP22Key accepted; 2.2 advertised to the source, LINK 0x41a[2]=1)
+hdcp            firmware:      E/HdcpRx   [10342] (HDCP2.2/THDMIRx_HDCP22.cpp 167)port2 HDCP_base:0x6840000 HDCP Process cost tick:88 (ring write pointer 2775)
+picture         plane on, DRM master held
+cover           none
+picture values  7 presets from /etc/h713/tvconfig (h713-pq, 964 ms), gamma 2.20, LUT 2048 bytes
+ok cm all neutral (0 = as the picture mode has it)
+ok wb_r_gain = 400 (registers read back, 0 ms)
+ok wb 512 512 512 512 512 512 (registers read back, 0 ms)

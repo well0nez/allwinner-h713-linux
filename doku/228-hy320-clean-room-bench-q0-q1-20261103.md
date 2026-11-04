@@ -542,3 +542,27 @@ Bench B0 mit 7.3.1-rustbench, crust-h713 v5, `echo mem > /sys/power/state`, RTC 
   - Das saubere Modul (6c79c29) verliert den Schlaf mit Bild (3/3), weil seine Suspend-Folge die DMA nicht wie oben stoppt.
 - MAC-Adressen/Seriennummern in allen Logs unter `analyse/cleanroom-bench-20261103/` maskiert (`tools/scrub.py`), tor.sh grün.
 - Ende: Umgebung = Referenz (`h713_gate=1`), Normalstart 7.3.1, RUN1, Sperre frei.
+
+## 29 Runde 13 (V4L2) und der Gerätetest von h713-tv auf dem sauberen Stapel (04.11.)
+
+- Runde 13 (Modul `a3dfeaa8…`, sauber `2e13640`): Schritt 8 PASS; 8b alle Zeilen PASS außer `QUERYCAP` (Treibername
+  `h713-hdmirx-clean` hat 17 Zeichen, das V4L2-Feld fasst 15 -> `h713-hdmirx-cle`); 59,5/60,05 Bilder/s, 0 verloren,
+  Inhalt bewegt sich. Nach dem Ende beider Programme kein `hdmi: off`: der CRTC-Nutzer aus Schritt 8 bleibt.
+- h713-tv/h713-warp aus hy320 `7dcf8b48`/`924f0fdd` (Kreuzbau, sha256 `e7e12d0f…`/`e67c823f…`), Prozedur aus
+  `docs/tools/h713-tv.md` "Device test on a clean-stack boot", Bench-Start ohne Masken (`logs/h713-tv-clean/`):
+  - Start durch die udev-Regel, Journal wie beschrieben (`stack clean`, `display /dev/dri/card1 (h713-drm)`, `crtc 42 on:
+    ... the panel is black`, `plane 39 ... video_source`, Preset ohne tnr/snr/dci/black, WB 512 auf dem CRTC). Die vier
+    gespeicherten Werte tnr/snr/dci/black werden mit Warnung verworfen. `-n` meldet `signal present`, Exit 0.
+  - Erster Durchlauf lief unter dem Launcher (h713-keys öffnet ihn beim Start): `cover`, `video_source buffer`, 0 gezeigt.
+    Zweiter Durchlauf mit `h713-osd ctl launcher close`: `video_source hdmi`, Zähler steigen (+118 Quellbilder in 2 s, 0
+    übersprungen), Histogramm des Quellbilds.
+  - Regler, Preset cinema, WB (`0x051c00dc = 0x06400800`, nach `wb reset` `0x08000800`), alle fünf Ablehnungen, Gamma
+    1/3 (`gamma: LUT ... 0 read-back mismatches`), `replug` (S_EDID 0 / 512, -> locked) wie beschrieben.
+  - Verlust/Rückkehr per HPD tief 10 s (Spec-Seite): Seite "No signal on HDMI", zurück 0,2 s nach TMDS.
+  - Seiten: Lautstärke über dem Bild ohne Popup (kein Ton-Karte, Lautstärke gespeichert). 720p und HOME-Taste: Besitzer.
+  - Kodi über h713-warp: `warp on ... 591 commits, 0 busy, 0 refused`. Warp-Ring mit Trapez (tl x 80): Panfrost rendert,
+    keine Ablehnung des Imports im Journal, `picture warped`; Reißen nur für den Besitzer sichtbar.
+  - Ausweg: `systemctl stop h713-tv@*` -> `console plane off, RGB channel and selector back`, aber kein `hdmi: off`: h713-warp
+    hält `/dev/video1` offen, der Eingang läuft weiter (`0x928` Bit 31 gesetzt).
+  - Herstellerstart danach mit den neuen Binärdateien: keine `stack`-Zeile, HDCP 2.2, cm, WB wie zuvor.
+  - Danach die alten Binärdateien und die alte Regel zurück (`/data/bench/h713-tv-orig/`), Umgebung = Referenz, Normalstart.
