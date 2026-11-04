@@ -101,6 +101,33 @@ for st in steps:
                      (0x02001068, 0xb8002f01), (0x02001d74, 0x81000001), (0x02001d84, 0x80000000),
                      (0x02001d80, 0xc0000000)):
             W(a, v); time.sleep(0.012)
+    elif st == "clkwait":
+        # the same writes, but after each PLL write the lock bit (28) is polled for 50 ms and its course logged;
+        # 100 ms settle at the end (Q-SLEEP-1 hypothesis a)
+        log("PLL words before: " + " ".join(f"{a:#x}={rd(a):08x}" for a in range(0x02001000, 0x02001080, 8)))
+        for a, v in ((0x02001d88, 0x00010001), (0x02001040, 0xb8003501), (0x02001d6c, 0x80000305),
+                     (0x02001068, 0xb8002f01), (0x02001d74, 0x81000001), (0x02001d84, 0x80000000),
+                     (0x02001d80, 0xc0000000)):
+            W(a, v)
+            if a in (0x02001040, 0x02001068):
+                t0 = time.monotonic(); n = 0; low = 0; first_low = last_low = None
+                while time.monotonic() - t0 < 0.05:
+                    x = rd(a); n += 1
+                    if not x & 0x10000000:
+                        low += 1; dt = time.monotonic() - t0
+                        first_low = dt if first_low is None else first_low; last_low = dt
+                f = lambda d: "-" if d is None else f"{d * 1e6:.0f} us"
+                log(f"PLL {a:#x} lock bit 28 low in {low} of {n} reads over 50 ms (first {f(first_low)}, last {f(last_low)}); now {rd(a):08x}")
+            else:
+                time.sleep(0.012)
+        time.sleep(0.1); log("settled 100 ms")
+    elif st == "rstpulse":
+        # RST_BUS_DEMOD (0xd64 bit 16) and RST_BUS_TVCAP (0xd88 bit 16) asserted together for 2 ms, then released
+        # (Q-SLEEP-1 hypothesis b; bench only)
+        a1, a2 = rd(0x02001d64), rd(0x02001d88)
+        W(0x02001d64, a1 & ~0x10000); W(0x02001d88, a2 & ~0x10000); time.sleep(0.002)
+        W(0x02001d64, a1 | 0x10000); W(0x02001d88, a2 | 0x10000); time.sleep(0.02)
+        log(f"TVTOP after the pulse: {rd(0x06e00000):08x} {rd(0x06e00004):08x} {rd(0x06e00008):08x}")
     elif st == "rx":
         log("BEFORE-READ RX_CTL 0x068008fc (8-bit)")
         m, o = _page(0x068008fc)

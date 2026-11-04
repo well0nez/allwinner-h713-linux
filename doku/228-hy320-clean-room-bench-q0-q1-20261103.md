@@ -574,3 +574,12 @@ Bench B0 mit 7.3.1-rustbench, crust-h713 v5, `echo mem > /sys/power/state`, RTC 
 - Beste TV-Folge (kalt vorher, Takte + TV-Top danach): insgesamt 8 von 12. Kein lesbares Zeichen gefunden (TV-Top, Domänen,
   CCU, PIO usw. in guten und schlechten Läufen gleich). Entwurf 60 v3 §3a. Sauber `9b13dd9`.
 - Ende: Umgebung = Referenz (`h713_gate=1`), Normalstart, Sperre frei.
+
+## 31 Letzte begrenzte Runde Q-SLEEP-1 (04.11.)
+
+Alle auf dem besten Rezept (kalt vor dem Schlaf, Takte + TV-Top danach), je eine Abwandlung: a) PLL-Lock abwarten
+(Bit 28 fiel in keinem Lesezugriff ab, also nichts zu warten) 1/3; b) Reset-Puls DEMOD+TVCAP 0/3; c) TVFE/TVCAP aus/ein
+direkt nach dem Aufwachen 1/3; d) Modul neu laden nach dem Aufwachen (erst `tvtop_init=none`) 0/2 - das frische Modul
+startet HDMI ohne TV-Neuinit und hängt am ersten Empfängerzugriff. Jeder Fehlschlag hing genau am ersten `RX_CTL`-Lesen.
+Keine Variante 6/6: Vorgabe "kein HDMI nach dem Aufwachen bis zum Neustart". Entwurf 60 v4 §3b. Gerät: Normalstart,
+Umgebung = Referenz.

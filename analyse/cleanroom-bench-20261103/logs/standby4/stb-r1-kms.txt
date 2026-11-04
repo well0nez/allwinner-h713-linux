@@ -1,0 +1,6 @@
+video_source = hdmi; waiting up to 30 s for hdmi_state = capturing
+   0.0 s hdmi_state off (0x0 at 0.000 Hz)
+   1.6 s hdmi_state no-signal (0x0 at 0.000 Hz)
+   4.8 s hdmi_state unsupported (1920x1080 at 62.211 Hz)
+   5.0 s hdmi_state locked (1920x1080 at 60.000 Hz)
+   6.0 s hdmi_state capturing (1920x1080 at 60.000 Hz)

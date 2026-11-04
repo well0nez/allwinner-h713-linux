@@ -30,7 +30,9 @@ rm -f /run/stb-ok
 systemctl stop stb-guard.timer stb-guard.service 2>/dev/null
 systemd-run --quiet --unit=stb-guard --on-active=600 /bin/sh -c '[ -e /run/stb-ok ] || { echo "stb-guard: no host contact, rebooting" > /dev/kmsg; sync; systemctl reboot || echo b > /proc/sysrq-trigger; }'
 say "== stb $T: start, $(uname -r), mode $MODE, steps $STEPS, gate word $(python3 /root/peek.py 0x07090114)"
-if [ "$MODE" != none ]; then
+if [ "$MODE" = reload2 ]; then
+	modprobe sun50i-h713-arisc; insmod /root/h713_drm.ko bench=1 restore_logo=1 tvtop_init=none; say "insmod tvtop_init=none rc=$?"
+elif [ "$MODE" != none ]; then
 	lsmod | grep -q '^h713_drm' || { modprobe sun50i-h713-arisc; insmod /root/h713_drm.ko bench=1 restore_logo=1; say "insmod rc=$?"; }
 fi
 if [ "$MODE" = vpb ] || [ "$MODE" = vpbdis ]; then
@@ -44,10 +46,11 @@ if [ "$MODE" = video ]; then
 	( $K video p1 1920 1080 nv12 --hold 900 > $D/stb-$T-kms.txt 2>&1 & ); sleep 6
 	$B verify hist --expect p1 --log $D/stb-$T-hist.log | grep -E "PASS P1|FAIL" | head -2 >> $L
 fi
-if [ "$MODE" = hdmi ] || [ "$MODE" = reload ]; then
+if [ "$MODE" = hdmi ] || [ "$MODE" = reload ] || [ "$MODE" = reload2 ]; then
 	( $K hdmi --secs 5 --hold 900 > $D/stb-$T-kms.txt 2>&1 & ); sleep 12
 	say "kms-test: $(grep -E 'hdmi_state' $D/stb-$T-kms.txt | tail -1)"
 fi
+[ "$MODE" = reload2 ] && { pkill -x kms-test; sleep 2; say "kms-test stopped; the module stays loaded through the sleep"; }
 safe before; full before
 if [ "$MODE" = reload ]; then pkill -x kms-test; sleep 1; rmmod h713_drm; say "rmmod rc=$?"; safe before-rmmod; fi
 [ -n "$PRE" ] && { python3 $D/rsm.py $D/stb-$T-pre.log $D/stb-$T-safe-before.log "$PRE" > /dev/null 2>&1; say "pre-sleep rsm $PRE rc=$?"; safe before-pre; }
@@ -69,7 +72,12 @@ safe after
 ref=$D/stb-$T-safe-before.log; [ "$MODE" = reload ] && ref=$D/stb-$T-safe-before-rmmod.log
 [ "$STEPS" != - ] && { python3 $D/rsm.py $D/stb-$T-rsm.log $ref "$STEPS" > /dev/null 2>&1; say "rsm $STEPS rc=$?"; safe after-rsm; }
 case "$STEPS" in *cap*) full after ;; esac
-if [ "$MODE" = reload ]; then
+if [ "$MODE" = reload ] || [ "$MODE" = reload2 ]; then
+	if [ "$MODE" = reload2 ]; then
+		dmesg | grep h713-drm | grep -E "suspend|resume|commit:|hdmi:" | tail -6 >> $L
+		rmmod h713_drm; say "rmmod after the wake rc=$?"
+		say "TV top before the reload: $(python3 /root/peek.py 0x06e00000 3 | tr '\n' ' ')"
+	fi
 	modprobe sun50i-h713-arisc; insmod /root/h713_drm.ko bench=1 restore_logo=1; say "insmod after the wake rc=$?"
 	( $K hdmi --secs 10 --hold 60 > $D/stb-$T-kms2.txt 2>&1 & ); sleep 25
 	say "kms-test after: $(grep -E 'hdmi_state|PASS|FAIL' $D/stb-$T-kms2.txt | tr -s ' ' | tr '\n' '|' | cut -c1-900)"

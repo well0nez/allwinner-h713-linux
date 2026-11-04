@@ -1,0 +1,55 @@
+    39.130 === open /data/bench/stb-q7-rsm.log boot 0115d9b5-48c4-453e-8bcc-05a9db0fe5f8 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    39.163 RSM step ppucycle
+    39.164 PPU tvfe status 00010000; off
+    39.166 W32 0x070010a0 = 00000002 (was 00000001)
+    39.167    read back 00000002
+    39.169 PPU tvfe status after off 00020002; on
+    39.170 W32 0x070010a0 = 00000001 (was 00000002)
+    39.172    read back 00000001
+    39.173 PPU tvfe status after on 00010002
+    39.175 PPU tvcap status 00010000; off
+    39.176 W32 0x07001120 = 00000002 (was 00000001)
+    39.178    read back 00000002
+    39.179 PPU tvcap status after off 00020002; on
+    39.181 W32 0x07001120 = 00000001 (was 00000002)
+    39.182    read back 00000001
+    39.183 PPU tvcap status after on 00010002
+    39.185 RSM step ubootclk
+    39.186 W32 0x02001d88 = 00010001 (was 00000001)
+    39.188    read back 00010001
+    39.202 W32 0x02001040 = b8003501 (was b8003500)
+    39.204    read back b8003501
+    39.218 W32 0x02001d6c = 80000305 (was 80000305)
+    39.219    read back 80000305
+    39.233 W32 0x02001068 = b8002f01 (was b8002f00)
+    39.235    read back b8002f01
+    39.249 W32 0x02001d74 = 81000001 (was 81000001)
+    39.250    read back 81000001
+    39.264 W32 0x02001d84 = 80000000 (was 80000000)
+    39.266    read back 80000000
+    39.279 W32 0x02001d80 = c0000000 (was c0000000)
+    39.281    read back c0000000
+    39.295 RSM step tvtop
+    39.297 W32 0x06e00004 = 01111117 (was 00000000)
+    39.298    read back 01111117
+    39.300 W32 0x06e00008 = 00000404 (was 00000000)
+    39.302    read back 00000404
+    39.305 W32 0x06e00000 = 00111111 (was 00000010)
+    39.307    read back 00111111
+    39.320 W32 0x06e00004 = 00000000 (was 01111117)
+    39.322    read back 00000000
+    39.323 W32 0x06e00008 = 00000000 (was 00000404)
+    39.325    read back 00000000
+    39.326 W32 0x06e00000 = 00000000 (was 00111111)
+    39.328    read back 00000000
+    39.342 W32 0x06e00004 = 01111117 (was 00000000)
+    39.343    read back 01111117
+    39.345 W32 0x06e00008 = 00000404 (was 00000000)
+    39.347    read back 00000404
+    39.348 W32 0x06e00000 = 00111111 (was 00000000)
+    39.350    read back 00111111
+    39.364 TVTOP after the sequence +0 ms: 00111111 01111117 00000404 a0004200 0000033a 00000010 08000193 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 | PPU tvfe 00010002 tvcap 00010002 | d88 00010001
+    39.416 TVTOP after the sequence +50 ms: 00111111 01111117 00000404 a0004200 0000033a 00000010 08000193 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 | PPU tvfe 00010002 tvcap 00010002 | d88 00010001
+    39.469 TVTOP after the sequence +100 ms: 00111111 01111117 00000404 a0004200 0000033a 00000010 08000193 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 | PPU tvfe 00010002 tvcap 00010002 | d88 00010001
+    39.521 RSM step rx
+    39.522 BEFORE-READ RX_CTL 0x068008fc (8-bit)
