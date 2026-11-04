@@ -12,3 +12,12 @@ name = "sender"
 
 [dependencies]
 proto = { package = "h713-airplay-proto", path = "../proto" }
+fairplay = { package = "h713-airplay-fairplay", path = "../fairplay", features = ["test-sender"] }
+plist = { version = "1", default-features = false }
+sha2 = "0.10"
+aes = "0.8"
+ctr = "0.9"
+getrandom = { version = "0.2", features = ["std"] }
+
+[dev-dependencies]
+receiver = { package = "h713-airplay-receiver", path = "../receiver" }
