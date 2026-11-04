@@ -61,7 +61,7 @@ static int write_pam(const char *path, const struct osd_canvas *c)
 	return fclose(f);
 }
 
-/* the launcher's pictures: the mock-up's six rows with Kodi chosen, and the rows that are there in the Kodi image */
+/* the launcher's pictures: the mock-up's six rows with Kodi chosen, the rows that are there in the Kodi image, and the AirPlay image's */
 static const struct {
 	const char *name;
 	struct osd_launcher l;
@@ -75,6 +75,13 @@ static const struct {
 	    { OSD_ICON_POWER, "Standby", 1 } } } },
 	{ "h-standby", { "20:47 \xc2\xb7 HDMI 1080p60", 3, 2, { { OSD_ICON_HDMI, "HDMI input", 0 }, { OSD_ICON_FILM, "Kodi", 0 },
 	    { OSD_ICON_POWER, "Standby", 1 } } } },
+	/* the image with Screen Mirroring (05.11.2026): seven rows with Standby, all a little smaller; six without it, at full size */
+	{ "airplay", { "20:47 \xc2\xb7 HDMI 1080p60", 7, 1, { { OSD_ICON_HDMI, "HDMI input", 0 }, { OSD_ICON_AIRPLAY, "Screen Mirroring", 0 },
+	    { OSD_ICON_FILM, "Kodi", 0 }, { OSD_ICON_GLOBE, "Browser", 0 }, { OSD_ICON_DESK, "Desktop", 0 },
+	    { OSD_ICON_SLIDERS, "Settings", 0 }, { OSD_ICON_POWER, "Standby", 1 } } } },
+	{ "airplay-no-standby", { "20:47 \xc2\xb7 AirPlay", 6, 1, { { OSD_ICON_HDMI, "HDMI input", 0 },
+	    { OSD_ICON_AIRPLAY, "Screen Mirroring", 0 }, { OSD_ICON_FILM, "Kodi", 0 }, { OSD_ICON_GLOBE, "Browser", 0 },
+	    { OSD_ICON_DESK, "Desktop", 0 }, { OSD_ICON_SLIDERS, "Settings", 0 } } } },
 };
 
 int main(int argc, char **argv)

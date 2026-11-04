@@ -19,6 +19,7 @@ from test_osd import BIN, H, OsdBase, PITCH, W
 
 FONT = os.environ.get("OSD_TEST_FONT", "/usr/share/fonts/truetype/quicksand/Quicksand-Medium.ttf")
 ROWS = "hdmi:HDMI input;film:Kodi;>power:Standby"
+SEVEN = "hdmi:HDMI input;airplay:Screen Mirroring;film:Kodi;globe:Browser;desk:Desktop;sliders:Settings;>power:Standby"   # 05.11.2026
 COLUMN = int(700 * H / 1080 + 0.999)        # the column's width at this canvas height
 GROUND = bytes([0x0d, 0x0e, 0x0b, 0xff])    # 0xff0b0e0d as the buffer holds it: B, G, R, A
 SX0, SX1, SY0, SY1 = W * 5 // 100, W - W * 5 // 100, H * 5 // 100, H - H * 5 // 100
@@ -50,23 +51,26 @@ class LauncherTest(OsdBase):
 
     def test_open_is_an_opaque_page_inside_the_safe_margin(self):
         self.start()
-        self.launcher(line(1))
-        time.sleep(1.0)                                  # popups would be gone after 0.6 s: the launcher stays
-        rows = self.shown()
-        self.assertIsNotNone(rows)
-        self.assertEqual(self.tv.bbox(), (0, 0, W - 1, H - 1))                 # the page covers the whole panel
-        clear = ink = outside = 0
-        for y, r in enumerate(rows):
-            for x in range(W):
-                px = r[4 * x:4 * x + 4]
-                clear += px[3] != 255
-                if px != GROUND:
-                    ink += 1
-                    outside += not (SX0 <= x < SX1 and SY0 <= y < SY1)
-        self.assertEqual(clear, 0, "pixels that are not opaque")
-        self.assertEqual(outside, 0, "pixels of ink in the outer 5 %")
-        self.assertGreater(ink, W * H // 200)                                  # and something is drawn
-        self.assertIn("launcher        open", self.ctl("status"))
+        for rows in (ROWS, SEVEN):                       # the Kodi image's three rows; the seven with Screen Mirroring (the airplay icon)
+            with self.subTest(rows=rows):
+                self.launcher(line(1, rows=rows))
+                time.sleep(1.0)                          # popups would be gone after 0.6 s: the launcher stays
+                shown = self.shown()
+                self.assertIsNotNone(shown)
+                self.assertEqual(self.tv.bbox(), (0, 0, W - 1, H - 1))         # the page covers the whole panel
+                clear = ink = outside = 0
+                for y, r in enumerate(shown):
+                    for x in range(W):
+                        px = r[4 * x:4 * x + 4]
+                        clear += px[3] != 255
+                        if px != GROUND:
+                            ink += 1
+                            outside += not (SX0 <= x < SX1 and SY0 <= y < SY1)
+                self.assertEqual(clear, 0, "pixels that are not opaque")
+                self.assertEqual(outside, 0, "pixels of ink in the outer 5 %")
+                self.assertGreater(ink, W * H // 200)                          # and something is drawn
+                self.assertIn("launcher        open", self.ctl("status"))
+                self.launcher("close")
 
     def test_move_is_what_a_fresh_draw_shows(self):
         self.start()
@@ -209,7 +213,7 @@ class LauncherTest(OsdBase):
 
     def test_bad_lines(self):
         self.start()
-        for bad in (line(0, rows="hdmi:HDMI input;nope:Kodi"), line(0, rows=";".join(["hdmi:x"] * 7)),
+        for bad in (line(0, rows="hdmi:HDMI input;nope:Kodi"), line(0, rows=";".join(["hdmi:x"] * 8)),     # (at most seven rows)
                     line(0, rows=">power:Standby;hdmi:HDMI input"), line(0, rows="hdmi HDMI input"), "x;y"):
             r = subprocess.run([BIN, "ctl", "launcher", bad], env=self.env, capture_output=True, text=True, timeout=5)
             self.assertTrue(r.stdout.startswith("error"), (bad, r.stdout))

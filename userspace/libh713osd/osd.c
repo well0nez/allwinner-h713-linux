@@ -635,7 +635,7 @@ static void render(struct osd_canvas *c, const struct scene *sc, double u, doubl
 
 /* --- the menu: the symbols, a row and a hint (the launcher and its opaque page) ---------------------------- */
 
-static const char *const ICON_NAME[OSD_ICONS] = { "hdmi", "film", "globe", "desk", "sliders", "power" };
+static const char *const ICON_NAME[OSD_ICONS] = { "hdmi", "film", "globe", "desk", "sliders", "power", "airplay" };
 
 int osd_icon_by_name(const char *name)
 {
@@ -710,6 +710,29 @@ static void micon(struct scene *s, int icon, double ox, double oy, double k, int
 		seg(s, X(24), Y(10), X(24), Y(23), tone);
 		arc(s, X(24), Y(24.665), 12.5 * k, 312.8, 587.2, tone);
 		break;
+	case OSD_ICON_AIRPLAY: {	/* screen mirroring (Apple's AirPlay): a screen, its foot open where a solid triangle rises in */
+		static const double t[] = { 24, 26.5, 32, 38, 16, 38 }, ix = 24, iy = 33.82;	/* the triangle and its incentre */
+
+		seg(s, X(12), Y(10), X(36), Y(10), tone);		/* the screen: x 8..40, y 10..31, the desk's corners */
+		arc(s, X(12), Y(14), 4 * k, 180, 270, tone);
+		arc(s, X(36), Y(14), 4 * k, 270, 360, tone);
+		seg(s, X(8), Y(14), X(8), Y(27), tone);
+		seg(s, X(40), Y(14), X(40), Y(27), tone);
+		arc(s, X(36), Y(27), 4 * k, 0, 90, tone);
+		arc(s, X(12), Y(27), 4 * k, 90, 180, tone);
+		seg(s, X(12), Y(31), X(14), Y(31), tone);		/* the foot stops short of the triangle on both sides */
+		seg(s, X(34), Y(31), X(36), Y(31), tone);
+		for (int i = 0; i < 4; i++) {	/* solid: four outlines shrunk to the incentre (the hint's arrows), 1.25 units apart */
+			double f = 1 - 0.3 * i;
+
+			for (int j = 0; j < 3; j++) {
+				const double *a = t + 2 * j, *b = t + 2 * ((j + 1) % 3);
+
+				seg(s, X(ix + (a[0] - ix) * f), Y(iy + (a[1] - iy) * f), X(ix + (b[0] - ix) * f), Y(iy + (b[1] - iy) * f), tone);
+			}
+		}
+		break;
+	}
 	}
 #undef X
 #undef Y
@@ -776,38 +799,48 @@ static void fill_box(struct osd_canvas *c, const int box[4], uint32_t argb)
 #define LAU_COLUMN	700	/* the column the list stands in (the tiles' left part), 1080-line units */
 #define LAU_FIRST	194	/* the first pill's top */
 #define LAU_PITCH	124	/* from one pill to the next */
-#define LAU_FOOT_PILL	844	/* the last row of the group at the foot sits with its top here, as in the mock-up */
-#define LAU_FOOT	958	/* the hint's band starts here */
+#define LAU_APART	30	/* the mock-up's gap between the rows at the top and the group at the foot, besides their margins */
+#define LAU_FOOT	958	/* the hint's band starts here; the group at the foot ends on it (its last pill's top at 844, as in the mock-up) */
 
 /* the pills' tops and every band's top and bottom, in 1080-line units: band 0 the header (down to the first pill's top less
  * 10), band 1 + i row i (10 above its pill to 10 below: 124, so the rows tile), band n + 1 the foot, band n + 2 the gap that
- * is left between the rows at the top and those at the foot (empty when there is none). Returns the count of bands. */
+ * is left between the rows at the top and those at the foot (empty when there is none). Rows that do not fit at that size (seven,
+ * Standby among them) are all drawn smaller by one factor, their margins and the gap with them (05.11.2026): *scale says how much
+ * (1 for up to six); a pill is 104 * scale high. Returns the count of bands. */
 static int lau_geometry(const struct osd_launcher *l, double top[OSD_LAUNCHER_ROWS], double y0[OSD_LAUNCHER_ROWS + 3],
-			double y1[OSD_LAUNCHER_ROWS + 3])
+			double y1[OSD_LAUNCHER_ROWS + 3], double *scale)
 {
 	int n = l->n < OSD_LAUNCHER_ROWS ? l->n : OSD_LAUNCHER_ROWS, ne = 0, ti = 0, ej = 0;
-	double gap0 = LAU_FIRST - 10, gap1 = LAU_FOOT;
+	double first = LAU_FIRST - 10, gap0 = first, gap1 = LAU_FOOT, s, p;
 
 	for (int i = 0; i < n; i++)
 		ne += l->row[i].end != 0;
-	for (int i = 0; i < n; i++) {
-		top[i] = l->row[i].end ? LAU_FOOT_PILL - LAU_PITCH * (ne - 1 - ej++) : LAU_FIRST + LAU_PITCH * ti++;
-		y0[i + 1] = top[i] - 10, y1[i + 1] = top[i] + 114;
-		if (!l->row[i].end)
+	s = fmin(1, (LAU_FOOT - first) / (LAU_PITCH * n + (ne && ne < n ? LAU_APART : 0)));
+	p = LAU_PITCH * s;
+	for (int i = 0; i < n; i++) {	/* each edge from one product, so that the bands that meet meet exactly */
+		if (l->row[i].end) {
+			y0[i + 1] = LAU_FOOT - p * (ne - ej), y1[i + 1] = LAU_FOOT - p * (ne - ej - 1);
+			if (!ej++)
+				gap1 = y0[i + 1];
+		} else {
+			y0[i + 1] = first + p * ti, y1[i + 1] = first + p * (ti + 1);
 			gap0 = y1[i + 1];
-		else if (gap1 == LAU_FOOT && ej == 1)
-			gap1 = y0[i + 1];
+			ti++;
+		}
+		top[i] = y0[i + 1] + 10 * s;
 	}
-	y0[0] = 0, y1[0] = LAU_FIRST - 10;
+	y0[0] = 0, y1[0] = first;
 	y0[n + 1] = LAU_FOOT, y1[n + 1] = 1080;
 	y0[n + 2] = gap0, y1[n + 2] = gap1 > gap0 ? gap1 : gap0;
+	if (scale)
+		*scale = s;
 	return n + 3;
 }
 
 int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l, int box[][4])
 {
 	double top[OSD_LAUNCHER_ROWS], y0[OSD_LAUNCHER_ROWS + 3], y1[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
-	int bands = lau_geometry(l, top, y0, y1), colw = (int)ceil(LAU_COLUMN * u);
+	int bands = lau_geometry(l, top, y0, y1, NULL), colw = (int)ceil(LAU_COLUMN * u);
 
 	if (l->n < 1)
 		return 0;
@@ -826,19 +859,19 @@ int osd_launcher_bands(const struct osd_canvas *c, const struct osd_launcher *l,
 void osd_launcher_draw(struct osd_canvas *c, const struct osd_launcher *l, int tile)
 {
 	int box[2 * (OSD_LAUNCHER_ROWS + 3)][4], tiles = osd_launcher_bands(c, l, box), bands = tiles / 2;
-	double top[OSD_LAUNCHER_ROWS], y0[OSD_LAUNCHER_ROWS + 3], y1[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0;
+	double top[OSD_LAUNCHER_ROWS], y0[OSD_LAUNCHER_ROWS + 3], y1[OSD_LAUNCHER_ROWS + 3], u = c->h / 1080.0, s;
 	int n = bands - 3, band = tile % (bands ? bands : 1);
 
 	if (tile < 0 || tile >= tiles || !box[tile][2] || !box[tile][3])
 		return;
-	lau_geometry(l, top, y0, y1);
+	lau_geometry(l, top, y0, y1, &s);
 	fill_box(c, box[tile], OSD_PAGE_GROUND);
 	if (tile >= bands)			/* the right part: the ground alone, nothing shows through */
 		return;
 	if (band == 0) {
 		osd_text(c, l->head, 150 * u, 140 * u, 30 * u, 0xffffff, 0.42f, 0);
 	} else if (band <= n) {
-		struct osd_row r = { l->row[band - 1].icon, l->row[band - 1].label, band - 1 == l->sel, 118, top[band - 1], 520, 104 };
+		struct osd_row r = { l->row[band - 1].icon, l->row[band - 1].label, band - 1 == l->sel, 118, top[band - 1], 520, 104 * s };
 
 		osd_draw_row(c, &r, NULL);
 	} else if (band == n + 1) {

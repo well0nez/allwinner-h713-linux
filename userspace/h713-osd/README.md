@@ -77,7 +77,7 @@ happens a few times per key press; not worth it at these times - a later desktop
 
 `launcher SEL;NOW;[>]icon:label;...` ([docs/tools/h713-osd.md](../../docs/tools/h713-osd.md)):
 the launcher is an **opaque page** over the whole panel - a ground, the mock-up's "Launcher C" list in the column on the left (header
-and hint line, up to six rows, Standby set apart at the foot), the rest calm, everything inside the 5 % safe margin - that stays
+and hint line, up to seven rows - seven a little smaller, 05.11.2026; up to six before - Standby set apart at the foot), the rest calm, everything inside the 5 % safe margin - that stays
 until it is closed. h713-keys is its controller; this daemon only draws and shows it. It is cut into **tiles** (libh713osd: the page's
 bands - the header, one per row of 124 units, the foot, the gap - each in a left part, the column, and a right part, the ground).
 A tile is drawn again in the canvas when it changes and put into a buffer when that buffer does not hold its current version
