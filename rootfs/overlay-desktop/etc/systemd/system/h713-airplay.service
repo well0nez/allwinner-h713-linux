@@ -1,0 +1,44 @@
+# h713-airplay.service - the AirPlay receiver (profile desktop; docs/tools/h713-airplay.md, userspace/h713-airplay/README.md).
+#
+# Always on, on purpose: an iPhone, iPad or Mac lists the projector under Screen Mirroring as soon as it is on the same Wi-Fi - the
+# box's own access point or the network it joined - and that needs somebody to answer at any time. The receiver does all of the
+# protocol and nothing of the picture: mDNS (`_airplay._tcp`, `_raop._tcp`, a responder of its own, so no avahi-daemon in the image),
+# RTSP on TCP 7000, the pairing, the encrypted mirror stream (TCP 7100) and screen audio (UDP 6000/6001), the clock towards the
+# sender (UDP 7011) and the control socket /run/h713-airplay/ctl (`h713-airplay ctl status`). It decrypts and decodes nothing.
+# Idle it costs nothing: every thread blocks in a syscall - no decoder, no GPU, no Wayland connection, no timer.
+# * Why two units: the receiver must always be there, the picture only while a phone mirrors. When a sender sets up its stream the
+#   receiver connects to /run/h713-airplay-show.sock (h713-airplay-show.socket, pulled in by Wants= below) and systemd starts
+#   h713-airplay-show.service, the presenter: a mode unit like h713-kodi.service, so the launcher, the remote, `h713-mode hdmi`, a
+#   standby and Conflicts= treat AirPlay exactly as they treat Kodi. The presenter's connection closing ends the session here.
+# * Not root: the system user h713-airplay (usr/lib/sysusers.d/h713-airplay.conf), which may connect to the presenter's socket
+#   (SocketGroup=); its ports are all above 1024 (mDNS 5353), so it needs no capability. The key pair and the device id live in the
+#   StateDirectory /var/lib/h713-airplay, kept across reboots, so that a sender sees the same receiver. The hardening is h713-warp's.
+# * After the network and h713-wifi: the access point or the station link is up, and the first announcement goes out on it; an
+#   interface that comes later is announced on when it appears.
+# * /etc/h713/airplay.conf (the name, the port, the display offered, H.265, audio, takeover, the interfaces) is read at the start:
+#   `systemctl restart h713-airplay` after a change.
+[Unit]
+Description=AirPlay receiver (screen mirroring)
+Documentation=file:/usr/local/share/doc/h713-airplay/README.md
+After=network.target h713-wifi.service
+Wants=h713-airplay-show.socket
+
+[Service]
+Type=simple
+User=h713-airplay
+Group=h713-airplay
+ExecStart=/usr/local/bin/h713-airplay run
+Restart=on-failure
+RestartSec=2s
+RuntimeDirectory=h713-airplay
+RuntimeDirectoryMode=0755
+StateDirectory=h713-airplay
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+
+[Install]
+WantedBy=multi-user.target

@@ -1034,7 +1034,7 @@ if has_profile desktop; then
 	t "desktop: both labwc configurations bind Home, F4 and F5 to nothing (the focus keys stay focus keys)" bash -c 'for f in labwc labwc-browser; do for k in XF86_HomePage F4 F5; do grep -q "key=\"$k\"><action name=\"Execute\" command=\"true\"" "$1/etc/h713/$f/rc.xml" || exit 1; done; done' _ "$TREE"
 	t "desktop: h713-browser.service runs Firefox as labwc's session client" grep -q '^ExecStart=/usr/bin/labwc -C /etc/h713/labwc-browser -S ' "$TREE/etc/systemd/system/h713-browser.service"
 	t "desktop: h713-desktop.service runs the terminal as labwc's session client, and the autostart starts no second one" bash -c 'grep -q "^ExecStart=/usr/bin/labwc -C /etc/h713/labwc -S /usr/bin/foot$" "$1/etc/systemd/system/h713-desktop.service" && ! grep -v "^#" "$1/etc/h713/labwc/autostart" | grep -q foot' _ "$TREE"
-	t "desktop: no mode unit ends itself at the sleep target (h713-mode does)" bash -c '! grep -q "^Conflicts=.*sleep.target" "$1"/etc/systemd/system/h713-{desktop,browser}.service' _ "$TREE"
+	t "desktop: no mode unit ends itself at the sleep target (h713-mode does)" bash -c '! grep -q "^Conflicts=.*sleep.target" "$1"/etc/systemd/system/h713-{desktop,browser,airplay-show}.service' _ "$TREE"
 	t "desktop: Firefox plays through ALSA, which is the DSP bridge (no PipeWire daemon, no pipewire-alsa default)" bash -c 'grep -q "media.cubeb.backend\", \"alsa\"" "$1/var/lib/h713-desktop/firefox/user.js" && ! test -e "$1/etc/alsa/conf.d/99-pipewire-default.conf"' _ "$TREE"
 	t "desktop: sysusers.d entry for h713-desktop"  grep -q '^u h713-desktop ' "$TREE/usr/lib/sysusers.d/h713-desktop.conf"
 	t "desktop: the desktop and the browser run as h713-desktop, hardened, without MemoryDenyWriteExecute (Firefox compiles JavaScript)" bash -c 'for u in desktop browser; do f="$1/etc/systemd/system/h713-$u.service"; grep -qx "User=h713-desktop" "$f" && grep -qx "NoNewPrivileges=yes" "$f" && grep -qx "ProtectSystem=strict" "$f" && ! grep -q "^MemoryDenyWriteExecute" "$f" || exit 1; done' _ "$TREE"
@@ -1049,6 +1049,14 @@ if has_profile desktop; then
 	t "desktop: the wall is a TV interface: Firefox at twice its size, foot and the labwc font larger than the defaults" bash -c 'grep -q "layout.css.devPixelsPerPx\", \"2.0\"" "$1/var/lib/h713-desktop/firefox/user.js" && grep -qE "^font=monospace:size=(2[0-9]|3[0-9])" "$1/etc/xdg/foot/foot.ini" && grep -qE "<font name=\"sans\" size=\"(1[8-9]|2[0-9])\"" "$1/etc/h713/labwc/rc.xml"' _ "$TREE"
 	t "desktop: Firefox's page scale follows the panel (h713-firefox-scale before the browser and the desktop, 960 CSS pixels across)" bash -c 'test -x "$1/usr/local/sbin/h713-firefox-scale" && for u in browser desktop; do grep -qx "ExecStartPre=/usr/local/sbin/h713-firefox-scale /var/lib/h713-desktop/firefox/user.js" "$1/etc/systemd/system/h713-$u.service" || exit 1; done' _ "$TREE"
 	for _pk in cage labwc foot firefox-esr; do t "desktop: $_pk installed" grep -q "^Package: $_pk\$" "$TREE/var/lib/dpkg/status"; done
+	# AirPlay (docs/tools/h713-airplay.md): the receiver always on, the presenter a mode unit that its socket starts when a phone mirrors,
+	# the launcher's Screen Mirroring entry with both a unit and an exec (the waiting page), one system user for both
+	t "desktop: AirPlay's units, launcher entry and configuration" test -f "$TREE/etc/systemd/system/h713-airplay.service" -a -f "$TREE/etc/systemd/system/h713-airplay-show.socket" -a -f "$TREE/etc/systemd/system/h713-airplay-show.service" -a -f "$TREE/etc/h713/launcher.d/15-airplay.conf" -a -f "$TREE/etc/h713/airplay.conf"
+	t "desktop: sysusers.d entry for h713-airplay" grep -q '^u h713-airplay ' "$TREE/usr/lib/sysusers.d/h713-airplay.conf"
+	t "desktop: Screen Mirroring has its mode unit, its waiting page and the way back" bash -c 'f="$1/etc/h713/launcher.d/15-airplay.conf"; grep -qE "^unit *= *h713-airplay-show\.service$" "$f" && grep -qE "^exec *= */usr/bin/systemd-run .*--wait --unit=h713-airplay-page /usr/local/bin/h713-airplay page$" "$f" && grep -qE "^return *= *launcher$" "$f" && grep -qE "^icon *= *airplay$" "$f"' _ "$TREE"
+	t "desktop: the presenter's socket is /run/h713-airplay-show.sock, for the receiver's group" bash -c 'f="$1/etc/systemd/system/h713-airplay-show.socket"; grep -qx "ListenStream=/run/h713-airplay-show.sock" "$f" && grep -qx "SocketGroup=h713-airplay" "$f" && grep -qx "SocketMode=0660" "$f" && grep -qx "Accept=no" "$f"' _ "$TREE"
+	t "desktop: the presenter is a mode unit (no [Install], the other modes stopped, h713-tv told its source, bound to h713-warp)" bash -c 'f="$1/etc/systemd/system/h713-airplay-show.service"; ! grep -q "^\[Install\]" "$f" && grep -qx "Conflicts=h713-kodi.service h713-browser.service h713-desktop.service" "$f" && grep -qx "ExecStartPre=+/usr/local/sbin/h713-kodi-switch source" "$f" && grep -qx "BindsTo=h713-warp.service" "$f"' _ "$TREE"
+	t "desktop: the AirPlay receiver and presenter run as h713-airplay, hardened" bash -c 'for u in h713-airplay h713-airplay-show; do f="$1/etc/systemd/system/$u.service"; grep -qx "User=h713-airplay" "$f" && grep -qx "NoNewPrivileges=yes" "$f" && grep -qx "ProtectSystem=strict" "$f" || exit 1; done' _ "$TREE"
 fi
 t "h713-arisc (TODO 5.20)"    test -x "$TREE/usr/local/sbin/h713-arisc"
 # Standby only where the image offers it (docs/subsystems/standby.md): else no suspend at all, which
@@ -1101,6 +1109,8 @@ if ((! SKIP_PROJECT)); then
 		t "desktop: Kodi runs as h713-kodi"            grep -qx 'User=h713-kodi' "$TREE/etc/systemd/system/h713-kodi.service"
 		t "desktop: the Kodi unit is hardened"         grep -qx 'NoNewPrivileges=yes' "$TREE/etc/systemd/system/h713-kodi.service"
 		t "desktop: the Wayland socket has a group"    grep -q '^ExecStart=.* -g video ' "$TREE/etc/systemd/system/h713-warp.service"
+		t "desktop: h713-airplay and h713-airplay-show installed" test -x "$TREE/usr/local/bin/h713-airplay" -a -x "$TREE/usr/local/bin/h713-airplay-show"
+		t "desktop: the AirPlay receiver and the presenter's socket enabled" test -L "$TREE/etc/systemd/system/multi-user.target.wants/h713-airplay.service" -a -L "$TREE/etc/systemd/system/sockets.target.wants/h713-airplay-show.socket"
 		# Kodi's own power menu: polkitd and one narrow rule (that user, the three logind actions and their -multiple-sessions variants)
 		t "desktop: polkitd installed"                 grep -q '^Package: polkitd$' "$TREE/var/lib/dpkg/status"
 		_RULE="$TREE/etc/polkit-1/rules.d/50-h713-kodi.rules"

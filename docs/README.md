@@ -44,7 +44,7 @@ Every page under `docs/`, so none is reachable only from inside another one. The
 [display stacks: vendor or clean](subsystems/display-stacks.md)
 
 **Tools on the device:** [h713-tv](tools/h713-tv.md) · [h713-keys](tools/h713-keys.md) · [h713-osd](tools/h713-osd.md) ·
-[h713-settings](tools/h713-settings.md) · [h713-power](tools/h713-power.md) · [h713-desktop](tools/h713-desktop.md) ·
+[h713-settings](tools/h713-settings.md) · [h713-airplay](tools/h713-airplay.md) · [h713-power](tools/h713-power.md) · [h713-desktop](tools/h713-desktop.md) ·
 [h713-warp](tools/h713-warp.md) · [h713-keystone](tools/h713-keystone.md) · [h713-focus](tools/h713-focus.md) ·
 [h713-autofocus](tools/h713-autofocus.md) · [h713-cam](tools/h713-cam.md) · [h713-panel](tools/h713-panel.md) ·
 [h713-wifi](tools/h713-wifi.md) · [h713-remote-pair](tools/h713-remote-pair.md) · [h713-arisc](tools/h713-arisc.md) ·

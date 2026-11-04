@@ -36,6 +36,9 @@
 #       out of the real-time class, once per boot (replaces the tmpfiles line of 11.10.)
 #   5k. h713-lamp + unit (enabled) - the lamp mode kept in /etc/h713/lamp.conf, set at boot;
 #       does nothing on a board without lamp modes (all but the L018)
+#   5l. h713-airplay + h713-airplay-show (cross-built) + README - AirPlay screen mirroring - where the tree
+#       carries their units (rootfs/overlay-desktop, profile desktop): h713-airplay.service and
+#       h713-airplay-show.socket enabled
 #
 # What is NOT installed is any proprietary blob (107 §5). At the end there is a
 # guard that searches the tree afterwards and stops the run if one is in there
@@ -78,6 +81,11 @@ H713_SETTINGS_SRC=${H713_SETTINGS_SRC:-$PROJECT_ROOT/userspace/h713-settings}
 H713_SETTINGS_BIN=${H713_SETTINGS_BIN:-$H713_SETTINGS_SRC/h713-settings.aarch64-linux-gnu}
 H713_CPUFREQ_SRC=${H713_CPUFREQ_SRC:-$PROJECT_ROOT/userspace/h713-cpufreq}
 H713_LAMP_SRC=${H713_LAMP_SRC:-$PROJECT_ROOT/userspace/h713-lamp}
+# AirPlay (Rust, cross-built against the board's glibc: make -C userspace/h713-airplay cross): the receiver and the presenter,
+# for a tree that carries their units - the desktop profile's overlay (5l)
+H713_AIRPLAY_SRC=${H713_AIRPLAY_SRC:-$PROJECT_ROOT/userspace/h713-airplay}
+H713_AIRPLAY_BIN=${H713_AIRPLAY_BIN:-$H713_AIRPLAY_SRC/h713-airplay.aarch64-linux-gnu}
+H713_AIRPLAY_SHOW_BIN=${H713_AIRPLAY_SHOW_BIN:-$H713_AIRPLAY_SRC/h713-airplay-show.aarch64-linux-gnu}
 # crust, built by release/build-all.sh from crust-h713/ - a build product of ours, not a vendor file,
 # so it is not in FORBIDDEN_NAMES. The name is the board's: the rootfs can be built without a board,
 # and a board's device tree names its own image (hy310-crust.bin). Standby only together with it.
@@ -155,6 +163,9 @@ blob_guard() {
 	((found == 0)) || die "blob guard: the image carries files it must not carry (107 §5)"
 	say "blob guard: clean (${#FORBIDDEN_NAMES[@]} names, ${#FORBIDDEN_PATHS[@]} paths checked, tvconfig empty)"
 }
+
+# A tree that carries AirPlay's units (overlay-desktop, laid before this script runs) gets the two programs (5l).
+airplay_tree() { [[ -f "$TREE/etc/systemd/system/h713-airplay.service" ]]; }
 
 # FEATURES of boards/$H713_BOARD/board.env as the line /etc/h713/features
 # carries ("features = NAME..."), or nothing when board.env leaves it unset
@@ -320,6 +331,24 @@ check_sources() {
 		warn "h713-settings is missing: $H713_SETTINGS_BIN"
 		info "cross-build it:  make -C ${H713_SETTINGS_SRC#"$PROJECT_ROOT"/} cross SYSROOT=..."
 		errors=1
+	fi
+	# AirPlay: only a tree with its units (profile desktop) needs the two programs
+	if airplay_tree; then
+		for f in "$H713_AIRPLAY_BIN" "$H713_AIRPLAY_SHOW_BIN"; do
+			if [[ -x "$f" ]]; then
+				local akind; akind=$(file -b "$f" 2>/dev/null || echo '?')
+				case "$akind" in
+				*aarch64*) : ;;
+				'?') warn "file(1) is missing -- the architecture of ${f##*/} is unchecked" ;;
+				*) warn "${f##*/} is NOT aarch64: $akind"; errors=1 ;;
+				esac
+			else
+				warn "${f##*/} is missing: $f"
+				info "cross-build it:  make -C ${H713_AIRPLAY_SRC#"$PROJECT_ROOT"/} cross"
+				errors=1
+			fi
+		done
+		[[ -r "$H713_AIRPLAY_SRC/README.md" ]] || { warn "missing: $H713_AIRPLAY_SRC/README.md"; errors=1; }
 	fi
 	for f in "$H713_OSD_SRC/h713-osd.service" "$H713_OSD_SRC/osd.conf" "$H713_OSD_SRC/README.md" \
 		 "$H713_KEYS_SRC/h713-keys.service" "$H713_KEYS_SRC/keys.conf" "$H713_KEYS_SRC/README.md" "$H713_KEYS_SRC/70-h713-remote.rules"; do
@@ -495,6 +524,14 @@ if ((DRY_RUN)); then
     5k. h713-lamp
        h713-lamp -> /usr/local/sbin/, h713-lamp.service enabled (sets the mode kept in
        /etc/h713/lamp.conf; nothing on a board without lamp modes)
+    5l. h713-airplay (only where the tree carries its units: profile desktop)
+       ${H713_AIRPLAY_BIN#"$PROJECT_ROOT"/}
+           -> /usr/local/bin/h713-airplay                 0755
+       ${H713_AIRPLAY_SHOW_BIN#"$PROJECT_ROOT"/}
+           -> /usr/local/bin/h713-airplay-show            0755
+       README.md -> /usr/local/share/doc/h713-airplay/
+       h713-airplay.service (multi-user.target.wants) and h713-airplay-show.socket (sockets.target.wants)
+       enabled; the presenter's libraries (FFmpeg, libva) come with the media profile
     6. blob guard
        Stop if one of these files is in the tree:
        ${FORBIDDEN_NAMES[*]}
@@ -844,6 +881,23 @@ install -m 0755 "$H713_LAMP_SRC/h713-lamp" "$TREE/usr/local/sbin/h713-lamp"
 install -m 0644 "$H713_LAMP_SRC/h713-lamp.service" "$TREE/etc/systemd/system/h713-lamp.service"
 ln -sfn ../h713-lamp.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-lamp.service"
 info "/usr/local/sbin/h713-lamp, h713-lamp.service enabled"
+
+# --- 5l. h713-airplay: AirPlay screen mirroring (profile desktop) ------------------------------
+# The receiver is always on (mDNS, the protocol, idle at no cost), the presenter is a mode unit its socket starts when a phone mirrors
+# (docs/tools/h713-airplay.md). Both come with the tree's units, the launcher entry and the user: the desktop profile's overlay. The
+# presenter decodes with FFmpeg's libavcodec through libva, which the media profile brings: AirPlay is an image with desktop and media.
+if airplay_tree; then
+	say "h713-airplay"
+	install -m 0755 "$H713_AIRPLAY_BIN" "$TREE/usr/local/bin/h713-airplay"
+	install -m 0755 "$H713_AIRPLAY_SHOW_BIN" "$TREE/usr/local/bin/h713-airplay-show"
+	install -D -m 0644 "$H713_AIRPLAY_SRC/README.md" "$TREE/usr/local/share/doc/h713-airplay/README.md"
+	mkdir -p "$TREE/etc/systemd/system/sockets.target.wants"
+	ln -sfn ../h713-airplay.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-airplay.service"
+	ln -sfn ../h713-airplay-show.socket "$TREE/etc/systemd/system/sockets.target.wants/h713-airplay-show.socket"
+	info "/usr/local/bin/h713-airplay and h713-airplay-show, h713-airplay.service and h713-airplay-show.socket enabled"
+else
+	say "h713-airplay: not in this tree (its units are the desktop profile's)"
+fi
 
 # --- 6. blob guard ---------------------------------------------------------
 blob_guard "$TREE"
