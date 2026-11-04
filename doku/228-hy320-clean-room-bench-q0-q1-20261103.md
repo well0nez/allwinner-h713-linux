@@ -583,3 +583,21 @@ direkt nach dem Aufwachen 1/3; d) Modul neu laden nach dem Aufwachen (erst `tvto
 startet HDMI ohne TV-Neuinit und hängt am ersten Empfängerzugriff. Jeder Fehlschlag hing genau am ersten `RX_CTL`-Lesen.
 Keine Variante 6/6: Vorgabe "kein HDMI nach dem Aufwachen bis zum Neustart". Entwurf 60 v4 §3b. Gerät: Normalstart,
 Umgebung = Referenz.
+
+## 32 HDMI-Audio: N1-N3 (Normalstart, nur lesen) und B1/B3/B4 (Bank) (04.11.)
+
+Quelle: die Xbox des Besitzers, 1080p60, 48 kHz PCM - aber mit stillen Samples (Pegelmesser im DSP 0, auch im Normalstart
+mit gepatchtem DSP). Ergebnisse (Entwurf 70 v2, §2a/§3a/§4.6/§6.4/§9a; 79 §4 für die gehaltenen Zeilen):
+
+- N1: `RX_APLL` mit Firmware = Bankwerte bis auf `+0x04 = 0x50000003`; unverändert über zwei Relocks (12-ms-Schnappschüsse).
+  Die Firmware programmiert die APLL nicht (HA14-Erfolgsweg kommt nicht).
+- N2: Relock-Zeitachse wie am 03.11.; neu: `+0x36a/+0x36b` laufen nur mit Audio (Abstand ~0x1f, vermutlich FIFO-Zeiger),
+  `+0x3af = 4` mit Audio; `+0x1c0..` trägt keinen Paketinhalt (HA9 widerlegt).
+- N3: Zustandstabelle (AU_*, CODEC, CODEC_I2S ganz, DSP-Register des Treibers, Lautstärke 0xf684 = -9,5 dB).
+- B1: **ohne Firmware erkennt der Empfänger das Audio selbst** (N/CTS, Kanalstatus, `+0x15f = 0x30`, Zeiger laufen);
+  `+0x4b = 0x31` statt `0x33` (Bit 1 setzt die Firmware).
+- B3: Insel auf der Bank hoch, ROM antwortet (`0x0000 = 0x5451`, `0x00ee = 0x0200`), 3 von 3.
+- B4: ungepatchtes ROM nimmt die ganze Direktroute an (alle Rückleseworte richtig). Fallstrick: Leseanforderung bei
+  gesetztem Schreib-busy-Bit blockiert den Briefkasten bis zum Inselreset (2 von 2), mit Warten auf Bit 4: keine Blockade.
+- Offen, braucht den Besitzer: eine Quelle mit Ton und Ohren/Mikrofon (N4, N5, B4-Entscheidung, B6).
+- Gerät am Ende: Normalstart, Umgebung = Referenz, RUN1.

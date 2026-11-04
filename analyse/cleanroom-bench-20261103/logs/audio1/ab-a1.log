@@ -1,0 +1,14 @@
+30.86 == ab a1 start 7.3.1-rustbench module_blacklist
+30.99 insmod rc=0
+51.03 kms-test:    6.0 s hdmi_state capturing (1920x1080 at 60.000 Hz)
+51.46 B1 dump rc=0
+53.59 B1 sel rc=0
+57.73 B1 trace rc=0
+57.92 B1 state rc=0
+58.45 B3 rc=0
+59.07 B4 route rc=0
+62.08 B4 meter rc=0
+62.48 B4 state rc=0
+62.88 after dump rc=0
+62.94 kms-test after:    6.0 s hdmi_state capturing (1920x1080 at 60.000 Hz); [   57.141307] h713-drm h713-drm: [drm] hdmi: running: 1276 source frames, 1211 shown, 114 repeated, 0 skipped (0 bad write indices, 1 latch timeouts)
+62.96 == ab a1 done

@@ -1,0 +1,75 @@
+    58.015 === isl.py up boot a0c9d2be-7955-4b5b-b68a-e56017b31af5
+    58.018 FIRST-ACCESS page 0x02001000
+    58.020 CCU before: d10=81000005 d14=00000000 d18=81000004 d1c=00000000 d20=80000000 d24=80000007 d28=80000002 d2c=80000005 d30=80000004 d34=80000004 d38=8000000b d3c=00000000 d40=8000020a d44=00000000 d48=80000002 d4c=80000002 d50=81000002 d54=00000000 d58=80000002 d5c=8000020b d60=8000020b d64=00010001 d68=00000000 d6c=80000305 d70=00000000 d74=81000001 d78=00000000 d7c=00000000 d80=c0000000 d84=80000000 d88=00010001 d8c=00000000
+    58.021 W32 0x02001d64 = 00000000 (was 00010001)
+    58.022    read back 00000000
+    58.034 W32 0x02001d64 = 00010001 (was 00000000)
+    58.035    read back 00010001
+    58.047 W32 0x02001d48 = 80000002 (was 80000002)
+    58.048    read back 80000002
+    58.050 W32 0x02001d4c = 80000002 (was 80000002)
+    58.051    read back 80000002
+    58.052 W32 0x02001d50 = 81000002 (was 81000002)
+    58.054    read back 81000002
+    58.055 BEFORE-READ TVFE_RT 0x06700000
+    58.056 FIRST-ACCESS page 0x06700000
+    58.058 TVFE_RT +0 = 000007ff
+    58.059 W32 0x06700000 = 003003ff (was 000007ff)
+    58.061    read back 003003ff
+    58.062 BEFORE-READ AU_TOP 0x0614a000
+    58.063 FIRST-ACCESS page 0x0614a000
+    58.065 AU_TOP before: 00000000 00000000 00000000 00000000
+    58.066 W32 0x0614a000 = 00000700 (was 00000000)
+    58.068    read back 00000700
+    58.069 W32 0x0614a00c = 001a5e00 (was 00000000)
+    58.071    read back 001a5e00
+    58.072 W32 0x0614a00c = 011a5e00 (was 001a5e00)
+    58.074    read back 011a5e00
+    58.075 FIRST-ACCESS page 0x06142000
+    58.077 W32 0x06142044 = 0000005a (was 00000000)
+    58.078    read back 0000005a
+    58.080 W32 0x06142044 = 00000000 (was 0000005a)
+    58.081    read back 00000000
+    58.383 FIRST-ACCESS page 0x06144000
+    58.385 AU_MBOX status 00000000
+    58.387 DSP read 0000 = 5451
+    58.389 DSP read 00ee = 0200
+    58.390 DSP read 0001 = 0c00
+    58.392 DSP read 00fc = TIMEOUT
+    58.394 DSP read 80ff = 0000
+    58.396 DSP read 0002 = 0000
+    58.398 DSP read 8034 = 0000
+    58.400 DSP read 8017 = 0000
+    58.401 FIRST-ACCESS page 0x06146000
+    58.404 AU_IF (AU_TOP +0 = 00000700): 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 00000000 034bc000 04000000 00000000 00000000 00000000 00000000 00000000 00000000 deadbeef deadbeef
+    58.405 === done
+    58.538 === isl.py route boot a0c9d2be-7955-4b5b-b68a-e56017b31af5
+    58.540 FIRST-ACCESS page 0x06144000
+    58.563 DSP 0002: 0000 -> 8000, reads TIMEOUT
+    58.585 DSP 8034: read timeout, write skipped
+    58.607 DSP 0012: read timeout, write skipped
+    58.628 DSP 0013: read timeout, write skipped
+    58.650 DSP 0118: read timeout, write skipped
+    58.672 DSP 8062: read timeout, write skipped
+    58.694 DSP 8063: read timeout, write skipped
+    58.716 DSP 0096: read timeout, write skipped
+    58.738 DSP 0090: read timeout, write skipped
+    58.760 DSP 8052: read timeout, write skipped
+    58.782 DSP 8053: read timeout, write skipped
+    58.804 DSP 0036: read timeout, write skipped
+    58.826 DSP 0052: read timeout, write skipped
+    58.848 DSP 0053: read timeout, write skipped
+    58.870 DSP 0050: read timeout, write skipped
+    58.891 DSP 0051: read timeout, write skipped
+    58.913 DSP 0020: read timeout, write skipped
+    58.935 DSP 001e: read timeout, write skipped
+    58.957 DSP 001f: read timeout, write skipped
+    58.979 DSP 8017: read timeout, write skipped
+    59.001 DSP 0020: read timeout, write skipped
+    59.023 DSP 80b2: read timeout, write skipped
+    59.045 DSP 80b3: read timeout, write skipped
+    59.047 === done
+    59.201 === isl.py meter 20 boot a0c9d2be-7955-4b5b-b68a-e56017b31af5
+    59.203 FIRST-ACCESS page 0x06144000
+    62.050 METER 0x00b2/0x00b3 (source None/None): None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None None/None
+    62.052 === done
