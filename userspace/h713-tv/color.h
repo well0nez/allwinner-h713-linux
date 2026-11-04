@@ -41,6 +41,13 @@ void fwc_adopt(const bool *wb_have, const int *wb, const bool *cm_have, const in
 void fwc_list(struct reply *r);
 void fwc_status(struct reply *r);
 
+/*
+ * The clean display stack (h713-drm): no firmware and no cpu_comm. The white balance goes to the six CRTC properties
+ * through apply (main.c; NULL: the driver has none, wb_why says why), the colour management is not there (cm_why).
+ * Called once, before the first send; without the call everything is the firmware's, as it always was.
+ */
+void fwc_use_kms(bool (*apply)(const int *wb, char *why, size_t n), const char *cm_why, const char *wb_why);
+
 /* the names of "ctl set" and "ctl get": the index of a name of ours (0..5 white balance, 6.. colour management), -1: not ours */
 int fwc_key(const char *name);
 void fwc_set(struct reply *r, int idx, const char *value);

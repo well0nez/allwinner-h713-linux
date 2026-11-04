@@ -64,6 +64,7 @@ class FakeTv(Ctl):
         self.sliders = (0, 0)                          # what h713-tv says the sliders stand at (it owns the mapping, color.c)
         self.cm = {}                                   # (axis, "hue"|"sat"|"value") -> step; 0 = not there
         self.fw_color = True                           # False: "not available" (another firmware)
+        self.no_cm = False                             # True: the clean display stack - the white balance, no colour management
         self.curves = False                            # True: h713-tv has the board's gamma curves (ctl get/set gamma, colour_temperature)
         self.gamma_level, self.ctemp, self.missing = 3, "auto", set()   # level 0..4; auto|normal|cool|warm; the temperatures this board has no curve for
         self.refuse = set()                            # "gamma" / "colour_temperature": the CRTC refuses a new curve for it
@@ -142,6 +143,10 @@ class FakeTv(Ctl):
         if w[0] == "cm":
             if not self.fw_color:
                 return "error cm: not the display firmware these addresses were read from\n"
+            if len(w) == 1:
+                if self.no_cm:
+                    return "ok cm [not available: the clean display stack has no colour management]\n"
+                return "ok cm all neutral (0 = as the picture mode has it)\n"
             if w[1:] == ["reset"]:
                 self.cm = {}
                 return "ok cm all neutral (registers read back, 0 ms)\n"
@@ -832,6 +837,16 @@ class ColourByPrimary(Base):
     def test_not_available(self):
         b = self.box()
         b.tv.fw_color = False
+        b.start("Colour")
+        d = b.dump()
+        self.assertIn("(hidden) Primary colour", d)
+        self.assertIn('Colour info "Not available"', d)
+        b.finish()
+
+    def test_not_available_on_the_clean_stack(self):
+        # h713-drm: the white balance is there (CRTC properties), the colour management is not ("cm" says so)
+        b = self.box()
+        b.tv.no_cm = True
         b.start("Colour")
         d = b.dump()
         self.assertIn("(hidden) Primary colour", d)

@@ -9,6 +9,10 @@
 # start "at boot" would be a race that can only be won with a wait loop, and
 # there is not going to be one here. That is also why the unit has no
 # [Install] section: `systemctl enable` is not the way, the udev rule is.
+#
+# The same unit serves the clean display stack (h713_drm): the rule starts it
+# on the receiver "h713-hdmirx-clean" as well, and h713-tv tells the stack by
+# the name of the node -d gives it (docs/tools/h713-tv.md "The clean stack").
 [Unit]
 Description=HY310: HDMI input (%I) on the video plane
 Documentation=file:/usr/local/share/doc/h713-tv/README.md
@@ -30,7 +34,8 @@ StartLimitBurst=3
 # registers its routines, and every open of the receiver is refused. OnFailure= fires at EVERY failure of this unit, not only
 # when the start limit is reached: a SIGKILL of the one running process already starts the rescue at once (HY310,
 # 16.10.2026; "Failed with result 'signal'", "Triggering OnFailure= dependencies"), and the restart after RestartSec follows.
-# The rescue restarts h713-warp too, so whatever is BindsTo= the warp (Kodi, the desktop) ends with it.
+# The rescue restarts h713-warp too, so whatever is BindsTo= the warp (Kodi, the desktop) ends with it. On the clean stack
+# there is no MIPS: h713-mips-restart refuses at once (no sun50i-h713-mips driver) and the rescue changes nothing.
 OnFailure=h713-tv-rescue.service
 
 [Service]

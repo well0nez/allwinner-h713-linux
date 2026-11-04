@@ -511,7 +511,8 @@ static void cm_reset(struct row *r, int dir)
 
 static void cm_enter(struct area *a)
 {
-	bool there = tv("wb") && !strstr(reply, "not available");	/* the same machinery as the white balance */
+	/* the same machinery as the white balance - and the clean display stack has the white balance without it */
+	bool there = tv("wb") && !strstr(reply, "not available") && tv("cm") && !strstr(reply, "not available");
 
 	for (int i = 0; i < a->n; i++)
 		a->row[i].hidden = there ? &a->row[i] == r_cm_gone : &a->row[i] != r_cm_gone;

@@ -13,3 +13,9 @@
 # BindsTo would have nothing to hold on to.
 SUBSYSTEM=="video4linux", ACTION=="add", ATTR{name}=="sun50i-h713-hdmirx", \
     TAG+="systemd", ENV{SYSTEMD_WANTS}+="h713-tv@%k.service"
+#
+# The clean display stack (h713_drm, docs/tools/h713-tv.md "The clean stack")
+# registers its receiver as "h713-hdmirx-clean", after its DRM card: the same
+# instance, the same unit. h713-tv tells the two stacks apart by this name.
+SUBSYSTEM=="video4linux", ACTION=="add", ATTR{name}=="h713-hdmirx-clean", \
+    TAG+="systemd", ENV{SYSTEMD_WANTS}+="h713-tv@%k.service"

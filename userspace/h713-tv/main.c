@@ -135,6 +135,8 @@
 
 #define DRM_DRIVER	"sun50i-h713-afbd"	/* patch 0093 */
 #define V4L2_DRIVER	"sun50i-h713-hdmirx"	/* patch 0094 */
+#define DRM_DRIVER_CLEAN	"h713-drm"		/* the clean-room driver (cleanroom-h713, drivers/h713-drm) */
+#define V4L2_DRIVER_CLEAN	"h713-hdmirx-clean"	/* ... and its HDMI receiver */
 
 /* the smallest window the driver publishes, one AFBD block (0133f) */
 #define WINDOW_MIN	16u
@@ -195,6 +197,113 @@ _Noreturn static void fail(const char *fmt, ...)
 }
 
 /* ------------------------------------------------------------------ *
+ * Which display stack: the vendor's or the clean one
+ *
+ * Two kernel stacks can carry the picture, one per boot (docs/tools/h713-tv.md, "The clean stack"):
+ *
+ *   vendor  sun50i-h713-afbd (DRM) and sun50i-h713-hdmirx (V4L2), the display firmware on the MIPS behind them: the
+ *           plane reads the firmware's ring in "hdmi-ring" mode, the picture controls are V4L2 controls of the capture
+ *           node, the white balance and the colour management go to the firmware over cpu_comm.
+ *   clean   h713-drm (DRM) and h713-hdmirx-clean (V4L2), the clean-room driver, no firmware: the CRTC shows the HDMI
+ *           input itself (CRTC property video_source = hdmi, 1080p60 only), the picture controls and the white balance
+ *           are CRTC properties; there is no colour management, no HDCP, no cpu_comm, no HDMI audio, no console on the
+ *           panel (no fbdev) and no aspect or zoom of the firmware's.
+ *
+ * The capture node decides, as it has always been what the program is started for: the node -d names (the udev
+ * instance), else the vendor's when the search finds it, else the clean one's. The card is then the one of the same
+ * stack (display_open_card()). Without a clean node nothing of this changes the vendor path, message for message.
+ * ------------------------------------------------------------------ */
+
+enum stack { STACK_VENDOR, STACK_CLEAN };
+
+static enum stack stack = STACK_VENDOR;
+
+static const char *stack_drm(void)
+{
+	return stack == STACK_CLEAN ? DRM_DRIVER_CLEAN : DRM_DRIVER;
+}
+
+static const char *stack_v4l2(void)
+{
+	return stack == STACK_CLEAN ? V4L2_DRIVER_CLEAN : V4L2_DRIVER;
+}
+
+/* the stack a capture node's name (sysfs videoN/name) belongs to, -1: neither */
+static int stack_of_v4l2_name(const char *name)
+{
+	if (!strcmp(name, V4L2_DRIVER))
+		return STACK_VENDOR;
+	if (!strcmp(name, V4L2_DRIVER_CLEAN))
+		return STACK_CLEAN;
+	return -1;
+}
+
+/*
+ * The decision (host test tests/test_stack.c). named: -d gave a node, given is the stack of its name (-1: neither, or
+ * the name could not be read - the vendor's capture_open() then fails on that node as it always did). Without -d,
+ * vendor and clean say which of the two names the search found.
+ */
+static enum stack stack_decide(bool named, int given, bool vendor, bool clean)
+{
+	if (named)
+		return given == STACK_CLEAN ? STACK_CLEAN : STACK_VENDOR;
+	return !vendor && clean ? STACK_CLEAN : STACK_VENDOR;
+}
+
+/* the name of /sys/class/video4linux/NODE (NODE = "video1"), trailing blanks off; false: not readable */
+static bool capture_sysfs_name(const char *node, char *name, size_t n)
+{
+	char path[96];
+	ssize_t len;
+	int fd;
+
+	snprintf(path, sizeof(path), "/sys/class/video4linux/%s/name", node);
+	fd = open(path, O_RDONLY | O_CLOEXEC);
+	if (fd < 0)
+		return false;
+	len = read(fd, name, n - 1);
+	close(fd);
+	if (len <= 0)
+		return false;
+	name[len] = '\0';
+	while (len > 0 && (name[len - 1] == '\n' || name[len - 1] == ' '))
+		name[--len] = '\0';
+	return true;
+}
+
+/*
+ * Which stack this boot runs, before any device is opened: only sysfs is read (a card opened and closed here would be
+ * the vendor console's last close). A loaded h713_drm whose capture node is not there counts as the clean stack, so
+ * that the failure names the clean node.
+ */
+static enum stack stack_detect(const char *want_path)
+{
+	bool vendor = false, clean = false;
+	char name[64], node[32];
+	unsigned int i;
+
+	if (want_path) {
+		char *real = realpath(want_path, NULL);
+		const char *base = real ? strrchr(real, '/') : NULL;
+		int given = -1;
+
+		if (base && capture_sysfs_name(base + 1, name, sizeof(name)))
+			given = stack_of_v4l2_name(name);
+		free(real);
+		return stack_decide(true, given, false, false);
+	}
+	for (i = 0; i < 64; i++) {
+		snprintf(node, sizeof(node), "video%u", i);
+		if (!capture_sysfs_name(node, name, sizeof(name)))
+			continue;
+		vendor |= stack_of_v4l2_name(name) == STACK_VENDOR;
+		clean |= stack_of_v4l2_name(name) == STACK_CLEAN;
+	}
+	clean |= !access("/sys/module/h713_drm", F_OK);
+	return stack_decide(false, -1, vendor, clean);
+}
+
+/* ------------------------------------------------------------------ *
  * The capture device: is there a signal, and when does that change?
  * ------------------------------------------------------------------ */
 
@@ -207,28 +316,16 @@ struct capture {
 
 /*
  * The device name as the kernel publishes it in sysfs. This is
- * video_device.name from patch 0094, i.e. the very string the udev rule
- * matches on -- so the program and the rule agree by construction.
+ * video_device.name from patch 0094 (the clean stack's: h713-hdmirx-clean),
+ * i.e. the very string the udev rule matches on -- so the program and the
+ * rule agree by construction.
  */
 static bool capture_name_matches(unsigned int n)
 {
-	char path[64], name[64];
-	ssize_t len;
-	int fd;
+	char node[32], name[64];
 
-	snprintf(path, sizeof(path), "/sys/class/video4linux/video%u/name", n);
-	fd = open(path, O_RDONLY | O_CLOEXEC);
-	if (fd < 0)
-		return false;
-	len = read(fd, name, sizeof(name) - 1);
-	close(fd);
-	if (len <= 0)
-		return false;
-	name[len] = '\0';
-	while (len > 0 && (name[len - 1] == '\n' || name[len - 1] == ' '))
-		name[--len] = '\0';
-
-	return !strcmp(name, V4L2_DRIVER);
+	snprintf(node, sizeof(node), "video%u", n);
+	return capture_sysfs_name(node, name, sizeof(name)) && !strcmp(name, stack_v4l2());
 }
 
 /*
@@ -284,7 +381,7 @@ static void capture_open(struct capture *cap, const char *want_path)
 		 * ("Treiber: sun50i-h713-hdm").
 		 */
 		if (!ioctl(cap->fd, VIDIOC_QUERYCAP, &vcap) &&
-		    !strncmp((const char *)vcap.driver, V4L2_DRIVER,
+		    !strncmp((const char *)vcap.driver, stack_v4l2(),
 			     sizeof(vcap.driver) - 1)) {
 			info("capture         %s (%s, %s)", cap->path, vcap.driver,
 			     vcap.card);
@@ -295,8 +392,11 @@ static void capture_open(struct capture *cap, const char *want_path)
 		if (want_path)
 			fail("%s does not belong to \"%.*s\" but to \"%s\"",
 			     cap->path, (int)sizeof(vcap.driver) - 1,
-			     V4L2_DRIVER, vcap.driver);
+			     stack_v4l2(), vcap.driver);
 	}
+	if (stack == STACK_CLEAN)
+		fail("no V4L2 device with the name \"%s\" -- is h713_drm built with CONFIG_VIDEO_DEV, and did it find the HDMI input? (dmesg | grep -E 'hdmi:|hdmirx:'; grep -H . /sys/class/video4linux/video*/name)",
+		     V4L2_DRIVER_CLEAN);
 	fail("no V4L2 device with the name \"%s\" -- is the kernel running patch 0094, and is the probe through? (dmesg | grep hdmirx; grep -H . /sys/class/video4linux/video*/name)",
 	     V4L2_DRIVER);
 }
@@ -564,7 +664,7 @@ static uint32_t prop_id(const struct props *p, const char *name)
 {
 	unsigned int i;
 
-	for (i = 0; i < p->list->count_props; i++)
+	for (i = 0; p->list && i < p->list->count_props; i++)
 		if (p->info[i] && !strcmp(p->info[i]->name, name))
 			return p->info[i]->prop_id;
 
@@ -575,7 +675,7 @@ static bool prop_value(const struct props *p, const char *name, uint64_t *out)
 {
 	unsigned int i;
 
-	for (i = 0; i < p->list->count_props; i++)
+	for (i = 0; p->list && i < p->list->count_props; i++)
 		if (p->info[i] && !strcmp(p->info[i]->name, name)) {
 			*out = p->list->prop_values[i];
 			return true;
@@ -589,7 +689,7 @@ static const drmModePropertyRes *prop_info(const struct props *p,
 {
 	unsigned int i;
 
-	for (i = 0; i < p->list->count_props; i++)
+	for (i = 0; p->list && i < p->list->count_props; i++)
 		if (p->info[i] && !strcmp(p->info[i]->name, name))
 			return p->info[i];
 
@@ -663,15 +763,20 @@ struct display {
 	bool master;
 	bool on;
 	bool warped;			/* h713-warp draws on the video plane (NV12) */
+	uint64_t source_buffer;		/* clean stack: the CRTC's video_source values "buffer" (the planes) ... */
+	uint64_t source_hdmi;		/* ... and "hdmi" (the video plane shows the driver's HDMI ring) */
 };
 
 /*
  * card0 is Panfrost on this board, so the driver name decides, not the
  * number. Render nodes are not considered: modesetting needs the primary
- * node.
+ * node. The name is the stack's (stack_drm()); a card of the other stack
+ * is named in the failure.
  */
 static int display_open_card(const char *want_path)
 {
+	const char *other = stack == STACK_CLEAN ? DRM_DRIVER : DRM_DRIVER_CLEAN;
+	bool seen_other = false;
 	char path[64];
 	unsigned int i;
 	int fd;
@@ -693,19 +798,23 @@ static int display_open_card(const char *want_path)
 			continue;
 		}
 		v = drmGetVersion(fd);
-		match = v && !strcmp(v->name, DRM_DRIVER);
+		match = v && !strcmp(v->name, stack_drm());
+		seen_other |= v && !strcmp(v->name, other);
 		if (v)
 			drmFreeVersion(v);
 		if (match) {
-			info("display         %s (%s)", path, DRM_DRIVER);
+			info("display         %s (%s)", path, stack_drm());
 			return fd;
 		}
 		close(fd);
 		if (want_path)
 			fail("%s is not served by \"%s\"", path,
-			     DRM_DRIVER);
+			     stack_drm());
 	}
-	fail("no DRM device with the driver \"%s\"", DRM_DRIVER);
+	if (seen_other)
+		fail("no DRM device with the driver \"%s\" -- the card is \"%s\", the other display stack's, while the capture node is \"%s\": one boot runs one stack (module_blacklist=, docs/tools/h713-tv.md \"The clean stack\")",
+		     stack_drm(), other, stack_v4l2());
+	fail("no DRM device with the driver \"%s\"", stack_drm());
 
 	return -1;
 }
@@ -748,11 +857,102 @@ static bool display_search_crtc(struct display *d)
 	return true;
 }
 
+/*
+ * The clean stack's CRTC (h713-drm). There is no fbdev emulation there, so no console keeps the panel's mode: the CRTC
+ * comes up off, and its one mode - the boot loader's 1920x1080, which the driver adopts and never programs - is the
+ * connector's only one. clean_pipe() finds connector, CRTC and that mode without touching anything (-n reports with
+ * it); clean_enable() turns the CRTC on with it and no plane on it: a black panel, which is this stack's "console".
+ */
+static bool clean_pipe(struct display *d, uint32_t *conn_id, drmModeModeInfo *mode)
+{
+	drmModeRes *res = drmModeGetResources(d->fd);
+	bool found = false;
+	int i, k, m, pick;
+
+	if (!res)
+		fail("no KMS resources: %s", strerror(errno));
+	for (i = 0; i < res->count_connectors && !found; i++) {
+		drmModeConnector *c = drmModeGetConnector(d->fd, res->connectors[i]);
+		drmModeEncoder *e = NULL;
+
+		if (c && c->connection != DRM_MODE_DISCONNECTED && c->count_modes > 0 && c->count_encoders > 0)
+			e = drmModeGetEncoder(d->fd, c->encoder_id ? c->encoder_id : c->encoders[0]);
+		for (k = 0; e && k < res->count_crtcs && !found; k++) {
+			if (!(e->possible_crtcs & (1u << k)))
+				continue;
+			for (pick = 0, m = 0; m < c->count_modes; m++)
+				if (c->modes[m].type & DRM_MODE_TYPE_PREFERRED) {
+					pick = m;
+					break;
+				}
+			d->crtc_id = res->crtcs[k];
+			d->crtc_index = (unsigned int)k;
+			d->width = c->modes[pick].hdisplay;
+			d->height = c->modes[pick].vdisplay;
+			d->win_w = d->width;
+			d->win_h = d->height;
+			if (conn_id)
+				*conn_id = c->connector_id;
+			if (mode)
+				*mode = c->modes[pick];
+			found = true;
+		}
+		if (e)
+			drmModeFreeEncoder(e);
+		if (c)
+			drmModeFreeConnector(c);
+	}
+	drmModeFreeResources(res);
+	return found;
+}
+
+static bool clean_enable(struct display *d)
+{
+	struct props cp = { 0 }, crp = { 0 };
+	drmModeModeInfo mode;
+	drmModeAtomicReq *req = NULL;
+	uint32_t conn_id = 0, blob = 0;
+	bool ok;
+
+	if (!clean_pipe(d, &conn_id, &mode)) {
+		warn("crtc            no connector with a mode and a CRTC");
+		return false;
+	}
+	ok = props_get(d->fd, conn_id, DRM_MODE_OBJECT_CONNECTOR, &cp) &&
+	     props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &crp) &&
+	     prop_id(&cp, "CRTC_ID") && prop_id(&crp, "MODE_ID") && prop_id(&crp, "ACTIVE") &&
+	     !drmModeCreatePropertyBlob(d->fd, &mode, sizeof(mode), &blob) && (req = drmModeAtomicAlloc()) &&
+	     drmModeAtomicAddProperty(req, conn_id, prop_id(&cp, "CRTC_ID"), d->crtc_id) >= 0 &&
+	     drmModeAtomicAddProperty(req, d->crtc_id, prop_id(&crp, "MODE_ID"), blob) >= 0 &&
+	     drmModeAtomicAddProperty(req, d->crtc_id, prop_id(&crp, "ACTIVE"), 1) >= 0 &&
+	     !drmModeAtomicCommit(d->fd, req, DRM_MODE_ATOMIC_ALLOW_MODESET, NULL);
+	if (ok)
+		info("crtc            %u on: mode %s (%ux%u, %u kHz) of connector %u, no plane -- the panel is black",
+		     d->crtc_id, mode.name, mode.hdisplay, mode.vdisplay, mode.clock, conn_id);
+	else
+		warn("crtc            the mode %ux%u on CRTC %u was refused: %s", mode.hdisplay, mode.vdisplay, d->crtc_id,
+		     strerror(errno));
+	if (req)
+		drmModeAtomicFree(req);
+	if (blob)
+		drmModeDestroyPropertyBlob(d->fd, blob);
+	props_put(&cp);
+	props_put(&crp);
+	d->crtc_id = 0;		/* display_search_crtc() finds it again, now with its mode */
+	return ok;
+}
+
 /* the holder's search (and -n's): what is on the wall is taken as it is */
 static void display_find_crtc(struct display *d)
 {
-	if (!display_search_crtc(d))
-		fail("no CRTC drives a mode -- is the console running? (dmesg | grep afbd)");
+	if (display_search_crtc(d))
+		return;
+	if (stack == STACK_CLEAN && clean_pipe(d, NULL, NULL)) {
+		info("crtc            %u, off (the clean stack: the daemon's start turns it on), mode %ux%u", d->crtc_id,
+		     d->width, d->height);
+		return;
+	}
+	fail("no CRTC drives a mode -- is the console running? (dmesg | grep afbd)");
 }
 
 static void console_restore(void);
@@ -765,12 +965,19 @@ static void console_restore(void);
  * card (the holder, a measuring tool) the last close does not come, and no start found a mode any more (HY300PRO-G-EU,
  * 20.10.2026: after a refused way out, and after a second SIGKILL of the boot - the rescue runs once). The panel with the
  * console on it is what this program starts from, so the start makes it so: the master it got with the open given back (the
- * fbdev helper does not paint under a master), the console restored as at every way out, the search once more.
+ * fbdev helper does not paint under a master), the console restored as at every way out, the search once more. The clean
+ * stack has no console: its start sets the mode itself (clean_enable()).
  */
 static void display_find_crtc_start(struct display *d)
 {
 	if (display_search_crtc(d))
 		return;
+	if (stack == STACK_CLEAN) {
+		info("crtc            none drives a mode (the clean stack has no console to keep one) -- the panel's mode is set");
+		if (!clean_enable(d) || !display_search_crtc(d))
+			fail("the clean stack's CRTC could not be turned on (dmesg | grep h713)");
+		return;
+	}
 	info("crtc            none drives a mode (the last run's framebuffer went with the primary plane) -- the console first");
 	if (drmDropMaster(d->fd) && errno != EINVAL)
 		warn("DROP_MASTER before the console: %s", strerror(errno));
@@ -782,7 +989,9 @@ static void display_find_crtc_start(struct display *d)
 /*
  * The video plane is the overlay on this CRTC that can do NV16 and has the
  * driver-private "hdmi-ring" property. That is plane 38, named "video-0", on
- * our board -- but the number is found, not assumed.
+ * our board -- but the number is found, not assumed. The clean stack's
+ * overlay ("video") has no such property: its HDMI picture is the CRTC's
+ * video_source, and the plane carries no buffer while it is shown.
  */
 static void display_find_plane(struct display *d)
 {
@@ -808,7 +1017,7 @@ static void display_find_plane(struct display *d)
 				if (p->formats[f] == DRM_FORMAT_NV16)
 					nv16 = true;
 			if (nv16 && type == DRM_PLANE_TYPE_OVERLAY &&
-			    prop_id(&pp, "hdmi-ring")) {
+			    (stack == STACK_CLEAN || prop_id(&pp, "hdmi-ring"))) {
 				d->plane_id = p->plane_id;
 				d->plane_props = pp;
 				memset(&pp, 0, sizeof(pp));
@@ -819,8 +1028,27 @@ static void display_find_plane(struct display *d)
 	}
 	drmModeFreePlaneResources(planes);
 
+	if (!d->plane_id && stack == STACK_CLEAN)
+		fail("no overlay plane with NV16 on CRTC %u -- is this h713_drm?", d->crtc_id);
 	if (!d->plane_id)
 		fail("no overlay plane with NV16 and the property \"hdmi-ring\" -- is the kernel running patch 0093?");
+	if (stack == STACK_CLEAN) {
+		/*
+		 * No aspect and no zoom windows: the clean overlay takes the whole buffer onto the whole panel, 1:1 or
+		 * 1280x720 enlarged by 1.5, and the HDMI input is 1080p60 only - nothing to fit, nothing to zoom.
+		 */
+		d->has_aspect = false;
+		d->has_windows = false;
+		props_put(&d->crtc_props);
+		if (!props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &d->crtc_props) ||
+		    !prop_enum_parse(&d->crtc_props, "video_source", "buffer", &d->source_buffer) ||
+		    !prop_enum_parse(&d->crtc_props, "video_source", "hdmi", &d->source_hdmi))
+			fail("CRTC %u has no property \"video_source\" with buffer and hdmi -- h713_drm offers no HDMI input (dmesg | grep hdmi:)",
+			     d->crtc_id);
+		info("plane           %u, NV16, the HDMI input through the CRTC's video_source (the clean stack: no aspect, no zoom windows)",
+		     d->plane_id);
+		return;
+	}
 	/*
 	 * "aspect" (kernel 0133) is how the firmware fits a source that is not
 	 * the panel's shape; its start value is the kernel's default, and it
@@ -928,6 +1156,25 @@ static bool add(drmModeAtomicReq *req, const struct display *d,
 }
 
 /*
+ * The straight ring on or off, in a commit that is being made: on the vendor stack the video plane's "hdmi-ring"; on the
+ * clean stack the CRTC's video_source (hdmi: the video plane shows the driver's ring, and it must carry no buffer then -
+ * the caller takes FB_ID and CRTC_ID off it; buffer: the planes show what they carry).
+ */
+static bool add_ring(drmModeAtomicReq *req, const struct display *d, bool on)
+{
+	uint32_t id;
+
+	if (stack != STACK_CLEAN)
+		return add(req, d, "hdmi-ring", on);
+	id = prop_id(&d->crtc_props, "video_source");
+	if (!id || drmModeAtomicAddProperty(req, d->crtc_id, id, on ? d->source_hdmi : d->source_buffer) < 0) {
+		warn("video_source=%s cannot be queued: %s", on ? "hdmi" : "buffer", id ? strerror(errno) : "no such property");
+		return false;
+	}
+	return true;
+}
+
+/*
  * The kernel's own console client stops painting while a userspace master
  * exists (drm_master_internal_acquire), so the master is only held while the
  * picture is up. Dropping it does not disturb the plane state; it hands the
@@ -1016,6 +1263,7 @@ static bool display_gamma_ready(struct display *d)
 {
 	uint64_t size = 0;
 
+	props_put(&d->crtc_props);	/* the clean stack read them already (display_find_plane()) */
 	if (!props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &d->crtc_props)) {
 		warn("gamma           CRTC properties not readable: %s", strerror(errno));
 		return false;
@@ -1364,18 +1612,25 @@ static bool display_show(struct display *d)
 	if (!req)
 		fail("out of memory");
 
-	ok &= add(req, d, "FB_ID", d->fb_id);
-	ok &= add(req, d, "CRTC_ID", d->crtc_id);
-	ok &= add(req, d, "SRC_X", 0);
-	ok &= add(req, d, "SRC_Y", 0);
 	display_source_rect(d, &sw, &sh);
-	ok &= add(req, d, "SRC_W", (uint64_t)sw << 16);
-	ok &= add(req, d, "SRC_H", (uint64_t)sh << 16);
-	ok &= add(req, d, "CRTC_X", d->win_x);
-	ok &= add(req, d, "CRTC_Y", d->win_y);
-	ok &= add(req, d, "CRTC_W", d->win_w);
-	ok &= add(req, d, "CRTC_H", d->win_h);
-	ok &= add(req, d, "hdmi-ring", 1);
+	if (stack == STACK_CLEAN) {
+		/* the CRTC shows the driver's ring on the video plane, which carries no buffer for it (h713-drm refuses one) */
+		ok &= add(req, d, "FB_ID", 0);
+		ok &= add(req, d, "CRTC_ID", 0);
+		ok &= add_ring(req, d, true);
+	} else {
+		ok &= add(req, d, "FB_ID", d->fb_id);
+		ok &= add(req, d, "CRTC_ID", d->crtc_id);
+		ok &= add(req, d, "SRC_X", 0);
+		ok &= add(req, d, "SRC_Y", 0);
+		ok &= add(req, d, "SRC_W", (uint64_t)sw << 16);
+		ok &= add(req, d, "SRC_H", (uint64_t)sh << 16);
+		ok &= add(req, d, "CRTC_X", d->win_x);
+		ok &= add(req, d, "CRTC_Y", d->win_y);
+		ok &= add(req, d, "CRTC_W", d->win_w);
+		ok &= add(req, d, "CRTC_H", d->win_h);
+		ok &= add(req, d, "hdmi-ring", 1);
+	}
 	if (d->has_aspect)
 		ok &= add(req, d, "aspect", d->aspect);
 	if (d->has_windows) {
@@ -1410,9 +1665,13 @@ static bool display_show(struct display *d)
 
 	if (ret) {
 		warn("atomic commit refused: %s", strerror(errno));
-		if (errno == EOPNOTSUPP)
+		if (stack == STACK_CLEAN && errno == EBUSY)
+			warn("  the video plane still carries a buffer (video_source = hdmi wants it empty)");
+		else if (stack == STACK_CLEAN && errno == ENODEV)
+			warn("  h713_drm offers no HDMI input (dmesg | grep hdmi:)");
+		else if (errno == EOPNOTSUPP)
 			warn("  the display node lacks memory-region-names = \"hdmi-ring\", \"viddec-info\" (check the DTB)");
-		if (errno == EINVAL)
+		else if (errno == EINVAL)
 			warn("  geometry != mode, a non-linear modifier, unequal line pitches, or a width not divisible by 16");
 		display_release_master(d);
 		return false;
@@ -1421,10 +1680,14 @@ static bool display_show(struct display *d)
 	d->on = true;
 	under.up = false;
 	console_keys(false);
-	info("picture         plane %u on, %ux%u out of the capture ring at %u,%u %ux%u on the panel%s",
-	     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h,
-	     d->zoom == ZOOM_IN ? ", zoomed in" :
-	     d->zoom == ZOOM_OUT ? ", zoomed out" : "");
+	if (stack == STACK_CLEAN)
+		info("picture         video_source hdmi on CRTC %u: the driver's %ux%u ring on video plane %u, the whole panel",
+		     d->crtc_id, sw, sh, d->plane_id);
+	else
+		info("picture         plane %u on, %ux%u out of the capture ring at %u,%u %ux%u on the panel%s",
+		     d->plane_id, sw, sh, d->win_x, d->win_y, d->win_w, d->win_h,
+		     d->zoom == ZOOM_IN ? ", zoomed in" :
+		     d->zoom == ZOOM_OUT ? ", zoomed out" : "");
 
 	return true;
 }
@@ -1483,7 +1746,7 @@ static bool under_black_fb(struct display *d)
 static bool under_black_up(struct display *d)
 {
 	static const char *const name[] = { "FB_ID", "CRTC_ID", "SRC_X", "SRC_Y", "SRC_W", "SRC_H", "CRTC_X", "CRTC_Y",
-					    "CRTC_W", "CRTC_H", "hdmi-ring" };
+					    "CRTC_W", "CRTC_H" };
 	drmModeAtomicReq *req;
 	unsigned int i;
 	bool ok, primary = false;
@@ -1491,11 +1754,13 @@ static bool under_black_up(struct display *d)
 
 	if (!under_page_black || !d->master || !under_black_fb(d) || !(req = drmModeAtomicAlloc()))
 		return false;
-	uint64_t val[11] = { under.fb_id, d->crtc_id, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16, 0, 0,
-			     d->width, d->height, 0 };
+	uint64_t val[10] = { under.fb_id, d->crtc_id, 0, 0, (uint64_t)d->width << 16, (uint64_t)d->height << 16, 0, 0,
+			     d->width, d->height };
 
-	for (i = 0, ok = true; ok && i < 11; i++)
+	for (i = 0, ok = true; ok && i < 10; i++)
 		ok = add(req, d, name[i], val[i]);
+	if (ok)
+		ok = add_ring(req, d, false);
 	if (ok && d->has_windows)
 		ok = add(req, d, "src-window", 0) && add(req, d, "dst-window", 0);
 	if (ok)
@@ -1544,6 +1809,8 @@ static int display_plane_off(struct display *d)
 		osd_drop(d);	/* the primary plane is not known: the overlay off on its own first, as before */
 	ok = add(req, d, "FB_ID", 0);
 	ok &= add(req, d, "CRTC_ID", 0);
+	if (stack == STACK_CLEAN)
+		ok &= add_ring(req, d, false);	/* the CRTC's HDMI picture goes with the plane */
 	ret = ok ? drmModeAtomicCommit(d->fd, req, 0, NULL) : -2;
 	drmModeAtomicFree(req);
 	if (primary && ok)
@@ -1910,7 +2177,7 @@ static bool warp_commit(struct display *d, int n, int fence, bool *busy, int *fl
 	for (i = 0; ok && i < (fence >= 0 ? 11u : 10u); i++)
 		ok = add(req, d, name[i], val[i]);
 	if (ok)
-		ok = add(req, d, "hdmi-ring", 0);
+		ok = add_ring(req, d, false);	/* the clean stack: video_source buffer, the plane shows this frame */
 	/*
 	 * And no window. The two window properties are plane state and
 	 * survive display_hide(): a "zoom in" set on the ring before the warp
@@ -2052,6 +2319,7 @@ struct osd {
 	bool queued;			/* while the warp draws: the change goes with its next frame */
 	uint32_t plane_id;		/* the primary plane of our CRTC */
 	struct props props;
+	bool zpos_fixed;		/* the clean stack: zpos is immutable (the RGB plane always on top), never sent */
 	uint32_t console_fb;		/* the plane's framebuffer when it was first looked at: the console's */
 	bool console_known;
 	uint32_t handle[OSD_BUFS], fb_id[OSD_BUFS];
@@ -2121,7 +2389,12 @@ static void nosig_claimed(void)
 	memset(&nosig.since, 0, sizeof(nosig.since));
 }
 
-/* the primary plane of our CRTC with "zpos" (kernel 0251) and ARGB8888 */
+/*
+ * The primary plane of our CRTC with "zpos" (kernel 0251) and ARGB8888. The clean stack's ("rgb") takes XRGB8888 only,
+ * with an immutable zpos on top of the video plane and one global alpha: the buffers have the same layout, h713-osd
+ * draws them as always, the alpha channel is not read - an opaque page shows as it is, a popup over a picture cannot
+ * be mixed (osd_wanted()).
+ */
 static bool osd_find_plane(struct display *d)
 {
 	drmModePlaneRes *planes;
@@ -2137,6 +2410,7 @@ static bool osd_find_plane(struct display *d)
 		struct props pp = { 0 };
 		uint64_t type = 0;
 		bool argb = false;
+		uint32_t want = stack == STACK_CLEAN ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_ARGB8888;
 
 		if (!p)
 			continue;
@@ -2144,11 +2418,12 @@ static bool osd_find_plane(struct display *d)
 		    props_get(d->fd, p->plane_id, DRM_MODE_OBJECT_PLANE, &pp)) {
 			prop_value(&pp, "type", &type);
 			for (f = 0; f < p->count_formats; f++)
-				if (p->formats[f] == DRM_FORMAT_ARGB8888)
+				if (p->formats[f] == want)
 					argb = true;
 			if (type == DRM_PLANE_TYPE_PRIMARY && argb && prop_id(&pp, "zpos")) {
 				osd.plane_id = p->plane_id;
 				osd.props = pp;
+				osd.zpos_fixed = (prop_info(&pp, "zpos")->flags & DRM_MODE_PROP_IMMUTABLE) != 0;
 				memset(&pp, 0, sizeof(pp));
 			}
 			props_put(&pp);
@@ -2196,7 +2471,7 @@ static bool osd_alloc(struct display *d, int *fds)
 		osd.pitch = creq.pitch;
 		handles[0] = creq.handle;
 		pitches[0] = creq.pitch;
-		if (drmModeAddFB2(d->fd, d->width, d->height, DRM_FORMAT_ARGB8888,
+		if (drmModeAddFB2(d->fd, d->width, d->height, stack == STACK_CLEAN ? DRM_FORMAT_XRGB8888 : DRM_FORMAT_ARGB8888,
 				  handles, pitches, offsets, &osd.fb_id[i], 0) ||
 		    drmPrimeHandleToFD(d->fd, creq.handle, DRM_CLOEXEC | DRM_RDWR, &fds[i]))
 			return false;
@@ -2205,7 +2480,8 @@ static bool osd_alloc(struct display *d, int *fds)
 	return true;
 }
 
-/* the primary plane's eleven properties: framebuffer fb at zpos z, the whole panel; fb 0 is the plane off */
+/* the primary plane's eleven properties: framebuffer fb at zpos z, the whole panel; fb 0 is the plane off. An immutable
+ * zpos (the clean stack) is not sent: the kernel refuses any write of it */
 static bool osd_props(drmModeAtomicReq *req, const struct display *d, uint32_t fb, uint64_t z)
 {
 	static const char *const name[] = {
@@ -2220,6 +2496,9 @@ static bool osd_props(drmModeAtomicReq *req, const struct display *d, uint32_t f
 
 	for (i = 0; i < (fb ? 11u : 3u); i++) {
 		uint32_t id = prop_id(&osd.props, name[i]);
+
+		if (i == 2 && osd.zpos_fixed)
+			continue;
 
 		if (!id || drmModeAtomicAddProperty(req, osd.plane_id, id, val[i]) < 0)
 			return false;
@@ -2251,8 +2530,10 @@ static bool osd_learn(struct display *d)
 		uint32_t con = hold_console_fb(d, p->fb_id);	/* the holder's black one (TODO 2.96): the console's is written down */
 
 		osd.console_fb = con ? con : p->fb_id;
+		if (stack == STACK_CLEAN)
+			osd.console_fb = 0;	/* no fbdev, no console: whatever another client left there is not ours to keep */
 		osd.console_known = true;
-		if (!p->fb_id)
+		if (!p->fb_id && stack != STACK_CLEAN)
 			warn("osd             the primary plane %u is off -- the console comes back only when the kernel repaints it",
 			     osd.plane_id);
 		hold_console_note(p->fb_id);	/* for the start after a held restart (TODO 2.96) */
@@ -2262,11 +2543,16 @@ static bool osd_learn(struct display *d)
 	return osd.console_known;
 }
 
-/* the buffer the primary plane is to carry, -1: the console's framebuffer under the video */
+/*
+ * The buffer the primary plane is to carry, -1: the console's framebuffer under the video. On the clean stack only an
+ * opaque page: its RGB plane has no alpha per pixel, a popup over the picture would hide all of it.
+ */
 static int osd_wanted(bool picture)
 {
 	if (!osd.claimed || osd.want < 0 || bare.on)
 		return -1;
+	if (stack == STACK_CLEAN)
+		return osd.cover ? osd.want : -1;
 	return picture || osd.cover ? osd.want : -1;
 }
 
@@ -2488,6 +2774,13 @@ static void osd_serve(struct display *d)
 				osd_uncover(d);
 			}
 			answer = "ok waiting -- no picture to lay it over, it comes with the picture\n";
+		} else if (stack == STACK_CLEAN && !osd.cover) {
+			/* one global alpha over the picture: a page that was up goes, the popup is kept as wanted */
+			if (d->warped && osd.shown && !osd_alone(d))
+				osd.queued = true;
+			else
+				osd_drop(d);
+			answer = "ok waiting -- the clean display stack has no alpha per pixel: no popup over the picture\n";
 		} else if (d->warped) {
 			osd_resume(d);		/* queued: the warp's next frame carries it */
 			answer = "ok\n";
@@ -3161,7 +3454,137 @@ static void console_login_clean(void)
 
 /* ------------------------------------------------------------------ *
  * Picture controls by name (the V4L2 controls of the capture node)
+ *
+ * On the clean stack they are CRTC properties of h713-drm instead, one range property per control, made from the
+ * owner's pq_custom.TSE (those the file does not back are absent): ctrl_find() hands out a v4l2_query_ext_ctrl with
+ * the property's name, id and range, and ctrl_get()/ctrl_set() read and commit the property, so every caller - list,
+ * get, set, the presets, the saved values - runs on either stack unchanged. The clean scale is the vendor's (0..100,
+ * the same pq_custom.TSE curves the firmware used). The white balance (wb_*) is color.c's on both stacks; the HDMI
+ * state properties are read-only and no controls. Nothing else of the firmware's (picture mode, noise reduction,
+ * dynamic contrast, black extension, video range, backlight) exists there.
  * ------------------------------------------------------------------ */
+
+static const char *const clean_ctrl[] = {
+	"brightness", "contrast", "saturation", "hue", "sharpness", "dither_class",
+};
+#define CLEAN_CTRL_N	(sizeof(clean_ctrl) / sizeof(clean_ctrl[0]))
+
+static struct display *ctl_disp;	/* the display the clean stack's controls are on: set once in main() */
+
+/*
+ * CRTC properties by name in one commit; the master is taken for it when nobody here holds it and given back after it,
+ * as display_gamma_commit() does. 0, or -errno with why filled in.
+ */
+static int display_crtc_set(struct display *d, const char *const *name, const uint64_t *val, unsigned int n,
+			    char *why, size_t wn)
+{
+	drmModeAtomicReq *req;
+	bool had = d->master;
+	unsigned int i;
+	int ret = 0;
+
+	if (!had && !display_take_master(d)) {
+		snprintf(why, wn, "another client holds the display");
+		return -EBUSY;
+	}
+	req = drmModeAtomicAlloc();
+	if (!req)
+		fail("out of memory");
+	for (i = 0; !ret && i < n; i++) {
+		uint32_t id = prop_id(&d->crtc_props, name[i]);
+
+		if (!id) {
+			snprintf(why, wn, "the CRTC has no property \"%s\"", name[i]);
+			ret = -ENOENT;
+		} else if (drmModeAtomicAddProperty(req, d->crtc_id, id, val[i]) < 0) {
+			ret = -errno;
+			snprintf(why, wn, "%s cannot be queued: %s", name[i], strerror(errno));
+		}
+	}
+	if (!ret && drmModeAtomicCommit(d->fd, req, 0, NULL)) {
+		ret = -errno;
+		snprintf(why, wn, "the commit was refused: %s", strerror(errno));
+	}
+	drmModeAtomicFree(req);
+	if (!had)
+		display_release_master(d);
+
+	return ret;
+}
+
+/* one CRTC property's value now (a fresh read: the HDMI state and the controls change) */
+static bool display_crtc_get(const struct display *d, uint32_t prop, uint64_t *val)
+{
+	drmModeObjectProperties *l = drmModeObjectGetProperties(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC);
+	bool found = false;
+	uint32_t i;
+
+	for (i = 0; l && i < l->count_props && !found; i++)
+		if (l->props[i] == prop) {
+			*val = l->prop_values[i];
+			found = true;
+		}
+	if (l)
+		drmModeFreeObjectProperties(l);
+	return found;
+}
+
+/* a clean control by its key; false: not one of the list, or the driver has no such property */
+static bool clean_ctrl_find(const char *key, struct v4l2_query_ext_ctrl *q)
+{
+	const drmModePropertyRes *p;
+	unsigned int i;
+
+	for (i = 0; ctl_disp && i < CLEAN_CTRL_N; i++) {
+		if (strcmp(key, clean_ctrl[i]))
+			continue;
+		p = prop_info(&ctl_disp->crtc_props, clean_ctrl[i]);
+		if (!p || !(p->flags & DRM_MODE_PROP_RANGE) || p->count_values < 2)
+			return false;
+		memset(q, 0, sizeof(*q));
+		q->id = p->prop_id;
+		q->type = V4L2_CTRL_TYPE_INTEGER;
+		snprintf(q->name, sizeof(q->name), "%s", p->name);
+		q->minimum = (int64_t)p->values[0];
+		q->maximum = (int64_t)p->values[1];
+		q->step = 1;
+		return true;
+	}
+	return false;
+}
+
+/*
+ * The white balance on the clean stack: color.c's six values (wb_r_gain .. wb_b_offset, 0..1023, 512 neutral) onto
+ * h713-drm's six CRTC properties, one commit. The scale is the same on both stacks: both are the owner's pq_custom.TSE
+ * features wb_* on the same registers (0x051C00D4..E0).
+ */
+static const char *const clean_wb_name[FWC_WB_N] = {
+	"wb_red_gain", "wb_green_gain", "wb_blue_gain", "wb_red_offset", "wb_green_offset", "wb_blue_offset",
+};
+
+static bool clean_wb_have(const struct display *d)
+{
+	unsigned int i;
+
+	for (i = 0; i < FWC_WB_N; i++)
+		if (!prop_id(&d->crtc_props, clean_wb_name[i]))
+			return false;
+	return true;
+}
+
+static bool clean_wb_apply(const int *wb, char *why, size_t n)
+{
+	uint64_t v[FWC_WB_N];
+	unsigned int i;
+
+	if (!ctl_disp) {
+		snprintf(why, n, "no display");
+		return false;
+	}
+	for (i = 0; i < FWC_WB_N; i++)
+		v[i] = (uint64_t)wb[i];
+	return !display_crtc_set(ctl_disp, clean_wb_name, v, FWC_WB_N, why, n);
+}
 
 /* "Temporal Noise Reduction" -> "temporal_noise_reduction" */
 static void ctrl_key(const char *name, char *out, size_t n)
@@ -3202,6 +3625,9 @@ static bool ctrl_find(int fd, const char *want, struct v4l2_query_ext_ctrl *q)
 			break;
 		}
 
+	if (stack == STACK_CLEAN)
+		return clean_ctrl_find(w, q);
+
 	memset(q, 0, sizeof(*q));
 	q->id = V4L2_CTRL_FLAG_NEXT_CTRL;
 	while (!ioctl(fd, VIDIOC_QUERY_EXT_CTRL, q)) {
@@ -3224,6 +3650,14 @@ static int ctrl_get(int fd, const struct v4l2_query_ext_ctrl *q, int64_t *val)
 		.which = V4L2_CTRL_ID2WHICH(q->id), .count = 1, .controls = &c,
 	};
 
+	if (stack == STACK_CLEAN) {
+		uint64_t v;
+
+		if (!ctl_disp || !display_crtc_get(ctl_disp, q->id, &v))
+			return -ENOENT;
+		*val = (int64_t)v;
+		return 0;
+	}
 	if (ioctl(fd, VIDIOC_G_EXT_CTRLS, &cs))
 		return -errno;
 	*val = q->type == V4L2_CTRL_TYPE_INTEGER64 ? c.value64 : c.value;
@@ -3238,6 +3672,19 @@ static int ctrl_set(int fd, const struct v4l2_query_ext_ctrl *q, int64_t val)
 		.which = V4L2_CTRL_ID2WHICH(q->id), .count = 1, .controls = &c,
 	};
 
+	if (stack == STACK_CLEAN) {
+		const char *name = q->name;
+		uint64_t v = (uint64_t)val;
+		char why[160];
+		int ret;
+
+		if (!ctl_disp)
+			return -ENODEV;
+		ret = display_crtc_set(ctl_disp, &name, &v, 1, why, sizeof(why));
+		if (ret)
+			warn("control         %s = %lld: %s", q->name, (long long)val, why);
+		return ret;
+	}
 	if (q->type == V4L2_CTRL_TYPE_INTEGER64)
 		c.value64 = val;
 	else
@@ -5384,6 +5831,45 @@ static const char *hdcp_path(const struct capture *cap, char *buf, size_t len)
 	return buf;
 }
 
+/*
+ * The clean stack's lines of status: which drivers and what they lack, and - live only, it reads the card - the
+ * CRTC's read-only HDMI state (h713-drm's own state machine: off, no-signal, tmds, unsupported, locked, capturing) with
+ * its frame counters.
+ */
+static void cmd_status_clean(struct reply *r, const struct display *d, bool live)
+{
+	static const char *const name[] = {
+		"hdmi_width", "hdmi_height", "hdmi_refresh_mhz", "hdmi_source_frames", "hdmi_frames_shown",
+		"hdmi_frames_repeated", "hdmi_frames_skipped",
+	};
+	unsigned long long v[7] = { 0 };
+	uint64_t st = 0, src = 0, x;
+	struct props p = { 0 };
+	const char *stn, *srcn;
+	unsigned int i;
+
+	reply_add(r, "stack           clean: %s + %s -- no display firmware: no HDCP, no colour management, no HDMI audio, no popup over the picture\n",
+		  DRM_DRIVER_CLEAN, V4L2_DRIVER_CLEAN);
+	if (!live)
+		return;
+	if (!props_get(d->fd, d->crtc_id, DRM_MODE_OBJECT_CRTC, &p)) {
+		reply_add(r, "hdmi            the CRTC's properties are not readable: %s\n", strerror(errno));
+		return;
+	}
+	prop_value(&p, "hdmi_state", &st);
+	prop_value(&p, "video_source", &src);
+	for (i = 0; i < 7; i++)
+		if (prop_value(&p, name[i], &x))
+			v[i] = x;
+	stn = prop_enum_name(&p, "hdmi_state", st);
+	srcn = prop_enum_name(&p, "video_source", src);
+	reply_add(r, "hdmi            %s, %llux%llu at %llu mHz; video_source %s\n", stn ? stn : "?", v[0], v[1], v[2],
+		  srcn ? srcn : "?");
+	reply_add(r, "                frames: %llu from the source, %llu shown, %llu repeated, %llu skipped\n", v[3], v[4], v[5],
+		  v[6]);
+	props_put(&p);
+}
+
 static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		       struct display *d, struct audio *a, bool live)
 {
@@ -5424,6 +5910,8 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	else if (sig == 3 && t->bt.width)
 		reply_add(r, "signal          %s not in the firmware's table -- console\n",
 			  signal_text(t, sigbuf, sizeof(sigbuf)));
+	else if (sig == 3 && stack == STACK_CLEAN)
+		reply_add(r, "signal          a source the clean receiver does not take (1080p60 only) -- console\n");
 	else if (sig == 3)
 		reply_add(r, "signal          a source the firmware's table does not carry -- console\n");
 	else
@@ -5465,7 +5953,9 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 		reply_add(r, "format          %s (aspect %llu)\n",
 			  prop_enum_name(&d->plane_props, "aspect", d->aspect),
 			  (unsigned long long)d->aspect);
-	{
+	if (stack == STACK_CLEAN) {
+		reply_add(r, "zoom            off (the clean stack: no aspect, no zoom -- the video plane takes the whole frame)\n");
+	} else {
 		char zbuf[32], sbuf[48], dbuf[48];
 
 		zoom_text(d, zbuf, sizeof(zbuf));
@@ -5486,6 +5976,8 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 				  sw, sh);
 		}
 	}
+	if (stack == STACK_CLEAN)
+		cmd_status_clean(r, d, live);
 	st_rest = status_ms(&st_t);
 	cmd_status_picture_values(r);
 	st_pic = status_ms(&st_t);
@@ -5497,6 +5989,11 @@ static void cmd_status(struct reply *r, struct control *c, struct capture *cap,
 	if (!live)
 		return;
 	cmd_status_edid(r, cap);
+	if (stack == STACK_CLEAN) {
+		/* no firmware: no kernel status of the vendor receiver, no cpu_comm, no HDCP; the EDID provider stays */
+		reply_file_lines(r, "/sys/kernel/debug/h713-arisc/status", edid, "arisc           ");
+		return;
+	}
 	reply_file_lines(r, "/sys/kernel/debug/" V4L2_DRIVER "/status", kern, "kernel          ");
 	reply_file_lines(r, "/sys/kernel/debug/cpu_comm/watch", comm, "cpu_comm        ");
 	reply_file_lines(r, "/sys/kernel/debug/h713-arisc/status", edid, "arisc           ");
@@ -5509,35 +6006,50 @@ static void cmd_hdcp(struct reply *r, struct capture *cap)
 {
 	char path[64];
 
+	if (stack == STACK_CLEAN) {
+		reply_fail(r, "hdcp is not available: the clean display stack receives HDMI without HDCP");
+		return;
+	}
 	reply_add(r, "ok hdcp\n");
 	reply_file_lines(r, hdcp_path(cap, path, sizeof(path)), hdcp_keys,
 			 "hdcp            ");
 }
 
-static void cmd_list(struct reply *r, struct capture *cap)
+/* one line of "list": a control's key, value and range (or menu) */
+static void list_line(struct reply *r, int fd, const struct v4l2_query_ext_ctrl *q)
 {
-	struct v4l2_query_ext_ctrl q;
 	char key[64], menu[64];
 	int64_t val;
 
+	ctrl_key(q->name, key, sizeof(key));
+	if (ctrl_get(fd, q, &val))
+		reply_add(r, "  %-26s ?  (%lld..%lld)\n", key,
+			  (long long)q->minimum, (long long)q->maximum);
+	else if (ctrl_menu_text(fd, q, val, menu, sizeof(menu)))
+		reply_add(r, "  %-26s %lld (%s)  menu 0..%lld\n", key,
+			  (long long)val, menu, (long long)q->maximum);
+	else
+		reply_add(r, "  %-26s %lld  (%lld..%lld)\n", key,
+			  (long long)val, (long long)q->minimum,
+			  (long long)q->maximum);
+}
+
+static void cmd_list(struct reply *r, struct capture *cap)
+{
+	struct v4l2_query_ext_ctrl q;
+	unsigned int i;
+
 	reply_add(r, "ok controls\n");
+	/* the clean stack: the CRTC's controls, those the driver offers */
+	for (i = 0; stack == STACK_CLEAN && i < CLEAN_CTRL_N; i++)
+		if (clean_ctrl_find(clean_ctrl[i], &q))
+			list_line(r, cap->fd, &q);
 	memset(&q, 0, sizeof(q));
 	q.id = V4L2_CTRL_FLAG_NEXT_CTRL;
-	while (!ioctl(cap->fd, VIDIOC_QUERY_EXT_CTRL, &q)) {
+	while (stack != STACK_CLEAN && !ioctl(cap->fd, VIDIOC_QUERY_EXT_CTRL, &q)) {
 		if (!(q.flags & V4L2_CTRL_FLAG_DISABLED) &&
-		    q.type != V4L2_CTRL_TYPE_CTRL_CLASS) {
-			ctrl_key(q.name, key, sizeof(key));
-			if (ctrl_get(cap->fd, &q, &val))
-				reply_add(r, "  %-26s ?  (%lld..%lld)\n", key,
-					  (long long)q.minimum, (long long)q.maximum);
-			else if (ctrl_menu_text(cap->fd, &q, val, menu, sizeof(menu)))
-				reply_add(r, "  %-26s %lld (%s)  menu 0..%lld\n", key,
-					  (long long)val, menu, (long long)q.maximum);
-			else
-				reply_add(r, "  %-26s %lld  (%lld..%lld)\n", key,
-					  (long long)val, (long long)q.minimum,
-					  (long long)q.maximum);
-		}
+		    q.type != V4L2_CTRL_TYPE_CTRL_CLASS)
+			list_line(r, cap->fd, &q);
 		q.id |= V4L2_CTRL_FLAG_NEXT_CTRL;
 	}
 	/* the firmware's own: held here, not in the capture driver */
@@ -5663,6 +6175,10 @@ static void cmd_rpc(struct reply *r, const char *line)
 	ssize_t n;
 	int fd;
 
+	if (stack == STACK_CLEAN) {
+		reply_fail(r, "rpc is not available: the clean display stack runs no display firmware (no cpu_comm)");
+		return;
+	}
 	/* the kernel's line buffer is 160 bytes; say so instead of a bare EINVAL */
 	if (strlen(line) >= 159) {
 		reply_fail(r, "RPC line longer than 158 characters");
@@ -6418,6 +6934,11 @@ static bool cmd_aspect(struct reply *r, struct display *d, const char *text)
 	char names[128];
 	uint64_t val;
 
+	if (stack == STACK_CLEAN) {
+		/* h713-drm's overlay takes the whole buffer onto the whole panel, and its HDMI input is 1080p60: nothing to fit */
+		reply_fail(r, "aspect is not available on the clean display stack: the video plane shows the whole frame on the whole panel (HDMI 1080p60 1:1)");
+		return false;
+	}
 	if (!d->has_aspect) {
 		reply_fail(r, "the plane has no property \"aspect\" (kernel 0133)");
 		return false;
@@ -6560,6 +7081,10 @@ static bool cmd_zoom(struct reply *r, struct display *d, const char *verb,
 	if (!zoom_parse(verb, arg, &m, &v)) {
 		reply_fail(r, "zoom takes \"in [1.0..4.0]\" or \"off\", not \"%s%s%s\"",
 			   verb, arg ? " " : "", arg ? arg : "");
+		return false;
+	}
+	if (m != ZOOM_OFF && stack == STACK_CLEAN) {
+		reply_fail(r, "zoom is not available on the clean display stack: the video plane takes the whole frame only (1:1, or 1280x720 enlarged to the panel); the projection area is \"h713-warp ctl zoom PERCENT\"");
 		return false;
 	}
 	if (m != ZOOM_OFF && !d->has_windows) {
@@ -7565,7 +8090,10 @@ static void cmd_osd_claim(struct reply *r, struct display *d, int conn)
 		return;
 	}
 	if (!osd_find_plane(d)) {
-		reply_fail(r, "no primary plane with zpos and ARGB8888 on CRTC %u -- kernel 0251?", d->crtc_id);
+		if (stack == STACK_CLEAN)
+			reply_fail(r, "no primary plane with zpos and XRGB8888 on CRTC %u", d->crtc_id);
+		else
+			reply_fail(r, "no primary plane with zpos and ARGB8888 on CRTC %u -- kernel 0251?", d->crtc_id);
 		return;
 	}
 	/* the console's framebuffer, read again: nothing of ours is on the plane before a claim */
@@ -8460,6 +8988,34 @@ static int mode_ctemp(int mode)
 }
 
 /*
+ * A preset on the clean stack: there is no picture mode (it is the firmware's) and none of its noise reduction,
+ * dynamic contrast or black extension, so a preset is its five sliders - CRTC properties on the vendor's scale, made
+ * from the same pq_custom.TSE curves - and its colour temperature. Each value is one commit; nothing needs the
+ * firmware's nudge (preset_apply()). Returns the number of sliders that failed.
+ */
+static int preset_apply_clean(struct capture *cap, const struct preset *p, char *msg, size_t n)
+{
+	struct v4l2_query_ext_ctrl q;
+	unsigned int i, failed = 0;
+	size_t l;
+
+	l = (size_t)snprintf(msg, n, "%s:", p->name);
+	for (i = 0; i < 5 && l + 1 < n; i++) {
+		if (!ctrl_find(cap->fd, preset_ctrl[i], &q) || ctrl_set(cap->fd, &q, p->value[i])) {
+			l += (size_t)snprintf(msg + l, n - l, " %s=ERROR", preset_ctrl[i]);
+			failed++;
+			continue;
+		}
+		l += (size_t)snprintf(msg + l, n - l, " %s=%d", preset_ctrl[i], p->value[i]);
+	}
+	if (l + 1 < n)
+		snprintf(msg + l, n - l, " (mode, tnr, snr, dci, black: not on the clean stack)");
+	gamma_mode_temp(preset_ctemp(p), "a preset");
+
+	return (int)failed;
+}
+
+/*
  * Send one preset: the mode first, then the nine values. Writes what was
  * sent (or what failed) into msg, returns 0 when everything went, -1 when the
  * mode could not be set at all, otherwise the number of values that failed.
@@ -8477,6 +9033,8 @@ static int preset_apply(struct capture *cap, const struct preset *p, char *msg,
 	size_t l = 0;
 	int ret;
 
+	if (stack == STACK_CLEAN)
+		return preset_apply_clean(cap, p, msg, n);
 	if (!ctrl_find(cap->fd, "mode", &q)) {
 		snprintf(msg, n, "no control picture_mode (kernel 0126)");
 		return -1;
@@ -9556,6 +10114,8 @@ static void evaluate(struct capture *cap, struct display *d,
 		if (was != 3 && t.bt.width)
 			info("signal          %s not in the firmware's table -- console",
 			     signal_text(&t, sigbuf, sizeof(sigbuf)));
+		else if (was != 3 && stack == STACK_CLEAN)
+			info("signal          a source the clean receiver does not take (1080p60 only) -- console");
 		else if (was != 3)
 			info("signal          a source the firmware's table does not carry -- console");
 		want_hold_end();
@@ -9629,9 +10189,15 @@ static void evaluate(struct capture *cap, struct display *d,
 		d->src_w = ring_w;
 		d->src_h = ring_h;
 		d->src_pitch = ring_pitch;
-		display_create_fb(d);
-		info("buffer          %ux%u NV16, line pitch %u on panel %ux%u",
-		     d->src_w, d->src_h, d->src_pitch, d->width, d->height);
+		if (stack == STACK_CLEAN) {
+			/* the CRTC reads the driver's own ring: no framebuffer carries its geometry */
+			info("ring            %ux%u NV16, line pitch %u on panel %ux%u (the driver's, shown by video_source hdmi)",
+			     d->src_w, d->src_h, d->src_pitch, d->width, d->height);
+		} else {
+			display_create_fb(d);
+			info("buffer          %ux%u NV16, line pitch %u on panel %ux%u",
+			     d->src_w, d->src_h, d->src_pitch, d->width, d->height);
+		}
 	}
 
 	/*
@@ -9698,9 +10264,10 @@ _Noreturn static void usage(const char *me)
 		"  -C FILE     configuration (start = auto|manual|last, state = PATH|none,\n"
 		"              preset = NAME|last, data = DIR|none, calculator = PATH|none);\n"
 		"              default %s; without it: start = auto, the mode saved in %s\n"
-		"  -d DEVICE   capture device; without it the name \"%s\" is searched for\n"
+		"  -d DEVICE   capture device; without it the name \"%s\" is searched for, else the\n"
+		"              clean display stack's \"%s\"; the node's name decides the stack\n"
 		"              (on this board /dev/video1 -- video0 is cedrus)\n"
-		"  -c DEVICE   DRM device; without it the driver \"%s\" is searched for\n"
+		"  -c DEVICE   DRM device; without it the driver \"%s\" (clean stack: \"%s\") is searched for\n"
 		"              (on this board /dev/dri/card1 -- card0 is Panfrost)\n"
 		"  -p PRESET   picture preset at the start (standard cinema vivid game computer hdr,\n"
 		"              with device data also energy_saving and custom; last = the saved one,\n"
@@ -9723,7 +10290,7 @@ _Noreturn static void usage(const char *me)
 		"              h713-tv ctl volume\n"
 		"  Controls, picture on/off, audio, RPCs while it runs: h713-tv ctl help\n"
 		"  -n          only report what was found, then exit -- the display is untouched\n",
-		me, me, me, CTL_SOCKET, CONF_FILE, STATE_FILE, V4L2_DRIVER, DRM_DRIVER,
+		me, me, me, CTL_SOCKET, CONF_FILE, STATE_FILE, V4L2_DRIVER, V4L2_DRIVER_CLEAN, DRM_DRIVER, DRM_DRIVER_CLEAN,
 		PQ_BIN, PQ_DATA, PQ_INPUT, PQ_LUT, GAMMA_FILE);
 	exit(2);
 }
@@ -9891,6 +10458,9 @@ int main(int argc, char **argv)
 	if (!o.report_only)
 		tse_gamma_start(&tsegamma, &conf);
 
+	stack = stack_detect(o.video);
+	if (stack == STACK_CLEAN)
+		info("stack           clean: %s + %s, no display firmware", DRM_DRIVER_CLEAN, V4L2_DRIVER_CLEAN);
 	capture_open(&cap, o.video);
 
 	d.fd = display_open_card(o.card);
@@ -9903,6 +10473,13 @@ int main(int argc, char **argv)
 	else
 		display_find_crtc_start(&d);
 	display_find_plane(&d);
+	if (stack == STACK_CLEAN) {
+		/* the picture controls and the white balance are the CRTC's (clean_ctrl_find(), clean_wb_apply()) */
+		ctl_disp = &d;
+		fwc_use_kms(clean_wb_have(&d) ? clean_wb_apply : NULL,
+			    "the clean display stack has no colour management",
+			    "h713-drm offers no wb_* properties (no pq_custom.TSE?)");
+	}
 
 	/*
 	 * Opening the card as its first client made this process the DRM master
