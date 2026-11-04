@@ -16,3 +16,10 @@ path = "src/main.rs"
 
 [dependencies]
 proto = { package = "h713-airplay-proto", path = "../proto" }
+libc = "0.2"
+
+# The picture and sound path exists for the board only (src/hw, src/sys.rs: bindings for its FFmpeg 7.1, EGL, GLES,
+# GBM and ALSA); on the host the crate builds its pure parts and their tests.
+[target.'cfg(target_arch = "aarch64")'.dependencies]
+wayland-client = "0.31"
+wayland-protocols = { version = "0.32", features = ["client"] }
