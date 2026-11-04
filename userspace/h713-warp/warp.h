@@ -27,6 +27,12 @@
 #define TV_SOCKET	"/run/h713-tv/ctl"
 #define RENDER_NODE	"/dev/dri/renderD128"
 #define V4L2_NAME	"sun50i-h713-hdmirx"
+/*
+ * The clean display stack's receiver (h713_drm): the same ring of three NV16M slots, but a dequeued slot holds still for
+ * only two source frames (~33 ms at 60 Hz), and its dma-bufs are reserved memory without struct pages (importers get
+ * DMA addresses, dma_map_resource) - docs/tools/h713-tv.md, "The clean stack"
+ */
+#define V4L2_NAME_CLEAN	"h713-hdmirx-clean"
 #define WAYLAND_SOCKET	"/run/h713-warp/wayland"	/* the Wayland server: WAYLAND_DISPLAY */
 
 #define WARP_TARGETS	3	/* triple buffering on the panel side (M9) */

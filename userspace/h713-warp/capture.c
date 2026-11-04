@@ -1,7 +1,7 @@
 /* SPDX-License-Identifier: GPL-2.0 */
 #define _GNU_SOURCE		/* accept4, strtok_r, O_CLOEXEC */
 /*
- * The capture source (design AP2d M5): /dev/videoN of sun50i-h713-hdmirx.
+ * The capture source (design AP2d M5): /dev/videoN of sun50i-h713-hdmirx, or of h713-hdmirx-clean on the clean stack.
  * REQBUFS 3, VIDIOC_EXPBUF per buffer and plane -- the exporter is kernel
  * patch 0136y, verified over LAN on 22.09.2026 (PLAN section 8) -- then
  * STREAMON and a DQBUF/QBUF loop. The six dma-bufs become six EGLImages once,
@@ -39,8 +39,15 @@ void source_init(struct source *s, const char *want)
  * By driver name, not by number: /dev/video0 is cedrus on this board, and
  * v4l2_capability has __u8 driver[16], so the kernel reports at most
  * "sun50i-h713-hdm" of our 18-character name -- only a prefix compare can
- * match (h713-tv capture_open, scanout.c v4l_open).
+ * match (h713-tv capture_open, scanout.c v4l_open). The clean stack's
+ * receiver reports "h713-hdmirx-cle" the same way.
  */
+static bool node_matches(const struct v4l2_capability *vc)
+{
+	return !strncmp((const char *)vc->driver, V4L2_NAME, sizeof(vc->driver) - 1) ||
+	       !strncmp((const char *)vc->driver, V4L2_NAME_CLEAN, sizeof(vc->driver) - 1);
+}
+
 static bool open_node(struct source *s, char *why, size_t n)
 {
 	struct v4l2_capability vc;
@@ -55,9 +62,7 @@ static bool open_node(struct source *s, char *why, size_t n)
 		s->fd = open(s->path, O_RDWR | O_NONBLOCK | O_CLOEXEC);
 		if (s->fd >= 0) {
 			memset(&vc, 0, sizeof(vc));
-			if (!ioctl(s->fd, VIDIOC_QUERYCAP, &vc) &&
-			    !strncmp((const char *)vc.driver, V4L2_NAME,
-				     sizeof(vc.driver) - 1)) {
+			if (!ioctl(s->fd, VIDIOC_QUERYCAP, &vc) && node_matches(&vc)) {
 				caps = vc.device_caps ? vc.device_caps : vc.capabilities;
 				s->type = caps & V4L2_CAP_VIDEO_CAPTURE_MPLANE ?
 					V4L2_BUF_TYPE_VIDEO_CAPTURE_MPLANE :
@@ -70,11 +75,11 @@ static bool open_node(struct source *s, char *why, size_t n)
 		if (s->want) {
 			snprintf(why, n, "%s: %s", s->path,
 				 s->fd < 0 ? strerror(errno) :
-					     "not a " V4L2_NAME " node");
+					     "not a " V4L2_NAME " or " V4L2_NAME_CLEAN " node");
 			return false;
 		}
 	}
-	snprintf(why, n, "no /dev/video* belongs to " V4L2_NAME);
+	snprintf(why, n, "no /dev/video* belongs to " V4L2_NAME " or " V4L2_NAME_CLEAN);
 
 	return false;
 }
