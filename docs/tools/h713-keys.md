@@ -67,9 +67,9 @@ the camera and `h713-osd ctl status` 40 to 47 s after the boot: `launcher` - the
 
 ```
 label    = Kodi                  # English, what is written on the wall
-icon     = film                  # hdmi film globe desk sliders power (libh713osd)
+icon     = film                  # hdmi film globe desk sliders power airplay (libh713osd)
 unit     = h713-kodi.service     # OK: systemctl start --no-block (a "mode"; h713-mode ends it before a sleep and starts it after)
-exec     = /usr/local/sbin/h713-mode hdmi    # or: a command, run detached (no shell)
+exec     = /usr/local/sbin/h713-mode hdmi    # or: a command, run detached (no shell); both: "An entry with unit and exec" below
 show     = /usr/local/sbin/h713-power can-standby    # optional: the entry exists only if this exits 0
 active   = /usr/bin/systemctl is-active --quiet h713-kodi.service    # optional: exits 0 while this entry is what runs
 now      = Kodi                  # the header while it is active (default: the label); {signal} = 1080p60 from h713-tv
@@ -90,8 +90,19 @@ image: Kodi `h713-kodi-switch ready` (its JSON-RPC answers once the home screen 
 labwc touches when a window is first mapped (a `windowRule` with an `Execute` action in `labwc-browser/rc.xml` and `labwc/rc.xml`; the unit's runtime directory goes with the unit, so a
 stale file cannot say "ready"). An entry without `wait` closes the page at the OK, as before.
 
-Up to six entries fit the picture (the mock-up's: HDMI input, Kodi, Browser, Desktop, Settings, Standby); the selection starts
-on the entry that is active. A file without label, icon and unit or exec is left out with a journal warning. `H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).
+**An entry with `unit` and `exec`** (05.11.2026: Screen Mirroring, `15-airplay.conf`, [h713-airplay](h713-airplay.md)). The `unit` is its
+mode - the mode watch, `last-mode`, `active` and `now`, and h713-mode (which reads every `unit =` line) treat it as they treat Kodi - but the
+launcher does not start it: something else does (AirPlay's socket, when a phone mirrors). **OK runs `exec` while the unit is down** - the
+waiting page, with `return = launcher` as Settings has it (Back on it opens the launcher again, Screen Mirroring chosen) - **and only closes
+the launcher while it is up** (its cgroup is there, the mode watch's test below: the stream is the mode on the wall, and OK shows it).
+`wait` means nothing on such an entry, and `on_start` does not take it: `on_start = airplay` is a warning and the default, and `last`
+after a stream opens the launcher (a stream does not come back by itself). Host tests (`tests/test_keys.py`), not yet tried on a box.
+
+Up to seven entries fit the picture (05.11.2026): six at the mock-up's size (HDMI input, Kodi, Browser, Desktop, Settings, Standby),
+seven - the image's with Screen Mirroring and Standby - all drawn a little smaller, so that they fit between the header and the foot
+([libh713osd](../../userspace/libh713osd/README.md)); with an eighth h713-osd answers `error at most 7 rows` and the launcher does not open.
+*Superseded 05.11.2026:* "Up to six entries fit the picture (the mock-up's: HDMI input, Kodi, Browser, Desktop, Settings, Standby)" -
+Screen Mirroring is the seventh. The selection starts on the entry that is active. A file without label, icon and unit or exec is left out with a journal warning. `H713_KEYS_TRACE=1` adds a journal line per key with the kernel's stamp and the read time (gate HL).
 
 ## The ways back (Marco, 17.10.2026)
 
@@ -102,6 +113,8 @@ Back goes one level back and Home goes home; whoever ends a program has the remo
 | Settings (a page over the mode) | the launcher opens again, Settings chosen | everything closes, the mode is on the wall | |
 | the launcher | closes: the mode below | closes | |
 | a mode (HDMI, Kodi, Browser, Desktop) | Kodi's, the browser's | opens the launcher | **the launcher opens, HDMI input chosen** (Kodi's Exit, the browser or the terminal closed, a crash) |
+| the AirPlay waiting page (Screen Mirroring, 05.11.2026) | the launcher opens again, Screen Mirroring chosen | everything closes | a stream takes the wall: the page goes and the stream shows |
+| AirPlay (a phone mirrors, 05.11.2026) | nothing (the stream takes no key) | opens the launcher | **the launcher opens, HDMI input chosen** (the phone stopped) |
 
 **`return = launcher`** (an `exec` entry; the Settings entry): h713-keys keeps the program it started and waits for its end. With exit status 0 it opens the launcher again with that entry
 chosen; the header still says what runs. Any other status leaves the wall to the mode below. h713-settings ends with 0 on Back at its top level, 10 on Home, 11 on Power, 12 after 120 s without a key,
@@ -117,6 +130,17 @@ down). When none has been there for 0.5 s, the mode has ended and the launcher o
 - the shutdown: `systemctl is-system-running` says `stopping`;
 - the six seconds after the launcher itself started a mode (a switch from one mode to the next has no gap that long);
 - the launcher is open already (Kodi crashed behind it): nothing opens a second one; an entry that was starting ("Starting Browser...") and ended before its first picture puts the list back at once, HDMI input chosen, instead of keeping the page for 30 s.
+
+**A mode that starts by itself** (05.11.2026: AirPlay's presenter, started by its socket when a phone mirrors, [h713-airplay](h713-airplay.md)).
+The same look at the cgroups sees a mode unit come up that the launcher did not start: not within the six seconds after it started one, and
+not the unit of the entry it shows "Starting X..." for (a mode before it may take longer to stop). Then whatever of h713-keys' own is on the
+wall makes way, so that the picture is there at once: an open launcher closes (the grab let go, `launcher close`), a way back that is due is
+dropped, and a page with `return = launcher` that runs - Settings, the AirPlay waiting page - is stopped as the unit it runs as
+(`systemctl stop --no-block` with the `--unit=` of its `exec` line; a page without one is left alone, with a journal warning). Its end then
+opens nothing, whatever its status: a page that takes the SIGTERM ends with 15, one the signal kills is a clean end to systemd, and
+`systemd-run --wait` says 0. From then on the stream is the mode: Home opens the launcher over it as over Kodi, HDMI input ends it
+(`h713-mode hdmi`), and its end by itself (the phone stops) opens the launcher with HDMI input chosen, as above. Host tests
+(`tests/test_keys.py`), not yet tried on a box.
 
 **The mode is remembered** in `/var/lib/h713-keys/last-mode` (`StateDirectory=h713-keys`): `hdmi`, or the unit that ran last. It follows the box through every start and end of a mode, except the end for a sleep (the mode comes back after it) and the end for the
 shutdown: what ran when the box went off is what `on_start = last` brings back. The first look after h713-keys has started writes `hdmi` when nothing runs; it waits for the start under `on_start` to be settled, so that the start still finds what was kept.

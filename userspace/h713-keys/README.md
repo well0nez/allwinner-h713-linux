@@ -29,15 +29,17 @@ h713-keys run            # what the unit runs
 
 Home opens a page with a ground over the whole panel and the list on the left, drawn by `h713-osd` (its `launcher`
 command), Up and Down move, OK does what the entry says, Back and Home close, volume, mute and focus work as always. The entries are
-the files `/etc/h713/launcher.d/NN-name.conf` (`label`, `icon`, `unit` or `exec`, `show`, `active`, `now`, `group`, `fallback`;
-`rootfs/overlay-desktop/etc/h713/launcher.d/` has six: HDMI input, Kodi, Browser, Desktop, Settings and Standby - the
+the files `/etc/h713/launcher.d/NN-name.conf` (`label`, `icon`, `unit` or `exec` or both, `show`, `active`, `now`, `group`, `fallback`;
+`rootfs/overlay-desktop/etc/h713/launcher.d/` has seven - six until 05.11.2026: HDMI input, Screen Mirroring (AirPlay: `unit` and `exec`, OK
+runs its waiting page while no phone mirrors), Kodi, Browser, Desktop, Settings and Standby - the
 last only where `h713-power can-standby` says so, which a release image does not; the format is in
 [docs/tools/h713-keys.md](../../docs/tools/h713-keys.md)). While it is open the remote's two devices are **grabbed**
 (`EVIOCGRAB`, taken at the release of Home: grabbed earlier, cage would hold Home down and Kodi repeat it), so Kodi, which reads them through cage, gets no key; it opens only where `h713-osd` can show it and closes by
 itself after 90 s. A Power press with it open closes it and goes on to `h713-power` (a datagram `down`: h713-power starts the press, so a 3 s hold still powers off).
 
 **The ways back** (17.10.2026): an entry with `return = launcher` (Settings) opens the launcher again, with itself chosen, when its program ends with status 0 (Back at the top of the page; Home, Power, idle and the rest end with 10 or more and
-open nothing); a mode unit that ends by itself (Kodi's Exit, the browser or the terminal closed, a crash) opens the launcher with HDMI input chosen - not when `h713-mode hdmi`, a sleep or the shutdown ended it. The mode that runs is kept in
+open nothing); a mode unit that ends by itself (Kodi's Exit, the browser or the terminal closed, a crash) opens the launcher with HDMI input chosen - not when `h713-mode hdmi`, a sleep or the shutdown ended it. A mode unit that comes up
+without the launcher (AirPlay's, when a phone mirrors, 05.11.2026) closes an open launcher and stops a page with `return = launcher`, so the stream is on the wall at once. The mode that runs is kept in
 `/var/lib/h713-keys/last-mode` (`StateDirectory=h713-keys`) for `on_start = last`. Details: [docs/tools/h713-keys.md](../../docs/tools/h713-keys.md).
 
 At the start of the box the launcher opens by itself (`on_start = launcher` in `keys.conf`, the default; `hdmi` keeps the HDMI picture; `kodi` or another entry's id starts that mode; `last` what ran last): once per boot (`/run/h713-keys.booted`), as soon as `h713-osd` can show it

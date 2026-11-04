@@ -108,9 +108,11 @@ class KeysTest(unittest.TestCase):
         systemctl = os.path.join(self.root, "systemctl")
         self.systemctl_log = os.path.join(self.root, "systemctl.log")
         with open(systemctl, "w") as f:
-            f.write('#!/bin/sh\necho "$@" >> %s\ncase "$1" in is-active) exit $(cat %s.rc 2>/dev/null || echo 3) ;;'
-                    ' is-system-running) cat %s.state 2>/dev/null ;; esac\nexit 0\n'
-                    % (self.systemctl_log, systemctl, systemctl))
+            # stop NAME: systemd ends the unit NAME - a stand-in page (page()) ends with the status in NAME.status
+            f.write('#!/bin/sh\necho "$@" >> %(log)s\ncase "$1" in is-active) exit $(cat %(sc)s.rc 2>/dev/null || echo 3) ;;'
+                    ' is-system-running) cat %(sc)s.state 2>/dev/null ;;'
+                    ' stop) cat %(r)s/$3.status > %(r)s/$3.end.new 2>/dev/null && mv %(r)s/$3.end.new %(r)s/$3.end ;; esac\nexit 0\n'
+                    % {"log": self.systemctl_log, "sc": systemctl, "r": self.root})
         os.chmod(systemctl, 0o755)
         self.power = socket.socket(socket.AF_UNIX, socket.SOCK_DGRAM)       # h713-power's, for the Power press
         self.power.bind(os.path.join(self.root, "power.sock"))
@@ -1175,6 +1177,126 @@ class KeysTest(unittest.TestCase):
         launcher, done = self.boot_with("kodi")
         self.assertFalse(done)                                                  # tried again every BOOT_RETRY_S
         self.assertEqual([c for c in self.systemctl_calls() if c.startswith("start")], [])   # nothing is started blind
+
+    # --- an entry with a unit and an exec (Screen Mirroring), a mode that comes up by itself (AirPlay, 05.11.2026) ---------------
+
+    def mirroring(self, page, settings=False):
+        """the entries HDMI input and Screen Mirroring (15-airplay.conf of the image): the unit h713-airplay-show.service is its mode, `exec`
+        its waiting page, run as the transient unit h713-airplay-page (the stand-in plays systemd-run), `return = launcher`; with settings
+        the Settings entry too. A dict for launcher_d."""
+        files = {"10-hdmi": "label = HDMI input\nicon = hdmi\nexec = %s/mode hdmi\nnow = HDMI {signal}\nfallback = yes\n" % self.root,
+                 "15-airplay": "label = Screen Mirroring\nicon = airplay\nunit = h713-airplay-show.service\n"
+                               "exec = %s --unit=h713-airplay-page\nreturn = launcher\nnow = AirPlay\n" % page}
+        if settings:
+            files["50-settings"] = "label = Settings\nicon = sliders\nexec = %s\nreturn = launcher\n" % self.script("settings-run", 0)
+        return files
+
+    def page(self, status, unit="h713-airplay-page"):
+        """a stand-in for a page that runs as the transient unit `unit` until systemd stops it (the fake systemctl's stop), then ends
+        with `status`: 15 for a page that takes the SIGTERM as h713-settings does, 0 for one the signal kills (systemd counts a SIGTERM
+        as a clean end, and systemd-run --wait then says 0). It gives up after 10 s, so that a failed test leaves no loop."""
+        prog, end = os.path.join(self.root, "page-run"), os.path.join(self.root, unit + ".end")
+        with open(os.path.join(self.root, unit + ".status"), "w") as f:
+            f.write("%d\n" % status)
+        with open(prog, "w") as f:
+            f.write("#!/bin/sh\ni=0\nwhile [ ! -e %s ] && [ $i -lt 1000 ]; do sleep 0.01; i=$((i + 1)); done\n"
+                    "[ -e %s ] || exit 99\nexit $(cat %s)\n" % (end, end, end))
+        os.chmod(prog, 0o755)
+        return prog
+
+    def mirroring_launcher(self, page):
+        """the launcher open over HDMI input and Screen Mirroring, Screen Mirroring chosen; the mode watch has had its first look (HDMI)"""
+        self.launcher_d(**self.mirroring(page))
+        launcher, modes = self.mod.Launcher(), self.mod.Modes()
+        modes.tick(launcher, {})
+        launcher.open({})
+        launcher.key(108, 1, {})
+        return launcher, modes
+
+    def test_an_entry_with_unit_and_exec_runs_its_page_while_the_unit_is_down_and_comes_back_to_it(self):
+        launcher, modes = self.mirroring_launcher(self.script("page-run", 0))
+        self.assertTrue(launcher.key(352, 1, {}))
+        self.assertEqual(self.osds.lines[-1], "launcher close keep")           # a page follows: the waiting page, not the unit
+        self.assertEqual([c for c in self.systemctl_calls() if c.startswith("start")], [])
+        self.ended(launcher)                                                   # Back on the waiting page: exit 0
+        self.assertEqual(launcher.entries[launcher.sel]["label"], "Screen Mirroring")
+        self.assertEqual(self.osds.lines[-1], "launcher 1;HDMI 1080p60;hdmi:HDMI input;airplay:Screen Mirroring")
+
+    def test_ok_on_an_entry_with_unit_and_exec_only_closes_the_launcher_while_its_unit_is_up(self):
+        launcher, modes = self.mirroring_launcher(self.script("page-run", 0))
+        self.cgroup("h713-airplay-show.service")                               # a phone mirrors: the stream is the mode
+        self.assertTrue(launcher.key(352, 1, {}))
+        self.assertEqual((launcher.entries, launcher.back, self.osds.lines[-1]), (None, None, "launcher close"))   # no page
+
+    def test_on_start_takes_no_entry_with_unit_and_exec(self):
+        self.launcher_d(**self.mirroring(self.script("page-run", 0)))
+        with open(os.path.join(self.root, "etc/h713/keys.conf"), "w") as f:
+            f.write("on_start = airplay\n")
+        out = []
+        self.mod.log = lambda msg, level="": out.append(msg)
+        self.assertEqual(self.mod.Config().values["on_start"], "launcher")
+        self.assertIn("keys.conf:1: 'on_start = airplay' ignored", out)
+
+    def test_on_start_last_after_a_stream_opens_the_launcher(self):
+        """a stream does not come back by itself: last-mode naming AirPlay's unit is the launcher, HDMI input chosen, no waiting page"""
+        launcher, done = self.boot_with("last", last_mode="h713-airplay-show.service", entries=self.mirroring(self.script("page-run", 0)))
+        self.assertTrue(done)
+        self.assertEqual((self.osds.lines[0].split(";")[0], launcher.back), ("launcher 0", None))
+
+    def test_a_mode_that_comes_up_by_itself_closes_the_launcher(self):
+        launcher, modes = self.mirroring_launcher(self.script("page-run", 0))
+        self.cgroup("h713-airplay-show.service")                               # its socket started it: a phone mirrors
+        modes.tick(launcher, {})
+        self.assertEqual((launcher.entries, self.osds.lines[-1]), (None, "launcher close"))     # the stream is on the wall at once
+
+    def test_the_mode_a_starting_entry_waits_for_keeps_its_page(self):
+        """the unit of the entry the launcher shows "Starting X..." for is the launcher's own, also when it comes up late (the mode before
+        it took long to stop): its page stays until the first picture"""
+        launcher = self.waiting_launcher()
+        self.mod.SYSTEMCTL = ["true"]                                           # (the start is not looked at here)
+        modes = self.mod.Modes()
+        modes.tick(launcher, {})
+        launcher.key(352, 1, {})
+        launcher.started = float("-inf")                                       # the quiet seconds after the start are over
+        self.cgroup("h713-browser.service")
+        modes.tick(launcher, {})
+        self.assertIsNotNone(launcher.starting)
+        self.assertEqual(self.osds.lines[-1], "launcher 1;Starting Browser...;hdmi:HDMI input;globe:Browser")
+
+    def test_a_mode_that_comes_up_by_itself_stops_a_page_that_would_come_back(self):
+        launcher, modes = self.mirroring_launcher(self.page(15))                # the page ends with 15 on the SIGTERM
+        launcher.key(352, 1, {})                                               # the waiting page runs
+        self.cgroup("h713-airplay-show.service")
+        modes.tick(launcher, {})
+        self.assertEqual(launcher.back["proc"].wait(timeout=5), 15)            # systemctl stop --no-block h713-airplay-page ended it
+        launcher.tick({})
+        self.assertEqual((launcher.entries, launcher.reopen), (None, None))     # its end leaves the wall to the stream
+
+    def test_a_page_stopped_for_a_mode_that_ends_with_0_opens_no_launcher(self):
+        launcher, modes = self.mirroring_launcher(self.page(0))                 # killed by the SIGTERM: systemd-run --wait says 0
+        launcher.key(352, 1, {})
+        self.cgroup("h713-airplay-show.service")
+        modes.tick(launcher, {})
+        self.ended(launcher)
+        self.assertEqual((launcher.entries, launcher.reopen), (None, None))
+
+    def test_a_mode_that_comes_up_by_itself_cancels_a_way_back_that_is_due(self):
+        """Back in Settings just as a phone starts to mirror: h713-osd still shows the page, the way back waits for it - and is dropped"""
+        self.launcher_d(**self.mirroring(self.script("page-run", 0), settings=True))
+        launcher, modes = self.mod.Launcher(), self.mod.Modes()
+        modes.tick(launcher, {})
+        launcher.open({})
+        launcher.key(108, 1, {})
+        launcher.key(108, 1, {})                                               # Settings
+        launcher.key(352, 1, {})
+        self.osds.answer = lambda line: "error the page is open\n" if ";" in line else "ok\n"
+        self.ended(launcher)                                                   # Back at the top: exit 0, the launcher is due
+        self.assertIsNotNone(launcher.reopen)
+        self.cgroup("h713-airplay-show.service")
+        modes.tick(launcher, {})
+        self.osds.answer = lambda line: "ok\n"                                 # the page is gone from the wall
+        launcher.tick({})
+        self.assertEqual((launcher.entries, launcher.reopen), (None, None))     # no launcher over the stream
 
 
 if __name__ == "__main__":
