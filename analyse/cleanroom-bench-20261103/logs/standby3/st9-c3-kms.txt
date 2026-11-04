@@ -1,0 +1,10 @@
+FAIL QUERYCAP: /dev/video1: driver h713-hdmirx-cle
+   0.0 s QUERY_DV_TIMINGS: ENOLINK
+   4.8 s QUERY_DV_TIMINGS: ENOLCK
+   4.9 s QUERY_DV_TIMINGS: ERANGE
+PASS QUERY_DV_TIMINGS: 1920x1080, 148500000 Hz after 5.0 s
+PASS REQBUFS: 3 buffers (the ring slots)
+PASS EXPBUF + mmap: buffer 0 luma as dma-buf fd 4, buffer 1 luma via the device (offset 0x400000)
+FAIL DQBUF rate: 3259 frames in 60.01 s = 54.30/s; sequence 1..3259 (3259 source frames, 0 not delivered)
+FAIL slot order: 1 out of order, 0 twice in a row
+PASS slot content changes (dma-buf / device mmap): buffer 0: 64 distinct samples of 64 (luma mean 42.7); buffer 1: 64 of 64 (needs a moving source)

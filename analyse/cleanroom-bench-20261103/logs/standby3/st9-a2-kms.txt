@@ -1,0 +1,2 @@
+commit ok in 1726 ms: primary white (pitch 7680), overlay p1 1920x1080 Nv12 (alpha 128)
+holding 300 s

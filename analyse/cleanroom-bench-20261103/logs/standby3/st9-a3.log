@@ -1,0 +1,26 @@
+30.76 == st9 a3 mode a, 7.3.1-rustbench
+30.88 insmod rc=0
+[   30.878840] h713-drm h713-drm: resume: TV-side re-init after a wake (spec 60 §3: TV clocks + TV top): 17 writes
+INFO histogram sum 2073600, non-zero bins 5:5040 6:15120 18:7 19:184658 20:23146 21:28878 22:29088 23:30505 24:30877 25:30879 26:30502 27:28876 28:31287 29:206059 30:38822 31:1359856
+39.09 suspend (RTC +20 s)
+60.78 back rc=0
+[   39.151158] h713-drm h713-drm: PM: calling platform_pm_suspend @ 534, parent: platform
+[   39.188680] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped; channel 0, NRC write channels, RGB channel stopped (spec 60): 0, 8 writes, 0 read-back mismatches, 0 latch timeouts; interrupts off
+[   39.188703] h713-drm h713-drm: PM: platform_pm_suspend returned 0 after 37510 usecs
+[   39.223713] platform hdmi-rx: PM: calling platform_pm_suspend @ 534, parent: platform
+[   39.223737] platform hdmi-rx: PM: platform_pm_suspend returned 0 after 0 usecs
+[   39.299207] platform hdmi-rx: PM: calling platform_pm_resume @ 534, parent: platform
+[   39.299230] platform hdmi-rx: PM: platform_pm_resume returned 0 after 0 usecs
+[   39.485878] h713-drm h713-drm: PM: calling platform_pm_resume @ 534, parent: platform
+[   40.536693] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x78500000 chroma 0x786fa400; rgb on 0x77d00000 alpha 128
+[   40.536723] h713-drm h713-drm: [drm] commit: 0, 1155 ops, 1125 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[   40.536745] h713-drm h713-drm: [drm] commit: 2 capture-block writes left out (no TV-side re-init since the wake, spec 60 §3)
+[   40.538658] h713-drm h713-drm: [drm] gamma: LUT 70 loaded into the hidden bank: 0, 0 read-back mismatches
+[   40.538698] h713-drm h713-drm: [drm] pq: controls 0xfff and gamma: 17 words written now (no vblank): 0, 0 read-back mismatches
+[   40.780494] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 13.786 ms -> 13.786 ms (aligned 13.785); timing moved 0 lines in 0 frames, rows aligned
+[   40.795760] h713-drm h713-drm: [drm] resume: the HDMI input is not in use: the TV side stays untouched
+[   40.795776] h713-drm h713-drm: PM: platform_pm_resume returned 0 after 1309873 usecs
+69.60 h713-wifi restart 1 rc=0 wlan0 up
+verify scan: PASS
+INFO histogram sum 2073600, non-zero bins 5:5040 6:15120 18:7 19:184658 20:23235 21:28790 22:29087 23:30416 24:30968 25:30877 26:30413 27:28965 28:31288 29:206056 30:38824 31:1359856
+83.27 == st9 a3: done

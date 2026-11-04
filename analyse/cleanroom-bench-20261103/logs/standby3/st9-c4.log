@@ -1,0 +1,5 @@
+31.07 == st9 c4 mode c, 7.3.1-rustbench
+31.19 insmod rc=0
+[   31.184079] h713-drm h713-drm: resume: TV-side re-init after a wake (spec 60 §3: TV clocks + TV top): 17 writes
+43.26 suspend (RTC +20 s)
+64.32 back rc=0

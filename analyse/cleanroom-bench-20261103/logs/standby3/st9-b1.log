@@ -1,0 +1,21 @@
+31.10 == st9 b1 mode b, 7.3.1-rustbench
+31.23 insmod rc=0
+[   31.224111] h713-drm h713-drm: resume: TV-side re-init after a wake (spec 60 §3: TV clocks + TV top): 17 writes
+46.28 kms-test:    1.6 s hdmi_state no-signal (0x0 at 0.000 Hz)
+46.33 suspend (RTC +20 s)
+70.10 back rc=0
+[   46.388056] h713-drm h713-drm: PM: calling platform_pm_suspend @ 510, parent: platform
+[   46.388272] h713-drm h713-drm: [drm] hdmi: off (the video plane shows client buffers again)
+[   46.646884] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped; channel 0, NRC write channels, RGB channel stopped (spec 60): 0, 8 writes, 0 read-back mismatches, 1 latch timeouts; interrupts off
+[   46.646908] h713-drm h713-drm: PM: platform_pm_suspend returned 0 after 258818 usecs
+[   46.653300] platform hdmi-rx: PM: calling platform_pm_suspend @ 510, parent: platform
+[   46.653324] platform hdmi-rx: PM: platform_pm_suspend returned 0 after 0 usecs
+[   46.729047] platform hdmi-rx: PM: calling platform_pm_resume @ 510, parent: platform
+[   46.729071] platform hdmi-rx: PM: platform_pm_resume returned 0 after 0 usecs
+[   46.921814] h713-drm h713-drm: PM: calling platform_pm_resume @ 510, parent: platform
+[   46.921967] h713-drm h713-drm: [drm] hdmi: the video plane shows the HDMI input
+[   47.162428] h713-drm h713-drm: [drm] hdmi: TV-side re-init after the wake (spec 60 §3): 0, 17 writes, 0 read-back mismatches
+[   47.162448] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x1; 1080p60 only)
+[   47.164374] h713-drm h713-drm: [drm] gamma: LUT 68 loaded into the hidden bank: 0, 0 read-back mismatches
+[   47.164413] h713-drm h713-drm: [drm] pq: controls 0xfff and gamma: 17 words written now (no vblank): 0, 0 read-back mismatches
+78.81 h713-wifi restart 1 rc=0 wlan0 up

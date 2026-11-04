@@ -1,0 +1,40 @@
+30.54 == st9 b3 mode b, 7.3.1-rustbench
+30.68 insmod rc=0
+[   30.676447] h713-drm h713-drm: resume: TV-side re-init after a wake (spec 60 §3: TV clocks + TV top): 17 writes
+45.73 kms-test:    6.2 s hdmi_state capturing (1920x1080 at 60.000 Hz)
+45.82 suspend (RTC +20 s)
+69.60 back rc=0
+[   45.875140] h713-drm h713-drm: PM: calling platform_pm_suspend @ 530, parent: platform
+[   45.941337] h713-drm h713-drm: [drm] hdmi: the video plane shows client buffers again: 521 source frames, 460 shown, 43 repeated, 0 skipped (0 bad write indices, 0 latch timeouts)
+[   45.941372] h713-drm h713-drm: [drm] hdmi: off (the video plane shows client buffers again)
+[   45.958787] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped; channel 0, NRC write channels, RGB channel stopped (spec 60): 0, 8 writes, 0 read-back mismatches, 0 latch timeouts; interrupts off
+[   45.958811] h713-drm h713-drm: PM: platform_pm_suspend returned 0 after 83637 usecs
+[   45.968352] platform hdmi-rx: PM: calling platform_pm_suspend @ 530, parent: platform
+[   45.968376] platform hdmi-rx: PM: platform_pm_suspend returned 0 after 0 usecs
+[   46.046188] platform hdmi-rx: PM: calling platform_pm_resume @ 530, parent: platform
+[   46.046212] platform hdmi-rx: PM: platform_pm_resume returned 0 after 0 usecs
+[   46.241898] h713-drm h713-drm: PM: calling platform_pm_resume @ 530, parent: platform
+[   46.242037] h713-drm h713-drm: [drm] hdmi: the video plane shows the HDMI input
+[   46.478562] h713-drm h713-drm: [drm] hdmi: TV-side re-init after the wake (spec 60 §3): 0, 17 writes, 0 read-back mismatches
+[   46.478582] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x1; 1080p60 only)
+[   46.480509] h713-drm h713-drm: [drm] gamma: LUT 68 loaded into the hidden bank: 0, 0 read-back mismatches
+[   46.480548] h713-drm h713-drm: [drm] pq: controls 0xfff and gamma: 17 words written now (no vblank): 0, 0 read-back mismatches
+78.70 h713-wifi restart 1 rc=0 wlan0 up
+90.02 kms-test after: FAIL T3-03 write index: 26 steps in 1 s, 0 not A -> B -> C  [96 T3-03, 55 §2/§3]|FAIL T3-04 channel 0 on the ring: 0x05600070 0x00000000 0x05600084 0x00000000 (ring slots [|
+90.06 == st9 b3: done
+[   49.621286] h713-drm h713-drm: [drm] hdmi: provider: hot-plug reset on port 1: -5
+[   49.621334] h713-drm h713-drm: PM: platform_pm_resume returned 0 after 3379409 usecs
+[   56.213273] h713-drm h713-drm: [drm] hdmi: provider: EDID (the driver's 512 bytes) served on port 1, hot-plug pulsed
+[   59.357341] h713-drm h713-drm: [drm] hdmi: after the wake: receiver sequence without TMDS (spec 60 §3)
+[   59.357368] h713-drm h713-drm: [drm] hdmi: no-signal -> tmds (TMDS 0, timing 0x0 of 0x0, enables 0, CAP 0x104 0x00000000 0x548 0x00000000 0x874 0x00000000 0x928 0x00000000)
+[   59.357398] h713-drm h713-drm: [drm] hdmi: TMDS present: receiver sequence (spec 50 §8, no pauses)
+[   59.357543] h713-drm h713-drm: [drm] hdmi: receiver sequence: 0, 90 writes, 0 read-back mismatches (first 0x00000000 read 0x00; status bytes not compared), 0 CCU writes left to the clock driver
+[   59.461398] h713-drm h713-drm: [drm] hdmi: capture programming (spec 55 §8) into the ring at 0x4b100000: 0, 78 writes, 0 read-back mismatches (first 0x00000000 read 0x00000000)
+[   59.461438] h713-drm h713-drm: [drm] hdmi: tmds -> locked (TMDS 1, timing 1920x1080 of 2200x1125, enables 1, CAP 0x104 0x00000000 0x548 0x00000000 0x874 0x00000000 0x928 0x00000000)
+[   59.565331] h713-drm h713-drm: [drm] hdmi: locked -> capturing (TMDS 1, timing 1920x1080 of 2200x1125, enables 1, CAP 0x104 0x00060169 0x548 0x04650898 0x874 0x07800438 0x928 0xe0020438)
+[   60.591826] h713-drm h713-drm: [drm] video: NV16 1920x1080 pitch 1920 luma 0x4b100000 chroma 0x4b6fd000; rgb off 0x00000000 alpha 255
+[   60.591869] h713-drm h713-drm: [drm] commit: 0, 1151 ops, 1124 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[   60.591895] h713-drm h713-drm: [drm] hdmi: channel 0 shows the ring (slot 0), rotating at the video vsync
+[   70.681341] h713-drm h713-drm: [drm] hdmi: running: 666 source frames, 606 shown, 57 repeated, 0 skipped (0 bad write indices, 0 latch timeouts)
+[   80.773328] h713-drm h713-drm: [drm] hdmi: running: 1271 source frames, 1210 shown, 114 repeated, 0 skipped (0 bad write indices, 0 latch timeouts)
+[   90.865314] h713-drm h713-drm: [drm] hdmi: running: 1876 source frames, 1815 shown, 170 repeated, 0 skipped (0 bad write indices, 0 latch timeouts)

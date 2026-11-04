@@ -1,0 +1,24 @@
+30.38 == st9 b4 mode b, 7.3.1-rustbench
+30.54 insmod rc=0
+[   30.531428] h713-drm h713-drm: resume: TV-side re-init after a wake (spec 60 §3: TV clocks + TV top): 17 writes
+45.59 kms-test:    6.0 s hdmi_state capturing (1920x1080 at 60.000 Hz)
+45.67 suspend (RTC +20 s)
+67.76 back rc=0
+[   45.727120] h713-drm h713-drm: PM: calling platform_pm_suspend @ 526, parent: platform
+[   45.789296] h713-drm h713-drm: [drm] hdmi: the video plane shows client buffers again: 524 source frames, 468 shown, 44 repeated, 0 skipped (0 bad write indices, 0 latch timeouts)
+[   45.789329] h713-drm h713-drm: [drm] hdmi: off (the video plane shows client buffers again)
+[   45.807358] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped; channel 0, NRC write channels, RGB channel stopped (spec 60): 0, 8 writes, 0 read-back mismatches, 0 latch timeouts; interrupts off
+[   45.807381] h713-drm h713-drm: PM: platform_pm_suspend returned 0 after 80227 usecs
+[   45.814849] platform hdmi-rx: PM: calling platform_pm_suspend @ 526, parent: platform
+[   45.814872] platform hdmi-rx: PM: platform_pm_suspend returned 0 after 0 usecs
+[   45.893239] platform hdmi-rx: PM: calling platform_pm_resume @ 526, parent: platform
+[   45.893265] platform hdmi-rx: PM: platform_pm_resume returned 0 after 0 usecs
+[   46.081828] h713-drm h713-drm: PM: calling platform_pm_resume @ 526, parent: platform
+[   46.081961] h713-drm h713-drm: [drm] hdmi: the video plane shows the HDMI input
+[   46.319619] h713-drm h713-drm: [drm] hdmi: TV-side re-init after the wake (spec 60 §3): 0, 17 writes, 0 read-back mismatches
+[   46.319640] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x1; 1080p60 only)
+[   46.321599] h713-drm h713-drm: [drm] gamma: LUT 68 loaded into the hidden bank: 0, 0 read-back mismatches
+[   46.321640] h713-drm h713-drm: [drm] pq: controls 0xfff and gamma: 17 words written now (no vblank): 0, 0 read-back mismatches
+76.77 h713-wifi restart 1 rc=0 wlan0 up
+88.11 kms-test after: FAIL T3-03 write index: 38 steps in 1 s, 0 not A -> B -> C  [96 T3-03, 55 §2/§3]|FAIL T3-04 channel 0 on the ring: 0x05600070 0x00000000 0x05600084 0x00000000 (ring slots [|
+88.15 == st9 b4: done

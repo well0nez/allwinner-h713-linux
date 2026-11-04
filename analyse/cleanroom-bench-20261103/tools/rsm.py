@@ -28,6 +28,10 @@ for st in steps:
     elif st == "tvtop":
         for vals in ((0x01111117, 0x404, 0x00111111), (0, 0, 0), (0x01111117, 0x404, 0x00111111)):
             W(0x06e00004, vals[0]); W(0x06e00008, vals[1]); W(0x06e00000, vals[2]); time.sleep(0.012)
+        for k in range(3):
+            log(f"TVTOP after the sequence +{k * 50} ms: " + " ".join(f"{rd(0x06e00000 + o):08x}" for o in range(0, 0x40, 4))
+                + f" | PPU tvfe {rd(0x070010a4):08x} tvcap {rd(0x07001124):08x} | d88 {rd(0x02001d88):08x}")
+            time.sleep(0.05)
     elif st == "tvtop504":
         W(0x06e00008, 0x504)
     elif st == "ppu":

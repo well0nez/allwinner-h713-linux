@@ -566,3 +566,11 @@ Bench B0 mit 7.3.1-rustbench, crust-h713 v5, `echo mem > /sys/power/state`, RTC 
     hält `/dev/video1` offen, der Eingang läuft weiter (`0x928` Bit 31 gesetzt).
   - Herstellerstart danach mit den neuen Binärdateien: keine `stack`-Zeile, HDCP 2.2, cm, WB wie zuvor.
   - Danach die alten Binärdateien und die alte Regel zurück (`/data/bench/h713-tv-orig/`), Umgebung = Referenz, Normalstart.
+
+## 30 Schritt 9 (Standby mit Modul e65a229) und Q-SLEEP-1/3/4 (04.11.)
+
+- 12 von 12 Schlafphasen zurück (DMA-Stopp des Moduls wirkt). Nur Anzeige: 4/4 mit scan PASS und gleichem Histogramm.
+  Mit HDMI: 4 von 8 zurück, 3 Rücksetzungen direkt nach der TV-Neuinitialisierung, 1 ohne Rückkehr im Fenster.
+- Beste TV-Folge (kalt vorher, Takte + TV-Top danach): insgesamt 8 von 12. Kein lesbares Zeichen gefunden (TV-Top, Domänen,
+  CCU, PIO usw. in guten und schlechten Läufen gleich). Entwurf 60 v3 §3a. Sauber `9b13dd9`.
+- Ende: Umgebung = Referenz (`h713_gate=1`), Normalstart, Sperre frei.

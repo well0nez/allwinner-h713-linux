@@ -1,0 +1,21 @@
+30.24 == st9 c3 mode c, 7.3.1-rustbench
+30.35 insmod rc=0
+[   30.347998] h713-drm h713-drm: resume: TV-side re-init after a wake (spec 60 §3: TV clocks + TV top): 17 writes
+42.42 suspend (RTC +20 s)
+63.47 back rc=0
+[   42.491753] h713-drm h713-drm: PM: calling platform_pm_suspend @ 539, parent: platform
+[   42.533346] h713-drm h713-drm: [drm] hdmi: suspend: 338 source frames, 0 shown, 0 repeated, 0 skipped (0 bad write indices, 0 latch timeouts)
+[   42.533378] h713-drm h713-drm: [drm] hdmi: off (suspend)
+[   42.800384] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped; channel 0, NRC write channels, RGB channel stopped (spec 60): 0, 8 writes, 0 read-back mismatches, 1 latch timeouts; interrupts off
+[   42.800409] h713-drm h713-drm: PM: platform_pm_suspend returned 0 after 308621 usecs
+[   42.809255] platform hdmi-rx: PM: calling platform_pm_suspend @ 539, parent: platform
+[   42.809278] platform hdmi-rx: PM: platform_pm_suspend returned 0 after 0 usecs
+[   42.886230] platform hdmi-rx: PM: calling platform_pm_resume @ 539, parent: platform
+[   42.886253] platform hdmi-rx: PM: platform_pm_resume returned 0 after 0 usecs
+[   43.073937] h713-drm h713-drm: PM: calling platform_pm_resume @ 539, parent: platform
+[   43.312556] h713-drm h713-drm: [drm] hdmi: TV-side re-init after the wake (spec 60 §3): 0, 17 writes, 0 read-back mismatches
+[   43.312577] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x2; 1080p60 only)
+[   43.312607] h713-drm h713-drm: PM: platform_pm_resume returned 0 after 238644 usecs
+72.25 h713-wifi restart 1 rc=0 wlan0 up
+113.58 v4l2: FAIL QUERYCAP: /dev/video1: driver h713-hdmirx-cle|PASS QUERY_DV_TIMINGS: 1920x1080, 148500000 Hz after 5.0 s|PASS REQBUFS: 3 buffers (the ring slots)|PASS EXPBUF + mmap: buffer 0 luma as dma-buf fd 4, buffer 1 luma via the device (offset 0x400000)|
+113.59 == st9 c3: done
