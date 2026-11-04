@@ -6,6 +6,7 @@
 #   make cross          both programs for the board, linked against SYSROOT:
 #                       h713-airplay.aarch64-linux-gnu, h713-airplay-show.aarch64-linux-gnu
 #   make test           the host tests of every crate
+#   make notices        THIRD-PARTY.md: the crates linked into the two programs and their licences
 #   make install-cross  install the cross-built programs (DESTDIR=...)
 #   make clean
 
@@ -20,7 +21,7 @@ export CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS ?= -C link-arg=--sysroot
 
 OUT = target/$(TARGET)/release
 
-.PHONY: cross test sysroot install-cross clean
+.PHONY: cross test sysroot notices install-cross clean
 
 cross:
 	$(CARGO) build --release --locked --target $(TARGET) --workspace
@@ -32,6 +33,9 @@ test:
 
 sysroot:
 	tools/make-sysroot.py $(SYSROOT)
+
+notices:
+	tools/third-party.py
 
 install-cross:
 	install -D -m 0755 h713-airplay.aarch64-linux-gnu $(DESTDIR)$(BINDIR)/h713-airplay

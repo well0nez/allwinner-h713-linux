@@ -160,9 +160,11 @@ enabled.
 
 - Screen mirroring only: the stream a sender's Screen Mirroring sends, one sender at a time.
 - No password and no PIN: everyone on the box's network can mirror (`takeover = on`: and take the wall from another phone).
-- The page's Wi-Fi line comes from `/etc/h713/wifi.env` (`crates/receiver/src/net.rs`), which is root's and 0600 (it carries the
-  password): the receiver, running as `h713-airplay`, cannot read it, and the line stays empty until the receiver finds the network
-  another way (found 05.11.2026 while writing the units; not measured on a box).
+- The page's Wi-Fi line comes from the kernel: the receiver asks nl80211 for every interface that reports an SSID - the access point, a
+  connected station - which needs no capability (`crates/receiver/src/nl80211.rs`, 05.11.2026), and reads `/etc/h713/wifi.env` only as
+  the fallback where that file is readable; not measured on a box. *Superseded 05.11.2026:* "The page's Wi-Fi line comes from
+  `/etc/h713/wifi.env` (`crates/receiver/src/net.rs`), which is root's and 0600 (it carries the password): the receiver, running as
+  `h713-airplay`, cannot read it, and the line stays empty until the receiver finds the network another way".
 - The launcher draws seven entries at most; an eighth (a package that adds one) is refused by h713-osd, and Home then opens nothing.
 
 ## Measured

@@ -66,7 +66,8 @@ States (`ctl status`, `wait`, `watch`): `idle`, `connected`, `starting`, `stream
 ```
 label  = Screen Mirroring
 icon   = airplay
-unit   = h713-airplay-show.service       # the mode: h713-mode ends it, h713-keys watches it, the header follows it
+# the mode: h713-mode ends it, h713-keys watches it, the header follows it
+unit   = h713-airplay-show.service
 exec   = /usr/bin/systemd-run --quiet --collect --wait --unit=h713-airplay-page /usr/local/bin/h713-airplay page
 return = launcher
 active = /usr/bin/systemctl is-active --quiet h713-airplay-show.service
