@@ -1507,6 +1507,28 @@ class InputPowerWifi(Base):
         self.assertIn("on_start = terminal", b.read("keys.conf"))
         b.finish()
 
+    def mirroring(self, b):
+        """the image's entries and Screen Mirroring (05.11.2026): it names its mode, AirPlay's presenter, and runs its waiting page"""
+        self.modes(b)
+        with open(os.path.join(b.etc, "launcher.d", "15-airplay.conf"), "w") as f:
+            f.write("label = Screen Mirroring\nicon = airplay\nunit = h713-airplay-show.service\nexec = /x/page\nreturn = launcher\n")
+
+    def test_on_start_leaves_out_an_entry_with_a_unit_and_an_exec(self):
+        """a phone starts that mode, h713-keys cannot at the start of the box (it refuses such an entry for on_start): no choice here,
+        and Kodi still is one"""
+        b = self.box()
+        self.mirroring(b)
+        self.assertIn("On start choice [*Launcher|HDMI input|Kodi|Browser|Desktop|Last used]", b.start("Input").dump())
+        b.finish()
+
+    def test_on_the_wall_now_names_screen_mirroring_while_a_phone_mirrors(self):
+        b = self.box()
+        self.mirroring(b)
+        with open(os.path.join(b.log, "active"), "w") as f:
+            f.write("h713-airplay-show.service\n")
+        self.assertIn('On the wall now info "Screen Mirroring"', b.start("Input").dump())     # the mode it is, though no start choice
+        b.finish()
+
     def test_every_option_has_its_sentence_for_the_wall(self):
         b = self.box()
         self.modes(b)

@@ -832,13 +832,16 @@ static void focus_enter(struct area *a)
 /*
  * What the projector shows when it has started: h713-keys reads `on_start` once, at the start of the box. The options are the
  * launcher, the HDMI input, every mode - a launcher.d entry that names a `unit`: Kodi, and Browser or Desktop with no change here - and
- * the one that ran last. A mode is named by its file (20-kodi.conf: kodi), as h713-keys names it.
+ * the one that ran last. A mode is named by its file (20-kodi.conf: kodi), as h713-keys names it. An entry that names a `unit` and an
+ * `exec` too (Screen Mirroring, 05.11.2026) is a mode that starts by itself - AirPlay's socket starts it when a phone mirrors, its OK
+ * runs a page - and no start choice: h713-keys refuses it for on_start. The wall's row below still names it while it runs.
  *
  * There is no "Source" row any more (Marco, 17.10.2026): which of the two the wall shows is not a thing to choose - a program that runs
  * is on the wall, with none it is the HDMI input. `h713-tv ctl source` stays a tool for tests and the web page.
  */
 struct mode {
 	char id[24], label[24], unit[64];
+	bool page;		/* an `exec` too: the launcher starts no such mode, its OK runs a page (no start choice) */
 };
 
 static char onstart_note[MAXOPT][128];
@@ -856,10 +859,13 @@ static int modes_read(struct mode *m, int max)
 		char file[300];
 
 		if (len > 5 && !strcmp(f + len - 5, ".conf") && k < max) {
+			char x[8];
+
 			snprintf(file, sizeof(file), "%s/%s", etc("launcher.d"), f);
 			if (conf_get(file, "unit", m[k].unit, sizeof(m[k].unit)) && m[k].unit[0] &&
 			    conf_get(file, "label", m[k].label, sizeof(m[k].label)) && m[k].label[0]) {
 				snprintf(m[k].id, sizeof(m[k].id), "%.*s", (int)(len - 5 - (size_t)(id - f)), id);
+				m[k].page = conf_get(file, "exec", x, sizeof(x)) && x[0];	/* as h713-keys reads it: a value, not the key alone */
 				k++;
 			}
 		}
@@ -893,7 +899,8 @@ static void input_enter(struct area *a)
 		add_opt(st, "launcher", "Launcher");
 		add_opt(st, "hdmi", "HDMI input");
 		for (int i = 0; i < n; i++)
-			add_opt(st, m[i].id, m[i].label);
+			if (!m[i].page)
+				add_opt(st, m[i].id, m[i].label);
 		add_opt(st, "last", "Last used");
 		for (int i = 0; i < st->n; i++) {
 			if (!strcmp(st->arg[i], "launcher"))
