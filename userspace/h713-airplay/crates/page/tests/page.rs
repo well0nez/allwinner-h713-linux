@@ -99,11 +99,22 @@ fn a_state_change_redraws_only_the_status_band_and_a_stream_ends_the_page_with_1
         let Some((code, seen, _)) = serve(size, script, false) else { return };
         assert_eq!(code, app::EXIT_STREAM);
         assert!(seen.faults.is_empty(), "{:?}", seen.faults);
-        let (first, second) = seen.shows.split_at(seen.shows.len() - 1);
-        assert!(covered(first, size.1), "the first drawing shows every row: {first:?}");
-        let status_band = second[0];
+        assert_eq!(seen.shows.len(), 2, "the whole panel, then the status band: {:?}", seen.shows);
+        let status_band = seen.shows[1];
         assert!(status_band.y > size.1 / 2 && status_band.y + status_band.h < size.1, "{status_band:?}");
         assert_eq!(seen.lines.last().map(String::as_str), Some("page hide"));
+    }
+}
+
+/// h713-osd judges opacity by the rows it was shown (a row never shown is a hole): the first show is the whole panel,
+/// and the mapped canvas is opaque to its last pixel by then.
+#[test]
+fn the_first_show_is_the_whole_opaque_panel() {
+    for (size, first) in [((1920, 1080), Event::Receiver(None)), ((1280, 720), Event::Receiver(Some(status(State::Idle))))] {
+        let Some((_, seen, _)) = serve(size, vec![first, Event::Key(Key::Home)], false) else { return };
+        assert_eq!(seen.shows.first(), Some(&Rect { x: 0, y: 0, w: size.0, h: size.1 }), "{:?}", seen.shows);
+        assert_eq!(seen.opaque_at_first_show, Some(true));
+        assert!(seen.faults.is_empty(), "{:?}", seen.faults);
     }
 }
 
@@ -145,7 +156,7 @@ fn volume_mute_and_focus_go_to_the_remote_and_the_page_stays() {
     let Some((code, seen, remote)) = serve((1280, 720), script, false) else { return };
     assert_eq!(code, app::EXIT_BACK);
     assert_eq!(remote, ["hotkey", "mute", "hotkey", "reaped", "release"]);
-    assert!(covered(&seen.shows, 720) && seen.shows.len() == 4, "the keys draw nothing: {:?}", seen.shows);
+    assert_eq!(seen.shows.len(), 1, "the keys draw nothing: {:?}", seen.shows);
 }
 
 #[test]

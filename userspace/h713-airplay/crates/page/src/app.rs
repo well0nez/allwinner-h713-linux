@@ -88,9 +88,26 @@ pub struct Look<'a> {
     pub name: String,
 }
 
-/// Draw every band that differs from `shown` and show it; `shown` becomes the new bands.
+/// Draw every band that differs from `shown` and show it; `shown` becomes the new bands. The first drawing paints the
+/// whole canvas and shows the whole panel at once: h713-osd counts a row it was never shown as a hole, and a page with a
+/// hole is not opaque (the mode under it runs on), so every row is there with the first answer.
 fn refresh(wall: &mut dyn Wall, look: &Look, view: &View, shown: &mut Vec<Band>) -> Result<Shown, String> {
     let bands = view::layout(look.face, view);
+    if shown.is_empty() {
+        let whole = {
+            let mut c = wall.canvas();
+            let (w, h, stride) = (c.w, c.h, c.stride);
+            for row in c.px.chunks_mut(stride).take(h) {
+                row[..w].fill(crate::canvas::GROUND);
+            }
+            for band in &bands {
+                view::draw(look.face, &mut c, band);
+            }
+            Rect { x: 0, y: 0, w, h }
+        };
+        *shown = bands;
+        return wall.show(whole);
+    }
     let mut result = Shown::OnTheWall;
     for band in bands.iter().filter(|b| !shown.contains(b)) {
         let r = view::draw(look.face, &mut wall.canvas(), band);

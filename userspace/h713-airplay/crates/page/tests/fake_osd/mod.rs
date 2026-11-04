@@ -14,6 +14,8 @@ pub struct Seen {
     pub lines: Vec<String>,
     pub shows: Vec<Rect>,
     pub faults: Vec<String>,
+    /// Every pixel of the mapped canvas (W x H) opaque when the first `page show` came.
+    pub opaque_at_first_show: Option<bool>,
 }
 
 /// A fake h713-osd on one end of a socket pair: `page open` answers with a memfd of `pitch` x `h`; each `page show` is
@@ -63,6 +65,10 @@ pub fn fake_osd(server: UnixStream, (w, h): (usize, usize), close_after_last_row
             seen.lines.push(l.clone());
             let n: Vec<usize> = l.strip_prefix("page show ").map(|s| s.split(' ').map(|v| v.parse().unwrap()).collect()).unwrap_or_default();
             if let [x, y, rw, rh] = n[..] {
+                if seen.opaque_at_first_show.is_none() {
+                    let all = (0..h).all(|py| map[py * stride..py * stride + w].iter().all(|p| p >> 24 == 0xff));
+                    seen.opaque_at_first_show = Some(all);
+                }
                 let rect = Rect { x, y, w: rw, h: rh };
                 for py in 0..h {
                     for px in 0..w {
