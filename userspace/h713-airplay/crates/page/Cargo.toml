@@ -12,3 +12,9 @@ name = "page"
 
 [dependencies]
 proto = { package = "h713-airplay-proto", path = "../proto" }
+# the face: Quicksand from the TTF on the box, rasterised in pure Rust (no FreeType in the binary)
+ab_glyph = "0.2"
+# the canvas: the memfd, SCM_RIGHTS, evdev, inotify, signals
+libc = "0.2"
+# --render-png only
+png = "0.17"
