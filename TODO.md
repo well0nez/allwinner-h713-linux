@@ -995,8 +995,13 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       mix-Fenster; gebaut (dtc, 0 Warnungen, die sieben anderen DTBs bytegleich); **(4) U-Boot** `hy300_t08_defconfig` + dts im
       Fork `h713-hy310` `4f9fe56f46e` (hy300_pro_defconfig mit 640-MHz-Block/Baum/Kennung; baut release+installer; gepusht
       03.11. auf Marcos Ja, Spiegel 111 Patches verifiziert, Gitlink gesetzt); **(5)** `board.env` `KERNEL_DTB`/`UBOOT_BOARD`,
-      `uboot-prove-fragments.sh`-Matrix, README. Status bleibt `profile-only`; TEST-Abbild `--variant unit202311 --test-image`: Bau 03.11., s. u. Nicht gemessen: alles am Gerät (DRAM-Training, Panel 0x34 mit der
-      ADT-3-Firmware, 8801 mit unserem Treiber, HDMI-Port).
+      `uboot-prove-fragments.sh`-Matrix, README. Status bleibt `profile-only`; TEST-Abbild `--variant unit202311 --test-image`: **gebaut 03./04.11.** (`h713-hy300-t08-unit202311-v0.97.2-t08test1-media-desktop-TEST`,
+      29 min, 372 Patches, Hersteller-ARISC aus seinem Abzug, Prüfschritt grün), **veröffentlicht 04.11.** als Vorabversion
+      `hy300-t08-test1` (Tag auf `3801d216`, main gepusht), **Antwort in #7 gepostet** (`ANTWORT5-TEXT.md`): Schritt 0 ohne Schreiben
+      (`adb reboot efex`, `sunxi-fel uboot u-boot-installer.bin` -> USB-Laufwerk = DRAM trainiert und U-Boot läuft), Installation nur
+      unter Linux (`install` hängt Dateisysteme ein; er arbeitete unter Windows), Rückweg `h713-install restore emmc-full.img`. Wartet
+      auf seinen Lauf. Nicht gemessen: alles am Gerät (DRAM-Training, Panel 0x34 mit der ADT-3-Firmware, 8801 mit unserem Treiber,
+      HDMI-Port, die drei DE-Worte der Video-Ebene).
 - [ ] 4.18 **HY320 (Issue #5 / PR #6, Melder GitHub `minpeter`, 31.10.2026): das erste Board, das ein Fremder selbst bis zum
       laufenden TEST-Abbild gebracht hat** - Profil, `boards/hy320/` (`partial`), Gerätebaum 0335, U-Boot-Seite im Fork
       (well0nez/u-boot#1, 5 Commits unter `CONFIG_H713_BOARD_HY320`), crust (well0nez/crust#1, Board-ID 4). Bewertung und
