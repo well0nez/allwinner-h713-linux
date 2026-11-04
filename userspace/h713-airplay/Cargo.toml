@@ -1,0 +1,40 @@
+# SPDX-License-Identifier: GPL-3.0-only
+#
+# h713-airplay - AirPlay screen mirroring for the H713 projectors, in Rust (README.md).
+# Two programs: h713-airplay (the receiver that is always there, plus ctl, page, sendtest, probe) and
+# h713-airplay-show (crates/presenter: the mode unit that decodes and puts the picture through h713-warp).
+# GPL-3.0-only because crates/fairplay carries fcast's apple-fairplay (GPL-3.0-only), a port of playfair.
+
+[workspace]
+members = ["crates/*"]
+resolver = "2"
+
+[workspace.package]
+version = "0.1.0"
+edition = "2021"
+license = "GPL-3.0-only"
+rust-version = "1.88"
+
+[package]
+name = "h713-airplay"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[[bin]]
+name = "h713-airplay"
+path = "src/main.rs"
+
+[dependencies]
+proto = { package = "h713-airplay-proto", path = "crates/proto" }
+receiver = { package = "h713-airplay-receiver", path = "crates/receiver" }
+page = { package = "h713-airplay-page", path = "crates/page" }
+sender = { package = "h713-airplay-sender", path = "crates/sender" }
+
+[profile.release]
+opt-level = 3
+lto = "thin"
+codegen-units = 1
+panic = "abort"
+debug = 1

@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[package]
+name = "h713-airplay-proto"
+description = "What the receiver, the presenter, the waiting page and ctl share: the stream between receiver and presenter, the control socket, the configuration"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "proto"
+
+[dependencies]

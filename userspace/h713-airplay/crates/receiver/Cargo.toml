@@ -1,0 +1,15 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[package]
+name = "h713-airplay-receiver"
+description = "The AirPlay mirroring receiver: mDNS, RTSP, pairing, fp-setup, the mirror and audio streams, NTP, the control socket, the stream to the presenter"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "receiver"
+
+[dependencies]
+proto = { package = "h713-airplay-proto", path = "../proto" }
+fairplay = { package = "h713-airplay-fairplay", path = "../fairplay" }

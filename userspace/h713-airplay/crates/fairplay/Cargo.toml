@@ -1,0 +1,13 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[package]
+name = "h713-airplay-fairplay"
+description = "FairPlay SAP v2.5 (fp-setup) on the receiver's side: the two handshake answers and the 72-byte ekey to the 16-byte AES key"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "fairplay"
+
+[dependencies]

@@ -1,0 +1,14 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[package]
+name = "h713-airplay-page"
+description = "The waiting screen of the launcher's Screen Mirroring entry, drawn through h713-osd's page channel"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "page"
+
+[dependencies]
+proto = { package = "h713-airplay-proto", path = "../proto" }

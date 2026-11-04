@@ -1,0 +1,5 @@
+# The board's own libraries (tools/make-sysroot.py): glibc 2.41, FFmpeg 7.1, ALSA, EGL/GLES, GBM, libva.
+# `make cross SYSROOT=...` overrides the path through CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS.
+[target.aarch64-unknown-linux-gnu]
+linker = "aarch64-linux-gnu-gcc"
+rustflags = ["-C", "link-arg=--sysroot=/srv/h713/sysroot-trixie-arm64"]

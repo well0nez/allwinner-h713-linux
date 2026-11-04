@@ -1,0 +1,18 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[package]
+name = "h713-airplay-presenter"
+description = "h713-airplay-show: the mode unit that decodes the mirror stream in hardware and puts it through h713-warp, and plays the sound"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "presenter"
+
+[[bin]]
+name = "h713-airplay-show"
+path = "src/main.rs"
+
+[dependencies]
+proto = { package = "h713-airplay-proto", path = "../proto" }
