@@ -601,3 +601,14 @@ mit gepatchtem DSP). Ergebnisse (Entwurf 70 v2, §2a/§3a/§4.6/§6.4/§9a; 79 �
   gesetztem Schreib-busy-Bit blockiert den Briefkasten bis zum Inselreset (2 von 2), mit Warten auf Bit 4: keine Blockade.
 - Offen, braucht den Besitzer: eine Quelle mit Ton und Ohren/Mikrofon (N4, N5, B4-Entscheidung, B6).
 - Gerät am Ende: Normalstart, Umgebung = Referenz, RUN1.
+
+## 33 Runde 15/15b: Standby-Politik und der TMDS-Befund (04.11.)
+
+- Sauber 3d383b1 (Modul 14f1d7f7): Schritt 9 a/b/c 9 von 9 Aufwachen ohne Hänger; b: `unavailable-after-sleep`, ENOLINK;
+  c: das Laden prüft das TV-Top (`0x10/0/0`) und lässt den Empfänger in Ruhe. Die V4L2-Zeile kam alle 100 ms (behoben).
+- Frischstart ohne HDMI-Lock war **kein Build-Fehler**: die Quelle (Xbox) sendet nach einem Start, der mit Tiefschlaf
+  endete oder den Empfänger nie aufsetzte, kein TMDS mehr; ein Hot-Plug-Puls allein holt es nicht zurück, das Altmodul
+  (Runde 13) scheiterte ebenso (A/B, abwechselnd). Der Herstellerstart holt sie zurück.
+- Sauber 5fd6cd6 (Modul dbd25d04) schreibt die Empfängerfolge 3 s nach dem Hot-Plug auch ohne TMDS: 3 von 3 Starts im
+  Fehlerzustand (`0x8fc = 0x3f` vorher) locken in 6,0 s, 3 von 3 im Normalzustand ebenso; Schritt 9 a/b/c wieder grün.
+- Entwurf 50 §4a (Zusatz) an der Wand; sauber f9c9072. Gerät: Normalstart, Umgebung = Referenz.

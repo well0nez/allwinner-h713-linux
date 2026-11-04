@@ -1,0 +1,3 @@
+PASS QUERYCAP: /dev/video1: driver h713_drm, card h713-hdmirx-clean
+   0.0 s QUERY_DV_TIMINGS: ENOLINK
+FAIL QUERY_DV_TIMINGS: 0x0, 0 Hz after 5.0 s

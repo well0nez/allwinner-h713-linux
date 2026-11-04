@@ -1,0 +1,20 @@
+30.61 == st15 a2 mode a, 7.3.1-rustbench, module 14f1d7f770be1282, kms-test 7436caa4f613fe26
+30.74 insmod rc=0
+[   30.728698] h713-drm h713-drm: hdmi: TV top 0x00111111 / 0x01111117 / 0x404 as the boot loader set it up
+[   30.733278] h713-drm h713-drm: resume: no HDMI input after a deep sleep until reboot (spec 60 v4)
+INFO histogram sum 2073600, non-zero bins 5:4859 6:14581 18:8 19:185377 20:23188 21:28839 22:29087 23:30459 24:30923 25:30876 26:30462 27:28916 28:31290 29:206057 30:38820 31:1359858
+38.94 suspend (RTC +20 s)
+60.68 back rc=0
+[   39.067742] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped; channel 0, NRC write channels, RGB channel stopped (spec 60): 0, 8 writes, 0 read-back mismatches, 0 latch timeouts; interrupts off
+[   40.432036] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x78500000 chroma 0x786fa400; rgb on 0x77d00000 alpha 128
+[   40.432065] h713-drm h713-drm: [drm] commit: 0, 1155 ops, 1125 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[   40.432086] h713-drm h713-drm: [drm] commit: 2 capture-block writes left out (no TV-side re-init since the wake, spec 60 §3)
+[   40.433933] h713-drm h713-drm: [drm] gamma: LUT 70 loaded into the hidden bank: 0, 0 read-back mismatches
+[   40.433973] h713-drm h713-drm: [drm] pq: controls 0xfff and gamma: 17 words written now (no vblank): 0, 0 read-back mismatches
+[   40.675836] h713-drm h713-drm: [drm] align (05 §2.1): 0; vsync->RGB done 13.786 ms -> 13.786 ms (aligned 13.785); timing moved 0 lines in 0 frames, rows aligned
+[   40.691111] h713-drm h713-drm: [drm] resume: the HDMI input is not in use: the TV side stays untouched
+69.79 h713-wifi restart 1 rc=0 wlan0 up
+verify scan: PASS
+INFO histogram sum 2073600, non-zero bins 5:4861 6:14579 18:8 19:185379 20:23190 21:28833 22:29087 23:30460 24:30925 25:30875 26:30461 27:28913 28:31293 29:206060 30:38821 31:1359855
+86.53 kernel trouble lines: 0
+86.58 == st15 a2: done

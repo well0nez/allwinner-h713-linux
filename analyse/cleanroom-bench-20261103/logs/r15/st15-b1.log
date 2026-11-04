@@ -1,0 +1,30 @@
+30.33 == st15 b1 mode b, 7.3.1-rustbench, module 14f1d7f770be1282, kms-test 7436caa4f613fe26
+30.46 insmod rc=0
+[   30.451311] h713-drm h713-drm: hdmi: TV top 0x00111111 / 0x01111117 / 0x404 as the boot loader set it up
+[   30.455913] h713-drm h713-drm: resume: no HDMI input after a deep sleep until reboot (spec 60 v4)
+45.52 kms-test:    1.6 s hdmi_state no-signal (0x0 at 0.000 Hz)
+45.58 suspend (RTC +20 s)
+66.04 back rc=0
+[   45.636320] h713-drm h713-drm: [drm] hdmi: off (the video plane shows client buffers again)
+[   45.898798] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped; channel 0, NRC write channels, RGB channel stopped (spec 60): 0, 8 writes, 0 read-back mismatches, 1 latch timeouts; interrupts off
+[   46.170017] h713-drm h713-drm: [drm] hdmi: the video plane shows the HDMI input
+[   46.170031] h713-drm h713-drm: [drm] hdmi: no TV-side re-init (tvtop_init=none, spec 60 v4): the HDMI input is unavailable until reboot
+[   46.170044] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x1; 1080p60 only)
+[   46.171910] h713-drm h713-drm: [drm] gamma: LUT 68 loaded into the hidden bank: 0, 0 read-back mismatches
+[   46.171948] h713-drm h713-drm: [drm] pq: controls 0xfff and gamma: 17 words written now (no vblank): 0, 0 read-back mismatches
+[   46.172039] h713-drm h713-drm: [drm] hdmi: unavailable after a deep sleep (spec 60 v4): reboot to use the HDMI input
+75.08 h713-wifi restart 1 rc=0 wlan0 up
+86.45 kms-test hold after the wake:   14.3 s hdmi_state unavailable-after-sleep (0x0 at 0.000 Hz)|FAIL the HDMI input is unavailable after a deep sleep (spec 60 v4): reboot|
+86.48 hdmi_state 
+88.56 + /root/kms-test hdmi --secs 5 --wait 5
+video_source = hdmi; waiting up to 5 s for hdmi_state = capturing
+   0.0 s hdmi_state unavailable-after-sleep (0x0 at 0.000 Hz)
+FAIL the HDMI input is unavailable after a deep sleep (spec 60 v4): reboot
+88.58 rc=1
+88.60 + /root/kms-test v4l2 --wait 5 --events 0
+PASS QUERYCAP: /dev/video1: driver h713_drm, card h713-hdmirx-clean
+   0.0 s QUERY_DV_TIMINGS: ENOLINK
+FAIL QUERY_DV_TIMINGS: 0x0, 0 Hz after 5.0 s
+93.63 rc=1
+96.70 kernel trouble lines: 0
+96.71 == st15 b1: done

@@ -1,0 +1,34 @@
+30.47 == st15 b3 mode b, 7.3.1-rustbench, module 14f1d7f770be1282, kms-test 7436caa4f613fe26
+30.61 pre-init: round-13 module insmod rc=0
+45.12 pre-init:    6.0 s hdmi_state capturing (1920x1080 at 60.000 Hz)
+45.38 pre-init: rmmod rc=0, RX_CTL 0x8fc 0x068008fc = 0xb3b3b3b3
+45.42 insmod rc=0
+[   45.420326] h713-drm h713-drm: hdmi: TV top 0x00111111 / 0x01111117 / 0x504 as the boot loader set it up
+[   45.422170] h713-drm h713-drm: resume: no HDMI input after a deep sleep until reboot (spec 60 v4)
+60.50 kms-test:    6.0 s hdmi_state capturing (1920x1080 at 60.000 Hz)
+60.56 suspend (RTC +20 s)
+81.01 back rc=0
+[   60.665294] h713-drm h713-drm: [drm] hdmi: the video plane shows client buffers again: 610 source frames, 554 shown, 52 repeated, 0 skipped (0 bad write indices, 0 latch timeouts)
+[   60.665326] h713-drm h713-drm: [drm] hdmi: off (the video plane shows client buffers again)
+[   60.683997] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped; channel 0, NRC write channels, RGB channel stopped (spec 60): 0, 8 writes, 0 read-back mismatches, 0 latch timeouts; interrupts off
+[   60.948134] h713-drm h713-drm: [drm] hdmi: the video plane shows the HDMI input
+[   60.948148] h713-drm h713-drm: [drm] hdmi: no TV-side re-init (tvtop_init=none, spec 60 v4): the HDMI input is unavailable until reboot
+[   60.948160] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x1; 1080p60 only)
+[   60.950079] h713-drm h713-drm: [drm] gamma: LUT 68 loaded into the hidden bank: 0, 0 read-back mismatches
+[   60.950119] h713-drm h713-drm: [drm] pq: controls 0xfff and gamma: 17 words written now (no vblank): 0, 0 read-back mismatches
+[   60.950210] h713-drm h713-drm: [drm] hdmi: unavailable after a deep sleep (spec 60 v4): reboot to use the HDMI input
+89.92 h713-wifi restart 1 rc=0 wlan0 up
+101.23 kms-test hold after the wake:    4.8 s hdmi_state locked (1920x1080 at 60.000 Hz)|   6.0 s hdmi_state capturing (1920x1080 at 60.000 Hz)|
+101.25 hdmi_state 
+103.33 + /root/kms-test hdmi --secs 5 --wait 5
+video_source = hdmi; waiting up to 5 s for hdmi_state = capturing
+   0.0 s hdmi_state unavailable-after-sleep (0x0 at 0.000 Hz)
+FAIL the HDMI input is unavailable after a deep sleep (spec 60 v4): reboot
+103.37 rc=1
+103.39 + /root/kms-test v4l2 --wait 5 --events 0
+PASS QUERYCAP: /dev/video1: driver h713_drm, card h713-hdmirx-clean
+   0.0 s QUERY_DV_TIMINGS: ENOLINK
+FAIL QUERY_DV_TIMINGS: 0x0, 0 Hz after 5.0 s
+108.42 rc=1
+111.49 kernel trouble lines: 0
+111.50 == st15 b3: done

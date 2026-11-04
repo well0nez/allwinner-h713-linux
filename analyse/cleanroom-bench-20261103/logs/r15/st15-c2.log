@@ -1,0 +1,60 @@
+31.01 == st15 c2 mode c, 7.3.1-rustbench, module 14f1d7f770be1282, kms-test 7436caa4f613fe26
+31.14 insmod rc=0
+[   31.131474] h713-drm h713-drm: hdmi: TV top 0x00111111 / 0x01111117 / 0x404 as the boot loader set it up
+[   31.136038] h713-drm h713-drm: resume: no HDMI input after a deep sleep until reboot (spec 60 v4)
+46.19 kms-test:    1.6 s hdmi_state no-signal (0x0 at 0.000 Hz)
+46.25 suspend (RTC +20 s)
+66.71 back rc=0
+[   46.303332] h713-drm h713-drm: [drm] hdmi: off (the video plane shows client buffers again)
+[   46.570299] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped; channel 0, NRC write channels, RGB channel stopped (spec 60): 0, 8 writes, 0 read-back mismatches, 1 latch timeouts; interrupts off
+[   46.850048] h713-drm h713-drm: [drm] hdmi: the video plane shows the HDMI input
+[   46.850062] h713-drm h713-drm: [drm] hdmi: no TV-side re-init (tvtop_init=none, spec 60 v4): the HDMI input is unavailable until reboot
+[   46.850074] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x1; 1080p60 only)
+[   46.851937] h713-drm h713-drm: [drm] gamma: LUT 68 loaded into the hidden bank: 0, 0 read-back mismatches
+[   46.851976] h713-drm h713-drm: [drm] pq: controls 0xfff and gamma: 17 words written now (no vblank): 0, 0 read-back mismatches
+[   46.852051] h713-drm h713-drm: [drm] hdmi: unavailable after a deep sleep (spec 60 v4): reboot to use the HDMI input
+75.42 h713-wifi restart 1 rc=0 wlan0 up
+88.86 rmmod rc=0
+88.97 TV top before the reload: 0x06e00000 = 0x00000010 0x06e00004 = 0x00000000 0x06e00008 = 0x00000000 
+88.99 insmod after the wake rc=0
+91.02 + /root/kms-test video p1 1920 1080 nv12 --hold 6
+commit ok in 1052 ms: primary off (pitch 7680), overlay p1 1920x1080 Nv12 (alpha 255)
+holding 6 s
+98.22 rc=0
+98.24 + /root/kms-test hdmi --secs 5 --wait 5
+[   69.078218] h713-drm h713-drm: [drm] hdmi: off (the video plane shows client buffers again)
+[   69.078267] h713-drm h713-drm: flip events: 0 at the RGB done, 0 after polling the latch (at most 0 x 100 us), 0 waited for the next RGB done
+[   69.078286] h713-drm h713-drm: unload: picture controls at their defaults, LUT off: 1 words: 0, 0 read-back mismatches
+[   69.078325] h713-drm h713-drm: unload: logo 0x6c100000 (uboot-scanout@6c100000) restored: 0, 7 writes, 0 read-back mismatches
+[   69.225900] h713-drm h713-drm: hdmi: TV top 0x00000010 / 0x00000000 / 0x0, not the boot loader's set-up (0x10 / 0 / 0 after a deep sleep, spec 60 v4): the HDMI input and the capture block stay untouched until reboot
+[   69.225935] h713-drm h713-drm: hdmi: input offered; ring 0x4b100000+0xbf5400 inside no-map region mips-firmware@4b100000; EDID/hot-plug by the provider (spec 57)
+[   69.226060] h713-drm h713-drm: spec/12 buffers 0x4c3ef000+0x129d000 inside no-map region framebuf@4bf41000
+[   69.226073] h713-drm h713-drm: no clocks to hold: boot with clk_ignore_unused (spec 05 §4)
+[   69.227541] h713-drm h713-drm: resume: no HDMI input after a deep sleep until reboot (spec 60 v4)
+[   69.228321] h713-drm h713-drm: [drm] picture controls available: 0xfff of 0xfff; GAMMA_LUT 1024 entries, default the owner's third curve
+[   69.228611] h713-drm h713-drm: handoff: RGB control 0x03001901, address 0x6c100000, irq enable 0x00000021; 0 clocks, reset none; h713/database.TSE loaded
+[   69.228929] [drm] Initialized h713-drm 1.0.0 for h713-drm on minor 1
+[   69.229065] h713-drm h713-drm: hdmirx: h713-hdmirx-clean registered as video1
+[   69.254672] h713-drm h713-drm: [drm] hdmi: no TV-side re-init (tvtop_init=none, spec 60 v4): the HDMI input is unavailable until reboot
+[   69.254690] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x2; 1080p60 only)
+[   69.254831] h713-drm h713-drm: [drm] hdmi: off (the last V4L2 file closed)
+[   72.415562] h713-drm h713-drm: [drm] video: NV12 1920x1080 pitch 1920 luma 0x77d00000 chroma 0x77efa400; rgb off 0x00000000 alpha 255
+[   72.415606] h713-drm h713-drm: [drm] commit: 0, 1151 ops, 1122 writes, 0 read-back mismatches, 0 timeouts, 0 check failures (video plane: full enable)
+[   72.415629] h713-drm h713-drm: [drm] commit: 2 capture-block writes left out (no TV-side re-init since the wake, spec 60 §3)
+[   72.417565] h713-drm h713-drm: [drm] gamma: LUT 69 loaded into the hidden bank: 0, 0 read-back mismatches
+[   72.417610] h713-drm h713-drm: [drm] pq: controls 0xfff and gamma: 17 words written now (no vblank): 0, 0 read-back mismatches
+[   78.492838] h713-drm h713-drm: [drm] hdmi: the video plane shows the HDMI input
+[   78.492859] h713-drm h713-drm: [drm] hdmi: no TV-side re-init (tvtop_init=none, spec 60 v4): the HDMI input is unavailable until reboot
+[   78.492868] h713-drm h713-drm: [drm] hdmi: the HDMI input runs (users 0x1; 1080p60 only)
+[   78.493273] h713-drm h713-drm: [drm] hdmi: unavailable after a deep sleep (spec 60 v4): reboot to use the HDMI input
+video_source = hdmi; waiting up to 5 s for hdmi_state = capturing
+   0.0 s hdmi_state unavailable-after-sleep (0x0 at 0.000 Hz)
+FAIL the HDMI input is unavailable after a deep sleep (spec 60 v4): reboot
+98.27 rc=1
+98.29 + /root/kms-test v4l2 --wait 5 --events 0
+PASS QUERYCAP: /dev/video1: driver h713_drm, card h713-hdmirx-clean
+   0.0 s QUERY_DV_TIMINGS: ENOLINK
+FAIL QUERY_DV_TIMINGS: 0x0, 0 Hz after 5.0 s
+103.31 rc=1
+106.39 kernel trouble lines: 0
+106.39 == st15 c2: done

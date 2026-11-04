@@ -1,0 +1,18 @@
+video_source = hdmi; waiting up to 30 s for hdmi_state = capturing
+   0.0 s hdmi_state off (0x0 at 0.000 Hz)
+   1.6 s hdmi_state no-signal (0x0 at 0.000 Hz)
+   4.8 s hdmi_state locked (1920x1080 at 60.000 Hz)
+   6.0 s hdmi_state capturing (1920x1080 at 60.000 Hz)
+PASS T3-02 CAP 0x104 frames: 300 in 5.000 s (want 300 +/- 2)  [96 T3-02, 55 §3]
+PASS T3-02 CAP totals / size: 0x548 0x04650898 0x874 0x07800438 (want 0x04650898 / 0x07800438)  [96 T3-02, 55 §3]
+PASS T3-02 driver timing: 1920x1080 at 60000 mHz  [50 §4]
+PASS T3-03 capture outputs: 0x924 0x00780078 0x928 0xe0020438 0x964 0x00780078 0x968 0xe0020438  [96 T3-03, 55 §3]
+PASS T3-03 write index: 60 steps in 1 s, 0 not A -> B -> C  [96 T3-03, 55 §2/§3]
+PASS T3-04 channel 0 on the ring: 0x05600070 0x4b2ff000 0x05600084 0x4b8fc000 (ring slots [
+    0x4b100000,
+    0x4b2ff000,
+    0x4b4fe000,
+])  [55 §5, §7]
+PASS T3-04 frames shown: 299 shown of 299 source frames, 28 repeated (65.5 Hz panel), 0 skipped  [96 T3-04, 55 §5/§6]
+INFO histogram 5:1266461 6:424517 7:75311 8:146920 9:77890 10:30642 11:10213 12:34654 -> 5:1255618 6:433967 7:77629 8:136487 9:89284 10:26633 11:14172 12:32959 (27769 pixels moved in 1 s); probe 0x051c0144 195/170/195 -> 190/170/195
+holding 300 s

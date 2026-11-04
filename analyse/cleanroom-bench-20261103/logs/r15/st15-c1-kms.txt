@@ -1,0 +1,5 @@
+video_source = hdmi; waiting up to 30 s for hdmi_state = capturing
+   0.0 s hdmi_state off (0x0 at 0.000 Hz)
+   1.6 s hdmi_state no-signal (0x0 at 0.000 Hz)
+  14.3 s hdmi_state unavailable-after-sleep (0x0 at 0.000 Hz)
+FAIL the HDMI input is unavailable after a deep sleep (spec 60 v4): reboot
