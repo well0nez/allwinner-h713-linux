@@ -348,7 +348,7 @@ check_sources() {
 				errors=1
 			fi
 		done
-		[[ -r "$H713_AIRPLAY_SRC/README.md" ]] || { warn "missing: $H713_AIRPLAY_SRC/README.md"; errors=1; }
+		for f in README.md THIRD-PARTY.md; do [[ -r "$H713_AIRPLAY_SRC/$f" ]] || { warn "missing: $H713_AIRPLAY_SRC/$f"; errors=1; }; done
 	fi
 	for f in "$H713_OSD_SRC/h713-osd.service" "$H713_OSD_SRC/osd.conf" "$H713_OSD_SRC/README.md" \
 		 "$H713_KEYS_SRC/h713-keys.service" "$H713_KEYS_SRC/keys.conf" "$H713_KEYS_SRC/README.md" "$H713_KEYS_SRC/70-h713-remote.rules"; do
@@ -529,7 +529,7 @@ if ((DRY_RUN)); then
            -> /usr/local/bin/h713-airplay                 0755
        ${H713_AIRPLAY_SHOW_BIN#"$PROJECT_ROOT"/}
            -> /usr/local/bin/h713-airplay-show            0755
-       README.md -> /usr/local/share/doc/h713-airplay/
+       README.md, THIRD-PARTY.md -> /usr/local/share/doc/h713-airplay/
        h713-airplay.service (multi-user.target.wants) and h713-airplay-show.socket (sockets.target.wants)
        enabled; the presenter's libraries (FFmpeg, libva) come with the media profile
     6. blob guard
@@ -891,6 +891,7 @@ if airplay_tree; then
 	install -m 0755 "$H713_AIRPLAY_BIN" "$TREE/usr/local/bin/h713-airplay"
 	install -m 0755 "$H713_AIRPLAY_SHOW_BIN" "$TREE/usr/local/bin/h713-airplay-show"
 	install -D -m 0644 "$H713_AIRPLAY_SRC/README.md" "$TREE/usr/local/share/doc/h713-airplay/README.md"
+	install -D -m 0644 "$H713_AIRPLAY_SRC/THIRD-PARTY.md" "$TREE/usr/local/share/doc/h713-airplay/THIRD-PARTY.md"
 	mkdir -p "$TREE/etc/systemd/system/sockets.target.wants"
 	ln -sfn ../h713-airplay.service "$TREE/etc/systemd/system/multi-user.target.wants/h713-airplay.service"
 	ln -sfn ../h713-airplay-show.socket "$TREE/etc/systemd/system/sockets.target.wants/h713-airplay-show.socket"
