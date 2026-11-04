@@ -27,6 +27,7 @@ libasound2-dev libasound2t64
 libegl-dev libegl1 libgles-dev libgles2 libgl-dev libglx-dev libgbm-dev libgbm1
 libdrm-dev libdrm2 libva-dev libva2 libva-drm2
 libwayland-dev libwayland-client0 libwayland-egl1 libwayland-cursor0 libwayland-server0
+libfreetype-dev libpng-dev libbz2-dev libbrotli-dev zlib1g-dev libgcc-14-dev
 """.split()
 
 

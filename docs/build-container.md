@@ -90,6 +90,28 @@ step a `KERNEL_CONFIG=rust` build stops after olddefconfig ("dropped what the fr
 With it, a build without the fragment gains only the informational `CONFIG_RUSTC_*` / `CONFIG_RUST_IS_AVAILABLE`
 lines in its `.config`; no C source or C Makefile reads them (CONFIG_RUST stays off).
 
+## Rust for h713-airplay (the desktop profile)
+
+`--profile desktop` cross-builds the AirPlay receiver and presenter (`userspace/h713-airplay`, Rust; step 6e of
+`release/build-all.sh`, 05.11.2026). It uses the toolchain of the section above and adds the board's target to it, once, as root:
+
+```bash
+podman exec -u root h713-build bash -c '
+  export RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo
+  /opt/rust/cargo/bin/rustup target add --toolchain 1.89.0 aarch64-unknown-linux-gnu
+  chmod -R a+rX /opt/rust'
+```
+
+Check: `podman exec h713-build bash -lc 'ls "$(rustc --print target-libdir --target aarch64-unknown-linux-gnu)"'` lists the target's
+libraries. `release/build-all.sh` tests the same directory in its step 0 for a desktop build and stops there without it, not half an
+hour later. Nothing else is installed for it: the container's clang links the two programs, with lld, against a sysroot of their own -
+Debian 13's arm64 libraries (glibc 2.41, FFmpeg 7.1, ALSA, EGL/GLES, GBM, libva, Wayland, and `libgcc-14-dev` for the link), which
+`userspace/h713-airplay/tools/make-sysroot.py` fetches from deb.debian.org and security.debian.org (each package checked against the
+archive's SHA-256) into `mainline/build/sysroot-airplay-arm64/`, and fetches again only when that script changes. So the step needs the
+network: for that sysroot, and for the crates of `Cargo.lock`, which cargo takes from crates.io into the build user's `~/.cargo` in the
+container. The crate pins rustc 1.88.0 in its `rust-toolchain.toml` for a host with rustup; the container's `cargo` is the toolchain's
+own binary, not rustup's proxy, and builds it with 1.89.0 (the workspace asks for 1.88 or newer).
+
 ## The OpenRISC compiler for crust
 
 crust, the firmware of the SoC's small OR1K core ([ARISC](subsystems/arisc.md)), needs an `or1k-elf` GCC,

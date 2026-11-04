@@ -10,6 +10,7 @@ release/build-all.sh --version v0.97-beta --board hy310 --profile media,desktop 
 That is the release image since `v0.97-beta`: the base system plus the `media` and `desktop` profiles (Kodi, the desktop,
 the browser, the VA-API driver). Eleven steps: TF-A BL31; crust; U-Boot (release, installer, probe, and `sunxi-fel`); kernel with the patch series;
 AIC8800 modules; a pinned Debian keyring; an arm64 sysroot with `h713-tv`, `h713-afmetric`, `h713-warp`, `h713-osd` and `h713-settings` cross-built against it; mesa for the GPU path (panfrost only);
+with `--profile desktop` the AirPlay receiver and presenter (Rust, `userspace/h713-airplay`, against a sysroot of their own: step 6e, 05.11.2026);
 the Debian 13 root filesystem; the ext4 inputs; the image; verification; a build stamp. With
 `--vendor` it ends in `ALL GREEN` - the self-test compared every extracted file against the image -
 or it stops. Without `--vendor` it ends after the structural check, which is a weaker statement.
@@ -26,6 +27,10 @@ nothing changed it is done in seconds.
   one `podman run` plus two `apt-get` lines. Skipping the LLVM 20 step there makes U-Boot fail at
   `u-boot.srec`, which does not look like a missing toolchain at all
 - the submodules checked out: `git submodule update --init` (see below)
+- for `--profile desktop` (the release): Rust's std for the board in the container - one `rustup target add` line,
+  [docs/build-container.md, Rust for h713-airplay](docs/build-container.md#rust-for-h713-airplay-the-desktop-profile) - and the
+  network during the build: AirPlay's sysroot comes from deb.debian.org and security.debian.org, its crates from crates.io.
+  Without the target the build stops in its step 0 and says so
 - roughly 15 GB free
 
 `--vendor` is optional. Without it the image is still built and structurally checked - it carries the
@@ -124,7 +129,8 @@ merge of the `medien` branch). Without `--standby`, as the release: the vendor A
 experimental choice (`TODO.md` 2.42); with `--standby` the image runs crust and offers the standby ([standby](docs/subsystems/standby.md)).
 crust is the submodule `mainline/external/crust` (the fork's branch `h713`, at the head `crust-h713/SERIES.txt` names); `CRUST_SRC=<checkout>` takes
 another checkout for a developer's own crust, and the stamp then says `reproducible: no`.
-A profile adds the VA-API driver, cross-built before the rootfs (`rootfs/libva/build-libva.sh`), and lays in the package lists and overlays of the profiles; the image is named
+A profile adds the VA-API driver, cross-built before the rootfs (`rootfs/libva/build-libva.sh`), and `desktop` the AirPlay receiver and presenter (step 6e,
+[docs/tools/h713-airplay.md](docs/tools/h713-airplay.md); not timed in the container yet, so the minutes below are from before it), and lays in the package lists and overlays of the profiles; the image is named
 `<name>-<version>-media-desktop` and the stamp says `profile:` and `libva:`. The tree of `media,desktop` is about 1.1 GiB, so a profile image gets a **2 GiB** rootfs file system
 (the base image keeps 1 GiB; either grows to the partition at the first start). The build container is the one of
 [docs/build-container.md](docs/build-container.md) (its recipe has `libwayland-dev` and `libfreetype-dev`, which the profile needs). Measured: 35 minutes for each board's
