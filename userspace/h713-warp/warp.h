@@ -32,7 +32,8 @@
  * only two source frames (~33 ms at 60 Hz), and its dma-bufs are reserved memory without struct pages (importers get
  * DMA addresses, dma_map_resource) - docs/tools/h713-tv.md, "The clean stack"
  */
-#define V4L2_NAME_CLEAN	"h713-hdmirx-clean"
+#define V4L2_NAME_CLEAN	"h713-hdmirx-clean"	/* its sysfs name and its QUERYCAP card */
+#define V4L2_CAP_DRIVER_CLEAN	"h713_drm"		/* its QUERYCAP driver (the module's name) */
 #define WAYLAND_SOCKET	"/run/h713-warp/wayland"	/* the Wayland server: WAYLAND_DISPLAY */
 
 #define WARP_TARGETS	3	/* triple buffering on the panel side (M9) */

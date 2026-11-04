@@ -40,12 +40,14 @@ void source_init(struct source *s, const char *want)
  * v4l2_capability has __u8 driver[16], so the kernel reports at most
  * "sun50i-h713-hdm" of our 18-character name -- only a prefix compare can
  * match (h713-tv capture_open, scanout.c v4l_open). The clean stack's
- * receiver reports "h713-hdmirx-cle" the same way.
+ * receiver (h713_drm since the clean repository's 8e24be3) reports the
+ * module's name "h713_drm" as its driver and the node's name as its card.
  */
 static bool node_matches(const struct v4l2_capability *vc)
 {
 	return !strncmp((const char *)vc->driver, V4L2_NAME, sizeof(vc->driver) - 1) ||
-	       !strncmp((const char *)vc->driver, V4L2_NAME_CLEAN, sizeof(vc->driver) - 1);
+	       (!strncmp((const char *)vc->driver, V4L2_CAP_DRIVER_CLEAN, sizeof(vc->driver)) &&
+		!strncmp((const char *)vc->card, V4L2_NAME_CLEAN, sizeof(vc->card)));
 }
 
 static bool open_node(struct source *s, char *why, size_t n)

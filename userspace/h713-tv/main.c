@@ -329,6 +329,21 @@ static bool capture_name_matches(unsigned int n)
 }
 
 /*
+ * QUERYCAP confirms the node that was opened. The vendor's: the driver field, as far as its 15 characters carry
+ * (capture_open()). The clean stack's (h713_drm since the clean repository's 8e24be3): driver = the module's name
+ * "h713_drm", card = the node's name "h713-hdmirx-clean". Host test tests/test_stack.c.
+ */
+#define V4L2_CAP_DRIVER_CLEAN	"h713_drm"
+
+static bool capture_cap_matches(const struct v4l2_capability *vcap)
+{
+	if (stack == STACK_CLEAN)
+		return !strncmp((const char *)vcap->driver, V4L2_CAP_DRIVER_CLEAN, sizeof(vcap->driver)) &&
+		       !strncmp((const char *)vcap->card, V4L2_DRIVER_CLEAN, sizeof(vcap->card));
+	return !strncmp((const char *)vcap->driver, V4L2_DRIVER, sizeof(vcap->driver) - 1);
+}
+
+/*
  * Find the device by name instead of by number. Two reasons, both measured:
  * the hdmirx driver probes asynchronously (its EDID sequence takes over ten
  * seconds), and /dev/video0 belongs to cedrus -- the capture came up as
@@ -380,19 +395,20 @@ static void capture_open(struct capture *cap, const char *want_path)
 		 * Measured 07.09.2026: hdmirx_test printed the same truncation
 		 * ("Treiber: sun50i-h713-hdm").
 		 */
-		if (!ioctl(cap->fd, VIDIOC_QUERYCAP, &vcap) &&
-		    !strncmp((const char *)vcap.driver, stack_v4l2(),
-			     sizeof(vcap.driver) - 1)) {
+		if (!ioctl(cap->fd, VIDIOC_QUERYCAP, &vcap) && capture_cap_matches(&vcap)) {
 			info("capture         %s (%s, %s)", cap->path, vcap.driver,
 			     vcap.card);
 			return;
 		}
 		close(cap->fd);
 		cap->fd = -1;
+		if (want_path && stack == STACK_CLEAN)
+			fail("%s does not belong to \"%s\" with card \"%s\" but to \"%s\" with card \"%s\"",
+			     cap->path, V4L2_CAP_DRIVER_CLEAN, V4L2_DRIVER_CLEAN, vcap.driver, vcap.card);
 		if (want_path)
 			fail("%s does not belong to \"%.*s\" but to \"%s\"",
 			     cap->path, (int)sizeof(vcap.driver) - 1,
-			     stack_v4l2(), vcap.driver);
+			     V4L2_DRIVER, vcap.driver);
 	}
 	if (stack == STACK_CLEAN)
 		fail("no V4L2 device with the name \"%s\" -- is h713_drm built with CONFIG_VIDEO_DEV, and did it find the HDMI input? (dmesg | grep -E 'hdmi:|hdmirx:'; grep -H . /sys/class/video4linux/video*/name)",

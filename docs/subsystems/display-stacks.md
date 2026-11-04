@@ -113,7 +113,11 @@ On the HY320 (the only board the clean driver has run on), with a 1080p60 source
 **1. The pieces.** From an image built with this change, or by hand from the repository:
 `rootfs/overlay/usr/local/sbin/h713-display` -> `/usr/local/sbin/`, `rootfs/overlay/etc/systemd/system/h713-display.service`
 and `h713-hdcp-key.service` -> `/etc/systemd/system/`, `userspace/h713-power/h713-tv-rescue.service` ->
-`/etc/systemd/system/`, `rootfs/overlay/etc/modprobe.d/h713-drm.conf` -> `/etc/modprobe.d/`; then
+`/etc/systemd/system/`, `rootfs/overlay/etc/modprobe.d/h713-drm.conf` -> `/etc/modprobe.d/`, and the clean-capable userspace:
+`userspace/h713-tv/h713-tv.aarch64-linux-gnu` -> `/usr/local/sbin/h713-tv`, `userspace/h713-warp/h713-warp.aarch64-linux-gnu`
+-> `/usr/local/bin/h713-warp` (both `make cross` in `h713-build`, h713-warp with `MESA_PREFIX=mainline/build/mesa-stage/usr/local`),
+`userspace/h713-tv/99-h713-tv.rules` -> `/etc/udev/rules.d/` (its second line starts `h713-tv@` on `h713-hdmirx-clean`);
+`udevadm control --reload`; then
 `ln -s /boot/mips /lib/firmware/h713-mips`, `ln -s ../h713-display.service /etc/systemd/system/sysinit.target.wants/`,
 `systemctl daemon-reload`. And the environment of this U-Boot (the U-Boot binary itself is unchanged; the lines are in
 `board/sunxi/hy310.env`, or `u-boot-initial-env` of a build): `fw_setenv` `bootcmd`, `boot_emmc`, `boot_net` with the new
