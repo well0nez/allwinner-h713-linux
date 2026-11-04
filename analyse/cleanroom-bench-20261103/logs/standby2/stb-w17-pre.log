@@ -1,0 +1,15 @@
+    35.026 === open /data/bench/stb-w17-pre.log boot 5f68c243-b7a9-4e32-8311-a0db3317e2e9 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    35.044 RSM step vpbdisable
+    35.163 vp-bench disable: done: 16 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+    35.165 SCANOUT 0x010 03000010 0x014 00000000 0x058 0000006a 0x05c 0000004d; PNL 0x174 00cc01bc
+    35.267 100 ms later: SCANOUT 0x058 0000006a 0x05c 0000004d; PNL 0x174 00d30045; 0x310 00800210
+    35.268 RSM step nrcoff
+    35.270 W32 0x05000178 = 6002021c (was e002021c)
+    35.271    read back 6002021c
+    35.273 W32 0x050001b8 = 60020438 (was e0020438)
+    35.274    read back 60020438
+    35.276 W32 0x05000278 = 6002021c (was e002021c)
+    35.277    read back 6002021c
+    35.278 W32 0x050002b8 = 60020438 (was e0020438)
+    35.280    read back 60020438
+    35.331 RSM done

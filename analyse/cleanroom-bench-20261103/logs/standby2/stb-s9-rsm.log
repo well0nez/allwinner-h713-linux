@@ -1,0 +1,3 @@
+    36.595 === open /data/bench/stb-s9-rsm.log boot 02c5b78d-b445-4b18-92e7-27ad19e33430 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    36.612 RSM step rx
+    36.614 BEFORE-READ RX_CTL 0x068008fc (8-bit)

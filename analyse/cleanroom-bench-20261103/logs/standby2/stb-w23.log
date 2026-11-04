@@ -1,0 +1,492 @@
+31.25 == stb w23: start, 7.3.1-rustbench, mode vpb, steps vpbapplyskip, gate word 0x07090114 = 0x52554e31
+31.42 insmod rc=0
+31.58 vp-bench apply
+done: 1119 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+PASS P1: bins 5..31 only:   [10 §6.2]
+34.32 SAFE before rc=0
+34.48 FULL before vp-bench rc=0
+35.13 FULL before rx rc=0
+ 334: 0 0 0 0 GICv2 144 Level h713-drm
+ 335: 0 0 0 0 GICv2 142 Level h713-drm-vsync
+RASTER SCANOUT 0x310 bit 21 clear in 165 of 2000 reads; TCON 0x05880000 029a011c 00970319 012b03ad; PNL 0x174 00b102f1 -> 00b40436
+35.82 pre-sleep rsm vpbdisable,nrcoff,rgboff rc=0
+37.24 SAFE before-pre rc=0
+37.28 suspend (RTC +20 s)
+57.75 back rc=0
+[   37.297913] PM: suspend entry (deep)
+[   37.298446] Filesystems sync: 0.000 seconds
+[   37.300871] Freezing user space processes
+[   37.302488] Freezing user space processes completed (elapsed 0.001 seconds)
+[   37.302516] OOM killer disabled.
+[   37.302522] Freezing remaining freezable tasks
+[   37.303795] Freezing remaining freezable tasks completed (elapsed 0.001 seconds)
+[   37.303812] printk: Suspending console(s) (use no_console_suspend to debug)
+[   37.338403] GFP mask restricted
+[   37.338540] aicbsp_sdio mmc1:6721:2: PM: calling pm_generic_suspend @ 61, parent: mmc1:6721
+[   37.338585] aicbsp: aicbsp_sdio_suspend, func->num = 2
+[   37.338597] aicbsp_sdio mmc1:6721:2: PM: pm_generic_suspend returned 0 after 11 usecs
+[   37.339090] h713-drm h713-drm: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.339191] usb usb6: PM: calling usb_dev_suspend @ 61, parent: 4101400.usb
+[   37.339191] usb usb5: PM: calling usb_dev_suspend @ 62, parent: 4300400.usb
+[   37.339227] h713-drm h713-drm: [drm] suspend 1: planes off, HDMI input stopped, interrupts off
+[   37.339244] h713-drm h713-drm: PM: platform_pm_suspend returned 0 after 121 usecs
+[   37.339264] usb usb4: PM: calling usb_dev_suspend @ 44, parent: 4200400.usb
+[   37.339266] usb usb3: PM: calling usb_dev_suspend @ 12, parent: 4101000.usb
+[   37.339277] rfkill rfkill1: PM: calling rfkill_suspend @ 515, parent: hci0
+[   37.339309] rfkill rfkill1: PM: rfkill_suspend returned 0 after 1 usecs
+[   37.339350] rfkill rfkill0: PM: calling rfkill_suspend @ 515, parent: phy0
+[   37.339378] rfkill rfkill0: PM: rfkill_suspend returned 0 after 1 usecs
+[   37.339469] usb usb2: PM: calling usb_dev_suspend @ 63, parent: 4200000.usb
+[   37.339487] ieee80211 phy0: PM: calling wiphy_suspend @ 65, parent: mmc1:6721:1
+[   37.339494] usb usb1: PM: calling usb_dev_suspend @ 64, parent: 4300000.usb
+[   37.340463] aicwf_sdio mmc1:6721:1 wlan0: AP Stopped
+[   37.340524] ieee80211 phy0: PM: wiphy_suspend returned 0 after 1006 usecs
+[   37.340587] aicwf_sdio mmc1:6721:1: PM: calling pm_generic_suspend @ 515, parent: mmc1:6721
+[   37.340622] aicsdio: aicwf_sdio_suspend enter
+[   37.340682] aicsdio: aicwf_sdio_suspend exit
+[   37.340692] aicwf_sdio mmc1:6721:1: PM: pm_generic_suspend returned 0 after 69 usecs
+[   37.340756] mmc mmc1:6721: PM: calling mmc_bus_suspend @ 42, parent: mmc1
+[   37.340796] mmc mmc1:6721: PM: mmc_bus_suspend returned 0 after 6 usecs
+[   37.340795] platform aic-bsp: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.340823] platform aic-bsp: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.340899] stk8ba50 0-0018: PM: calling stk8ba50_suspend [stk8ba50] @ 42, parent: i2c-0
+[   37.340892] panfrost 1800000.gpu: PM: calling panfrost_device_suspend [panfrost] @ 515, parent: soc
+[   37.340944] panfrost 1800000.gpu: PM: panfrost_device_suspend [panfrost] returned 0 after 3 usecs
+[   37.341011] sun50i-h713-arisc 100000.arisc: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.341038] sun50i-h713-arisc 100000.arisc: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.341148] input input1: PM: calling input_dev_suspend @ 515, parent: gpio-keys
+[   37.341181] input input1: PM: input_dev_suspend returned 0 after 2 usecs
+[   37.341219] sound pcmC0D0p: PM: calling do_pcm_suspend @ 515, parent: card0
+[   37.341250] sound pcmC0D0p: PM: do_pcm_suspend returned 0 after 1 usecs
+[   37.341347] sun4i-codec 2030000.codec: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.341375] sun4i-codec 2030000.codec: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.341380] mmcblk mmc0:0001: PM: calling mmc_bus_suspend @ 599, parent: mmc0
+[   37.341433] cpufreq-dt cpufreq-dt: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.341460] cpufreq-dt cpufreq-dt: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.341514] sun8i-thermal 2009400.thermal-sensor: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.341539] sun8i-thermal 2009400.thermal-sensor: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.341582] input input0: PM: calling input_dev_suspend @ 515, parent: rc0
+[   37.341605] input input0: PM: input_dev_suspend returned 0 after 1 usecs
+[   37.341643] regulator regulator.4: PM: calling regulator_suspend @ 515, parent: regulator-vdd-cpu
+[   37.341682] regulator regulator.4: PM: regulator_suspend returned 0 after 1 usecs
+[   37.341717] sunxi-ir 7040000.ir: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.341756] sunxi-ir 7040000.ir: PM: platform_pm_suspend returned 0 after 14 usecs
+[   37.341800] pwm-regulator regulator-vdd-cpu: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.341805] stk8ba50 0-0018: PM: stk8ba50_suspend [stk8ba50] returned 0 after 875 usecs
+[   37.341826] pwm-regulator regulator-vdd-cpu: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.341867] sun50i-h713-tvcap 50c0000.tvcap: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.341892] sun50i-h713-tvcap 50c0000.tvcap: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.341923] pwm pwmchip1: PM: calling pwm_class_suspend @ 515, parent: 7020c00.pwm
+[   37.341949] pwm pwmchip1: PM: pwm_class_suspend returned 0 after 1 usecs
+[   37.341978] sun8i-pwm 7020c00.pwm: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.342003] sun8i-pwm 7020c00.pwm: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.342039] sun50i-h713-r-pinctrl 7022000.pinctrl: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.342064] sun50i-h713-r-pinctrl 7022000.pinctrl: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.342257] rwnx_reg_notifier Enter
+[   37.343860] mmcblk mmc0:0001: PM: mmc_bus_suspend returned 0 after 2445 usecs
+[   37.343938] sunxi-mmc 4022000.mmc: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.343996] sunxi-mmc 4022000.mmc: PM: platform_pm_suspend returned 0 after 29 usecs
+[   37.344032] sunxi-mmc 4021000.mmc: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.344069] sunxi-mmc 4021000.mmc: PM: platform_pm_suspend returned 0 after 13 usecs
+[   37.344139] alarmtimer alarmtimer.0.auto: PM: calling platform_pm_suspend @ 515, parent: rtc0
+[   37.344168] alarmtimer alarmtimer.0.auto: PM: platform_pm_suspend returned 0 after 3 usecs
+[   37.344199] rtc rtc0: PM: calling rtc_suspend @ 515, parent: 7090000.rtc
+[   37.344312] rtc rtc0: PM: rtc_suspend returned 0 after 84 usecs
+[   37.349328] usb usb3: PM: usb_dev_suspend returned 0 after 10023 usecs
+[   37.349386] ehci-platform 4101000.usb: PM: calling platform_pm_suspend @ 12, parent: soc
+[   37.349520] usb usb2: PM: usb_dev_suspend returned 0 after 10016 usecs
+[   37.349545] usb usb1: PM: usb_dev_suspend returned 0 after 10016 usecs
+[   37.349573] ehci-platform 4200000.usb: PM: calling platform_pm_suspend @ 63, parent: soc
+[   37.349600] ehci-platform 4300000.usb: PM: calling platform_pm_suspend @ 64, parent: soc
+[   37.365298] ehci-platform 4300000.usb: PM: platform_pm_suspend returned 0 after 15670 usecs
+[   37.365317] ehci-platform 4200000.usb: PM: platform_pm_suspend returned 0 after 15716 usecs
+[   37.365319] ehci-platform 4101000.usb: PM: platform_pm_suspend returned 0 after 15904 usecs
+[   37.401461] usb usb5: PM: usb_dev_suspend returned 0 after 62230 usecs
+[   37.401522] ohci-platform 4300400.usb: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.401565] ohci-platform 4300400.usb: PM: platform_pm_suspend returned 0 after 13 usecs
+[   37.405428] usb usb4: PM: usb_dev_suspend returned 0 after 66130 usecs
+[   37.405491] ohci-platform 4200400.usb: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.405534] ohci-platform 4200400.usb: PM: platform_pm_suspend returned 0 after 12 usecs
+[   37.409437] usb usb6: PM: usb_dev_suspend returned 0 after 70208 usecs
+[   37.409495] ohci-platform 4101400.usb: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.409536] ohci-platform 4101400.usb: PM: platform_pm_suspend returned 0 after 12 usecs
+[   37.409597] port 2500400.serial:0.0: PM: calling pm_runtime_force_suspend @ 515, parent: 2500400.serial:0
+[   37.409628] port 2500400.serial:0.0: PM: pm_runtime_force_suspend returned 0 after 5 usecs
+[   37.409662] mv64xxx_i2c 2502400.i2c: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.409687] mv64xxx_i2c 2502400.i2c: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.409717] dw-apb-uart 2500400.serial: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.409788] dw-apb-uart 2500400.serial: PM: platform_pm_suspend returned 0 after 46 usecs
+[   37.409821] platform 3061000.mips: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.409844] platform 3061000.mips: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.409880] sun50i-h713-pinctrl 2000000.pinctrl: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.409904] sun50i-h713-pinctrl 2000000.pinctrl: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.409940] port 2500000.serial:0.0: PM: calling pm_runtime_force_suspend @ 515, parent: 2500000.serial:0
+[   37.409963] port 2500000.serial:0.0: PM: pm_runtime_force_suspend returned 0 after 1 usecs
+[   37.410002] port serial8250:0.7: PM: calling pm_runtime_force_suspend @ 515, parent: serial8250:0
+[   37.410024] port serial8250:0.7: PM: pm_runtime_force_suspend returned 0 after 1 usecs
+[   37.410055] port serial8250:0.6: PM: calling pm_runtime_force_suspend @ 515, parent: serial8250:0
+[   37.410078] port serial8250:0.6: PM: pm_runtime_force_suspend returned 0 after 1 usecs
+[   37.410109] port serial8250:0.5: PM: calling pm_runtime_force_suspend @ 515, parent: serial8250:0
+[   37.410131] port serial8250:0.5: PM: pm_runtime_force_suspend returned 0 after 0 usecs
+[   37.410163] port serial8250:0.4: PM: calling pm_runtime_force_suspend @ 515, parent: serial8250:0
+[   37.410185] port serial8250:0.4: PM: pm_runtime_force_suspend returned 0 after 0 usecs
+[   37.410216] port serial8250:0.3: PM: calling pm_runtime_force_suspend @ 515, parent: serial8250:0
+[   37.410238] port serial8250:0.3: PM: pm_runtime_force_suspend returned 0 after 0 usecs
+[   37.410269] port serial8250:0.2: PM: calling pm_runtime_force_suspend @ 515, parent: serial8250:0
+[   37.410291] port serial8250:0.2: PM: pm_runtime_force_suspend returned 0 after 0 usecs
+[   37.410328] serial8250 serial8250: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.410355] serial8250 serial8250: PM: platform_pm_suspend returned 0 after 2 usecs
+[   37.410412] platform 1a00000.sram: PM: calling platform_pm_suspend @ 515, parent: 3000000.syscon
+[   37.410437] platform 1a00000.sram: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.410466] platform 28000.sram: PM: calling platform_pm_suspend @ 515, parent: 3000000.syscon
+[   37.410490] platform 28000.sram: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.410924] pwm pwmchip0: PM: calling pwm_class_suspend @ 515, parent: 2000c00.pwm
+[   37.410951] pwm pwmchip0: PM: pwm_class_suspend returned 0 after 2 usecs
+[   37.411351] regulator regulator.3: PM: calling regulator_suspend @ 515, parent: regulator-vdd-sys
+[   37.411382] regulator regulator.3: PM: regulator_suspend returned 0 after 1 usecs
+[   37.411415] regulator regulator.2: PM: calling regulator_suspend @ 515, parent: regulator-1v8
+[   37.411442] regulator regulator.2: PM: regulator_suspend returned 0 after 0 usecs
+[   37.411476] regulator regulator.1: PM: calling regulator_suspend @ 515, parent: regulator-3v3
+[   37.411504] regulator regulator.1: PM: regulator_suspend returned 0 after 1 usecs
+[   37.411545] hy310-board-mgr fan: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.411570] hy310-board-mgr fan: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.411603] gpio-keys gpio-keys: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.411637] gpio-keys gpio-keys: PM: platform_pm_suspend returned 0 after 9 usecs
+[   37.411666] platform hdmi-rx: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.411689] platform hdmi-rx: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.411719] platform 3003000.cpu-comm: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.411743] platform 3003000.cpu-comm: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.411773] sun6i_hwspinlock 3004000.hwspinlock: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.411797] sun6i_hwspinlock 3004000.hwspinlock: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.411826] platform 2020000.nsi: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.411850] platform 2020000.nsi: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.411878] platform 5600000.display: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.411901] platform 5600000.display: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.411930] platform 6840000.syscon: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.411953] platform 6840000.syscon: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.411982] platform 5180000.syscon: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412006] platform 5180000.syscon: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412034] platform 6940000.syscon: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412057] platform 6940000.syscon: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412086] platform 6700000.syscon: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412110] platform 6700000.syscon: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412139] platform 6144000.audio-dsp: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412162] platform 6144000.audio-dsp: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412203] sun50i-h713-ppu 7001014.power-controller: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412228] sun50i-h713-ppu 7001014.power-controller: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412260] sun20i-d1-r-ccu 7010000.clock-controller: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412284] sun20i-d1-r-ccu 7010000.clock-controller: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412317] sun6i-rtc 7090000.rtc: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412344] sun6i-rtc 7090000.rtc: PM: platform_pm_suspend returned 0 after 3 usecs
+[   37.412376] sunxi-wdt 2051000.watchdog: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412401] sunxi-wdt 2051000.watchdog: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412431] sun20i-gpadc 2009000.gpadc: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412455] sun20i-gpadc 2009000.gpadc: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412485] sun50i-h713-lradc 2009800.lradc: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412509] sun50i-h713-lradc 2009800.lradc: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412539] sun50i-iommu 2010000.iommu: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412563] sun50i-iommu 2010000.iommu: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412598] sun4i-usb-phy 4100400.phy: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412623] sun4i-usb-phy 4100400.phy: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412653] sun8i-pwm 2000c00.pwm: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412677] sun8i-pwm 2000c00.pwm: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412706] dw-apb-uart 2500000.serial: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412884] dw-apb-uart 2500000.serial: PM: platform_pm_suspend returned 0 after 151 usecs
+[   37.412922] eeprom-sunxi-sid 3006000.efuse: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.412948] eeprom-sunxi-sid 3006000.efuse: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.412980] sunxi-sram 3000000.syscon: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.413004] sunxi-sram 3000000.syscon: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413128] sun6i-dma 3002000.dma-controller: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.413153] sun6i-dma 3002000.dma-controller: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413183] h713-ce-test 3040000.crypto: PM: calling platform_pm_suspend @ 515, parent: soc
+[   37.413207] h713-ce-test 3040000.crypto: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413299] simple-pm-bus soc: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.413326] simple-pm-bus soc: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413357] reg-fixed-voltage regulator-vdd-sys: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.413382] reg-fixed-voltage regulator-vdd-sys: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413412] reg-fixed-voltage regulator-1v8: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.413435] reg-fixed-voltage regulator-1v8: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413466] reg-fixed-voltage regulator-3v3: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.413490] reg-fixed-voltage regulator-3v3: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413519] platform timer: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.413542] platform timer: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413570] platform psci: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.413593] platform psci: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413622] nvmem-reboot-mode reboot-mode: PM: calling platform_pm_suspend @ 515, parent: platform
+[   37.413646] nvmem-reboot-mode reboot-mode: PM: platform_pm_suspend returned 0 after 0 usecs
+[   37.413680] regulator regulator.0: PM: calling regulator_suspend @ 515, parent: reg-dummy
+[   37.413709] regulator regulator.0: PM: regulator_suspend returned 0 after 1 usecs
+[   37.413799] PM: suspend of devices complete after 75.382 msecs
+[   37.413813] PM: start suspend of devices complete after 100.244 msecs
+[   37.415628] hy310-board-mgr fan: PM: calling hy310_board_mgr_suspend [hy310_board_mgr] @ 515, parent: platform
+[   37.415676] hy310-board-mgr fan: suspended: fan power rail off
+[   37.415687] hy310-board-mgr fan: PM: hy310_board_mgr_suspend [hy310_board_mgr] returned 0 after 24 usecs
+[   37.415979] PM: late suspend of devices complete after 2.151 msecs
+[   37.417139] panfrost 1800000.gpu: PM: calling genpd_suspend_noirq @ 515, parent: soc
+[   37.417186] panfrost 1800000.gpu: PM: genpd_suspend_noirq returned 0 after 18 usecs
+[   37.417219] sun50i-h713-arisc 100000.arisc: PM: calling h713_arisc_suspend_noirq [sun50i_h713_arisc] @ 515, parent: soc
+[   37.439331] sun50i-h713-arisc 100000.arisc: standby 1: net none, RTC alarm in 19900 ms
+[   37.439348] sun50i-h713-arisc 100000.arisc: PM: h713_arisc_suspend_noirq [sun50i_h713_arisc] returned 0 after 22095 usecs
+[   37.439507] genpd genpd:1:50c0000.tvcap: PM: calling genpd_suspend_noirq @ 515, parent: none
+[   37.439570] genpd genpd:1:50c0000.tvcap: PM: genpd_suspend_noirq returned 0 after 37 usecs
+[   37.439598] genpd genpd:0:50c0000.tvcap: PM: calling genpd_suspend_noirq @ 515, parent: none
+[   37.439656] genpd genpd:0:50c0000.tvcap: PM: genpd_suspend_noirq returned 0 after 36 usecs
+[   37.439791] mv64xxx_i2c 2502400.i2c: PM: calling pm_runtime_force_suspend @ 515, parent: soc
+[   37.439828] mv64xxx_i2c 2502400.i2c: PM: pm_runtime_force_suspend returned 0 after 11 usecs
+[   37.440499] cedrus 1c0e000.video-codec: PM: calling genpd_suspend_noirq @ 515, parent: soc
+[   37.440561] cedrus 1c0e000.video-codec: PM: genpd_suspend_noirq returned 0 after 37 usecs
+[   37.440604] sunxi-wdt 2051000.watchdog: PM: calling sunxi_wdt_suspend_noirq @ 515, parent: soc
+[   37.440633] sunxi-wdt 2051000.watchdog: stopped for standby (mode 0x0, cfg 0x1)
+[   37.440648] sunxi-wdt 2051000.watchdog: PM: sunxi_wdt_suspend_noirq returned 0 after 19 usecs
+[   37.440803] simple-pm-bus soc: PM: calling simple_pm_bus_suspend @ 515, parent: platform
+[   37.440833] simple-pm-bus soc: PM: simple_pm_bus_suspend returned 0 after 0 usecs
+[   37.440923] PM: noirq suspend of devices complete after 24.520 msecs
+[   37.440938] Disabling non-boot CPUs ...
+[   37.443710] psci: CPU3 killed (polled 0 ms)
+[   37.447849] psci: CPU2 killed (polled 0 ms)
+[   37.452294] psci: CPU1 killed (polled 0 ms)
+[   37.453982] Checking wakeup interrupts
+[   37.453998] Calling sched_clock_syscore_suspend+0x0/0xc4
+[   37.454029] Calling timekeeping_syscore_suspend+0x0/0x20
+[   37.454029] Calling irq_gc_suspend+0x0/0xe0
+[   37.454029] Calling fw_suspend+0x0/0x14
+[   37.454029] Calling cpu_pm_suspend+0x0/0xb0
+[   37.454029] Calling cpu_pm_resume+0x0/0xa4
+[   37.454029] Calling irq_gc_resume+0x0/0xdc
+[   37.454029] Calling irq_pm_syscore_resume+0x0/0x20
+[   37.454029] Calling timekeeping_syscore_resume+0x0/0x1c
+[   37.454029] Calling sched_clock_syscore_resume+0x0/0x54
+[   37.454045] PM: Triggering wakeup from IRQ 255
+[   37.454062] Enabling non-boot CPUs ...
+[   37.454531] Detected VIPT I-cache on CPU1
+[   37.454639] CPU1: Booted secondary processor 0x0000000001 [0x410fd034]
+[   37.456103] CPU1 is up
+[   37.456472] Detected VIPT I-cache on CPU2
+[   37.456557] CPU2: Booted secondary processor 0x0000000002 [0x410fd034]
+[   37.458019] CPU2 is up
+[   37.458407] Detected VIPT I-cache on CPU3
+[   37.458495] CPU3: Booted secondary processor 0x0000000003 [0x410fd034]
+[   37.459934] CPU3 is up
+[   37.460248] simple-pm-bus soc: PM: calling simple_pm_bus_resume @ 515, parent: platform
+[   37.460287] simple-pm-bus soc: PM: simple_pm_bus_resume returned 0 after 0 usecs
+[   37.460573] sunxi-wdt 2051000.watchdog: PM: calling sunxi_wdt_resume_noirq @ 515, parent: soc
+[   37.460610] sunxi-wdt 2051000.watchdog: re-armed (timeout=16 sec, mode 0xb1, cfg 0x1)
+[   37.460626] sunxi-wdt 2051000.watchdog: PM: sunxi_wdt_resume_noirq returned 0 after 25 usecs
+[   37.460673] cedrus 1c0e000.video-codec: PM: calling genpd_resume_noirq @ 515, parent: soc
+[   37.460713] cedrus 1c0e000.video-codec: PM: genpd_resume_noirq returned 0 after 16 usecs
+[   37.461493] mv64xxx_i2c 2502400.i2c: PM: calling pm_runtime_force_resume @ 515, parent: soc
+[   37.461546] mv64xxx_i2c 2502400.i2c: PM: pm_runtime_force_resume returned 0 after 25 usecs
+[   37.461838] genpd genpd:0:50c0000.tvcap: PM: calling genpd_resume_noirq @ 515, parent: none
+[   37.461911] genpd genpd:0:50c0000.tvcap: PM: genpd_resume_noirq returned 0 after 48 usecs
+[   37.461940] genpd genpd:1:50c0000.tvcap: PM: calling genpd_resume_noirq @ 515, parent: none
+[   37.461997] genpd genpd:1:50c0000.tvcap: PM: genpd_resume_noirq returned 0 after 35 usecs
+[   37.462139] sun50i-h713-arisc 100000.arisc: PM: calling h713_arisc_resume_noirq [sun50i_h713_arisc] @ 515, parent: soc
+[   37.484258] sun50i-h713-arisc 100000.arisc: PM: h713_arisc_resume_noirq [sun50i_h713_arisc] returned 0 after 22083 usecs
+[   37.484303] panfrost 1800000.gpu: PM: calling genpd_resume_noirq @ 515, parent: soc
+[   37.484364] panfrost 1800000.gpu: PM: genpd_resume_noirq returned 0 after 36 usecs
+[   37.484528] PM: noirq resume of devices complete after 24.580 msecs
+[   37.485773] hy310-board-mgr fan: PM: calling hy310_board_mgr_resume [hy310_board_mgr] @ 515, parent: platform
+[   37.485817] hy310-board-mgr fan: resumed: fan power rail on
+[   37.485828] hy310-board-mgr fan: PM: hy310_board_mgr_resume [hy310_board_mgr] returned 0 after 22 usecs
+[   37.486980] PM: early resume of devices complete after 1.890 msecs
+[   37.487151] regulator regulator.0: PM: calling regulator_resume @ 515, parent: reg-dummy
+[   37.487185] regulator regulator.0: PM: regulator_resume returned 0 after 1 usecs
+[   37.487218] nvmem-reboot-mode reboot-mode: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.487247] nvmem-reboot-mode reboot-mode: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487274] platform psci: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.487298] platform psci: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487324] platform timer: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.487347] platform timer: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487373] reg-fixed-voltage regulator-3v3: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.487397] reg-fixed-voltage regulator-3v3: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487427] reg-fixed-voltage regulator-1v8: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.487451] reg-fixed-voltage regulator-1v8: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487479] reg-fixed-voltage regulator-vdd-sys: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.487503] reg-fixed-voltage regulator-vdd-sys: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487531] simple-pm-bus soc: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.487555] simple-pm-bus soc: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487631] h713-ce-test 3040000.crypto: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.487657] h713-ce-test 3040000.crypto: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487685] sun6i-dma 3002000.dma-controller: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.487710] sun6i-dma 3002000.dma-controller: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487816] sunxi-sram 3000000.syscon: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.487841] sunxi-sram 3000000.syscon: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487869] eeprom-sunxi-sid 3006000.efuse: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.487893] eeprom-sunxi-sid 3006000.efuse: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.487920] dw-apb-uart 2500000.serial: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488377] dw-apb-uart 2500000.serial: PM: platform_pm_resume returned 0 after 430 usecs
+[   37.488412] sun8i-pwm 2000c00.pwm: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488437] sun8i-pwm 2000c00.pwm: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.488465] sun4i-usb-phy 4100400.phy: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488490] sun4i-usb-phy 4100400.phy: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.488531] sun50i-iommu 2010000.iommu: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488556] sun50i-iommu 2010000.iommu: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.488584] sun50i-h713-lradc 2009800.lradc: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488608] sun50i-h713-lradc 2009800.lradc: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.488635] sun20i-gpadc 2009000.gpadc: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488660] sun20i-gpadc 2009000.gpadc: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.488688] sunxi-wdt 2051000.watchdog: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488713] sunxi-wdt 2051000.watchdog: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.488741] sun6i-rtc 7090000.rtc: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488770] sun6i-rtc 7090000.rtc: PM: platform_pm_resume returned 0 after 4 usecs
+[   37.488800] sun20i-d1-r-ccu 7010000.clock-controller: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488824] sun20i-d1-r-ccu 7010000.clock-controller: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.488853] sun50i-h713-ppu 7001014.power-controller: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488878] sun50i-h713-ppu 7001014.power-controller: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.488912] platform 6144000.audio-dsp: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488936] platform 6144000.audio-dsp: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.488962] platform 6700000.syscon: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.488985] platform 6700000.syscon: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489012] platform 6940000.syscon: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.489035] platform 6940000.syscon: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489062] platform 5180000.syscon: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.489085] platform 5180000.syscon: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489111] platform 6840000.syscon: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.489134] platform 6840000.syscon: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489161] platform 5600000.display: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.489258] platform 5600000.display: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489289] platform 2020000.nsi: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.489313] platform 2020000.nsi: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489340] sun6i_hwspinlock 3004000.hwspinlock: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.489364] sun6i_hwspinlock 3004000.hwspinlock: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489392] platform 3003000.cpu-comm: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.489415] platform 3003000.cpu-comm: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489441] platform hdmi-rx: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.489465] platform hdmi-rx: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489491] gpio-keys gpio-keys: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.489533] gpio-keys gpio-keys: PM: platform_pm_resume returned 0 after 18 usecs
+[   37.489563] hy310-board-mgr fan: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.489587] hy310-board-mgr fan: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.489620] regulator regulator.1: PM: calling regulator_resume @ 515, parent: regulator-3v3
+[   37.489650] regulator regulator.1: PM: regulator_resume returned 0 after 1 usecs
+[   37.489681] regulator regulator.2: PM: calling regulator_resume @ 515, parent: regulator-1v8
+[   37.489709] regulator regulator.2: PM: regulator_resume returned 0 after 0 usecs
+[   37.489739] regulator regulator.3: PM: calling regulator_resume @ 515, parent: regulator-vdd-sys
+[   37.489766] regulator regulator.3: PM: regulator_resume returned 0 after 0 usecs
+[   37.490027] pwm pwmchip0: PM: calling pwm_class_resume @ 515, parent: 2000c00.pwm
+[   37.490027] ehci-platform 4101000.usb: PM: calling platform_pm_resume @ 44, parent: soc
+[   37.490038] ehci-platform 4200000.usb: PM: calling platform_pm_resume @ 61, parent: soc
+[   37.490044] ehci-platform 4300000.usb: PM: calling platform_pm_resume @ 43, parent: soc
+[   37.490056] pwm pwmchip0: PM: pwm_class_resume returned 0 after 2 usecs
+[   37.490080] usb usb3: root hub lost power or was reset
+[   37.490085] usb usb2: root hub lost power or was reset
+[   37.490090] usb usb1: root hub lost power or was reset
+[   37.490105] ehci-platform 4101000.usb: PM: platform_pm_resume returned 0 after 45 usecs
+[   37.490107] ehci-platform 4200000.usb: PM: platform_pm_resume returned 0 after 36 usecs
+[   37.490112] ehci-platform 4300000.usb: PM: platform_pm_resume returned 0 after 36 usecs
+[   37.490172] usb usb2: PM: calling usb_dev_resume @ 61, parent: 4200000.usb
+[   37.490172] usb usb3: PM: calling usb_dev_resume @ 44, parent: 4101000.usb
+[   37.490174] usb usb1: PM: calling usb_dev_resume @ 43, parent: 4300000.usb
+[   37.490349] platform 28000.sram: PM: calling platform_pm_resume @ 515, parent: 3000000.syscon
+[   37.490374] platform 28000.sram: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.490401] platform 1a00000.sram: PM: calling platform_pm_resume @ 515, parent: 3000000.syscon
+[   37.490425] platform 1a00000.sram: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.490469] serial8250 serial8250: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.490496] serial8250 serial8250: PM: platform_pm_resume returned 0 after 2 usecs
+[   37.490534] port serial8250:0.2: PM: calling pm_runtime_force_resume @ 515, parent: serial8250:0
+[   37.490559] port serial8250:0.2: PM: pm_runtime_force_resume returned 0 after 1 usecs
+[   37.490587] port serial8250:0.3: PM: calling pm_runtime_force_resume @ 515, parent: serial8250:0
+[   37.490609] port serial8250:0.3: PM: pm_runtime_force_resume returned 0 after 0 usecs
+[   37.490637] port serial8250:0.4: PM: calling pm_runtime_force_resume @ 515, parent: serial8250:0
+[   37.490659] port serial8250:0.4: PM: pm_runtime_force_resume returned 0 after 1 usecs
+[   37.490686] port serial8250:0.5: PM: calling pm_runtime_force_resume @ 515, parent: serial8250:0
+[   37.490708] port serial8250:0.5: PM: pm_runtime_force_resume returned 0 after 1 usecs
+[   37.490736] port serial8250:0.6: PM: calling pm_runtime_force_resume @ 515, parent: serial8250:0
+[   37.490757] port serial8250:0.6: PM: pm_runtime_force_resume returned 0 after 0 usecs
+[   37.490785] port serial8250:0.7: PM: calling pm_runtime_force_resume @ 515, parent: serial8250:0
+[   37.490807] port serial8250:0.7: PM: pm_runtime_force_resume returned 0 after 0 usecs
+[   37.490839] port 2500000.serial:0.0: PM: calling pm_runtime_force_resume @ 515, parent: 2500000.serial:0
+[   37.490862] port 2500000.serial:0.0: PM: pm_runtime_force_resume returned 0 after 0 usecs
+[   37.490890] sun50i-h713-pinctrl 2000000.pinctrl: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.490915] sun50i-h713-pinctrl 2000000.pinctrl: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.490948] platform 3061000.mips: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.490972] platform 3061000.mips: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.490999] dw-apb-uart 2500400.serial: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.491117] dw-apb-uart 2500400.serial: PM: platform_pm_resume returned 0 after 93 usecs
+[   37.491151] mv64xxx_i2c 2502400.i2c: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.491176] mv64xxx_i2c 2502400.i2c: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.491218] port 2500400.serial:0.0: PM: calling pm_runtime_force_resume @ 515, parent: 2500400.serial:0
+[   37.491242] port 2500400.serial:0.0: PM: pm_runtime_force_resume returned 0 after 1 usecs
+[   37.491254] stk8ba50 0-0018: PM: calling stk8ba50_resume [stk8ba50] @ 64, parent: i2c-0
+[   37.491284] ohci-platform 4101400.usb: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.492041] stk8ba50 0-0018: PM: stk8ba50_resume [stk8ba50] returned 0 after 755 usecs
+[   37.513276] usb usb1: PM: usb_dev_resume returned 0 after 23068 usecs
+[   37.513289] usb usb3: PM: usb_dev_resume returned 0 after 23081 usecs
+[   37.513299] usb usb2: PM: usb_dev_resume returned 0 after 23093 usecs
+[   37.549222] usb usb6: root hub lost power or was reset
+[   37.549249] ohci-platform 4101400.usb: PM: platform_pm_resume returned 0 after 57928 usecs
+[   37.549290] ohci-platform 4200400.usb: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.549310] usb usb6: PM: calling usb_dev_resume @ 42, parent: 4101400.usb
+[   37.609210] usb usb4: root hub lost power or was reset
+[   37.609234] ohci-platform 4200400.usb: PM: platform_pm_resume returned 0 after 59917 usecs
+[   37.609277] ohci-platform 4300400.usb: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.609298] usb usb4: PM: calling usb_dev_resume @ 64, parent: 4200400.usb
+[   37.633254] usb usb6: PM: usb_dev_resume returned 0 after 83909 usecs
+[   37.669228] usb usb5: root hub lost power or was reset
+[   37.669253] ohci-platform 4300400.usb: PM: platform_pm_resume returned 0 after 59949 usecs
+[   37.669296] rtc rtc0: PM: calling rtc_resume @ 515, parent: 7090000.rtc
+[   37.669313] usb usb5: PM: calling usb_dev_resume @ 43, parent: 4300400.usb
+[   37.669327] rtc rtc0: PM: rtc_resume returned 0 after 1 usecs
+[   37.669359] alarmtimer alarmtimer.0.auto: PM: calling platform_pm_resume @ 515, parent: rtc0
+[   37.669386] alarmtimer alarmtimer.0.auto: PM: platform_pm_resume returned 0 after 2 usecs
+[   37.669436] sunxi-mmc 4021000.mmc: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.669508] sunxi-mmc 4021000.mmc: v5p3x delay: rate=50000000 timing=6 width=4 DRV=00030000 NTSR=81710110
+[   37.669535] sunxi-mmc 4021000.mmc: PM: platform_pm_resume returned 0 after 74 usecs
+[   37.669575] sunxi-mmc 4022000.mmc: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.669601] sunxi-mmc 4022000.mmc: PM: platform_pm_resume returned 0 after 1 usecs
+[   37.669602] mmc mmc1:6721: PM: calling mmc_bus_resume @ 61, parent: mmc1
+[   37.669643] mmc mmc1:6721: PM: mmc_bus_resume returned 0 after 11 usecs
+[   37.669650] sun50i-h713-r-pinctrl 7022000.pinctrl: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.669676] sun50i-h713-r-pinctrl 7022000.pinctrl: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.669679] mmcblk mmc0:0001: PM: calling mmc_bus_resume @ 42, parent: mmc0
+[   37.669681] aicbsp_sdio mmc1:6721:2: PM: calling pm_generic_resume @ 61, parent: mmc1:6721
+[   37.669711] aicbsp: aicbsp_sdio_resume
+[   37.669711] sun8i-pwm 7020c00.pwm: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.669720] aicbsp_sdio mmc1:6721:2: PM: pm_generic_resume returned 0 after 8 usecs
+[   37.669730] mmcblk mmc0:0001: PM: mmc_bus_resume returned 0 after 20 usecs
+[   37.669735] sun8i-pwm 7020c00.pwm: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.669766] pwm pwmchip1: PM: calling pwm_class_resume @ 515, parent: 7020c00.pwm
+[   37.669792] pwm pwmchip1: PM: pwm_class_resume returned 0 after 1 usecs
+[   37.669819] sun50i-h713-tvcap 50c0000.tvcap: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.669844] sun50i-h713-tvcap 50c0000.tvcap: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.669878] pwm-regulator regulator-vdd-cpu: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.669903] pwm-regulator regulator-vdd-cpu: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.669932] sunxi-ir 7040000.ir: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.669975] sunxi-ir 7040000.ir: h713-ir regs ctl=0x33 rxctl=0x4 rxint=0x1f13 rxsta=0x0 cir=0xf04
+[   37.669994] sunxi-ir 7040000.ir: PM: platform_pm_resume returned 0 after 38 usecs
+[   37.670024] regulator regulator.4: PM: calling regulator_resume @ 515, parent: regulator-vdd-cpu
+[   37.670054] regulator regulator.4: PM: regulator_resume returned 0 after 1 usecs
+[   37.670093] input input0: PM: calling input_dev_resume @ 515, parent: rc0
+[   37.670116] input input0: PM: input_dev_resume returned 0 after 1 usecs
+[   37.670143] sun8i-thermal 2009400.thermal-sensor: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.670168] sun8i-thermal 2009400.thermal-sensor: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.670208] cpufreq-dt cpufreq-dt: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.670232] cpufreq-dt cpufreq-dt: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.670265] sun4i-codec 2030000.codec: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.670290] sun4i-codec 2030000.codec: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.670335] input input1: PM: calling input_dev_resume @ 515, parent: gpio-keys
+[   37.670355] input input1: PM: input_dev_resume returned 0 after 0 usecs
+[   37.670457] sun50i-h713-arisc 100000.arisc: PM: calling platform_pm_resume @ 515, parent: soc
+[   37.670484] sun50i-h713-arisc 100000.arisc: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.670521] panfrost 1800000.gpu: PM: calling panfrost_device_resume [panfrost] @ 515, parent: soc
+[   37.670567] panfrost 1800000.gpu: PM: panfrost_device_resume [panfrost] returned 0 after 2 usecs
+[   37.670622] platform aic-bsp: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.670646] platform aic-bsp: PM: platform_pm_resume returned 0 after 0 usecs
+[   37.670716] aicwf_sdio mmc1:6721:1: PM: calling pm_generic_resume @ 515, parent: mmc1:6721
+[   37.670743] aicsdio: aicwf_sdio_resume enter 
+[   37.670908] aicsdio: aicwf_sdio_resume exit
+[   37.670918] aicwf_sdio mmc1:6721:1: PM: pm_generic_resume returned 0 after 174 usecs
+[   37.670972] ieee80211 phy0: PM: calling wiphy_resume @ 12, parent: mmc1:6721:1
+[   37.681649] ieee80211 phy0: PM: wiphy_resume returned 0 after 10647 usecs
+[   37.681697] rfkill rfkill0: PM: calling rfkill_resume @ 515, parent: phy0
+[   37.681747] rfkill rfkill0: PM: rfkill_resume returned 0 after 16 usecs
+[   37.681788] rfkill rfkill1: PM: calling rfkill_resume @ 515, parent: hci0
+[   37.681817] rfkill rfkill1: PM: rfkill_resume returned 0 after 2 usecs
+[   37.681847] h713-drm h713-drm: PM: calling platform_pm_resume @ 515, parent: platform
+[   37.681874] h713-drm h713-drm: [drm] resume: no TV-top re-init (tvtop_init empty): the HDMI input stays off until reload
+[   37.681887] h713-drm h713-drm: [drm] resume: panel bring-up skipped (panel_replay=0, spec 05 §7 not crossed): the panel set-up is assumed kept
+[   37.682012] h713-drm h713-dr61.39 SAFE after rc=0
+65.32 rsm vpbapplyskip rc=0
+66.66 h713-wifi restart 1 rc=0 wlan0 up
+66.83 SAFE after-rsm rc=0
+71.85 == stb w23: done

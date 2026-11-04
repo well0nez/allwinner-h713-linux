@@ -1,0 +1,61 @@
+    36.269 === open /data/bench/stb-s15-rsm.log boot 20ce654f-22a1-4ea7-b417-0d1608a37de9 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    36.285 RSM step tvoff
+    36.287 W32 0x06e00000 = 00000000 (was 00000010)
+    36.289    read back 00000000
+    36.291 W32 0x06e00004 = 00000000 (was 00000000)
+    36.293    read back 00000000
+    36.295 W32 0x06e00008 = 00000000 (was 00000000)
+    36.296    read back 00000000
+    36.311 W32 0x02001d88 = 00000001 (was 00010001)
+    36.312    read back 00000001
+    36.327 W32 0x07001120 = 00000002 (was 00000001)
+    36.329    read back 00000002
+    36.331 PPU tvcap status after off 00020002
+    36.332 W32 0x070010a0 = 00000002 (was 00000001)
+    36.334    read back 00000002
+    36.337 PPU tvfe status after off 00020002
+    36.339 RSM step ppu
+    36.341 PPU tvfe status 00020002 ctrl 00000002
+    36.343 W32 0x07001094 = 00000008 (was 00000008)
+    36.345    read back 00000008
+    36.347 W32 0x07001098 = 00080808 (was 00080808)
+    36.349    read back 00080808
+    36.351 W32 0x0700109c = 00080808 (was 00080808)
+    36.353    read back 00080808
+    36.355 W32 0x070010a0 = 00000001 (was 00000002)
+    36.357    read back 00000001
+    36.359 PPU tvfe status now 00010002
+    36.361 PPU tvcap status 00020002 ctrl 00000002
+    36.363 W32 0x07001114 = 00000008 (was 00000008)
+    36.365    read back 00000008
+    36.367 W32 0x07001118 = 00080808 (was 00080808)
+    36.369    read back 00080808
+    36.371 W32 0x0700111c = 00080808 (was 00080808)
+    36.374    read back 00080808
+    36.376 W32 0x07001120 = 00000001 (was 00000002)
+    36.378    read back 00000001
+    36.380 PPU tvcap status now 00010002
+    36.382 RSM step d88on
+    36.385 W32 0x02001d88 = 00010001 (was 00000001)
+    36.387    read back 00010001
+    36.401 RSM step tvtop
+    36.403 W32 0x06e00004 = 01111117 (was 00000000)
+    36.405    read back 01111117
+    36.408 W32 0x06e00008 = 00000404 (was 00000000)
+    36.409    read back 00000404
+    36.411 W32 0x06e00000 = 00111111 (was 00000010)
+    36.413    read back 00111111
+    36.443 W32 0x06e00004 = 00000000 (was 01111117)
+    36.445    read back 00000000
+    36.446 W32 0x06e00008 = 00000000 (was 00000404)
+    36.448    read back 00000000
+    36.450 W32 0x06e00000 = 00000000 (was 00111111)
+    36.451    read back 00000000
+    36.465 W32 0x06e00004 = 01111117 (was 00000000)
+    36.467    read back 01111117
+    36.468 W32 0x06e00008 = 00000404 (was 00000000)
+    36.470    read back 00000404
+    36.472 W32 0x06e00000 = 00111111 (was 00000000)
+    36.473    read back 00111111
+    36.487 RSM step rx
+    36.489 BEFORE-READ RX_CTL 0x068008fc (8-bit)

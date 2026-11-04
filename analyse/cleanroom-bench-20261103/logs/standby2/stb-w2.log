@@ -1,0 +1,13 @@
+30.33 == stb w2: start, 7.3.1-rustbench, mode vpbdis, steps -, gate word 0x07090114 = 0x52554e31
+30.44 insmod rc=0
+done: 1119 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+PASS P1: bins 5..31 only:   [10 §6.2]
+done: 16 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+31.87 stage 2 disabled before the sleep
+32.91 SAFE before rc=0
+33.12 FULL before vp-bench rc=0
+33.73 FULL before rx rc=0
+ 334: 0 0 0 0 GICv2 144 Level h713-drm
+ 335: 0 0 0 0 GICv2 142 Level h713-drm-vsync
+RASTER SCANOUT 0x310 bit 21 clear in 2000 of 2000 reads; TCON 0x05880000 01030386 01e00063 026f00f2; PNL 0x174 009703f4 -> 009b00cf
+33.96 suspend (RTC +20 s)

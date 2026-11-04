@@ -1,0 +1,10 @@
+1776229907.172179 verify histogram, frame p1 (10 §6.2)
+1776229907.174681 INFO histogram sum 192811, non-zero bins 18:192811
+1776229907.274927 INFO histogram sum 192811, non-zero bins 18:192811
+1776229907.275251 FAIL histogram sum = one 1920x1080 frame: 192811  [10 §6.2; 30 §4.5]
+1776229907.275292 INFO histogram stable over 100 ms: true
+1776229907.275339 PASS P1: bins 5..31 only:   [10 §6.2]
+1776229907.275376 REF P1 bin 31 = 0 (measured 1344137)
+1776229907.275513 INFO 0x05140600 = 0x0fff0000  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+1776229907.275561 INFO 0x05140604 = 0x091003af  [10 §6.2 refs: white 0x0eb1058f, black 0x09110110, P1 0x0bc00400]
+1776229907.275604 verify hist: 1 FAIL

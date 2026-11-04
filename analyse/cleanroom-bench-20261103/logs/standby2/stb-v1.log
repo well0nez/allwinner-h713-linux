@@ -1,0 +1,10 @@
+30.58 == stb v1: start, 7.3.1-rustbench, mode video, steps -, gate word 0x07090114 = 0x52554e31
+30.72 insmod rc=0
+PASS P1: bins 5..31 only:   [10 §6.2]
+38.00 SAFE before rc=0
+38.18 FULL before vp-bench rc=0
+38.85 FULL before rx rc=0
+ 334: 338 0 0 0 GICv2 144 Level h713-drm
+ 335: 0 0 0 0 GICv2 142 Level h713-drm-vsync
+RASTER SCANOUT 0x310 bit 21 clear in 157 of 2000 reads; TCON 0x05880000 00d30355 01b40036 024400c6; PNL 0x174 01d90449 -> 01dd0128
+39.10 suspend (RTC +20 s)

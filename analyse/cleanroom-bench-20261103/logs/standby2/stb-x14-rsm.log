@@ -1,0 +1,37 @@
+    39.181 === open /data/bench/stb-x14-rsm.log boot 0bef2114-c156-4812-a1fa-0b5dcada3fac cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    39.211 RSM step ubootclk
+    39.213 W32 0x02001d88 = 00010001 (was 00000001)
+    39.215    read back 00010001
+    39.229 W32 0x02001040 = b8003501 (was b8003500)
+    39.231    read back b8003501
+    39.245 W32 0x02001d6c = 80000305 (was 80000305)
+    39.247    read back 80000305
+    39.261 W32 0x02001068 = b8002f01 (was b8002f00)
+    39.263    read back b8002f01
+    39.278 W32 0x02001d74 = 81000001 (was 81000001)
+    39.280    read back 81000001
+    39.294 W32 0x02001d84 = 80000000 (was 80000000)
+    39.296    read back 80000000
+    39.311 W32 0x02001d80 = c0000000 (was c0000000)
+    39.313    read back c0000000
+    39.327 RSM step tvtop
+    39.330 W32 0x06e00004 = 01111117 (was 00000000)
+    39.332    read back 01111117
+    39.334 W32 0x06e00008 = 00000404 (was 00000000)
+    39.336    read back 00000404
+    39.339 W32 0x06e00000 = 00111111 (was 00000010)
+    39.341    read back 00111111
+    39.355 W32 0x06e00004 = 00000000 (was 01111117)
+    39.357    read back 00000000
+    39.360 W32 0x06e00008 = 00000000 (was 00000404)
+    39.362    read back 00000000
+    39.364 W32 0x06e00000 = 00000000 (was 00111111)
+    39.366    read back 00000000
+    39.381 W32 0x06e00004 = 01111117 (was 00000000)
+    39.383    read back 01111117
+    39.385 W32 0x06e00008 = 00000404 (was 00000000)
+    39.387    read back 00000404
+    39.389 W32 0x06e00000 = 00111111 (was 00000000)
+    39.428    read back 00111111
+    39.446 RSM step rx
+    39.447 BEFORE-READ RX_CTL 0x068008fc (8-bit)

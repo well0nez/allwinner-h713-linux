@@ -526,3 +526,19 @@ Bench B0 mit 7.3.1-rustbench, crust-h713 v5, `echo mem > /sys/power/state`, RTC 
   Monotonuhr, ohne Schlafzeit), der ohne Host-Kontakt in den Normalstart neu startet. Werkzeuge `tools/stb.sh`, `rsm.py`,
   `stbrun.sh`; Logs `logs/standby/`. Entwurf `cleanroom-held/drafts/60-standby-resume.md` (sauber `b862472`, WALL).
 - Offen am Gerät: `h713_gate` steht auf 0 (nach der Rückkehr auf 1 zurück, Umgebungsreferenz `/data/bench/env-before-stb.txt`).
+
+## 28 Sichtfenster, Standby-Bisektion (04.11.)
+
+- Sichtfenster 02:17-02:21 UTC nach festem Plan (`tools/window.sh`): Besitzer "좋아보여" - alle fünf Zustände PASS.
+- 61 Standbys (s, v, w, x; Bench 7.3.1-rustbench, crust v5, `h713_gate=0`, WLAN-Neustart und Selbst-Rückfall in jedem
+  Lauf; der Wächter holte das Gerät einmal ohne Besitzer zurück). Ergebnisse als Entwurf 2 von
+  `cleanroom-held/drafts/60-standby-resume.md`:
+  - Kanal 0 (oder die NRC-Schreibkanäle) aktiv im Schlaf -> verloren (8/8, crust "resuming budget over"); alles gestoppt
+    (Kanal 0 aus + Latch, NRC-Schreibkanäle Bit 31) -> 9/9 zurück; ohne Stufe 2 41/41 zurück.
+  - Anzeige nach dem Aufwachen: alle Blöcke gehalten, kein Panel-Neuaufbau nötig; Stufe 2 läuft nach Neuschreiben nur,
+    wenn auch der RGB-Kanal im Schlaf aus war (3/3; sonst steht Kanal 0, 6/6).
+  - TV-Seite: TV-Top im Schlaf zurückgesetzt; RX/CAP nach dem Aufwachen ohne Neuaufbau hängen; bester Ablauf (vorher kalt,
+    danach die TV-Taktschreibungen des Bootloaders + TV-Top-Folge) 5/6 - keine sichere Folge gefunden.
+  - Das saubere Modul (6c79c29) verliert den Schlaf mit Bild (3/3), weil seine Suspend-Folge die DMA nicht wie oben stoppt.
+- MAC-Adressen/Seriennummern in allen Logs unter `analyse/cleanroom-bench-20261103/` maskiert (`tools/scrub.py`), tor.sh grün.
+- Ende: Umgebung = Referenz (`h713_gate=1`), Normalstart 7.3.1, RUN1, Sperre frei.

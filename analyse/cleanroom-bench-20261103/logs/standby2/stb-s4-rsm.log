@@ -1,0 +1,22 @@
+    37.207 === open /data/bench/stb-s4-rsm.log boot f304ab4f-528d-4e31-bbda-e925be82bd8f cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    37.224 RSM step tvtop
+    37.227 W32 0x06e00004 = 01111117 (was 00000000)
+    37.228    read back 01111117
+    37.230 W32 0x06e00008 = 00000404 (was 00000000)
+    37.232    read back 00000404
+    37.234 W32 0x06e00000 = 00111111 (was 00000010)
+    37.236    read back 00111111
+    37.251 W32 0x06e00004 = 00000000 (was 01111117)
+    37.252    read back 00000000
+    37.254 W32 0x06e00008 = 00000000 (was 00000404)
+    37.256    read back 00000000
+    37.258 W32 0x06e00000 = 00000000 (was 00111111)
+    37.260    read back 00000000
+    37.274 W32 0x06e00004 = 01111117 (was 00000000)
+    37.276    read back 01111117
+    37.278 W32 0x06e00008 = 00000404 (was 00000000)
+    37.280    read back 00000404
+    37.282 W32 0x06e00000 = 00111111 (was 00000000)
+    37.284    read back 00111111
+    37.299 RSM step cap
+    37.301 BEFORE-READ CAP 0x06940000

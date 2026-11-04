@@ -1,0 +1,8 @@
+    47.303 === open /data/bench/stb-s12-rsm.log.rxtime boot 929b25f1-c55d-4684-86ce-df758829165c cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    47.307 BEFORE-READ RX_CTL 0x068008fc / RX_LINK timing
+    47.310 RXTIME start: TMDS 0 9ab=20 timing (0, 0, 0, 0); 35 writes
+    47.421 RXTIME writes took 0.21 ms; horizontal valid after 77.4 ms; lock (2200, 1920, 1125, 1080) after 109.5 ms
+    47.436 RXTIME capture: first frame counted 5.7 ms after the first capture write; 0x104 00010011 0xa0c 0
+    48.939 RXTIME capture frames in 0.5 s: 30
+    49.046 RXTIME ring after the no-pause start: slots written in 100 ms [False, False, False]; 0x104 0061021d 0x100 00004707
+    49.950 RXTIME ring after a start with 0.5 s between the programming and the output enables: slots written in 100 ms [False, False, False]; 0x104 001202fd 0x100 00004707

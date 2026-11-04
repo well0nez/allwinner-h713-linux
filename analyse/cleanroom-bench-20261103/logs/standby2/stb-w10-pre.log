@@ -1,0 +1,6 @@
+    40.964 === open /data/bench/stb-w10-pre.log boot 0ef6b238-9382-485a-b9a5-8c332949e601 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    40.980 RSM step vpbdisable
+    41.053 vp-bench disable: done: 16 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+    41.055 SCANOUT 0x010 03000010 0x014 00000000 0x058 0000006a 0x05c 0000004d; PNL 0x174 000b01e3
+    41.157 100 ms later: SCANOUT 0x058 0000006a 0x05c 0000004d; PNL 0x174 000b01e3; 0x310 00800210
+    41.159 RSM done

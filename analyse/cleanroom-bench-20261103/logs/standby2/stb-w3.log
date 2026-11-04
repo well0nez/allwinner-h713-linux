@@ -1,0 +1,12 @@
+30.25 == stb w3: start, 7.3.1-rustbench, mode vpb, steps -, gate word 0x07090114 = 0x52554e31
+30.35 insmod rc=0
+30.50 vp-bench apply --off dram-rest --off dram-nrc-border
+done: 362 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+FAIL P1: bins 5..31 only:   [10 §6.2]
+32.78 SAFE before rc=0
+33.03 FULL before vp-bench rc=0
+33.75 FULL before rx rc=0
+ 334: 0 0 0 0 GICv2 144 Level h713-drm
+ 335: 0 0 0 0 GICv2 142 Level h713-drm-vsync
+RASTER SCANOUT 0x310 bit 21 clear in 0 of 2000 reads; TCON 0x05880000 006102e4 013e03c1 01c7004a; PNL 0x174 009e022b -> 00a1036e
+33.99 suspend (RTC +20 s)

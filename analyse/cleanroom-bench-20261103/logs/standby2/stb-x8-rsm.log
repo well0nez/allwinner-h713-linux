@@ -1,0 +1,63 @@
+    38.423 === open /data/bench/stb-x8-rsm.log boot 3c6e2003-d7cd-42b2-9954-432d3d949592 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    38.443 RSM step ubootclk
+    38.446 W32 0x02001d88 = 00010001 (was 00000001)
+    38.448    read back 00010001
+    38.462 W32 0x02001040 = b8003501 (was b8003500)
+    38.464    read back a8003501
+    38.477 W32 0x02001d6c = 80000305 (was 80000305)
+    38.480    read back 80000305
+    38.493 W32 0x02001068 = b8002f01 (was b8002f00)
+    38.495    read back a8002f01
+    38.509 W32 0x02001d74 = 81000001 (was 81000001)
+    38.512    read back 81000001
+    38.526 W32 0x02001d84 = 80000000 (was 80000000)
+    38.528    read back 80000000
+    38.543 W32 0x02001d80 = c0000000 (was c0000000)
+    38.545    read back c0000000
+    38.559 RSM step tvtop
+    38.562 W32 0x06e00004 = 01111117 (was 00000000)
+    38.564    read back 01111117
+    38.566 W32 0x06e00008 = 00000404 (was 00000000)
+    38.568    read back 00000404
+    38.570 W32 0x06e00000 = 00111111 (was 00000010)
+    38.573    read back 00111111
+    38.587 W32 0x06e00004 = 00000000 (was 01111117)
+    38.589    read back 00000000
+    38.591 W32 0x06e00008 = 00000000 (was 00000404)
+    38.593    read back 00000000
+    38.596 W32 0x06e00000 = 00000000 (was 00111111)
+    38.598    read back 00000000
+    38.612 W32 0x06e00004 = 01111117 (was 00000000)
+    38.615    read back 01111117
+    38.617 W32 0x06e00008 = 00000404 (was 00000000)
+    38.619    read back 00000404
+    38.621 W32 0x06e00000 = 00111111 (was 00000000)
+    38.623    read back 00111111
+    38.638 RSM step rx
+    38.640 BEFORE-READ RX_CTL 0x068008fc (8-bit)
+    38.643 RX_CTL 0x068008fc = 3f
+    38.645 RSM step cap
+    38.647 BEFORE-READ CAP 0x06940000
+    38.649 CAP 0x06940000 = 00000000, 0x104 = 00000000
+    38.651 BEFORE-READ RX_CTL 0x068008fc (8-bit)
+    38.654 RX_CTL 0x068008fc = 3f
+    38.656 RSM step hpd
+    40.480 provider: [   40.433184] spx4: hpd(port 1, 3) = 0
+    40.783 TMDS check +0.3 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    41.085 TMDS check +0.6 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    41.388 TMDS check +0.9 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    41.691 TMDS check +1.2 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    41.994 TMDS check +1.5 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    42.297 TMDS check +1.8 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    42.600 TMDS check +2.1 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    42.902 TMDS check +2.4 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    43.205 TMDS check +2.7 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    43.508 TMDS check +3.0 s: 0x068008fc = 3f (bit 7 = TMDS), 0x068009ab = 20
+    43.510 RSM step rxtime
+    46.364 RXTIME start: TMDS 0 9ab=20 timing (0, 0, 0, 0); 35 writes
+    46.366 RXTIME writes took 0.24 ms; horizontal valid after 83.2 ms; lock (2200, 1920, 1125, 1080) after 115.3 ms
+    46.368 RXTIME capture: first frame counted 5.7 ms after the first capture write; 0x104 0001002d 0xa0c 2
+    46.369 RXTIME capture frames in 0.5 s: 30
+    46.371 RXTIME ring after the no-pause start: slots written in 100 ms [False, False, False]; 0x104 0061021e 0x100 00004707
+    46.372 RXTIME ring after a start with 0.5 s between the programming and the output enables: slots written in 100 ms [False, False, False]; 0x104 001202e0 0x100 00004707
+    46.374 RSM done

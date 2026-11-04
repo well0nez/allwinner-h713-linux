@@ -1,0 +1,28 @@
+    40.299 === open /data/bench/stb-w19-rsm.log boot 86638bb3-bc5b-4b5c-b396-30a6a63c68b4 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    40.326 RSM step d88on
+    40.327 W32 0x02001d88 = 00010001 (was 00000001)
+    40.329    read back 00010001
+    40.342 RSM step tvtop
+    40.344 W32 0x06e00004 = 01111117 (was 00000000)
+    40.345    read back 01111117
+    40.347 W32 0x06e00008 = 00000404 (was 00000000)
+    40.348    read back 00000404
+    40.349 W32 0x06e00000 = 00111111 (was 00000010)
+    40.350    read back 00111111
+    40.364 W32 0x06e00004 = 00000000 (was 01111117)
+    40.367    read back 00000000
+    40.368 W32 0x06e00008 = 00000000 (was 00000404)
+    40.370    read back 00000000
+    40.371 W32 0x06e00000 = 00000000 (was 00111111)
+    40.373    read back 00000000
+    40.387 W32 0x06e00004 = 01111117 (was 00000000)
+    40.388    read back 01111117
+    40.390 W32 0x06e00008 = 00000404 (was 00000000)
+    40.392    read back 00000404
+    40.393 W32 0x06e00000 = 00111111 (was 00000000)
+    40.395    read back 00111111
+    40.409 RSM step vpbapply
+    44.112 after the wake: done: 1119 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+    44.113 after the wake: verify scan: 2 FAIL
+    44.115 after the wake: PASS P1: bins 5..31 only:   [10 §6.2]
+    44.116 RSM done

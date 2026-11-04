@@ -1,0 +1,14 @@
+32.89 == stb s1: start, 7.3.1-rustbench, gate word 0x07090114 = 0x52554e31
+32.99 insmod rc=0
+45.03 kms-test:    6.0 s hdmi_state capturing (1920x1080 at 60.000 Hz)
+[   37.805305] h713-drm h713-drm: [drm] hdmi: locked -> capturing (TMDS 1, timing 1920x1080 of 2200x1125, enables 1, CAP 0x104 0x0006019d 0x548 0x04650898 0x874 0x07800438 0x928 0xe0020438)
+[   38.900258] h713-drm h713-drm: [drm] hdmi: channel 0 shows the ring (slot 2), rotating at the video vsync
+45.08 SNAP before begin
+45.33 SNAP before vp-bench rc=0
+45.94 SNAP before rx rc=0
+46.74 SNAP before r_ccu/r_prcm/sys_cfg rc=0
+ 334: 334 0 0 0 GICv2 144 Level h713-drm
+ 335: 516 0 0 0 GICv2 142 Level h713-drm-vsync
+PNL 0x051c0174 02140079 -> 021701bb (moving); CAP 0x104 022602e9 -> 022c02eb; SCANOUT 0x310 00a00210
+47.01 SNAP before end
+47.05 suspend (RTC +20 s)

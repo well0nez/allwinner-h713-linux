@@ -1,0 +1,6 @@
+    41.601 === open /data/bench/stb-w23-rsm.log boot ff10ae23-a1b6-44b1-a08d-7a1dcb57aa94 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    41.621 RSM step vpbapplyskip
+    45.275 after the wake: done: 1117 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+    45.277 after the wake: verify scan: PASS
+    45.279 after the wake: PASS P1: bins 5..31 only:   [10 §6.2]
+    45.281 RSM done

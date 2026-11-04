@@ -1,0 +1,37 @@
+    36.647 === open /data/bench/stb-s8-rsm.log boot 07b3d6a5-75a2-4f96-9ad2-e32a09ceedd2 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    36.663 RSM step ppucycle
+    36.665 PPU tvfe status 00010000; off
+    36.666 W32 0x070010a0 = 00000002 (was 00000001)
+    36.668    read back 00000002
+    36.669 PPU tvfe status after off 00020002; on
+    36.670 W32 0x070010a0 = 00000001 (was 00000002)
+    36.672    read back 00000001
+    36.673 PPU tvfe status after on 00010002
+    36.675 PPU tvcap status 00010000; off
+    36.676 W32 0x07001120 = 00000002 (was 00000001)
+    36.678    read back 00000002
+    36.679 PPU tvcap status after off 00020002; on
+    36.680 W32 0x07001120 = 00000001 (was 00000002)
+    36.682    read back 00000001
+    36.683 PPU tvcap status after on 00010002
+    36.684 RSM step tvtop
+    36.686 W32 0x06e00004 = 01111117 (was 00000000)
+    36.687    read back 01111117
+    36.689 W32 0x06e00008 = 00000404 (was 00000000)
+    36.690    read back 00000404
+    36.691 W32 0x06e00000 = 00111111 (was 00000010)
+    36.693    read back 00111111
+    36.706 W32 0x06e00004 = 00000000 (was 01111117)
+    36.708    read back 00000000
+    36.709 W32 0x06e00008 = 00000000 (was 00000404)
+    36.710    read back 00000000
+    36.712 W32 0x06e00000 = 00000000 (was 00111111)
+    36.713    read back 00000000
+    36.727 W32 0x06e00004 = 01111117 (was 00000000)
+    36.729    read back 01111117
+    36.730 W32 0x06e00008 = 00000404 (was 00000000)
+    36.732    read back 00000404
+    36.733 W32 0x06e00000 = 00111111 (was 00000000)
+    36.735    read back 00111111
+    36.749 RSM step rx
+    36.750 BEFORE-READ RX_CTL 0x068008fc (8-bit)

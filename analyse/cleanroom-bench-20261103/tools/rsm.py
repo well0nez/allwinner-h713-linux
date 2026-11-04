@@ -41,6 +41,97 @@ for st in steps:
                 while time.monotonic() - t0 < 0.1 and (rd(b + 0x10) & 0x30000) != 0x10000:
                     time.sleep(0.001)
                 log(f"PPU {n} status now {rd(b + 0x10):08x}")
+    elif st == "tvoff":
+        W(0x06e00000, 0); W(0x06e00004, 0); W(0x06e00008, 0); time.sleep(0.012)
+        W(0x02001d88, rd(0x02001d88) & ~0x10000); time.sleep(0.012)
+        for d, n in ((2, "tvcap"), (1, "tvfe")):
+            b = 0x07001014 + 0x80 * d
+            W(b + 0x0c, 2)
+            t0 = time.monotonic()
+            while time.monotonic() - t0 < 0.1 and (rd(b + 0x10) & 0x30000) == 0x10000:
+                time.sleep(0.001)
+            log(f"PPU {n} status after off {rd(b + 0x10):08x}")
+    elif st == "d88on":
+        W(0x02001d88, 0x00010001); time.sleep(0.012)
+    elif st == "irqoff":
+        log(f"SCANOUT 0x0c0 {rd(0x056000c0):08x} 0x0c4 {rd(0x056000c4):08x} 0x168 {rd(0x05600168):08x} 0x16c {rd(0x0560016c):08x}")
+        W(0x056000c4, rd(0x056000c4) & ~1); W(0x0560016c, rd(0x0560016c) & ~0x10)
+        W(0x056000c0, 1); W(0x05600168, 2)
+        log(f"GIC pending word 4 (ids 128-159) {rd(0x03021210):08x}")
+    elif st == "vpbdisable":
+        import subprocess
+        out = subprocess.run("/root/vp-bench apply --mode disable --log " + sys.argv[1] + ".vpb | tail -1", shell=True, capture_output=True, text=True).stdout.strip()
+        log(f"vp-bench disable: {out}")
+        log(f"SCANOUT 0x010 {rd(0x05600010):08x} 0x014 {rd(0x05600014):08x} 0x058 {rd(0x05600058):08x} 0x05c {rd(0x0560005c):08x}; PNL 0x174 {rd(0x051c0174):08x}")
+        time.sleep(0.1)
+        log(f"100 ms later: SCANOUT 0x058 {rd(0x05600058):08x} 0x05c {rd(0x0560005c):08x}; PNL 0x174 {rd(0x051c0174):08x}; 0x310 {rd(0x05600310):08x}")
+    elif st == "nrcoff":
+        for a in (0x05000178, 0x050001b8, 0x05000278, 0x050002b8):
+            W(a, rd(a) & ~0x80000000)
+        time.sleep(0.05)
+    elif st in ("vpbapply", "vpbapplyskip"):
+        import subprocess
+        skip = " --skip 0x06940400" if st == "vpbapplyskip" else ""
+        sh = ("/root/vp-bench frame P1 0x4c000000 1920 1080 nv12 >/dev/null 2>&1; "
+              "/root/vp-bench apply --db /boot/mips/database.TSE --luma 0x4c000000" + skip + " --log " + sys.argv[1] + ".vpb | tail -1; "
+              "/root/vp-bench verify scan --log " + sys.argv[1] + ".vpb | tail -1; "
+              "/root/vp-bench verify hist --expect p1 --log " + sys.argv[1] + ".vpb | grep -E 'PASS P1|FAIL' | head -1")
+        out = subprocess.run(sh, shell=True, capture_output=True, text=True).stdout
+        for l in out.splitlines():
+            log(f"after the wake: {l}")
+    elif st == "rgboff":
+        W(0x05600140, 0x83001900); W(0x05600144, 1)
+        t0 = time.monotonic()
+        while time.monotonic() - t0 < 0.2 and rd(0x05600144) & 1:
+            time.sleep(0.001)
+        log(f"RGB latch {rd(0x05600144):08x} after {1000 * (time.monotonic() - t0):.1f} ms")
+    elif st == "scan":
+        import subprocess
+        out = subprocess.run("/root/vp-bench verify scan | grep -E 'FAIL|verify scan:'", shell=True, capture_output=True, text=True).stdout
+        for l in out.splitlines():
+            log(f"after the wake: {l[:150]}")
+    elif st.startswith("wait"):
+        ms = int(st[4:] or 200); time.sleep(ms / 1000); log(f"waited {ms} ms")
+    elif st == "ubootclk":
+        for a, v in ((0x02001d88, 0x00010001), (0x02001040, 0xb8003501), (0x02001d6c, 0x80000305),
+                     (0x02001068, 0xb8002f01), (0x02001d74, 0x81000001), (0x02001d84, 0x80000000),
+                     (0x02001d80, 0xc0000000)):
+            W(a, v); time.sleep(0.012)
+    elif st == "rx":
+        log("BEFORE-READ RX_CTL 0x068008fc (8-bit)")
+        m, o = _page(0x068008fc)
+        log(f"RX_CTL 0x068008fc = {m[o]:02x}")
+    elif st == "tvcaprst":
+        v = rd(0x02001d88)
+        W(0x02001d88, v & ~0x10000); time.sleep(0.002); W(0x02001d88, v | 0x10001); time.sleep(0.012)
+    elif st == "ppucycle":
+        for d, n in ((1, "tvfe"), (2, "tvcap")):
+            b = 0x07001014 + 0x80 * d
+            log(f"PPU {n} status {rd(b + 0x10):08x}; off")
+            W(b + 0x0c, 2)
+            t0 = time.monotonic()
+            while time.monotonic() - t0 < 0.1 and (rd(b + 0x10) & 0x30000) == 0x10000:
+                time.sleep(0.001)
+            log(f"PPU {n} status after off {rd(b + 0x10):08x}; on")
+            W(b + 0x0c, 1)
+            t0 = time.monotonic()
+            while time.monotonic() - t0 < 0.1 and (rd(b + 0x10) & 0x30000) != 0x10000:
+                time.sleep(0.001)
+            log(f"PPU {n} status after on {rd(b + 0x10):08x}")
+    elif st == "hpd":
+        import os, subprocess
+        os.system("rmmod spx4 2>/dev/null; insmod /data/bench/spx4-73.ko port=1 hpd=3")
+        out = subprocess.run("dmesg | grep 'spx4: hpd' | tail -1", shell=True, capture_output=True, text=True).stdout.strip()
+        log(f"provider: {out}")
+        for i in range(10):
+            time.sleep(0.3)
+            m, o = _page(0x068008fc); a = m[o]; m, o = _page(0x068009ab); b = m[o]
+            log(f"TMDS check +{0.3 * (i + 1):.1f} s: 0x068008fc = {a:02x} (bit 7 = TMDS), 0x068009ab = {b:02x}")
+    elif st == "rxtime":
+        import subprocess
+        out = subprocess.run("python3 /data/bench/rxtime.py " + sys.argv[1] + ".rxtime | grep RXTIME", shell=True, capture_output=True, text=True).stdout
+        for l in out.splitlines():
+            log(l[11:])
     elif st == "cap":
         log("BEFORE-READ CAP 0x06940000")
         log(f"CAP 0x06940000 = {rd(0x06940000):08x}, 0x104 = {rd(0x06940104):08x}")

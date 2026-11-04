@@ -1,0 +1,25 @@
+    38.532 === open /data/bench/stb-x3-rsm.log boot ab8f8d17-c929-4964-9890-c9e4e1e2dabc cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    38.563 RSM step d88on
+    38.565 W32 0x02001d88 = 00010001 (was 00000001)
+    38.567    read back 00010001
+    38.581 RSM step tvtop
+    38.583 W32 0x06e00004 = 01111117 (was 00000000)
+    38.585    read back 01111117
+    38.587 W32 0x06e00008 = 00000404 (was 00000000)
+    38.589    read back 00000404
+    38.591 W32 0x06e00000 = 00111111 (was 00000010)
+    38.592    read back 00111111
+    38.606 W32 0x06e00004 = 00000000 (was 01111117)
+    38.609    read back 00000000
+    38.611 W32 0x06e00008 = 00000000 (was 00000404)
+    38.613    read back 00000000
+    38.615 W32 0x06e00000 = 00000000 (was 00111111)
+    38.617    read back 00000000
+    38.632 W32 0x06e00004 = 01111117 (was 00000000)
+    38.634    read back 01111117
+    38.636 W32 0x06e00008 = 00000404 (was 00000000)
+    38.638    read back 00000404
+    38.641 W32 0x06e00000 = 00111111 (was 00000000)
+    38.643    read back 00111111
+    38.657 RSM step rx
+    38.659 BEFORE-READ RX_CTL 0x068008fc (8-bit)

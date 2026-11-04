@@ -1,0 +1,42 @@
+    36.945 === open /data/bench/stb-s10-rsm.log boot 8127ed16-57eb-4ab5-9464-515014a987d3 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    36.961 RSM step tvcaprst
+    36.963 W32 0x02001d88 = 00000001 (was 00010001)
+    36.965    read back 00000001
+    36.969 W32 0x02001d88 = 00010001 (was 00000001)
+    36.971    read back 00010001
+    36.985 RSM step ppucycle
+    36.987 PPU tvfe status 00010000; off
+    36.988 W32 0x070010a0 = 00000002 (was 00000001)
+    36.990    read back 00000002
+    36.992 PPU tvfe status after off 00020002; on
+    36.994 W32 0x070010a0 = 00000001 (was 00000002)
+    36.996    read back 00000001
+    36.998 PPU tvfe status after on 00010002
+    37.000 PPU tvcap status 00010000; off
+    37.002 W32 0x07001120 = 00000002 (was 00000001)
+    37.004    read back 00000002
+    37.006 PPU tvcap status after off 00020002; on
+    37.008 W32 0x07001120 = 00000001 (was 00000002)
+    37.010    read back 00000001
+    37.012 PPU tvcap status after on 00010002
+    37.014 RSM step tvtop
+    37.016 W32 0x06e00004 = 01111117 (was 00000000)
+    37.018    read back 01111117
+    37.020 W32 0x06e00008 = 00000404 (was 00000000)
+    37.022    read back 00000404
+    37.024 W32 0x06e00000 = 00111111 (was 00000010)
+    37.026    read back 00111111
+    37.039 W32 0x06e00004 = 00000000 (was 01111117)
+    37.041    read back 00000000
+    37.061 W32 0x06e00008 = 00000000 (was 00000404)
+    37.062    read back 00000000
+    37.064 W32 0x06e00000 = 00000000 (was 00111111)
+    37.066    read back 00000000
+    37.079 W32 0x06e00004 = 01111117 (was 00000000)
+    37.081    read back 01111117
+    37.083 W32 0x06e00008 = 00000404 (was 00000000)
+    37.085    read back 00000404
+    37.087 W32 0x06e00000 = 00111111 (was 00000000)
+    37.088    read back 00111111
+    37.102 RSM step rx
+    37.103 BEFORE-READ RX_CTL 0x068008fc (8-bit)

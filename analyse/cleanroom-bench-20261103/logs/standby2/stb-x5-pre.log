@@ -1,0 +1,23 @@
+    32.699 === open /data/bench/stb-x5-pre.log boot 366fb46c-1bb2-491c-9a02-ff8b186c9ded cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    32.719 RSM step rgboff
+    32.721 W32 0x05600140 = 83001900 (was 03001901)
+    32.722    read back 83001900
+    32.723 W32 0x05600144 = 00000001 (was 00000000)
+    32.725    read back 00000001
+    32.729 RGB latch 00000000 after 3.2 ms
+    32.731 RSM step tvoff
+    32.732 W32 0x06e00000 = 00000000 (was 00111111)
+    32.734    read back 00000000
+    32.735 W32 0x06e00004 = 00000000 (was 01111117)
+    32.737    read back 00000000
+    32.738 W32 0x06e00008 = 00000000 (was 00000404)
+    32.740    read back 00000000
+    32.753 W32 0x02001d88 = 00000001 (was 00010001)
+    32.755    read back 00000001
+    32.768 W32 0x07001120 = 00000002 (was 00000001)
+    32.770    read back 00000002
+    32.771 PPU tvcap status after off 00020002
+    32.773 W32 0x070010a0 = 00000002 (was 00000001)
+    32.775    read back 00000002
+    32.776 PPU tvfe status after off 00020002
+    32.777 RSM done

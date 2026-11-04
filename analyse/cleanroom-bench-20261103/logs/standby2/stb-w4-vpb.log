@@ -1,0 +1,66 @@
+1776228781.469597 frame P1 nv12 1920x1080 pitch 1920: luma 0x4c000000 chroma 0x4c1fa400
+1776228781.597490 vp-bench apply: /root/vp-bench apply --db /boot/mips/database.TSE --luma 0x4c000000 --off init-tables --off lock-totals --off runtime-30-5 --off dram-rest --off dram-nrc-border --off scaler --off source-geometry --off frame-source --off scl-all-copies --off vch-t1-extra --log /data/bench/stb-w4-vpb.log
+1776228781.599126 # step precondition [switch precheck] (00 §3, §3.1, §4)
+1776228781.600411 FIRST CCU access: CHECK 0x02001600 & 0xffffffff == 0x00000000 fatal  co-processor clock 0 (never ran)
+1776228781.601848 CHECK 0x02001600 & 0xffffffff == 0x00000000 fatal  co-processor clock 0 (never ran)  -> read 0x00000000 ok
+1776228781.601950 CHECK 0x0200160c & 0xffffffff == 0x00000000 fatal  co-processor reset 0 (never ran)  -> read 0x00000000 ok
+1776228781.602012 CHECK 0x02001050 & 0x80000000 == 0x80000000 fatal  video PLL 2 enabled  -> read 0xb9002a00 ok
+1776228781.602071 CHECK 0x02001db0 & 0x80000000 == 0x80000000 fatal  deinterlacer clock gate  -> read 0x80000000 ok
+1776228781.602129 CHECK 0x02001db4 & 0x80000000 == 0x80000000 fatal  panel clock gate  -> read 0x80000000 ok
+1776228781.602187 CHECK 0x02001db8 & 0x80000000 == 0x80000000 fatal  video processing clock gate  -> read 0xc4000005 ok
+1776228781.602244 CHECK 0x02001dc0 & 0x80000000 == 0x80000000 fatal  scanout clock gate  -> read 0x80000005 ok
+1776228781.602303 CHECK 0x02001dd8 & 0x00010001 == 0x00010001 fatal  display bus gate and reset release  -> read 0x00010001 ok
+1776228781.602362 FIRST TCON access: CHECK 0x05880020 & 0xffffffff == 0x04650898 fatal  raster totals 2200 x 1125
+1776228781.603767 CHECK 0x05880020 & 0xffffffff == 0x04650898 fatal  raster totals 2200 x 1125  -> read 0x04650898 ok
+1776228781.603853 CHECK 0x05880024 & 0xffffffff == 0x04380780 fatal  active size = panel  -> read 0x04380780 ok
+1776228781.603912 FIRST SCANOUT access: CHECK 0x05600000 & 0xffffffff == 0x80000020  SCAN_TOP as the stage-1 tables leave it
+1776228781.605252 CHECK 0x05600000 & 0xffffffff == 0x80000020  SCAN_TOP as the stage-1 tables leave it  -> read 0x80000020 ok
+1776228781.605321 # step video-channel (10 §2, §4, §5 T1, §6 L1/L4, §6.2; 20 §3 S2 HY320; 91 O1, O3)
+1776228781.606598 W     0x05600140 = 0x83001900  -> wrote 0x83001900 read 0x83001900 ok
+1776228781.606668 W     0x05600144 = 0x00000001 (latch)  -> wrote 0x00000001 read 0x00000001 ok
+1776228781.618023 POLL  0x05600144 & 0x1 == 0x0 within 200000 us  -> ok after 11291 us (read 0x00000000)
+1776228781.618119 W     0x05600020 = 0x043f077f  -> wrote 0x043f077f read 0x043f077f ok
+1776228781.618195 W     0x05600024 = 0x00420077  -> wrote 0x00420077 read 0x00420077 ok
+1776228781.618270 W     0x05600040 = 0x00000780  -> wrote 0x00000780 read 0x00000780 ok
+1776228781.618344 W     0x05600044 = 0x00000780  -> wrote 0x00000780 read 0x00000780 ok
+1776228781.618417 W     0x05600048 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+1776228781.618508 W     0x0560004c = 0x021c0780  -> wrote 0x021c0780 read 0x021c0780 ok
+1776228781.618584 W     0x05600030 = 0x04380780  -> wrote 0x04380780 read 0x04380780 ok
+1776228781.618658 W     0x05600050 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+1776228781.618731 W     0x05600054 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+1776228781.618805 W     0x05600060 = 0x00000001  -> wrote 0x00000001 read 0x00000001 ok
+1776228781.618879 W     0x05600064 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+1776228781.618952 W     0x05600068 = 0x00000122  -> wrote 0x00000122 read 0x00000122 ok
+1776228781.619025 W     0x05600080 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+1776228781.619099 W     0x05600094 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+1776228781.619172 W     0x056000a8 = 0x00000000  -> wrote 0x00000000 read 0x00000000 ok
+1776228781.619246 W     0x05600070 = 0x4c000000  -> wrote 0x4c000000 read 0x4c000000 ok
+1776228781.619320 W     0x05600074 = 0x4c000000  -> wrote 0x4c000000 read 0x4c000000 ok
+1776228781.619393 W     0x05600078 = 0x4c000000  -> wrote 0x4c000000 read 0x4c000000 ok
+1776228781.619496 W     0x0560007c = 0x4c000000  -> wrote 0x4c000000 read 0x4c000000 ok
+1776228781.619540 W     0x05600084 = 0x4c1fa400  -> wrote 0x4c1fa400 read 0x4c1fa400 ok
+1776228781.619584 W     0x05600088 = 0x4c1fa400  -> wrote 0x4c1fa400 read 0x4c1fa400 ok
+1776228781.619626 W     0x0560008c = 0x4c1fa400  -> wrote 0x4c1fa400 read 0x4c1fa400 ok
+1776228781.619669 W     0x05600090 = 0x4c1fa400  -> wrote 0x4c1fa400 read 0x4c1fa400 ok
+1776228781.619740 W     0x0560006c = 0x00000001 (latch)  -> wrote 0x00000001 read 0x00000001 ok
+1776228781.619796 FIRST PROC access: W     0x05140508 = 0x04400000
+1776228781.622253 W     0x05140508 = 0x04400000  -> wrote 0x04400000 read 0x04400000 ok
+1776228781.622367 W     0x05600010 = 0x03000013  -> wrote 0x03000013 read 0x03000013 ok
+1776228781.622447 W     0x05600014 = 0x00000001 (latch)  -> wrote 0x00000001 read 0x00000001 ok
+1776228781.822660 POLL  0x05600014 & 0x1 == 0x0 within 200000 us  -> TIMEOUT after 200113 us (read 0x00000001)
+1776228782.023169 POLL  0x0560006c & 0x1 == 0x0 within 200000 us  -> TIMEOUT after 200134 us (read 0x00000001)
+1776228782.023349 # step raster-check [switch raster-check] (10 §6.3; 91 O1)
+1776228782.025844 FIRST PNL access: MOVES 0x051c0174 & 0xffff within 100000 us  line counter moves
+1776228782.128309 MOVES 0x051c0174 & 0xffff within 100000 us  line counter moves  -> STILL (first 0x00000000, last 0x00000000, 100255 us)
+1776228782.228713 POLL  0x056000c0 & 0x1 == 0x1 within 100000 us  -> TIMEOUT after 100204 us (read 0x00000000)
+1776228782.228861 CHECK 0x051c0148 & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x00000502 ok
+1776228782.228961 CHECK 0x051c014c & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x08980780 ok
+1776228782.229058 CHECK 0x051c0150 & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x00a20074 ok
+1776228782.229156 CHECK 0x051c0154 & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x000c001c ok
+1776228782.229252 CHECK 0x051c0158 & 0xffffffff != 0x00000000  PNL raster status non-zero  -> read 0x04650438 ok
+1776228782.229334 RASTER STALL suspected (10 §6.3): 2 of the stall signs above; the channel will not latch
+1776228782.231804 # step plane-select [switch plane-select] (10 §3, §6 L4)
+1776228782.234013 W     0x051c006c = 0x39000000  -> wrote 0x39000000 read 0x39000000 ok
+1776228782.234129 FIRST MIX access: M     0x058c0000 mask 0x10000000 val 0x00000000
+1776228782.236475 M     0x058c0000 mask 0x10000000 val 0x00000000  -> wrote 0x00000040 read 0x00000040 ok
+1776228782.238653 done: 31 writes, 0 read-back mismatches, 3 poll timeouts, 1 check failures

@@ -1,0 +1,21 @@
+    35.466 === open /data/bench/stb-w23-pre.log boot ff10ae23-a1b6-44b1-a08d-7a1dcb57aa94 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    35.486 RSM step vpbdisable
+    35.559 vp-bench disable: done: 16 writes, 0 read-back mismatches, 0 poll timeouts, 0 check failures
+    35.561 SCANOUT 0x010 03000010 0x014 00000000 0x058 00000069 0x05c 0000004c; PNL 0x174 00c60186
+    35.663 100 ms later: SCANOUT 0x058 00000069 0x05c 0000004c; PNL 0x174 00cd0046; 0x310 00800210
+    35.665 RSM step nrcoff
+    35.667 W32 0x05000178 = 6002021c (was e002021c)
+    35.668    read back 6002021c
+    35.670 W32 0x050001b8 = 60020438 (was e0020438)
+    35.671    read back 60020438
+    35.672 W32 0x05000278 = 6002021c (was e002021c)
+    35.674    read back 6002021c
+    35.675 W32 0x050002b8 = 60020438 (was e0020438)
+    35.677    read back 60020438
+    35.728 RSM step rgboff
+    35.730 W32 0x05600140 = 83001900 (was 03001901)
+    35.732    read back 83001900
+    35.733 W32 0x05600144 = 00000001 (was 00000000)
+    35.735    read back 00000001
+    35.750 RGB latch 00000000 after 13.2 ms
+    35.752 RSM done

@@ -1,0 +1,13 @@
+    34.766 === open /data/bench/stb-w9-pre.log boot 06010dd4-204f-4348-9c81-2e9cfb49a959 cmdline console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10 loglevel=4 root=PARTLABEL=hy310-rootfs rw module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd systemd.mask=h713-tv@video1.service systemd.mask=h713-warp.service systemd.mask=h713-osd.service systemd.mask=h713-desktop.service systemd.mask=h713-keystone-auto.service consoleblank=0
+    34.781 RSM step irqoff
+    34.783 SCANOUT 0x0c0 00000001 0x0c4 00000000 0x168 00000002 0x16c 00000021
+    34.784 W32 0x056000c4 = 00000000 (was 00000000)
+    34.786    read back 00000000
+    34.787 W32 0x0560016c = 00000021 (was 00000021)
+    34.788    read back 00000021
+    34.790 W32 0x056000c0 = 00000001 (was 00000001)
+    34.791    read back 00000000
+    34.793 W32 0x05600168 = 00000002 (was 00000002)
+    34.794    read back 00000000
+    34.796 GIC pending word 4 (ids 128-159) 00000000
+    34.797 RSM done
