@@ -83,9 +83,67 @@ severed`, auch nach `h713-tv ctl replug` (die Quelle war aus). Alles, was ein Qu
 - Bild und Ton von einer HDMI-Quelle auf beiden Stapeln auf diesem Kern (vendor: Bild über den Kanal, 48 kHz; clean:
   `capturing`, `video_source hdmi`, Trapez auf dem HDMI-Bild). Auf 7.3.1-rustbench mit gleichem Modulquellstand
   belegt (`doku/228` §34a).
-- Der DT-Weg von `h713_drm` (Knoten `okay`, ohne `bench=1`).
+- Der DT-Weg von `h713_drm` (Knoten `okay`, ohne `bench=1`) - am selben Tag gefahren, §7.
 
 ## 5 Ende
 
 Normalstart = das neue 7.3.1 (`fd3c882f`), `h713_display=vendor`, `h713_boot=emmc`, RUN1, keine fehlgeschlagenen
 Units; Umgebung gesichert in `/data/release73/env-final`; Sperre frei.
+
+## 6 Bauprüfung: kein Kern ohne CONFIG_RUST und h713_drm
+
+`build.sh kernel` hält jetzt nach der Konfiguration jede Zeile der Defconfig gegen `.config` (Zeilen, die ein Fragment
+setzt, prüft das Fragment) und nach `modules_install` `h713_drm.ko`, wo `.config` es baut
+(`mainline/build/kconfig-check.sh`); `release/check-display.py --defconfig --kernel-config` hält das Abbild dagegen
+(Schritt 10 von `build-all.sh`). Versuch: `build.sh kernel` mit der Rust-Werkzeugkette aus dem `PATH` ->
+`kconfig dropped what hy200_qz713df_a1_defconfig asks for ...: CONFIG_RUST=y, CONFIG_DRM_H713=m,
+CONFIG_DRM_H713_BENCH=y`, Abbruch vor dem Bau; mit ihr grün (Baum unverändert, `h713_drm.ko` `c10f5ded` wie vorher; das
+FIT bekommt beim Neulinken nur einen neuen Zeitstempel, `504092f7` - auf dem Gerät bleibt `fd3c882f`).
+
+## 7 Der DT-Weg von h713_drm auf dem Gerät (nur Anzeige)
+
+Test-FIT `/boot/h713-kernel-7.3-dt.fit` (`a0b69c97`): derselbe Kern wie `fd3c882f` (Image-Hash `7ddb9e4d`), HY320-DTB
+mit `fdtput ... /soc/display-engine@5600000 status okay`. Einmalpfade `boot_73dt` / `boot_73dtnoclk` (Watchdog,
+`h713_boot` und `h713_display` vor dem Laden zurück auf `emmc`/`vendor`; Kommandozeile + `h713.dttest`, bei `noclk`
+`bootargs_base` ohne `clk_ignore_unused`), eine Wächter-Unit (Neustart ohne Host-Kontakt nach 10 min, nur bei
+`h713.dttest`). Keine HDMI-Quelle. Rohdaten `d1*`, `d2*`, `d3*` neben den anderen.
+
+- **Start 1 (mit `clk_ignore_unused`)**: Probe über den Knoten (`h713-drm 5600000.display-engine`, Treiber gebunden),
+  `2 power domains held on`, `9 clocks, reset held`, ohne `bench=1`. **Aber:** udev lädt `h713_drm` über sein
+  Modalias (`of:...allwinner,sun50i-h713-display-engine`) bei 3,26 s, `/boot` ist erst bei 3,74 s eingehängt ->
+  `h713-mips/database.TSE`, `pq_custom.TSE`, `ProjectID_0x0030.TSE` `-2`: Videoebene aus, keine Bildregler, LUT aus;
+  `h713-display load` findet das Modul schon geladen. Dazu `PullHotPlug RESET port 1 ... -5` beim frühen Laden. Ein
+  `rmmod`/`modprobe` danach: das Entladen setzt das Logo zurück (7 Schreibzugriffe), aber die devm-Freigabe von Reset
+  und Takten setzt den Anzeigeblock zurück - das neue Laden liest `RGB control 0x00000000`, `0x058c0000` falsch,
+  `vblank wait timed out` (WARN in `drm_atomic_helper_wait_for_vblanks`), `kms-test` hängt. Im Bench-Modus (ohne
+  Takte/Reset) gibt es das nicht.
+- **Start 2 (mit `clk_ignore_unused`, `blacklist h713_drm` in `modprobe.d` für diesen Start: kein Laden über das
+  Alias, `h713-display load` lädt es mit Namen nach `/boot`)**: Probe bei 5,42 s über den Knoten, 9 Takte + Reset,
+  2 Domänen, alle drei TSE-Dateien geladen, `picture controls available: 0xfff`; `h713-tv` `stack clean`,
+  `crtc 42 on: mode 1920x1080`, Startseite offen (`launcher open`). Dann (Nutzer gestoppt, `h713-tv@video1` zur Laufzeit
+  maskiert): `kms-test info` PASS S1-T5; RGB grau: `0x140 = 0x03001901`, `0x170 = 0x1e00`, `0x174 = 0x04381e00`,
+  `0x178 = 0x77d00000` (CMA); `vblank 656` PASS S1-T3 (65,44/s); 655 Flips, 0 Timeouts; Video P1: `verify scan` PASS,
+  `verify hist` white/black/P3/P1 PASS (`verify t1` lief nicht: die `video:`-Zeile fehlte im Log, Adresse nicht
+  gelesen); S1-T6 alpha 0 PASS, 0xff/0x80/0x40 mit U = 23760 = 1080 x 22 (Spaltenversatz des Starts, mit `align=1`
+  so beschrieben, impl-drm Schritt 5); `align ... rows aligned`. Nutzer zurück: Seite „No signal on HDMI“ auf dem Bild.
+- **Start 3 (ohne `clk_ignore_unused`, sonst wie 2)**: `clk: Disabling unused clocks` bei 0,19 s, `h713_drm` bei 5,8 s:
+  Übernahme `RGB control 0x03001901, address 0x6c100000` (das Panel lief durch), 9 Takte + Reset, 2 Domänen; die
+  Gate-Wörter von 58 §3 gesetzt (`0x02001050 = 0xb9002a00`, `db0/db4 0x80000000`, `db8 0xc4000005`, `dc0 0x80000005`,
+  `dd8 0x00010001`, `d6c 0x80000305`, `d74 0x81000001`, `d88 0x00010001`, wie mit `clk_ignore_unused`); alle Ebenen-
+  Prüfungen wie Start 2 (S1-T6: U = 45360 = 1080 x 42), Startseite offen. **Der ARISC-Treiber startet nicht**: `ARISC
+  startup notify malformed (-71)` (wie in `doku/228` §24 auf 7.3.1-rustbench), daher `EDID upload on port 1: -19`
+  alle 5 s und kein Empfängerzugriff (0 `receiver sequence`). Die RTC-Wörter lesen sich aus Linux als `0x00010000`
+  (`0x07090114`), der Neustart lief trotzdem durch (U-Boot fand `RUN1`): eine Lesung über einen abgeschalteten Takt.
+- **Start 4 (ohne `clk_ignore_unused`, `options h713_drm hdmi_edid_external=1` für diesen Start)**: TV top wie vom
+  Bootloader gesetzt, Empfängersequenz ohne TMDS alle 10 s: `73 writes, 5 read-back mismatches (first 0x068008fc read
+  0x33)`, `17 CCU writes left to the clock driver` - dasselbe Bild wie mit `clk_ignore_unused` (Start 1) und im
+  Bench-Modus, kein Hängen in über einer Minute. Der Treiber hält also, was Panel, Ebenen und Empfängerlesung brauchen
+  (`svp-dtl` 127 ist unter den 9 Takten).
+
+Ergebnis: Der DT-Weg selbst trägt Anzeige und Empfänger, mit und ohne `clk_ignore_unused`. **Nicht freigabefähig** ist
+er wegen dreier Punkte außerhalb des Takt-Themas: (1) udev lädt das Modul über das Alias vor `/boot` (die TSE-Dateien
+fehlen) - braucht `blacklist h713_drm` (nur Alias-Laden; `h713-display load` lädt mit Namen; `check-display.py` lehnt
+eine `blacklist`-Zeile heute ab) oder die Dateien außerhalb von `/boot`; (2) `rmmod` setzt den Anzeigeblock über
+Reset/Takte zurück, ein neues Laden übernimmt nichts mehr; (3) ohne `clk_ignore_unused` startet der ARISC-Treiber nicht
+(kein EDID/Hot-Plug). Die Release-Vorgabe bleibt: Knoten `disabled`, `bench=1`. Ende: Testdateien, Wächter, Schlüssel
+entfernt, Test-FIT nach `/data/release73/`, Normalstart vendor, Umgebung = `env-final`, RUN1, Sperre frei.

@@ -101,12 +101,18 @@ clean stack needs, and the HY320's normal boot runs it (`doku/229`):
 - **`CONFIG_RUST=y`** and **`h713_drm` in tree**: `0355`-`0357` are the clean repository's series
   (`drivers/h713-drm/patches/`) on the 7.3.1 tree, `CONFIG_DRM_H713=m` (a C shell with a Rust hardware layer,
   `h713_compat.h` takes 6.18 and 7.3). The image grows by 0.2 MB, the module set by `h713_drm.ko` alone.
-  `release/check-display.py` checks that its `vermagic` is the image's kernel's.
+  `release/check-display.py` checks that its `vermagic` is the image's kernel's. A kernel that lost either symbol, or a
+  module tree without `h713_drm.ko`, fails `build.sh kernel` and the gate (`--defconfig`, `--kernel-config`): kconfig
+  drops `CONFIG_RUST` without a word when the build container has no Rust toolchain.
 - **The device tree node** (`0358`, from `drivers/h713-drm/dts/sun50i-h713-hy320-display.dtso`) in the HY320's tree,
   **disabled**: the vendor stack keeps the blocks, clocks and the `ppu` domains 1/2, and a disabled node is no device
   and no consumer, so the vendor boot is unchanged. The clean boot loads `h713_drm` with `bench=1`
-  (`CONFIG_DRM_H713_BENCH=y`), the form that has run on the HY320. `status = "okay"` would be the driver's DT path -
-  clocks, reset and power domains held, no `bench=1` - which has not run on hardware yet.
+  (`CONFIG_DRM_H713_BENCH=y`), the form that has run on the HY320. `status = "okay"` is the driver's DT path - clocks,
+  reset and power domains held, no `bench=1`. On the HY320 (05.11.2026, `doku/229` §7) it carries the panel, both planes
+  and the receiver's register sequence, with and without `clk_ignore_unused`, but it is not the release's yet: udev
+  loads the module through its alias before `/boot` is mounted (the TSE files are missing then; a `blacklist h713_drm`
+  leaves the load to `h713-display`), an `rmmod` resets the display block through its reset and clocks so that the next
+  load adopts nothing, and without `clk_ignore_unused` the ARISC driver does not start (no EDID, no hot-plug).
 - **Every boot path appends `${h713_display_args}`**: the repository's `boot_emmc`/`boot_net` do; the HY320's own
   `boot_emmc` (`h713-kernel-7.3.fit`) and its one-shot paths (`boot_618`, `boot_73prev`, those of
   [kernel-rust](../kernel-rust.md)) are device environment, set by hand, and carry the same word (`doku/229` §2).
