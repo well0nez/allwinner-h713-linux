@@ -32,6 +32,11 @@ pub enum Key {
     Back,
     Home,
     Power,
+    VolumeUp,
+    VolumeDown,
+    Mute,
+    FocusUp,
+    FocusDown,
 }
 
 #[derive(Debug)]
@@ -43,6 +48,8 @@ pub enum Event {
     OsdGone,
     /// SIGTERM or SIGINT.
     Signal,
+    /// A focus run (crate::hotkeys) ended.
+    Reaped,
 }
 
 /// What h713-osd did with a `page show`.
@@ -69,6 +76,10 @@ pub trait Remote {
     fn release(&mut self);
     /// Hand a Power press to h713-power (after `release`).
     fn power(&mut self);
+    /// Volume, mute or focus: what h713-keys would do with it (crate::hotkeys).
+    fn hotkey(&mut self, key: Key);
+    /// A focus run ended.
+    fn reaped(&mut self);
 }
 
 pub struct Look<'a> {
@@ -128,6 +139,14 @@ fn run(wall: &mut dyn Wall, remote: &mut dyn Remote, events: &Receiver<Event>, l
                 return EXIT_POWER;
             }
             Ok(Event::Key(Key::Ok)) => continue, // nothing to choose on this page
+            Ok(Event::Key(k @ (Key::VolumeUp | Key::VolumeDown | Key::Mute | Key::FocusUp | Key::FocusDown))) => {
+                remote.hotkey(k);
+                continue;
+            }
+            Ok(Event::Reaped) => {
+                remote.reaped();
+                continue;
+            }
             Ok(Event::OsdGone) => return EXIT_GONE,
             Ok(Event::Signal) => return EXIT_SIGNAL,
             Ok(Event::Receiver(Some(st))) if st.state == State::Streaming => return EXIT_STREAM,

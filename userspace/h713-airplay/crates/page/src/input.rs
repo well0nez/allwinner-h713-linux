@@ -13,6 +13,7 @@ use std::sync::mpsc::Sender;
 use std::sync::Arc;
 
 use crate::app::{Event, Key, Remote};
+use crate::hotkeys::Hotkeys;
 
 /// _IOW('E', 0x90, int)
 const EVIOCGRAB: libc::c_ulong = 0x4004_4590;
@@ -22,12 +23,25 @@ const EVENT_SIZE: usize = 24;
 
 pub const POWER_SOCKET: &str = "/run/h713-power.sock";
 
-/// A key of the kernel's names to the page's (docs/tools/h713-keys.md); a release or a repeat is no key.
+/// A key of the kernel's names to the page's (docs/tools/h713-keys.md); a release is no key, nor a repeat of any but
+/// volume and focus.
 pub fn map(code: u16, value: i32) -> Option<Key> {
+    // volume and focus go on while the key is held (h713-keys), the rest counts on the press
+    let held = match code {
+        115 => Some(Key::VolumeUp),
+        114 => Some(Key::VolumeDown),
+        62 => Some(Key::FocusUp),   // KEY_F4, the remote's focus keys
+        63 => Some(Key::FocusDown), // KEY_F5
+        _ => None,
+    };
+    if held.is_some() && value != 0 {
+        return held;
+    }
     if value != 1 {
         return None;
     }
     match code {
+        113 => Some(Key::Mute),
         // KEY_ENTER (OK since 70-h713-remote.rules), KEY_OK, KEY_SELECT, BTN_LEFT (the remote's mouse mode)
         28 | 352 | 353 | 0x110 => Some(Key::Ok),
         158 => Some(Key::Back),
@@ -62,6 +76,7 @@ pub struct Evdev {
     files: Arc<Vec<File>>,
     grabbed: bool,
     power_socket: PathBuf,
+    hotkeys: Hotkeys,
 }
 
 impl Evdev {
@@ -72,7 +87,7 @@ impl Evdev {
         if let Some(list) = std::env::var("H713_AIRPLAY_PAGE_INPUT").ok().filter(|l| !l.is_empty()) {
             // read-write: a FIFO without a writer reports POLLHUP for ever (input.c)
             let files = list.split(',').map(|p| OpenOptions::new().read(true).write(true).open(p)).collect::<io::Result<_>>()?;
-            return Ok(Evdev { files: Arc::new(files), grabbed: false, power_socket });
+            return Ok(Evdev { files: Arc::new(files), grabbed: false, power_socket, hotkeys: Hotkeys::from_env() });
         }
         let nodes = discover(Path::new("/sys"), Path::new("/dev/input"));
         let files: Vec<File> = nodes
@@ -88,16 +103,17 @@ impl Evdev {
                 return Err(io::Error::new(io::Error::last_os_error().kind(), "the remote's device cannot be held"));
             }
         }
-        Ok(Evdev { files: Arc::new(files), grabbed: true, power_socket })
+        Ok(Evdev { files: Arc::new(files), grabbed: true, power_socket, hotkeys: Hotkeys::from_env() })
     }
 
     /// Devices already open (tests: pipes), not held.
     pub fn over(files: Vec<File>, power_socket: PathBuf) -> Evdev {
-        Evdev { files: Arc::new(files), grabbed: false, power_socket }
+        Evdev { files: Arc::new(files), grabbed: false, power_socket, hotkeys: Hotkeys::from_env() }
     }
 
     /// A thread that turns the devices' key presses into [`Event::Key`].
-    pub fn start(&self, events: Sender<Event>) {
+    pub fn start(&mut self, events: Sender<Event>) {
+        self.hotkeys.report_to(events.clone());
         let files = Arc::clone(&self.files);
         std::thread::spawn(move || {
             let mut fds: Vec<libc::pollfd> =
@@ -146,6 +162,14 @@ impl Remote for Evdev {
             unsafe { libc::ioctl(f.as_raw_fd(), EVIOCGRAB, 0 as libc::c_int) };
         }
         self.grabbed = false;
+    }
+
+    fn hotkey(&mut self, key: Key) {
+        self.hotkeys.key(key);
+    }
+
+    fn reaped(&mut self) {
+        self.hotkeys.reaped();
     }
 
     fn power(&mut self) {

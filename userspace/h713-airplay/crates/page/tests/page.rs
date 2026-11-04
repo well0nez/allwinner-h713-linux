@@ -59,6 +59,12 @@ impl Remote for FakeRemote {
     fn power(&mut self) {
         self.0.push("power");
     }
+    fn hotkey(&mut self, key: Key) {
+        self.0.push(if key == Key::Mute { "mute" } else { "hotkey" });
+    }
+    fn reaped(&mut self) {
+        self.0.push("reaped");
+    }
 }
 
 /// The page served over a fake h713-osd with `script` queued as its events: (exit status, what h713-osd saw, the remote's calls).
@@ -124,6 +130,22 @@ fn home_power_and_a_signal_hide_the_page_with_their_status() {
         assert_eq!(seen.lines.last().map(String::as_str), Some("page hide"));
         assert_eq!(remote, remote_wanted);
     }
+}
+
+#[test]
+fn volume_mute_and_focus_go_to_the_remote_and_the_page_stays() {
+    let script = vec![
+        Event::Receiver(Some(status(State::Idle))),
+        Event::Key(Key::VolumeUp),
+        Event::Key(Key::Mute),
+        Event::Key(Key::FocusUp),
+        Event::Reaped,
+        Event::Key(Key::Back),
+    ];
+    let Some((code, seen, remote)) = serve((1280, 720), script, false) else { return };
+    assert_eq!(code, app::EXIT_BACK);
+    assert_eq!(remote, ["hotkey", "mute", "hotkey", "reaped", "release"]);
+    assert!(covered(&seen.shows, 720) && seen.shows.len() == 4, "the keys draw nothing: {:?}", seen.shows);
 }
 
 #[test]
@@ -195,14 +217,14 @@ fn the_remote_gives_presses_only_and_power_goes_to_h713_power() {
     let mut remote = page::input::Evdev::over(vec![r], dir.join("power.sock"));
     let (tx, rx): (Sender<Event>, _) = mpsc::channel();
     remote.start(tx);
-    for (kind, code, value) in [(1, 158, 1), (1, 158, 0), (0, 0, 0), (1, 28, 2), (1, 28, 1), (1, 172, 1), (1, 116, 1)] {
+    for (kind, code, value) in [(1, 158, 1), (1, 158, 0), (0, 0, 0), (1, 28, 2), (1, 28, 1), (1, 172, 1), (1, 115, 1), (1, 115, 2), (1, 115, 0), (1, 113, 2), (1, 113, 1), (1, 62, 2), (1, 116, 1)] {
         w.write_all(&input_event(kind, code, value)).unwrap();
     }
-    let keys: Vec<Key> = (0..4).map(|_| match rx.recv_timeout(Duration::from_secs(20)) {
+    let keys: Vec<Key> = (0..8).map(|_| match rx.recv_timeout(Duration::from_secs(20)) {
         Ok(Event::Key(k)) => k,
         other => panic!("{other:?}"),
     }).collect();
-    assert_eq!(keys, [Key::Back, Key::Ok, Key::Home, Key::Power]);
+    assert_eq!(keys, [Key::Back, Key::Ok, Key::Home, Key::VolumeUp, Key::VolumeUp, Key::Mute, Key::FocusUp, Key::Power]);
     remote.release();
     remote.power();
     let mut buf = [0u8; 16];

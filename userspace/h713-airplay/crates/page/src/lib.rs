@@ -8,6 +8,7 @@
 
 pub mod app;
 pub mod canvas;
+pub mod hotkeys;
 pub mod input;
 pub mod osd;
 pub mod receiver;
