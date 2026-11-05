@@ -23,7 +23,7 @@ MAKE=(make -C "$UBOOT" ARCH=arm HOSTCC=cc)
 MATRIX="hy310:release hy310:installer hy310:netboot hy310:netboot_gate
 	hy310:felmmc hy310:host hy300_pro:release hy300_pro:installer
 	hy200_qz713df_a1:release hy200_qz713df_a1:installer l018:release l018:installer
-	hy320:release hy320:installer hy300_t08:release hy300_t08:installer"
+	hy320:release hy320:installer hy300_t08:release hy300_t08:installer hy300_2023:release hy300_2023:installer"
 mkdir -p "$WORK"
 rc=0
 printf '%-34s %-22s %s\n' "base + fragment" "fragment lines" "against the bare base"
