@@ -16,6 +16,8 @@ Description=H713: reload the display MIPS once when h713-tv gave up (TODO 2.63)
 ConditionPathExists=!/run/h713-tv-rescued
 ConditionPathExists=/usr/local/sbin/h713-mips-restart
 ConditionPathExists=/usr/local/sbin/h713-mode
+# Not on the clean display stack (h713.display=clean, docs/subsystems/display-stacks.md): there is no MIPS to reload.
+ConditionKernelCommandLine=!h713.display=clean
 
 [Service]
 Type=oneshot

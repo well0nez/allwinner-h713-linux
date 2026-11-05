@@ -1,0 +1,5 @@
+# SPDX-License-Identifier: GPL-2.0-only
+# h713_rshim_demo: one module, a C object and a Rust object linked together (docs/kernel-rust.md).
+# rshim_demo_hw.o is built from rshim_demo_hw.rs by kbuild's own %.o: %.rs rule (crate name rshim_demo_hw).
+obj-m := h713_rshim_demo.o
+h713_rshim_demo-y := rshim_demo_main.o rshim_demo_hw.o

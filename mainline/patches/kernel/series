@@ -1,4 +1,4 @@
-# The kernel series: Linux 6.18.38 from the tarball pinned in mainline/config/versions.env, and these patches on
+# The kernel series: Linux 7.3.1 from the tarball pinned in mainline/config/versions.env, and these patches on
 # top of it. mainline/build/build.sh applies them in the order of this file with patch -p1; a line that is empty
 # or starts with '#' is not an entry. docs/kernel-patches.md describes the series, PROVENANCE.md who wrote what.
 #
@@ -6,8 +6,8 @@
 # right behind it, because later patches need its context; the corrected original stays byte for byte as it was.
 # Where an entry stands is decided by this file alone (doku/116 P1, doku/80).
 #
-# Withdrawn and not in this list (patches/zurueckgenommen/ keeps them with the reason): 0011, 0040, 0136j, and
-# the diagnostic patch 0311.
+# Withdrawn and not in this list (patches/zurueckgenommen/ keeps them with the reason): 0011, 0040, 0136j,
+# the diagnostic patch 0311, and 0277/0278 (upstream in Linux 7.3).
 
 # --- section 1 Base: the patches of cstenger/allwinner-h713-mainline at 8860991, byte for byte, with our follow-ups.
 # 0001-0022 are well0nez' H713 driver series, which his tree carried; 0023-0048 are his arm64 side.
@@ -357,9 +357,7 @@
 0274-media-cedrus-honor-linear-output-pitch.patch
 0275-media-cedrus-separate-compose-from-capture-canvas.patch
 0276-media-cedrus-expose-h264-hardware-rotation.patch
-0277-media-cedrus-skip-invalid-h264-reference-list-entries.patch
 0277a-media-cedrus-h264-let-cedrus-set-params-fail-the-job.patch
-0278-media-cedrus-fix-missing-cleanup-in-error-path.patch
 0279-media-cedrus-require-per-frame-controls-in-a-request.patch
 0280-media-cedrus-size-the-reconstruction-buffer-for-10-bit-side-data.patch
 0281-media-cedrus-take-the-10-bit-primary-offsets-from-the-reconstruction.patch
@@ -441,3 +439,19 @@
 0347-arm64-dts-h713-hy320-the-display-mips-with-the-panel-s-supply-and-reset.patch
 0348-arm64-dts-h713-hy320-pb5-to-the-board-manager.patch
 0349-arm64-dts-h713-add-the-hy300-t08-board-dts.patch
+
+# Linux 7.3: the port of the series (doku/kernel-bump; mainline/build/kbump-port notes)
+0350-gpiolib-of-keep-of-get-named-gpio-for-the-h713-board-drivers.patch
+0351-drm-h713-afbd-linux-7.3-drm-atomic-commit-and-drm-print.patch
+0352-soc-sunxi-cpu-comm-linux-7.3-has-no-strncpy.patch
+0353-asoc-sun4i-codec-h713-linux-7.3-dapm-accessors.patch
+0354-misc-hy310-board-mgr-linux-7.3-cooling-id-and-iio-namespace.patch
+0355-media-h713-hdmirx-linux-7.3-system-percpu-wq.patch
+
+# --- section 29 The clean display stack: h713_drm, the clean-room driver of cleanroom-h713 (05.11.2026).
+# 0356-0358 are that repository's series (drivers/h713-drm/patches/), applied to this tree and regenerated;
+# 0359 its HY320 node, disabled (display-stacks.md).
+0356-dt-bindings-display-add-the-allwinner-h713-display-engine.patch
+0357-drm-h713-add-the-clean-room-display-driver-h713-drm.patch
+0358-maintainers-add-the-allwinner-h713-display-driver.patch
+0359-arm64-dts-h713-hy320-the-clean-display-engine-node-disabled.patch

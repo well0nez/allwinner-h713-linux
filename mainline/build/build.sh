@@ -50,6 +50,9 @@ die() {
 }
 sha_of() { local s; s=$(sha256sum < "$1"); printf '%s' "${s%% *}"; }
 size_of() { stat -c %s -- "$1"; }
+# kconfig_lost, kconfig_modules_missing: the kernel stage's check that kconfig kept the defconfig
+# shellcheck source=kconfig-check.sh
+source "$bdir/kconfig-check.sh"
 
 # Directories that only exist while a step runs. Whatever is still listed when the script
 # ends (a failure) is removed; a finished step takes its directory off the list.
@@ -418,11 +421,23 @@ build_kernel() {
 		"${kmake[@]}" olddefconfig
 		check_fragments_took "$tree/.config"
 	fi
+	# kconfig drops a symbol without a word when a dependency is missing (CONFIG_RUST without the Rust toolchain, and
+	# CONFIG_DRM_H713 with it): the defconfig's every line must stand in .config (kconfig-check.sh)
+	local lost missing
+	lost=$(kconfig_lost "$tree/.config" "$mdir/patches/kernel/board/$KERNEL_DEFCONFIG" "${frag_files[@]}") || {
+		mapfile -t lost <<< "$lost"
+		die "kconfig dropped what $KERNEL_DEFCONFIG asks for (a missing dependency; CONFIG_RUST needs the container's" \
+			"Rust toolchain: make ARCH=arm64 LLVM=1 rustavailable, docs/build-container.md):" "${lost[@]}"
+	}
 	"${kmake[@]}" -j"$JOBS" Image dtbs modules
 	# the module tree release/build-all.sh puts into the root file system: build/modroot.<first 8 of the hash>/lib/modules/<release>
 	modroot=$bdir/modroot.${hash:0:8}
 	rm -rf -- "$modroot"
 	"${kmake[@]}" -s INSTALL_MOD_PATH="$modroot" modules_install
+	missing=$(kconfig_modules_missing "$tree/.config" "$modroot") || {
+		mapfile -t missing <<< "$missing"
+		die "the module tree build/${modroot##*/} lacks what .config builds:" "${missing[@]}"
+	}
 	tell "kernel: build/${modroot##*/}, $(find "$modroot" -name '*.ko' | wc -l) modules"
 
 	image=$tree/arch/$KERNEL_ARCH/boot/Image

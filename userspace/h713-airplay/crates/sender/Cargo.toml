@@ -1,0 +1,23 @@
+# SPDX-License-Identifier: GPL-3.0-only
+[package]
+name = "h713-airplay-sender"
+description = "A test sender: replays an H.264/H.265 elementary stream (and audio) through the whole receiver protocol; and probe, GET /info"
+version.workspace = true
+edition.workspace = true
+license.workspace = true
+rust-version.workspace = true
+
+[lib]
+name = "sender"
+
+[dependencies]
+proto = { package = "h713-airplay-proto", path = "../proto" }
+fairplay = { package = "h713-airplay-fairplay", path = "../fairplay", features = ["test-sender"] }
+plist = { version = "1", default-features = false }
+sha2 = "0.10"
+aes = "0.8"
+ctr = "0.9"
+getrandom = { version = "0.2", features = ["std"] }
+
+[dev-dependencies]
+receiver = { package = "h713-airplay-receiver", path = "../receiver" }

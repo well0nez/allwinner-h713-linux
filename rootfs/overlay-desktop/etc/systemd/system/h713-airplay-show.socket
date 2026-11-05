@@ -1,0 +1,18 @@
+# h713-airplay-show.socket - where the AirPlay receiver reaches the presenter (profile desktop; docs/tools/h713-airplay.md).
+#
+# The receiver (h713-airplay.service) connects here when a sender sets up its mirror stream; systemd then starts
+# h713-airplay-show.service and hands it this listening socket (Accept=no: fd 3, LISTEN_FDS=1), which it accepts the one connection
+# on. Nothing runs before that: no presenter, no decoder, no Wayland client while nobody mirrors. Only root and the group of the
+# receiver's user may connect.
+[Unit]
+Description=AirPlay presenter socket (screen mirroring)
+Documentation=file:/usr/local/share/doc/h713-airplay/README.md
+
+[Socket]
+ListenStream=/run/h713-airplay-show.sock
+SocketGroup=h713-airplay
+SocketMode=0660
+Accept=no
+
+[Install]
+WantedBy=sockets.target

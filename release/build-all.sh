@@ -42,12 +42,16 @@
 # base (build-rootfs.sh --profile), e.g. --profile media,desktop. With a profile of the media family (media, desktop) the VA-API
 # driver is cross-built first (step 6d, rootfs/libva/build-libva.sh) and laid in (build-rootfs.sh --libva). The image is named
 # $IMAGE_NAME-$VERSION-<profiles joined by '-'> (e.g. h713-hy310-v0.97-media-desktop), and the stamp says "profile:" and "libva:".
+# With desktop the AirPlay receiver and presenter are cross-built too (step 6e, userspace/h713-airplay: Rust, against a sysroot of its
+# own that its tools/make-sysroot.py fetches; the container needs Rust's std for the board, docs/build-container.md): the profile's
+# overlay carries their units and launcher entry, and install-projekt.sh (5l) refuses such a tree without the two programs.
 # A profile image is not a release image (build-rootfs.sh warns when the tree is over the 500 MiB of doku/107 section 7.1).
 #
 # Order (doku/116 P4):
 #   1 bl31  1b crust  2 U-Boot (+ split SPL/proper + environment with CRC)  2b installer U-Boot (ums)
 #   2b2 probe U-Boot (h713_probe)  2c sunxi-fel (trap door)  3 kernel (+ modules)
-#   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv, h713-osd cross-built (6b mesa, 6c h713-warp, 6d libva with --profile)  7 rootfs
+#   4 aic8800  5 Debian keyring (pinned)  6 sysroot + h713-tv, h713-osd cross-built (6b mesa, 6c h713-warp, 6d libva with --profile,
+#   6e h713-airplay with --profile desktop)  7 rootfs
 #   8 ext4 inputs  9 image  10 check (with --vendor: the full self-test)  11 stamp
 #
 # Runs on the work machine and drives the container h713-build (doku/50 §Bauen);
@@ -212,6 +216,9 @@ fi
 # The kernel defconfig: board.env may name one; otherwise config/versions.env pins it (build.sh does the same).
 KDEF=${KERNEL_DEFCONFIG:-$(sed -n 's/^KERNEL_DEFCONFIG=\([^ #]*\).*/\1/p' "$MAINLINE/config/versions.env")}
 [[ -n "$KDEF" ]] || { echo "no KERNEL_DEFCONFIG in boards/$BOARD/board.env or config/versions.env" >&2; exit 2; }
+# The kernel release the tree is named after (build.sh: build/linux-<version>-<hash>/).
+KERNEL_VERSION=$(sed -n 's/^KERNEL_VERSION=\([^ #]*\).*/\1/p' "$MAINLINE/config/versions.env")
+[[ -n "$KERNEL_VERSION" ]] || { echo "no KERNEL_VERSION in config/versions.env" >&2; exit 2; }
 # The U-Boot base: board.env may name its defconfig outright (cstenger's boards do,
 # their UBOOT_BOARD is the hyphenated id and no defconfig name), else it is
 # <UBOOT_BOARD>_defconfig. Same resolution as mainline/build/build.sh; uboot-build.sh
@@ -230,6 +237,8 @@ if [[ -n "$PROFILES" ]]; then
 fi
 # The VA-API driver goes with the media family (build-rootfs.sh --libva lays it in for media and for desktop).
 WANT_LIBVA=0; [[ ",$PROFILES," == *,media,* || ",$PROFILES," == *,desktop,* ]] && WANT_LIBVA=1
+# AirPlay goes with the desktop profile, whose overlay has its units and its launcher entry (install-projekt.sh 5l wants the programs)
+WANT_AIRPLAY=0; [[ ",$PROFILES," == *,desktop,* ]] && WANT_AIRPLAY=1
 NAME="$IMAGE_NAME-$VERSION$PROFILE_SUFFIX"
 ((TEST_IMAGE)) && NAME="$NAME-TEST"        # the name is the first place it has to say so
 OUT="$MAINLINE/build/out"
@@ -346,7 +355,7 @@ info "root $ROOT"
 info "board $UNIT ($STATUS, profile $TEST_PROFILE, DTB $KERNEL_DTB, U-Boot $UBOOT_BASE + roles${DRAM_CLK:+, DRAM $DRAM_CLK MHz})"
 info "crust ${CRUST_DEFCONFIG:-none}, standby $STANDBY$( ((WANT_STANDBY)) && echo ', offered (--standby)' )"
 info "ARISC: $( [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && echo 'crust, in the release FIT (--standby)' || echo "the vendor firmware from the owner's dump${CRUST_DEFCONFIG:+, crust in the rootfs as the experimental choice (h713-arisc set crust)}" )"
-info "rootfs profile ${PROFILES:-none (base image)}$( ((WANT_LIBVA)) && echo ', with the VA-API driver (step 6d)' )"
+info "rootfs profile ${PROFILES:-none (base image)}$( ((WANT_LIBVA)) && echo ', with the VA-API driver (step 6d)' )$( ((WANT_AIRPLAY)) && echo ' and AirPlay (step 6e)' )"
 info "$REPRO_LINE"
 ((TEST_IMAGE)) && { say "TEST IMAGE for $UNIT (STATUS=$STATUS) -- not a release"
 	info "Nobody has reported a green run here. The table is marked test_for=$TEST_PROFILE, so h713-install"
@@ -373,12 +382,17 @@ if ((!DRY)); then
 fi
 ((DRY)) || { TOOLS=$(in_container 'clang --version | head -1; command -v mmdebstrap mke2fs depmod dtc >/dev/null || exit 1') \
 	|| die "tools are missing in the container (mmdebstrap/mke2fs/depmod/dtc)"; sed 's/^/    /' <<< "$TOOLS"; }   # TOOLS is an input of every step
+# the desktop profile's AirPlay (6e) is Rust: the container's toolchain needs the board's std, or the build would stop half an hour in
+if ((WANT_AIRPLAY && !DRY)); then
+	in_container 'test -d "$(rustc --print target-libdir --target aarch64-unknown-linux-gnu 2>/dev/null)"' \
+		|| die "--profile desktop builds h713-airplay (step 6e): the container has no Rust std for aarch64-unknown-linux-gnu -- docs/build-container.md, Rust for h713-airplay"
+fi
 for f in "$INSTALLER/h713-mkimage" "$INSTALLER/mkimage-inputs.sh" "$ROOTFS/build-rootfs.sh" "$EXTRACTOR" "$MAINLINE/build/build.sh" "$MAINLINE/build/uboot-build.sh"; do
 	[[ -e "$f" ]] || die "missing: $f"
 done
 [[ -z "$VENDOR" || -d "$VENDOR/boot/mips" ]] || die "--vendor $VENDOR does not look like an h713-extract output (no boot/mips/)"
 mkdir -p "$OUT" "$DELIVERY"
-((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}$( [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && echo " + scp")) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv${PROFILES:+, libva (profile $PROFILES)}, rootfs${PROFILES:+ (profile $PROFILES)}, inputs, image $NAME"; exit 0; }
+((DRY)) && { info "would build: bl31$( ((WANT_STANDBY)) && echo ' with SYSTEM_SUSPEND')${CRUST_DEFCONFIG:+, crust $CRUST_DEFCONFIG}, U-Boot ($UBOOT_BASE + $UBOOT_RELEASE_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}$( [[ -n "${CRUST_DEFCONFIG:-}" ]] && ((WANT_STANDBY)) && echo " + scp")) + env, installer U-Boot ($UBOOT_BASE + $UBOOT_INSTALLER_ROLE${DRAM_CLK:+ + DRAM $DRAM_CLK MHz}), probe U-Boot ($UBOOT_PROBE_DEFCONFIG), sunxi-fel, kernel + modules (BOARD=$BOARD, $KERNEL_DTB), aic8800, keyring, sysroot + h713-tv${PROFILES:+, libva (profile $PROFILES)}$( ((WANT_AIRPLAY)) && echo ', h713-airplay (profile desktop)' ), rootfs${PROFILES:+ (profile $PROFILES)}, inputs, image $NAME"; exit 0; }
 
 # --- 1. bl31 ---------------------------------------------------------------
 # The notices that travel with BL31 (TODO 7.20 e; build-rootfs.sh lays $OUT/notice into the image): TF-A's licence, the copyright
@@ -556,7 +570,7 @@ if ((!KTAKEN)); then
 	# build.sh makes the tree, the DTB, the FIT and the module tree build/modroot.<hash>
 	in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh kernel" > "$OUT/kernel-build.log" 2>&1 || { tail -20 "$OUT/kernel-build.log"; die "kernel build failed (log: $OUT/kernel-build.log)"; }
 	grep -o 'applied [0-9]* series patches' "$OUT/kernel-build.log" | sed 's/^/    /' || true
-	TREE_NAME=$(basename "$(ls -dt "$MAINLINE"/build/linux-6.18.38-*/ | head -1)")
+	TREE_NAME=$(basename "$(ls -dt "$MAINLINE"/build/linux-$KERNEL_VERSION-*/ | head -1)")
 fi
 # The FIT names its configuration after the DTB (build.sh); an image for board X
 # must not quietly carry board Y's tree.
@@ -564,7 +578,7 @@ fi
 grep -q "conf-$KERNEL_DTB" "$OUT/h713-kernel.fit" || die "h713-kernel.fit carries no configuration conf-$KERNEL_DTB"
 TREE="$MAINLINE/build/$TREE_NAME"
 [[ -f "$TREE/Module.symvers" ]] || die "no built kernel tree under $MAINLINE/build/"
-H=${TREE_NAME#linux-6.18.38-}; H=${H:0:8}
+H=${TREE_NAME#linux-$KERNEL_VERSION-}; H=${H:0:8}
 MODROOT="$MAINLINE/build/modroot.$H"
 ((KTAKEN)) || stamp_write kernel TREE_NAME -- "$OUT/h713-kernel.fit" "$OUT/$KERNEL_DTB.dtb" "$MODROOT" "$TREE/Module.symvers"
 KREL=$(ls "$MODROOT/lib/modules" | head -1)
@@ -697,6 +711,40 @@ if ((WANT_LIBVA)); then
 	info "driver tarball $(stat -c %s "$LIBVA_TAR") bytes, upstream ${LIBVA_COMMIT:0:12} + $LIBVA_PATCHES patches"
 fi
 
+# --- 6e. h713-airplay: AirPlay screen mirroring, for the desktop profile ---------------------------------------
+# The receiver and the presenter (userspace/h713-airplay, Rust; docs/tools/h713-airplay.md). install-projekt.sh (5l) wants both in a
+# tree that carries their units - the desktop profile's overlay - and refuses one without them. They are built by the crate's own
+# tools, in the container like everything else: tools/make-sysroot.py fetches the Debian trixie arm64 libraries the presenter links
+# against (glibc 2.41, FFmpeg 7.1, ALSA, EGL/GLES, GBM, libva, Wayland, and libgcc-14-dev for the link: from deb.debian.org and
+# security.debian.org, checked against the archive's SHA-256) into a sysroot of its own, fetched again only when that script changes
+# (its stamp); `make cross` builds both programs with cargo for aarch64-unknown-linux-gnu, the crates from crates.io (Cargo.lock,
+# --locked). The container has no aarch64 GCC: its clang links them, with lld against that sysroot, as it links the C programs of
+# step 6. The script runs with python3, not as `make sysroot`: git keeps it without the executable bit. Needs: Rust's std for the
+# board in the container's toolchain (docs/build-container.md, step 0 checks it) and the network.
+AIRPLAY=()
+if ((WANT_AIRPLAY)); then
+	say "6e/11 h713-airplay cross-built (Rust: the AirPlay receiver and presenter of the desktop profile, userspace/h713-airplay)"
+	AIRPLAY_SRC="$USERSPACE/h713-airplay"; AIRPLAY_SYSROOT="$MAINLINE/build/sysroot-airplay-arm64"
+	AIRPLAY_SYSROOT_STAMP="$AIRPLAY_SYSROOT/.h713-airplay-sysroot-$(sha < "$AIRPLAY_SRC/tools/make-sysroot.py" | cut -c1-12)"
+	AIRPLAY=("$AIRPLAY_SRC/h713-airplay.aarch64-linux-gnu" "$AIRPLAY_SRC/h713-airplay-show.aarch64-linux-gnu")
+	in_common; tree_in airplay "$ROOT" userspace/h713-airplay; inp "rust $(in_container 'rustc --version; cargo --version' | sha)"
+	inp "sysroot ${AIRPLAY_SYSROOT_STAMP##*/}"
+	if ! stamp_fits airplay; then
+		if [[ ! -f "$AIRPLAY_SYSROOT_STAMP" ]]; then
+			rm -rf "$AIRPLAY_SYSROOT"
+			in_container "cd $(c "$AIRPLAY_SRC") && python3 tools/make-sysroot.py $(c "$AIRPLAY_SYSROOT")" > "$OUT/airplay-sysroot.log" 2>&1 \
+				|| { tail -20 "$OUT/airplay-sysroot.log"; die "the AirPlay sysroot fails (log: $OUT/airplay-sysroot.log)"; }
+			touch "$AIRPLAY_SYSROOT_STAMP"
+		fi
+		AS=$(c "$AIRPLAY_SYSROOT")
+		in_container "cd $(c "$AIRPLAY_SRC") && make -s cross SYSROOT=$AS CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_LINKER=clang 'CARGO_TARGET_AARCH64_UNKNOWN_LINUX_GNU_RUSTFLAGS=-C link-arg=--target=aarch64-linux-gnu -C link-arg=-fuse-ld=lld -C link-arg=--sysroot=$AS'" \
+			> "$OUT/h713-airplay-cross.log" 2>&1 || { tail -20 "$OUT/h713-airplay-cross.log"; die "cross-building h713-airplay failed (log: $OUT/h713-airplay-cross.log)"; }
+		for f in "${AIRPLAY[@]}"; do [[ -f "$f" ]] || die "no $f"; done
+		stamp_write airplay -- "${AIRPLAY[@]}"
+	fi
+	for f in "${AIRPLAY[@]}"; do info "${f##*/} $(stat -c %s "$f") bytes, $(file -b "$f" 2>/dev/null | cut -d, -f1-2)"; done
+fi
+
 # --- the image's SOURCES (TODO 7.20 e) ---------------------------------------
 # The revisions the boot chain and the kernel were built from, for README's source statement; build-rootfs.sh adds the root file
 # system's part (the Debian suites, Mesa, libva) below it. No path of this machine and no build time in it.
@@ -733,6 +781,7 @@ in_common; tree_in rootfs "$ROOT" rootfs ":!rootfs/tests" userspace tools/tse_du
 inp "debian $DEBIAN_SUITE $DEBIAN_MIRROR keyring $KEYRING_DEB_SHA256 sysroot ${SYSROOT_STAMP##*/}"; [[ -z "$WIFI_ENV" ]] || inp "wifi-env $(sha < "$WIFI_ENV")"
 [[ -f "$ROOTFS/wifi.env" ]] && inp "local wifi.env $(sha < "$ROOTFS/wifi.env")"   # ignored by git, read by build-rootfs.sh when there is no --wifi-env
 for r in bl31 kernel aic8800 userspace mesa warp; do in_step $r; done; [[ -f "$OUT/scp.bin" ]] && in_step crust; ((WANT_LIBVA)) && in_step libva
+((WANT_AIRPLAY)) && in_step airplay
 if ! stamp_fits rootfs; then
 	write_sources > "$NOTICE/SOURCES"
 	CRUST_ARGS=; [[ -f "$OUT/scp.bin" ]] && CRUST_ARGS="--crust $(c "$OUT")/scp.bin"
@@ -813,6 +862,17 @@ python3 "$ROOT/release/check-crust.py" --board "$BOARD" \
 	&& info "crust gate: green ($(sed -n 's/^crust: //p' "$OUT/crust-gate.log"))" \
 	|| { grep -E "FAIL|Error" "$OUT/crust-gate.log" | sed 's/^/    /'
 	     die "crust gate failed (log: $OUT/crust-gate.log)"; }
+# The display stacks (release/check-display.py, docs/subsystems/display-stacks.md): the release environment's bootcmd run
+# for h713_display unset/vendor/clean on both boot paths (vendor: display.bin and h713_drm refused; clean: noboot and the
+# five firmware drivers refused, the two command lines differing in those words only), and the rootfs's half of it; and
+# the kernel: what the defconfig asks for the clean stack (CONFIG_RUST, CONFIG_DRM_H713) in its .config and h713_drm in
+# the rootfs - kconfig drops both without a word when the container has no Rust toolchain.
+python3 "$ROOT/release/check-display.py" --env "$OUT/hy310-env-release.bin" --rootfs "$ROOTFS/out/hy310-rootfs.tar" \
+	--defconfig "$MAINLINE/patches/kernel/board/$KDEF" --kernel-config "$TREE/.config" \
+	> "$OUT/display-gate.log" 2>&1 \
+	&& info "display gate: green$(grep -q 'carries no h713_drm' "$OUT/display-gate.log" && echo ' (vendor only: the kernel carries no h713_drm)')" \
+	|| { grep -E "FAIL" "$OUT/display-gate.log" | sed 's/^/    /'
+	     die "display gate failed (log: $OUT/display-gate.log)"; }
 # The licence notices (TODO 7.20 e), in the artefact: the rootfs tar carries the README that says where the source is, and its SOURCES
 # names this image's boot chain and kernel - every line write_sources gives now, but the repository's commit and date.
 NOTICE_TAR=$(tar -xOf "$ROOTFS/out/hy310-rootfs.tar" ./usr/local/share/doc/h713-linux/SOURCES 2>/dev/null) || die "the rootfs carries no SOURCES (licence notices, build-rootfs.sh --notice)"
@@ -876,6 +936,7 @@ STAMP="$DELIVERY/$NAME.BUILD.txt"
 	printf '  %-28s %s\n' "h713-tv.aarch64-linux-gnu" "$(sha256sum "$TV" | cut -c1-16)"
 	printf '  %-28s %s\n' "mesa-panfrost-25.0.7.tar" "$(sha256sum "$MESA" | cut -c1-16)"
 	[[ -n "$LIBVA_TAR" ]] && printf '  %-28s %s\n' "libva-v4l2-request-1.2.tar" "$(sha256sum "$LIBVA_TAR" | cut -c1-16)"
+	for f in "${AIRPLAY[@]+"${AIRPLAY[@]}"}"; do printf '  %-28s %s\n' "${f##*/}" "$(sha256sum "$f" | cut -c1-16)"; done
 	printf '  %-28s %s\n' "hy310-rootfs.tar" "$(sha256sum "$ROOTFS/out/hy310-rootfs.tar" | cut -c1-16)"
 } > "$STAMP"
 sed 's/^/    /' "$STAMP"

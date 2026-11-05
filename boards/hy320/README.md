@@ -16,6 +16,7 @@ installed on it the same day.
 | Panel | project id `0x30`, 1920x1080 **dual port**, HTotal 2200, VTotal 1125, **164 MHz**, Hsync 2, Vsync 8, HBP 148, VBP 12, InvDCLK 1, InvHSync 2 - its `panel_config.ini` (Reserve0, and the identical copy in vendor) |
 | Lamp | `[PWMSetting]` channel 5, polarity 1 (low active), 40 kHz, vsync lock 1, duty 1..100, default 50 - the HY300 Pro's words with another default |
 | Display firmware | `display.bin` 1 252 128 B, `22a7df11...` ("ADT-3 2024", the HY350's and HY300 T08's); only in `vendor:/etc/display/mips` - `bootloader_a/_b` are FAT16 without `mips/` |
+| Display stack | **vendor** (`display.bin`) by default; the **clean** one (`h713_drm`, no display firmware) per boot with `h713-display set clean`. Since 05.11.2026 the unit's normal boot (`boot_emmc` -> `h713-kernel-7.3.fit`) is the 7.3.1 release kernel with `CONFIG_RUST` and `h713_drm` (=m, kernel `0356`-`0359`, its device tree node disabled, so `bench=1`); the previous 7.3.1 stays as `h713-kernel-7.3-prev.fit` (one-shot `boot_73prev`). Both stacks proven on that boot, vendor -> clean -> vendor and the safety net (`doku/229`); the HDMI picture on this kernel still unseen (no source signal then). Its image `bootcmd` logs U-Boot's console (below) and reads the key. Before: device-tested 04.11.2026 end to end on the 7.3.1-rustbench kernel (`doku/231` §34/§34a; [display stacks](../../docs/subsystems/display-stacks.md)) |
 | eMMC | 15 269 888 sectors, 25 partitions, a single `Reserve0` at LBA 7062528; `super` 6291456 sectors (the HY350's 5242880), so everything from `misc` on sits 1048576 sectors later than there |
 | Stock | an Android 11 system (`eng.projector.20241024.162050`, ARMv7 kernel 5.4.99) on the ADT-3 Android 10 vendor build 6245789; vendor U-Boot 2018.05-00018 of 19.04.2024, ARISC of the same day |
 | Wi-Fi | AIC8800D80 on SDIO (its firmware set is the HY310's, some `_u02` files differ) |
@@ -155,6 +156,18 @@ the unused tail of `hy310-uboot` (LBA 10240..11263) is no place for it, because 
 U-Boot of the partition's full 10240 sectors (LBA 2048..12287) and it would be an eMMC write on every
 boot. Its owner read the log that way on 31.10.2026 while bringing the board up (an `mmc write` in his
 `bootcmd`, back to the plain `bootcmd` since 01.11.2026); it is not a recipe.
+
+Since 05.11.2026 the board environment (`board/sunxi/hy310.env`) carries `h713_conlog 0x45000000; if test
+"${h713_conlog_emmc}" = 1; then mmc dev 1 && mmc write 0x45000000 0x2800 0x400; fi;` under `CONFIG_CONSOLE_RECORD`,
+which only this base sets, after the `fi;` of its `h713_display` branch: an HY320 image's `bootcmd` copies every
+boot's record to RAM and reads the key, with no hand edit, and writes nothing to the eMMC. Only `fw_setenv
+h713_conlog_emmc 1`, by hand, puts the record into that tail for Linux to read - the eMMC write the paragraph above
+rules out for a normal boot. *Superseded 05.11.2026:* from 04.11.2026 the image's `bootcmd` wrote the record there on
+every boot.
+The other boards' `bootcmd` has no `h713_conlog`. `h713-display set clean` refuses a hand-set `bootcmd` that ignores
+the key ([display stacks](../../docs/subsystems/display-stacks.md)); `fw_setenv bootcmd` with the image's line (its
+`u-boot-initial-env`) replaces it. The unit's saved environment carries the image's 04.11.2026
+line, with the write on every boot, since 05.11.2026 (`doku/229` §2).
 
 ## What we do not know
 

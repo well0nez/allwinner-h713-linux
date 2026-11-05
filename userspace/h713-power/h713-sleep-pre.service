@@ -5,6 +5,9 @@
 [Unit]
 Description=H713: remember the mode and end it before a sleep (h713-mode sleep-pre)
 Before=sleep.target
+# Not on the clean display stack (h713.display=clean, docs/subsystems/display-stacks.md): no MIPS is parked there, and
+# h713_drm takes its planes through the sleep itself; the mode units run on through it.
+ConditionKernelCommandLine=!h713.display=clean
 
 [Service]
 Type=oneshot

@@ -1,0 +1,15 @@
+#include <libavcodec/avcodec.h>
+#include <libavutil/hwcontext.h>
+#include <libavutil/hwcontext_drm.h>
+#include <libavutil/opt.h>
+#include <libavutil/channel_layout.h>
+#include <libavutil/frame.h>
+#include <libavutil/error.h>
+#include <libavutil/log.h>
+#include <libswresample/swresample.h>
+#include <EGL/egl.h>
+#include <EGL/eglext.h>
+#include <GLES3/gl3.h>
+#include <GLES2/gl2ext.h>
+#include <gbm.h>
+#include <alsa/asoundlib.h>

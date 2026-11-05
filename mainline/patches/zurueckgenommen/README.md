@@ -23,3 +23,9 @@
   `drivers/misc/sunxi-nsi.c` ist kein NSI-Treiber, er erfindet eine Registerkarte fuer `nsi-controller@2020000`). Die
   Datei lag weiter neben der Serie; jetzt hier. Am Bau aendert das nichts: der Kernelbaum wird nur aus der `series`
   gebaut, ihr Hash ist gleich.
+
+## 03.11.2026 (kernel 7.3.1): 0277 and 0278 are upstream
+
+- `0277-media-cedrus-skip-invalid-h264-reference-list-entries.patch` and
+  `0278-media-cedrus-fix-missing-cleanup-in-error-path.patch` -- Linux 7.3 carries the same hunks; `patch -N` sees
+  them as already applied. Taken out of the series with the move from 6.18.38 to 7.3.1.

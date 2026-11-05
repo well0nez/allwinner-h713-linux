@@ -26,6 +26,10 @@ The ways back (17.10.2026): an entry with `return = launcher` (Settings) opens t
 program ends with 0 (Back at the top); a mode unit that ends by itself (Kodi's Exit, the browser or the terminal closed, a crash)
 opens the launcher with "HDMI input" chosen. Home from a page and a mode ended on purpose (h713-mode hdmi, a sleep, the shutdown)
 open nothing. The mode that runs is remembered in /var/lib/h713-keys/last-mode for on_start = last.
+A mode unit that comes up without the launcher (05.11.2026: AirPlay's, started by its socket when a phone mirrors) closes an open
+launcher and stops a page with `return = launcher` (Settings, the AirPlay waiting page): the new mode is on the wall at once. An entry
+with `unit` and `exec` (Screen Mirroring) has the unit as its mode and runs `exec`, its waiting page, while the unit is down; OK only
+closes the launcher while it is up. on_start does not take such an entry.
 
 Configuration /etc/h713/keys.conf (volume_step, focus_steps, input_keys, on_start), read again when it changes.
 Commands: run [--once], status. docs/tools/h713-keys.md.
@@ -141,7 +145,8 @@ class Config:
                 values[key] = value
             elif key == "input_keys" and all(w in CODES for w in value.split()):
                 values[key] = value
-            elif key == "on_start" and (value in ("launcher", "hdmi", "last") or value in [e["id"] for e in launcher_entries(True) if e.get("unit")]):
+            elif key == "on_start" and (value in ("launcher", "hdmi", "last") or
+                                        value in [e["id"] for e in launcher_entries(True) if e.get("unit") and not e.get("exec")]):
                 values[key] = value
             else:
                 log("keys.conf:%d: %r ignored" % (n, line), "<4>")
@@ -482,15 +487,20 @@ class Launcher:
             if not self.osd("launcher %d" % self.sel, devices):     # the same selection again: h713-osd still shows the page?
                 return True                                          # no: nothing is started blind, the launcher is closed
             e = self.entries[self.sel]
-            waits = bool(e.get("wait") and e.get("unit"))        # the page stays, "Starting X...", until the entry's first picture
+            if e.get("unit") and e.get("exec") and os.path.isdir(path(CGROUPS, e["unit"])):
+                self.close(devices)          # its mode is up (the mode watch's test): the stream is on the wall, OK only shows it
+                log("launcher: %s, which runs" % e["label"])
+                return True
+            starts = e.get("unit") if not e.get("exec") else None    # the mode it starts; with `exec` too the unit is only watched
+            waits = bool(e.get("wait") and starts)    # the page stays, "Starting X...", until the entry's first picture
             if not waits:
                 self.close(devices, keep=e.get("return") == "launcher" and bool(e.get("exec")))   # a page: handed over
             log("launcher: %s" % e["label"])
             proc = None
             try:
-                proc = subprocess.Popen(SYSTEMCTL + ["start", "--no-block", e["unit"]] if e.get("unit") else shlex.split(e["exec"]),
+                proc = subprocess.Popen(SYSTEMCTL + ["start", "--no-block", starts] if starts else shlex.split(e["exec"]),
                                         stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL, start_new_session=True)
-                if e.get("unit"):
+                if starts:
                     self.started = time.monotonic()
                 elif e.get("return") == "launcher":
                     try:
@@ -525,8 +535,10 @@ class Launcher:
             if b.get("fd") is not None:
                 os.close(b["fd"])
             rc = b["proc"].returncode
-            log("launcher: %s ended with %d%s" % (b["entry"]["label"], rc, ": back to the launcher" if rc == 0 else ""))
-            if rc == 0:
+            back = rc == 0 and not b.get("stopped")     # stopped for a mode: even a 0 (SIGTERM is a clean end to systemd) is not Back
+            log("launcher: %s ended with %d%s" % (b["entry"]["label"], rc, ": back to the launcher" if back else
+                                                 " (stopped: a mode took the wall)" if b.get("stopped") else ""))
+            if back:
                 self.reopen = {"select": b["entry"]["id"], "until": now + REOPEN_S, "next": 0.0, "fast": True}
         r = self.reopen
         if r and self.entries is not None:
@@ -539,6 +551,29 @@ class Launcher:
             elif now > r["until"]:
                 self.reopen = None
                 log("launcher: not opened again - h713-osd has no page to show it on", "<4>")
+
+    def give_way(self, unit, devices):
+        """A mode unit came up that the launcher did not start (05.11.2026: AirPlay's presenter, started by its socket when a phone
+        mirrors): the launcher, a way back that is due and a page that would come back to it make way, so that the mode is on the wall
+        at once. The page is stopped as the unit it runs as (`systemd-run --unit=NAME`); whatever its status then, its end opens nothing."""
+        if self.entries is not None:
+            log("mode %s came up, not the launcher's: the launcher closes" % unit)
+            self.close(devices)
+        self.reopen = None
+        b = self.back
+        if not b or b.get("stopped"):
+            return
+        name = next((a[len("--unit="):] for a in shlex.split(b["entry"]["exec"]) if a.startswith("--unit=")), None)
+        if not name:
+            log("mode %s came up: %s is not stopped (its exec line names no --unit=)" % (unit, b["entry"]["label"]), "<4>")
+            return
+        b["stopped"] = True
+        log("mode %s came up: %s (%s) is stopped" % (unit, b["entry"]["label"], name))
+        try:
+            subprocess.Popen(SYSTEMCTL + ["stop", "--no-block", name], stdout=subprocess.DEVNULL, stderr=subprocess.DEVNULL,
+                             start_new_session=True)
+        except OSError as err:
+            log("%s: systemctl stop does not start (%s)" % (name, err.strerror), "<4>")
 
     def unstart(self, devices):
         """The entry that was starting ended before it had a picture: the page goes back to the list (HDMI input chosen, the header says
@@ -656,6 +691,10 @@ class Modes:
         if unit:
             self.gone = None
             if unit != self.mode:
+                s = launcher.starting
+                own = now < launcher.started + MODE_QUIET_S or (s and s["entry"].get("unit") == unit)    # (a slow stop before it)
+                if self.mode is not None and not own:
+                    launcher.give_way(unit, devices)     # (the first look finds what ran before: nothing came up)
                 self.mode = unit
                 launcher.snap = None         # what runs has changed: the next full open looks again
                 self.store(unit)
@@ -699,7 +738,8 @@ def boot_launcher(launcher, devices, conf, boot):
     want = conf.values["on_start"]
     if want == "last":
         last = read(path(LAST_MODE))
-        want = "hdmi" if last == "hdmi" else next((e["id"] for e in launcher_entries(True) if last and e.get("unit") == last), "launcher")
+        want = "hdmi" if last == "hdmi" else next((e["id"] for e in launcher_entries(True)
+                                                    if last and e.get("unit") == last and not e.get("exec")), "launcher")    # (a stream does not come back)
     if want == "hdmi" or launcher.entries is not None or time.clock_gettime(time.CLOCK_BOOTTIME) - now - boot["slept"] > 2:
         return True
     if now > boot["until"]:

@@ -211,6 +211,38 @@ struct fwc {
 
 static struct fwc fwc = { .memfd = -1, .base_path = FWC_BASE_FILE };
 
+/*
+ * The clean display stack (fwc_use_kms()): no firmware, no cpu_comm, no /dev/mem. The white balance is six CRTC
+ * properties that main.c commits; the kernel keeps them (nothing forgets them, as the firmware did), so they are sent
+ * at the start and on every change and never repaired. There is no colour management.
+ */
+static struct {
+	bool on;
+	bool (*apply)(const int *wb, char *why, size_t n);	/* NULL: no white balance either */
+	char cm_why[160], wb_why[160];
+} fwc_kms;
+
+void fwc_use_kms(bool (*apply)(const int *wb, char *why, size_t n), const char *cm_why, const char *wb_why)
+{
+	fwc_kms.on = true;
+	fwc_kms.apply = apply;
+	snprintf(fwc_kms.cm_why, sizeof(fwc_kms.cm_why), "%s", cm_why);
+	snprintf(fwc_kms.wb_why, sizeof(fwc_kms.wb_why), "%s", wb_why);
+}
+
+/* the white balance can be sent: the firmware's machinery is there, or the CRTC's properties are */
+static bool fwc_probe(void);
+
+static bool fwc_wb_ok(void)
+{
+	return fwc_kms.on ? fwc_kms.apply != NULL : fwc_probe();
+}
+
+static const char *fwc_wb_why(void)
+{
+	return fwc_kms.on ? fwc_kms.wb_why : fwc.why;
+}
+
 /* ---- the real hardware: /dev/mem, /dev/cpu_comm, the board file ---- */
 
 static volatile uint32_t *fwc_page(uint32_t phys, bool wr)
@@ -464,6 +496,11 @@ static bool fwc_probe(void)
 	if (fwc.ok)
 		return true;
 	fwc.probed = true;
+	if (fwc_kms.on) {
+		/* the clean stack: no firmware to find; what asks for it is the colour management */
+		snprintf(fwc.why, sizeof(fwc.why), "%s", fwc_kms.cm_why);
+		return false;
+	}
 	if (!fwc.io)
 		fwc.io = &fwc_hw;
 	if (!fwc.io->region(&base, &size)) {
@@ -605,6 +642,21 @@ static bool fwc_wb_send(char *msg, size_t n)
 	int bad = 0;
 
 	fwc.wb_applied = false;
+	if (fwc_kms.on) {
+		if (!fwc_kms.apply) {
+			snprintf(msg, n, "%s", fwc_kms.wb_why);
+			return false;
+		}
+		if (!fwc_kms.apply(fwc.wb, err, sizeof(err))) {
+			snprintf(msg, n, "%s", err);
+			return false;
+		}
+		fwc.sends_wb++;
+		fwc_wb_text(fwc.last, sizeof(fwc.last));
+		fwc.wb_applied = true;
+		snprintf(msg, n, "on the CRTC's wb_* properties");
+		return true;
+	}
 	if (!fwc_probe()) {
 		snprintf(msg, n, "%s", fwc.why);
 		return false;
@@ -1082,8 +1134,8 @@ void cmd_wb(struct reply *r, char **arg, unsigned int n)
 
 	if (n == 0) {
 		fwc_wb_text(t, sizeof(t));
-		if (!fwc_probe())	/* "ok", not an error: the numbers are shown, and the page knows to hide itself */
-			reply_add(r, "ok wb %s [not available: %s]\n", t, fwc.why);
+		if (!fwc_wb_ok())	/* "ok", not an error: the numbers are shown, and the page knows to hide itself */
+			reply_add(r, "ok wb %s [not available: %s]\n", t, fwc_wb_why());
 		else {
 			int cool, magenta;
 			bool exact = fwc_slider_positions(fwc.wb, &cool, &magenta);
@@ -1149,6 +1201,11 @@ void cmd_cm(struct reply *r, char **arg, unsigned int n)
 	unsigned int e, k, sent;
 	bool ok;
 
+	if (n == 0 && fwc_kms.on) {
+		/* "ok" with the reason, as "wb" says it: the Colour page hides itself */
+		reply_add(r, "ok cm [not available: %s]\n", fwc_kms.cm_why);
+		return;
+	}
 	if (n == 0) {
 		unsigned int shown = 0;
 
@@ -1271,6 +1328,22 @@ void fwc_sync(const char *why)
 	char msg[200];
 	int bad;
 
+	if (fwc_kms.on) {
+		/* the CRTC keeps what it was given: sent at the start (an earlier run's unsaved values go), never repaired */
+		if (!start)
+			return;
+		if (!fwc_kms.apply) {
+			info("colour          not available (%s) -- white balance and colour management are not offered",
+			     fwc_kms.wb_why);
+			return;
+		}
+		fwc_wb_text(msg, sizeof(msg));
+		if (fwc_wb_send(msg + strlen(msg) + 1, sizeof(msg) - strlen(msg) - 1))
+			info("colour          white balance %s on the CRTC (the clean stack; %s)", msg, fwc_kms.cm_why);
+		else
+			warn("colour          white balance %s at the start: %s", msg, msg + strlen(msg) + 1);
+		return;
+	}
 	if (!start && !wb_held && !cm_held)
 		return;
 	if (!fwc_probe()) {
@@ -1332,10 +1405,14 @@ void fwc_status(struct reply *r)
 		n += fwc.cm[e] != 0;
 	fwc_wb_text(t, sizeof(t));
 	reply_add(r, "white balance   %s (R G B gain, R G B offset; 512 neutral)%s\n", t,
-		  fwc.wb_applied ? ", on the registers" : fwc_wb_neutral() ? "" : ", NOT applied");
+		  fwc.wb_applied ? (fwc_kms.on ? ", on the CRTC" : ", on the registers") : fwc_wb_neutral() ? "" : ", NOT applied");
 	reply_add(r, "colour mgmt     %u entr%s changed%s\n", n, n == 1 ? "y" : "ies",
 		  fwc.cm_applied ? ", on the registers" : n ? ", NOT applied" : "");
-	if (fwc.ok)
+	if (fwc_kms.on)
+		reply_add(r, "                %s%s; colour management not available: %s\n",
+			  fwc_kms.apply ? "white balance on h713-drm's wb_* CRTC properties" : "white balance not available: ",
+			  fwc_kms.apply ? "" : fwc_kms.wb_why, fwc_kms.cm_why);
+	else if (fwc.ok)
 		reply_add(r, "                display firmware %s\n", fwc.fw->name);
 	else if (fwc.why[0])
 		reply_add(r, "                not available: %s\n", fwc.why);
@@ -1419,5 +1496,8 @@ void fwc_list(struct reply *r)
 {
 	for (unsigned int i = 0; i < FWC_WB_N; i++)
 		reply_add(r, "  %-26s %d  (0..%d)\n", fwc_wb_name[i], fwc.wb[i], FWC_WB_MAX);
-	reply_add(r, "  cm_AXIS_hue|sat|value      colour management, -%d..%d, 0 neutral (ctl cm)\n", FWC_CM_MAX, FWC_CM_MAX);
+	if (fwc_kms.on)
+		reply_add(r, "  cm_AXIS_hue|sat|value      colour management, not available: %s\n", fwc_kms.cm_why);
+	else
+		reply_add(r, "  cm_AXIS_hue|sat|value      colour management, -%d..%d, 0 neutral (ctl cm)\n", FWC_CM_MAX, FWC_CM_MAX);
 }

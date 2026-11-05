@@ -1,0 +1,56 @@
+# h713-airplay-show.service - the AirPlay presenter: a phone's screen on the panel, drawn by h713-warp (profile desktop;
+# docs/tools/h713-airplay.md, userspace/h713-airplay/README.md).
+#
+# Not wanted by anything, on purpose: systemd starts it when the receiver (h713-airplay.service) connects to
+# h713-airplay-show.socket, which it does when a sender sets up its mirror stream. It is a MODE, like h713-kodi.service: the launcher's
+# Screen Mirroring entry names it (`unit =`, /etc/h713/launcher.d/15-airplay.conf), so h713-mode ends it before a sleep and for the HDMI
+# input, and h713-keys sees it come up - it did not start it - and closes an open launcher or page, so the picture is on the wall at once.
+# The presenter decodes H.264/H.265 on the video engine (FFmpeg's VA-API -> libva-v4l2-request -> cedrus), puts the pictures through
+# h713-warp's Wayland server (keystone, overlays; h713-tv stays the master and the only one that commits) and plays the screen audio
+# on ALSA `default`, the DSP bridge.
+# * The start sets h713-tv's source to `client` (h713-kodi-switch source): a program is the mode, the HDMI ring is not drawn while it
+#   starts. However the presenter ends, h713-warp gives the panel back to the ring two seconds after its connection is gone, when no
+#   other program says it starts. Nothing to undo: no ExecStopPost.
+# * One client at a time: Conflicts= stops Kodi, the browser and the desktop when a phone starts to mirror, and a start of one of them
+#   stops this unit (Conflicts= works both ways). The After= lines on them make the stop come before the start in both directions
+#   (systemd orders a stop before a start whenever two units are ordered at all).
+# * Requires= and After= the socket: the presenter is nothing without the connection it is started for.
+# * BindsTo=h713-warp.service: without the server there is nothing to draw on; a stop or restart of h713-warp ends the stream.
+# * How it ends: the sender stops (TEARDOWN, or its connection drops) - the receiver sends End, the presenter exits 0, the unit ends by
+#   itself and h713-keys opens the launcher with HDMI input chosen; the HDMI input in the launcher (`h713-mode hdmi`) or another mode
+#   stops it - SIGTERM, and the closed connection tells the receiver, which ends the session with the sender; a standby:
+#   h713-sleep-pre (h713-mode) stops it, and the start after the wake finds no session and ends at once.
+# * Not root: the system user h713-airplay of the receiver (usr/lib/sysusers.d/h713-airplay.conf), with the groups the devices ask
+#   for: video (h713-warp's Wayland socket, the decoders' /dev/video* and /dev/media*), render (renderD128), audio (ALSA, the DSP bridge).
+#   The hardening is h713-warp.service's, MemoryDenyWriteExecute included: h713-warp runs the same EGL and GLES with it, and FFmpeg
+#   and libva write no code. The source command is the one thing that needs root (h713-tv's socket is root's): "+" runs it outside the
+#   user and the sandbox; it does nothing without h713-tv's socket.
+# * The VA-API wiring is the environment file the drop-in /usr/local/share/h713/systemd/h713-media-env.conf names (LIBVA_DRIVER_NAME,
+#   LIBVA_DRIVERS_PATH), read here directly. FFmpeg's libraries come with the media profile: AirPlay is an image with desktop and media.
+[Unit]
+Description=AirPlay presenter (a phone's screen on the panel, a Wayland client of h713-warp)
+Documentation=file:/usr/local/share/doc/h713-airplay/README.md
+Requires=h713-airplay-show.socket
+After=h713-airplay-show.socket
+BindsTo=h713-warp.service
+After=h713-warp.service
+Conflicts=h713-kodi.service h713-browser.service h713-desktop.service
+After=h713-kodi.service h713-browser.service h713-desktop.service
+
+[Service]
+Type=simple
+User=h713-airplay
+Group=h713-airplay
+SupplementaryGroups=video render audio
+EnvironmentFile=-/etc/environment.d/h713-media.conf
+Environment=WAYLAND_DISPLAY=/run/h713-warp/wayland
+ExecStartPre=+/usr/local/sbin/h713-kodi-switch source
+ExecStart=/usr/local/bin/h713-airplay-show
+KillSignal=SIGTERM
+TimeoutStopSec=5s
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+PrivateTmp=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes

@@ -47,16 +47,16 @@ height / 1080):
 
 | Function | What it draws |
 |---|---|
-| `osd_icon_by_name()`, `enum osd_icon` | the Strichsymbole of the mock-up: `hdmi`, `film`, `globe`, `desk`, `sliders`, `power` (48-unit boxes, round-capped strokes, the mock-up's paths; the globe's meridians are Beziers as chains of segments) |
+| `osd_icon_by_name()`, `enum osd_icon` | the Strichsymbole of the mock-up: `hdmi`, `film`, `globe`, `desk`, `sliders`, `power` (48-unit boxes, round-capped strokes, the mock-up's paths; the globe's meridians are Beziers as chains of segments), and since 05.11.2026 `airplay` (Screen Mirroring: Apple's glyph - the desk's screen, its foot open where a solid triangle rises in; the triangle is four outlines shrunk to its centre, solid the way the hint's arrows are) |
 | `osd_draw_row()` | one row: a symbol, a label, and - when selected - the pill (fill 72 % and a white outline) around them; everything scales with the pill's height; the label is clipped to the pill |
 | `osd_draw_hint()` | a dim hint line, the arrows for up and down drawn as shapes (the face has no U+25B2) |
-| `osd_launcher_bands()`, `osd_launcher_draw()` | the launcher's **opaque page**: the ground (`OSD_PAGE_GROUND` 0xff0b0e0d) over the whole canvas, the mock-up's "Launcher C" list in the column on the left (header, up to six rows, Standby set apart at the foot, hint line), the rest calm. Cut into **tiles**: the page's bands (header, one per row of 124 units, foot, and the gap between the rows at the top and those at the foot) each in a left part (the column, 700 units) and a right part (the ground alone); `osd_launcher_draw(c, l, tile)` repaints one tile, so moving the selection repaints two row tiles of the column and not the page |
+| `osd_launcher_bands()`, `osd_launcher_draw()` | the launcher's **opaque page**: the ground (`OSD_PAGE_GROUND` 0xff0b0e0d) over the whole canvas, the mock-up's "Launcher C" list in the column on the left (header, up to seven rows, Standby set apart at the foot, hint line), the rest calm. Up to six rows have the mock-up's size; seven (05.11.2026: the image with Screen Mirroring and Standby) are all drawn 0.86 times as large - pill, symbol, label, the margins and the gap before Standby alike - so that they fit between the header and the foot, which stay where they are (*superseded 05.11.2026:* "up to six rows"). Cut into **tiles**: the page's bands (header, one per row of 124 units, foot, and the gap between the rows at the top and those at the foot) each in a left part (the column, 700 units) and a right part (the ground alone); `osd_launcher_draw(c, l, tile)` repaints one tile, so moving the selection repaints two row tiles of the column and not the page |
 
 The page is **opaque** (Marco, 15.10.2026: "launcher and settings must have a ground - that is not the same as the overlays"): a
 translucent list over a picture is unreadable over some pictures. The ground and the lit pill (`OSD_PAGE_PILL` 0x1c2321) are the
 colours of `h713-settings`' `ui.c`, so that launcher and settings are one line. Everything but the ground stays inside a **safe
 margin of 5 %** on each side (`OSD_SAFE_PERCENT`: 96 px left and right, 54 px top and bottom at 1080p, 64 and 36 at 720p); `test-menu`
-measures it at 1080p, 720p and 540p for every selection, with six rows and with the Kodi image's three - together with the page
+measures it at 1080p, 720p and 540p for every selection, with six rows, with the Kodi image's three and with the AirPlay image's seven - together with the page
 being opaque everywhere, the tiles covering the canvas exactly once, the lit pill's exact colour, and the invariant h713-osd's
 incremental redraw lives on: a tile repainted alone is bit for bit what a full draw gives, a move of the selection changes two tiles
 and no other. `osd-mockup` draws the page in the states of the launcher as `launcher-*.pam`. (The first design, a gradient over the

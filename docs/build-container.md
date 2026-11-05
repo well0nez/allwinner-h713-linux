@@ -59,6 +59,64 @@ podman exec -u root h713-build bash -c '
 
 Repeat this whenever you recreate the container. A fresh container has LLVM 18 again.
 
+## Rust for the kernel
+
+Every kernel build since 05.11.2026: the release defconfig has `CONFIG_RUST=y` (7.3.1, for `h713_drm`;
+[kernel-rust.md](kernel-rust.md)). *Superseded:* "only for kernels built with the developer fragment `KERNEL_CONFIG=rust`;
+the release build does not use it". Pinned: rustup-init 1.28.2 (checked against its SHA-256), the toolchain 1.89.0 with
+`rust-src` (the kernel compiles `core` itself from it), `rustfmt` and `clippy`, and `bindgen-cli` 0.72.1 from crates.io
+with its own `Cargo.lock`. rustc 1.89 is built on LLVM 20, the same major version as the clang above; bindgen loads that
+clang's `libclang-20` at run time. Kernel 6.18 asks for rustc >= 1.78 and bindgen >= 0.65.1
+(`scripts/min-tool-version.sh`). Everything goes into `/opt/rust`; the links in `/usr/local/bin` point at the toolchain's
+own binaries, not at rustup's proxies, so the unprivileged build user needs no `RUSTUP_HOME`:
+
+```bash
+podman exec -u root h713-build bash -c '
+  set -e
+  export RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo
+  curl -fsSL https://static.rust-lang.org/rustup/archive/1.28.2/x86_64-unknown-linux-gnu/rustup-init -o /tmp/rustup-init
+  echo "20a06e644b0d9bd2fbdbfd52d42540bdde820ea7df86e92e533c073da0cdd43c  /tmp/rustup-init" | sha256sum -c -
+  chmod +x /tmp/rustup-init
+  /tmp/rustup-init -y --no-modify-path --profile minimal --default-toolchain 1.89.0 -c rust-src,rustfmt,clippy
+  rm /tmp/rustup-init
+  /opt/rust/cargo/bin/cargo install --locked --root /opt/rust/cargo bindgen-cli --version 0.72.1
+  tc=/opt/rust/rustup/toolchains/1.89.0-x86_64-unknown-linux-gnu/bin
+  for t in rustc rustdoc rustfmt cargo clippy-driver; do ln -sf $tc/$t /usr/local/bin/$t; done
+  ln -sf /opt/rust/cargo/bin/bindgen /usr/local/bin/bindgen
+  chmod -R a+rX /opt/rust'
+```
+
+Check, in any prepared kernel tree: `make ARCH=arm64 LLVM=1 rustavailable` says `Rust is available!`. Without this
+step kconfig drops `CONFIG_RUST` from the release defconfig without a word, and `CONFIG_DRM_H713` with it - the kernel
+would build without `h713_drm`. So the kernel stage of `build.sh` stops right after the configuration when the `.config`
+lacks any line of the defconfig (`mainline/build/kconfig-check.sh`: "kconfig dropped what hy200_qz713df_a1_defconfig
+asks for ...: CONFIG_RUST=y, CONFIG_DRM_H713=m, CONFIG_DRM_H713_BENCH=y", tried with the toolchain off the `PATH`), and
+after `modules_install` when `h713_drm.ko` is missing where `.config` builds it; `release/check-display.py` holds the
+image to the same (`--defconfig`, `--kernel-config`, step 10 of `build-all.sh`). A `KERNEL_CONFIG=rustbench*` build
+stops the same way ("dropped what the fragments ask for: CONFIG_RUST=y").
+
+## Rust for h713-airplay (the desktop profile)
+
+`--profile desktop` cross-builds the AirPlay receiver and presenter (`userspace/h713-airplay`, Rust; step 6e of
+`release/build-all.sh`, 05.11.2026). It uses the toolchain of the section above and adds the board's target to it, once, as root:
+
+```bash
+podman exec -u root h713-build bash -c '
+  export RUSTUP_HOME=/opt/rust/rustup CARGO_HOME=/opt/rust/cargo
+  /opt/rust/cargo/bin/rustup target add --toolchain 1.89.0 aarch64-unknown-linux-gnu
+  chmod -R a+rX /opt/rust'
+```
+
+Check: `podman exec h713-build bash -lc 'ls "$(rustc --print target-libdir --target aarch64-unknown-linux-gnu)"'` lists the target's
+libraries. `release/build-all.sh` tests the same directory in its step 0 for a desktop build and stops there without it, not half an
+hour later. Nothing else is installed for it: the container's clang links the two programs, with lld, against a sysroot of their own -
+Debian 13's arm64 libraries (glibc 2.41, FFmpeg 7.1, ALSA, EGL/GLES, GBM, libva, Wayland, and `libgcc-14-dev` for the link), which
+`userspace/h713-airplay/tools/make-sysroot.py` fetches from deb.debian.org and security.debian.org (each package checked against the
+archive's SHA-256) into `mainline/build/sysroot-airplay-arm64/`, and fetches again only when that script changes. So the step needs the
+network: for that sysroot, and for the crates of `Cargo.lock`, which cargo takes from crates.io into the build user's `~/.cargo` in the
+container. The crate pins rustc 1.88.0 in its `rust-toolchain.toml` for a host with rustup; the container's `cargo` is the toolchain's
+own binary, not rustup's proxy, and builds it with 1.89.0 (the workspace asks for 1.88 or newer).
+
 ## The OpenRISC compiler for crust
 
 crust, the firmware of the SoC's small OR1K core ([ARISC](subsystems/arisc.md)), needs an `or1k-elf` GCC,

@@ -1,9 +1,11 @@
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 7364931da..382f1fbc7 100644
 --- a/drivers/misc/Kconfig
 +++ b/drivers/misc/Kconfig
-@@ -661,4 +661,37 @@
- source "drivers/misc/keba/Kconfig"
+@@ -586,4 +586,37 @@ source "drivers/misc/keba/Kconfig"
  source "drivers/misc/amd-sbi/Kconfig"
  source "drivers/misc/rp1/Kconfig"
+ source "drivers/misc/issei/Kconfig"
 +
 +config SUNXI_NSI
 +	tristate "Allwinner ARM-MIPS Network Service Interface"
@@ -38,12 +40,14 @@
  endmenu
 +source "drivers/misc/sunxi_tvtop/Kconfig"
 +source "drivers/misc/sunxi_decd/Kconfig"
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index e8d8d5d88..7359a4541 100644
 --- a/drivers/misc/Makefile
 +++ b/drivers/misc/Makefile
-@@ -75,3 +75,8 @@
- obj-y				+= keba/
+@@ -71,3 +71,8 @@ obj-y				+= keba/
  obj-y				+= amd-sbi/
  obj-$(CONFIG_MISC_RP1)		+= rp1/
+ obj-$(CONFIG_INTEL_SSEI)	+= issei/
 +obj-$(CONFIG_SUNXI_NSI)		+= sunxi-nsi.o
 +obj-$(CONFIG_HY310_BOARD_MGR)	+= hy310-board-mgr.o
 +obj-$(CONFIG_HY310_KEYSTONE_MOTOR)	+= hy310-keystone-motor.o

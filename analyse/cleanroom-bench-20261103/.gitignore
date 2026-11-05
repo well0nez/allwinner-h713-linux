@@ -1,0 +1,7 @@
+# the bench's output (README.md): archived at 738a2ae9, not tracked here
+*.log
+*.txt
+*.vpb
+*.rxtime
+*.vp
+replay-client.json

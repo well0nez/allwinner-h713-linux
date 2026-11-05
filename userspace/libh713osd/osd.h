@@ -75,9 +75,10 @@ void osd_draw(struct osd_canvas *c, const struct osd_style *s, const struct osd_
  * mock-up's numbers, scaled by canvas height / 1080, so 720p and 1080p get the same layout. The launcher and
  * the settings page are built from these; text needs osd_font_open() first (below).
  */
-enum osd_icon { OSD_ICON_HDMI, OSD_ICON_FILM, OSD_ICON_GLOBE, OSD_ICON_DESK, OSD_ICON_SLIDERS, OSD_ICON_POWER, OSD_ICONS };
+enum osd_icon { OSD_ICON_HDMI, OSD_ICON_FILM, OSD_ICON_GLOBE, OSD_ICON_DESK, OSD_ICON_SLIDERS, OSD_ICON_POWER, OSD_ICON_AIRPLAY,
+		OSD_ICONS };
 
-/* the symbol's name in a launcher entry file ("hdmi", "film", "globe", "desk", "sliders", "power"); -1 if unknown */
+/* the symbol's name in a launcher entry file ("hdmi", "film", "globe", "desk", "sliders", "power", "airplay"); -1 if unknown */
 int osd_icon_by_name(const char *name);
 
 /* The opaque page's colours (the same as h713-settings' ui.c, so that the launcher and the settings are one line): the ground
@@ -107,15 +108,16 @@ void osd_draw_hint(struct osd_canvas *c, double x, double baseline, const char *
 
 /*
  * The launcher: an OPAQUE page over the whole canvas (Marco, 15.10.2026: it must have a ground, it is not an overlay over the
- * picture) in the ground colour, with the mock-up's "Launcher C" list in the column on the left - a header line, up to six rows,
- * a hint line - and the rest calm. Everything but the ground stays inside the safe margin (OSD_SAFE_PERCENT). It is cut into
+ * picture) in the ground colour, with the mock-up's "Launcher C" list in the column on the left - a header line, up to seven rows,
+ * a hint line - and the rest calm. Six rows have the mock-up's size; seven are all drawn smaller by one factor, so that they fit
+ * between the header and the foot (05.11.2026: Screen Mirroring is the image's seventh). Everything but the ground stays inside the safe margin (OSD_SAFE_PERCENT). It is cut into
  * TILES, so a caller can repaint only the tiles that changed (a move of the selection changes two rows' tiles, 700 x 124 units
  * each) and copy or pre-distort only those. A band is a strip of the page: band 0 the header, band 1 + i row i, band n + 1 the
  * foot, band n + 2 the gap between the rows at the top and those at the foot (empty, height 0, when there is none). Tile k < n + 3
  * is the band's left part, the column x 0..700 where its content is; tile n + 3 + k its right part, to the canvas' edge, the
  * ground alone. The tiles tile the canvas; they are not in the order of their y.
  */
-#define OSD_LAUNCHER_ROWS 6
+#define OSD_LAUNCHER_ROWS 7
 
 struct osd_launcher {
 	const char *head;	/* the header line, 30 units, dim: "20:47 \u00b7 HDMI 1080p60" (UTF-8) */

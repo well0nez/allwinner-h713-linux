@@ -17,6 +17,8 @@ independent path from GL, so this is not GL agreeing with itself.
 
 Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
 ---
+diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
+index 02cefac4a..61ad1de62 100644
 --- a/drivers/misc/Kconfig
 +++ b/drivers/misc/Kconfig
 @@ -3,6 +3,18 @@
@@ -38,6 +40,8 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  menu "Misc devices"
  
  config SENSORS_LIS3LV02D
+diff --git a/drivers/misc/Makefile b/drivers/misc/Makefile
+index 9ef6461a5..76372dcc7 100644
 --- a/drivers/misc/Makefile
 +++ b/drivers/misc/Makefile
 @@ -3,6 +3,7 @@
@@ -45,9 +49,12 @@ Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
  #
  
 +obj-$(CONFIG_SUNXI_SCANOUT_DMABUF)	+= sunxi-scanout-dmabuf.o
- obj-$(CONFIG_IBM_ASM)		+= ibmasm/
  obj-$(CONFIG_IBMVMC)		+= ibmvmc.o
  obj-$(CONFIG_AD525X_DPOT)	+= ad525x_dpot.o
+ obj-$(CONFIG_AD525X_DPOT_I2C)	+= ad525x_dpot-i2c.o
+diff --git a/drivers/misc/sunxi-scanout-dmabuf.c b/drivers/misc/sunxi-scanout-dmabuf.c
+new file mode 100644
+index 000000000..8e9996cae
 --- /dev/null
 +++ b/drivers/misc/sunxi-scanout-dmabuf.c
 @@ -0,0 +1,275 @@

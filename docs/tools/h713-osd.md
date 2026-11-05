@@ -39,11 +39,13 @@ h713-osd ctl status              # what is shown, the channel to h713-tv, the ma
   panel, not an overlay over the picture (Marco, 15.10.2026: it must have a ground): the ground `0xff0b0e0d`, the list of "Launcher C" in
   the column on the left, the rest calm, everything inside a safe margin of 5 % on each side (96 / 54 px at 1080p); it stays until
   `launcher close`. `SEL` the chosen row (the lit pill `0x1c2321`, the colours of h713-settings), `NOW` the second half of the header
-  (`HDMI 1080p60`; the clock is h713-osd's), then the rows - icon one of `hdmi film globe desk sliders power`, a `>` in front puts a
-  row in the group at the foot (Standby), which comes last; up to six. `launcher SEL` alone moves the selection. The answer is
+  (`HDMI 1080p60`; the clock is h713-osd's), then the rows - icon one of `hdmi film globe desk sliders power airplay` (`airplay`, Screen
+  Mirroring, since 05.11.2026), a `>` in front puts a row in the group at the foot (Standby), which comes last; up to seven, seven all
+  drawn 0.86 times as large so that they fit between the header and the foot (05.11.2026: the image with Screen Mirroring and Standby;
+  *superseded:* "up to six"), and more are `error at most 7 rows`. `launcher SEL` alone moves the selection. The answer is
   `ok unseen` when nothing can be seen (then it is not open), `error no font` without the face (`H713_OSD_FONT`, else
   `/usr/share/fonts/truetype/quicksand/Quicksand-Medium.ttf` from the `desktop` profile's `fonts-quicksand`).
-  The page is cut into tiles - the header, one per row (124 units), the foot, the gap in between, each in a left part (the column) and a
+  The page is cut into tiles - the header, one per row (124 units; 107 with seven rows), the foot, the gap in between, each in a left part (the column) and a
   right part (the ground) - and only the tiles that changed are drawn again and put into a buffer: a move of the selection costs two
   tiles of the column, not the page, which matters over a keystone (the pre-distortion walks every pixel it puts; the page is two million
   pixels). The buffer that is not shown is filled in the idle time after a refresh. Each tile is put from a source with two rows and

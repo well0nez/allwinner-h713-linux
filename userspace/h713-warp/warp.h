@@ -27,6 +27,13 @@
 #define TV_SOCKET	"/run/h713-tv/ctl"
 #define RENDER_NODE	"/dev/dri/renderD128"
 #define V4L2_NAME	"sun50i-h713-hdmirx"
+/*
+ * The clean display stack's receiver (h713_drm): the same ring of three NV16M slots, but a dequeued slot holds still for
+ * only two source frames (~33 ms at 60 Hz), and its dma-bufs are reserved memory without struct pages (importers get
+ * DMA addresses, dma_map_resource) - docs/tools/h713-tv.md, "The clean stack"
+ */
+#define V4L2_NAME_CLEAN	"h713-hdmirx-clean"	/* its sysfs name and its QUERYCAP card */
+#define V4L2_CAP_DRIVER_CLEAN	"h713_drm"		/* its QUERYCAP driver (the module's name) */
 #define WAYLAND_SOCKET	"/run/h713-warp/wayland"	/* the Wayland server: WAYLAND_DISPLAY */
 
 #define WARP_TARGETS	3	/* triple buffering on the panel side (M9) */
@@ -136,15 +143,23 @@ int gl_fence(void);			/* an out-fence fd, or -1 */
 bool gl_is_open(void);
 void gl_targets_drop(void);		/* the three panel buffers' images, before their claim is given back */
 
-/* the Wayland client's pictures: RGB in, BT.709 limited range out, in the two passes */
+/* the Wayland client's pictures: RGB in, BT.709 limited range out, in the two passes; NV12 in (a video decoder's
+ * surfaces, 05.11.2026), drawn as the ring is - Y and CbCr moved, no colour maths */
 struct gl_format {
 	uint32_t fourcc;
 	uint64_t modifier;
 };
 struct gl_image;			/* one imported client buffer, or the wl_shm upload texture */
-int gl_formats(struct gl_format *out, int max, char *why, size_t n);	/* the RGB formats EGL imports */
+/* the RGB formats EGL imports, and NV12 LINEAR when the node imports R8 and GR88 */
+int gl_formats(struct gl_format *out, int max, char *why, size_t n);
 struct gl_image *gl_image_dmabuf(int fd, uint32_t fourcc, uint64_t modifier, int w, int h,
 				 uint32_t offset, uint32_t pitch, char *why, size_t n);
+struct gl_plane {			/* one plane of a client dma-buf */
+	int fd;
+	uint32_t offset, pitch;
+};
+/* an NV12 LINEAR buffer of w x h: Y as R8 w x h, CbCr as GR88 (w + 1) / 2 x (h + 1) / 2, as the ring's slots */
+struct gl_image *gl_image_nv12(const struct gl_plane pl[2], int w, int h, char *why, size_t n);
 struct gl_image *gl_image_shm(void);
 bool gl_image_upload(struct gl_image *im, const void *px, int w, int h, int stride, char *why, size_t n);
 int gl_image_width(const struct gl_image *im);

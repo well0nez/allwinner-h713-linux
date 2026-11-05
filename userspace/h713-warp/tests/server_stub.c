@@ -46,11 +46,12 @@ void gl_close(void) { }
 int gl_formats(struct gl_format *out, int max, char *why, size_t n)
 {
 	/* the HY310's EGL offers LINEAR, AFBC 32x8 and 16x16 (tiled too) and u-interleaved; an Intel X-tiled stands
-	 * for a modifier wayland.c has no layout for (at least w * h * bpp) */
+	 * for a modifier wayland.c has no layout for (at least w * h * bpp); NV12 LINEAR as gl.c adds it */
 	static const struct gl_format f[] = {
 		{ DRM_FORMAT_XRGB8888, DRM_FORMAT_MOD_LINEAR }, { DRM_FORMAT_ARGB8888, DRM_FORMAT_MOD_LINEAR },
 		{ DRM_FORMAT_ARGB2101010, 0x0800000000000062ull }, { DRM_FORMAT_ARGB2101010, 0x0800000000000341ull },
 		{ DRM_FORMAT_ARGB2101010, 0x0810000000000001ull }, { DRM_FORMAT_XRGB8888, 0x0100000000000001ull },
+		{ DRM_FORMAT_NV12, DRM_FORMAT_MOD_LINEAR },
 	};
 	int k = (int)(sizeof(f) / sizeof(f[0]));
 
@@ -71,6 +72,14 @@ struct gl_image *gl_image_dmabuf(int fd, uint32_t fourcc, uint64_t modifier, int
 				 uint32_t pitch, char *why, size_t n)
 {
 	(void)fd; (void)fourcc; (void)modifier; (void)offset; (void)pitch; (void)why; (void)n;
+	return image(w, h);
+}
+/* says what the GPU would import: "nv12 WxH OFFSET/PITCH OFFSET/PITCH" (Y, CbCr) */
+struct gl_image *gl_image_nv12(const struct gl_plane pl[2], int w, int h, char *why, size_t n)
+{
+	(void)why; (void)n;
+	printf("nv12 %dx%d %u/%u %u/%u\n", w, h, pl[0].offset, pl[0].pitch, pl[1].offset, pl[1].pitch);
+	fflush(stdout);
 	return image(w, h);
 }
 struct gl_image *gl_image_shm(void) { return image(0, 0); }

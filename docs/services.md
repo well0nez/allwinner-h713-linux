@@ -35,8 +35,9 @@ no key code above 247, and OK and Menu are above it. `h713-keys` and `h713-power
 
 ## The profile images (media, desktop)
 
-An image built with `--profile media,desktop` has players and clients on top of that list. None of these units is wanted by anything: the panel shows the
-HDMI input until the launcher starts one of them.
+An image built with `--profile media,desktop` has players and clients on top of that list. None of the mode units is wanted by anything: the panel shows the
+HDMI input until the launcher starts one of them, or a phone starts to mirror - AirPlay's presenter is started by its socket, and the receiver and that socket
+are wanted (05.11.2026). *Superseded 05.11.2026:* "None of these units is wanted by anything".
 
 | Unit | What it does |
 |---|---|
@@ -46,8 +47,9 @@ HDMI input until the launcher starts one of them.
 | `polkitd` | with `/etc/polkit-1/rules.d/50-h713-kodi.rules`: lets the user `h713-kodi` suspend, power off and reboot through logind - Kodi's own power menu - and nothing else |
 | `pipewire.service`, `pipewire.socket`, `wireplumber.service`, `filter-chain.service` (user units) | **masked** in `/etc/systemd/user/` (profile `media`): nothing starts PipeWire by itself; a player that wants it starts it by hand |
 | `h713-settings` | not a service: the settings page, a program the launcher's entry starts ([h713-settings](tools/h713-settings.md)); the binary is in every image, the entry in the profile `desktop` |
+| `h713-airplay.service`, `h713-airplay-show.socket`, `h713-airplay-show.service` | AirPlay screen mirroring (profile `desktop`, its decoder libraries from `media`; 05.11.2026): the receiver is always on (`multi-user.target`: mDNS, the protocol, idle at no cost), and so is the socket (`sockets.target`); the presenter is a mode unit like Kodi's that the socket starts when a phone mirrors - all as the system user `h713-airplay`. The launcher's Screen Mirroring entry runs the waiting page `h713-airplay page` ([h713-airplay](tools/h713-airplay.md)) |
 
-The two system users, `h713-kodi` and `h713-desktop`, have a home under `/var/lib` (the units' state directory), no login shell and only the groups their devices ask for.
+The three system users, `h713-kodi`, `h713-desktop` and `h713-airplay` (05.11.2026; two before), have a home under `/var/lib` (the units' state directory), no login shell and only the groups their devices ask for.
 
 ## Commands worth knowing
 
@@ -90,7 +92,7 @@ key present is the one you passed to the installer.
 |---|---|
 | `/` | the root filesystem, ext4, grown to the partition on first boot |
 | `/data` | a directory in the same filesystem, for things you want out of the way - persistent logs land under `/data/log` |
-| `/etc/h713/` | our configuration: `wifi.env`, `tv.conf`, `warp.conf`, `keystone.conf`, `power.conf`, `keys.conf`, `osd.conf`, `launcher.d/`, `keystone-ref`, `board`, `features`, and the `tvconfig` directory the picture tools use |
+| `/etc/h713/` | our configuration: `wifi.env`, `tv.conf`, `warp.conf`, `keystone.conf`, `power.conf`, `keys.conf`, `osd.conf`, `launcher.d/`, `airplay.conf` (profile `desktop`), `keystone-ref`, `board`, `features`, and the `tvconfig` directory the picture tools use |
 | `/run/log/journal` | the journal, in RAM, unless you switched it |
 
 Details: `doku/107-plan-rootfs.md` (the whole rootfs recipe and the reasoning behind each of these).

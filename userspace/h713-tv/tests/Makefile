@@ -25,6 +25,8 @@
 #   test_gamma  the gamma curve and the colour temperature: the arithmetic of the display firmware's library against checksums
 #               made by an independent description (gamma-vectors.txt), the file of raw curves, the two controls, the picture
 #               mode's colour temperature, the file werte
+#   test_stack  which display stack (docs/tools/h713-tv.md "The clean stack"): a capture node's name, the node -d names,
+#               the search's vendor-first decision, the names each stack then looks for
 #
 #   make run SYSROOT=PATH   PATH: a board root with libdrm-dev and libasound2-dev, for their headers only (the build
 #                           container has neither natively); release/build-all.sh makes one in mainline/build/sysroot-arm64
@@ -38,7 +40,7 @@ CFLAGS  += -std=gnu11 -Wall -Wextra -Wno-format-truncation -Wno-unused-function
 # program says why); the tests are built the same way
 CFLAGS  += -ffp-contract=off
 INC      = -idirafter $(SYSROOT)/usr/include -idirafter $(SYSROOT)/usr/include/libdrm
-TESTS    = test_want test_edid test_nosig test_hold test_wall test_crtc test_bare test_color test_gamma test_curve
+TESTS    = test_want test_edid test_nosig test_hold test_wall test_crtc test_bare test_color test_gamma test_curve test_stack
 
 all: $(TESTS)
 
@@ -48,7 +50,7 @@ color.o: ../color.c ../color.h
 gamma.o: ../gamma.c ../gamma.h ../color.h
 	$(CC) $(CFLAGS) -c -o $@ ../gamma.c
 
-test_want test_edid test_nosig test_hold test_wall test_crtc test_bare test_curve: color.o gamma.o
+test_want test_edid test_nosig test_hold test_wall test_crtc test_bare test_curve test_stack: color.o gamma.o
 test_color: gamma.o
 test_gamma: color.o
 
@@ -60,6 +62,7 @@ $(TESTS): %: %.c ../main.c ../color.c ../color.h ../gamma.c ../gamma.h
 
 run: $(TESTS)
 	./test_want
+	./test_stack
 	./test_edid
 	./test_nosig
 	./test_hold

@@ -11,3 +11,4 @@ test_crtc
 test_color
 test_gamma
 test_curve
+test_stack

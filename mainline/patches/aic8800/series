@@ -7,3 +7,4 @@ aic8800-0007-die-einschaltleitung-aus-dem-geraetebaum-holen.patch
 aic8800-0008-route-association-chatter-through-dbg-level.patch
 aic8800-0009-drain-the-rc-stat-queue.patch
 aic8800-0010-compile-in-the-ap-debugfs-unregister.patch
+aic8800-0011-linux-7.3-cfg80211-cookies-and-probe-client.patch

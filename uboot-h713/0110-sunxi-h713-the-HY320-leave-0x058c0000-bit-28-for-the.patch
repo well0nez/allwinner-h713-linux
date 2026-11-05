@@ -1,7 +1,7 @@
 From 26f974b8d6aab60ac1a4e98d69ac8b4e2e01027d Mon Sep 17 00:00:00 2001
 From: minpeter <62207008+minpeter@users.noreply.github.com>
 Date: Tue, 3 Nov 2026 00:32:35 +0900
-Subject: [PATCH 110/111] sunxi: h713: the HY320 - leave 0x058c0000 bit 28 for
+Subject: [PATCH 110/115] sunxi: h713: the HY320 - leave 0x058c0000 bit 28 for
  the logo
 
 Cleared after the DE group, the boot logo stood with trailing copies for

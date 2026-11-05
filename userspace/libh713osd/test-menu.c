@@ -28,6 +28,16 @@ static struct osd_launcher mk(int sel, int n)
 	return l;
 }
 
+/* the image with Screen Mirroring and Standby (05.11.2026): seven rows */
+static struct osd_launcher mk7(int sel)
+{
+	struct osd_launcher l = { "20:47 \xc2\xb7 HDMI 1080p60", 7, sel, { { OSD_ICON_HDMI, "HDMI input", 0 },
+		{ OSD_ICON_AIRPLAY, "Screen Mirroring", 0 }, { OSD_ICON_FILM, "Kodi", 0 }, { OSD_ICON_GLOBE, "Browser", 0 },
+		{ OSD_ICON_DESK, "Desktop", 0 }, { OSD_ICON_SLIDERS, "Settings", 0 }, { OSD_ICON_POWER, "Standby", 1 } } };
+
+	return l;
+}
+
 static void full(struct osd_canvas *c, const struct osd_launcher *l)
 {
 	int box[MAXT][4], n = osd_launcher_bands(c, l, box);
@@ -171,6 +181,32 @@ static void run(int w, int h)
 	tiles(&a, box, n, "three rows");
 	CHECK(box[3][1] <= (int)(844 * u) && box[3][1] + box[3][3] >= (int)(948 * u), "Standby's band holds its pill: %d+%d", box[3][1], box[3][3]);
 	CHECK(box[5][3] > (int)(300 * u), "the gap between Kodi and Standby is its own band: %d rows", box[5][3]);
+
+	/* seven rows (the image with Screen Mirroring and Standby): they fit between the header and the foot, all alike and smaller than
+	 * the mock-up's 124, Standby still apart; the page as for six, and a move repaints two tiles exactly as a full draw */
+	l = mk7(1);
+	n = osd_launcher_bands(&a, &l, box);
+	CHECK(n == 20, "seven rows are 10 bands, 20 tiles, got %d", n);
+	tiles(&a, box, n, "seven rows");
+	for (int k = 2; k <= 7; k++)
+		CHECK(abs(box[k][3] - box[1][3]) <= 1, "row band %d is as high as row band 1: %d, %d", k, box[k][3], box[1][3]);
+	CHECK(box[1][3] < (int)(123 * u), "seven row bands are smaller than 124 units: %d", box[1][3]);
+	CHECK(box[1][1] == box[0][3] && box[7][1] + box[7][3] == box[8][1], "the rows start under the header and end on the foot");
+	CHECK(box[9][3] > 0, "Standby is apart from the six rows above: a gap of %d rows", box[9][3]);
+	for (int sel = 0; sel < 7; sel++) {
+		struct osd_launcher ls = mk7(sel);
+
+		full(&a, &ls);
+		snprintf(what, sizeof(what), "%dx%d seven rows, row %d chosen", w, h, sel);
+		page(&a, what);
+	}
+	l = mk7(1);
+	l2 = mk7(2);
+	full(&a, &l);
+	osd_launcher_draw(&a, &l2, 2);
+	osd_launcher_draw(&a, &l2, 3);
+	full(&b, &l2);
+	CHECK(!memcmp(a.px, b.px, (size_t)w * h * 4), "seven rows: two tiles repainted differ from a full draw");
 	free(a.px);
 	free(b.px);
 }
@@ -181,7 +217,8 @@ int main(void)
 
 	CHECK(osd_icon_by_name("film") == OSD_ICON_FILM && osd_icon_by_name("power") == OSD_ICON_POWER &&
 	      osd_icon_by_name("sliders") == OSD_ICON_SLIDERS && osd_icon_by_name("globe") == OSD_ICON_GLOBE &&
-	      osd_icon_by_name("desk") == OSD_ICON_DESK && osd_icon_by_name("hdmi") == OSD_ICON_HDMI, "icon names");
+	      osd_icon_by_name("desk") == OSD_ICON_DESK && osd_icon_by_name("hdmi") == OSD_ICON_HDMI &&
+	      osd_icon_by_name("airplay") == OSD_ICON_AIRPLAY, "icon names");
 	CHECK(osd_icon_by_name("nope") < 0 && osd_icon_by_name("") < 0 && osd_icon_by_name(NULL) < 0, "unknown icon names");
 	if (osd_font_open(font)) {
 		printf("skipped: no font at %s (set OSD_TEST_FONT)\n", font);

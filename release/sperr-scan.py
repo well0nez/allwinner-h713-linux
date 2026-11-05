@@ -42,9 +42,11 @@ from __future__ import annotations
 import argparse, fnmatch, hashlib, importlib.machinery, importlib.util, os, re, sys
 
 PFADE = ("re/", "hy310-sicherung", "h713-dump", "analyse/hdcp-keys", "device-dumps", "mainline/build/", "tftp/", "patches-snapshots/")
-# unter den gesperrten Pfaden trotzdem erlaubt: die drei Bauskripte (alles andere in mainline/build/ ist Bauausgabe).
-# Dieselbe Liste wie die !-Zeilen in .gitignore -- uboot-prove-fragments.sh kam mit E3b dazu.
-ERLAUBT = ("mainline/build/build.sh", "mainline/build/uboot-build.sh", "mainline/build/uboot-prove-fragments.sh")
+# unter den gesperrten Pfaden trotzdem erlaubt: die Bauskripte (alles andere in mainline/build/ ist Bauausgabe).
+# Dieselbe Liste wie die !-Zeilen in .gitignore -- uboot-prove-fragments.sh kam mit E3b dazu, kconfig-check.sh (von
+# build.sh gelesen: hat kconfig die Defconfig behalten?) am 05.11.2026.
+ERLAUBT = ("mainline/build/build.sh", "mainline/build/uboot-build.sh", "mainline/build/uboot-prove-fragments.sh",
+           "mainline/build/kconfig-check.sh")
 NAMEN = ("hy310-hdcp22.bin", "hdcp_v22.bin", "h713-arisc.bin", "msp-patch.bin", "hy310-edid*.bin",
          "fmacfw*", "lmacfw*", "fw_patch*", "fw_adid*", "*.TSE", "display.bin", "display_cfg.xml",
          "LogoRegData.bin", "hdcpkey*", "secure-storage*", "emmc-*.img", "*.img", "*.ext4", "*.bundle",

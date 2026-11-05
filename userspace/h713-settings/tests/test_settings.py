@@ -64,6 +64,7 @@ class FakeTv(Ctl):
         self.sliders = (0, 0)                          # what h713-tv says the sliders stand at (it owns the mapping, color.c)
         self.cm = {}                                   # (axis, "hue"|"sat"|"value") -> step; 0 = not there
         self.fw_color = True                           # False: "not available" (another firmware)
+        self.no_cm = False                             # True: the clean display stack - the white balance, no colour management
         self.curves = False                            # True: h713-tv has the board's gamma curves (ctl get/set gamma, colour_temperature)
         self.gamma_level, self.ctemp, self.missing = 3, "auto", set()   # level 0..4; auto|normal|cool|warm; the temperatures this board has no curve for
         self.refuse = set()                            # "gamma" / "colour_temperature": the CRTC refuses a new curve for it
@@ -142,6 +143,10 @@ class FakeTv(Ctl):
         if w[0] == "cm":
             if not self.fw_color:
                 return "error cm: not the display firmware these addresses were read from\n"
+            if len(w) == 1:
+                if self.no_cm:
+                    return "ok cm [not available: the clean display stack has no colour management]\n"
+                return "ok cm all neutral (0 = as the picture mode has it)\n"
             if w[1:] == ["reset"]:
                 self.cm = {}
                 return "ok cm all neutral (registers read back, 0 ms)\n"
@@ -838,6 +843,16 @@ class ColourByPrimary(Base):
         self.assertIn('Colour info "Not available"', d)
         b.finish()
 
+    def test_not_available_on_the_clean_stack(self):
+        # h713-drm: the white balance is there (CRTC properties), the colour management is not ("cm" says so)
+        b = self.box()
+        b.tv.no_cm = True
+        b.start("Colour")
+        d = b.dump()
+        self.assertIn("(hidden) Primary colour", d)
+        self.assertIn('Colour info "Not available"', d)
+        b.finish()
+
     def test_a_refused_step_leaves_the_slider(self):
         b = self.box().start("Colour")
         self.assertIn("Hue slider 0 ", b.dump())                    # (the page has read h713-tv: it is there)
@@ -1490,6 +1505,28 @@ class InputPowerWifi(Base):
         b.keys("ok", "ok", *["down"] * 5, "ok")
         b.dump()
         self.assertIn("on_start = terminal", b.read("keys.conf"))
+        b.finish()
+
+    def mirroring(self, b):
+        """the image's entries and Screen Mirroring (05.11.2026): it names its mode, AirPlay's presenter, and runs its waiting page"""
+        self.modes(b)
+        with open(os.path.join(b.etc, "launcher.d", "15-airplay.conf"), "w") as f:
+            f.write("label = Screen Mirroring\nicon = airplay\nunit = h713-airplay-show.service\nexec = /x/page\nreturn = launcher\n")
+
+    def test_on_start_leaves_out_an_entry_with_a_unit_and_an_exec(self):
+        """a phone starts that mode, h713-keys cannot at the start of the box (it refuses such an entry for on_start): no choice here,
+        and Kodi still is one"""
+        b = self.box()
+        self.mirroring(b)
+        self.assertIn("On start choice [*Launcher|HDMI input|Kodi|Browser|Desktop|Last used]", b.start("Input").dump())
+        b.finish()
+
+    def test_on_the_wall_now_names_screen_mirroring_while_a_phone_mirrors(self):
+        b = self.box()
+        self.mirroring(b)
+        with open(os.path.join(b.log, "active"), "w") as f:
+            f.write("h713-airplay-show.service\n")
+        self.assertIn('On the wall now info "Screen Mirroring"', b.start("Input").dump())     # the mode it is, though no start choice
         b.finish()
 
     def test_every_option_has_its_sentence_for_the_wall(self):

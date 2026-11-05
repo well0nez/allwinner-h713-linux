@@ -24,10 +24,13 @@ ENV_BYTES = ENV_SECTORS * SECT
 # U-Boot that ships with the image -- had v0.7's environment survived,
 # `loglevel=4` from 0033 would never have arrived, silently. h713_gate: whoever
 # switched the gate off for the workbench does not want to do it again after an
-# upgrade. h713_boot: emmc or net, the same. (Marco, 12.09.: "denk das bitte
+# upgrade. h713_boot: emmc or net, the same. h713_display: vendor or clean, the
+# display stack chosen with h713-display set (docs/subsystems/display-stacks.md);
+# an image whose kernel cannot load h713_drm goes back to vendor by itself at
+# its first boot (h713-display load). (Marco, 12.09.: "denk das bitte
 # korrekt durch" -- the alternatives were keep everything or discard
 # everything, and both are wrong.)
-ENV_CARRY_OVER = ("h713_gate", "h713_boot")
+ENV_CARRY_OVER = ("h713_gate", "h713_boot", "h713_display")
 
 
 def env_read(raw):
