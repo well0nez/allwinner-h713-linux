@@ -1,5 +1,7 @@
 # 231 HY320: Clean-Room-Bench, Q0 und Q1 - Protokoll
 
+> 05.11.2026: die Rohdaten dieses Eintrags (Logs, `dmesg`, Ausgaben unter `analyse/cleanroom-bench-20261103/`) liegen nicht mehr im Baum, sondern unverändert in Commit `738a2ae9`: <https://github.com/minpeter/allwinner-h713-linux/tree/738a2ae9ad06bf482437c0b00f9cb556c054f5d9/analyse/cleanroom-bench-20261103>. Skripte und Werkzeuge bleiben dort, wo sie genannt sind.
+
 Datum: 03.11.2026 (Gerätezeit falsch, April 2026). Gerät: der HY320 des Besitzers. Augen: **keine** - der Besitzer war
 nicht da, alles über Registerlesungen und Logs. Rolle: Spezifikationsseite des Clean-Room-Prozesses
 (`docs/cleanroom.md`); Fragen aus `/srv/h713/cleanroom-held/90-open-questions.md` Q0, Q1. Werkzeuge und Rohlogs:
@@ -113,7 +115,7 @@ der Spezifikation: `cleanroom-h713` `1423868` (10 §6.2, neues Dokument 12, 00 �
     `fe74/78` mit Boot-Totalen), auch nicht bei erneutem Aufspielen; mit 15 s Wartezeit 5 von 5 gut. Ursache offen.
 - Am Ende: Normalboot, `fw_printenv` gleich dem Abzug (Bench-Variablen und die von `saveenv` mitgeschriebenen
   Laufzeitvariablen wieder entfernt), GP5 `RUN1`, HDMI-Signal zurück. Werkzeuge und Logs:
-  `analyse/cleanroom-bench-20261103/` (`r2-*.log`, `diff-*.txt`).
+  [`analyse/cleanroom-bench-20261103/`](https://github.com/minpeter/allwinner-h713-linux/tree/738a2ae9ad06bf482437c0b00f9cb556c054f5d9/analyse/cleanroom-bench-20261103) (`r2-*.log`, `diff-*.txt`; Commit `738a2ae9`).
 - Nächstes: welche Wörter von PROC/SCL/PNL/DEI über die Init-Tabellen hinaus für das Bild nötig sind; Frame-Lock auf
   60 Hz; ein Bild mit Augen an der Wand.
 
@@ -615,7 +617,7 @@ mit gepatchtem DSP). Ergebnisse (Entwurf 70 v2, §2a/§3a/§4.6/§6.4/§9a; 79 �
 
 ## 34 Gerätetest der Stapelwahl h713_display (cd15b82b, U-Boot-Umgebung d68fbcab97e, Modul dbd25d04) (04.11.)
 
-Rohdaten `analyse/cleanroom-bench-20261103/logs/display-switch/ds-step*.txt`. Kernel der Normalstarts hier 7.3.1 (nicht
+Rohdaten [`analyse/cleanroom-bench-20261103/logs/display-switch/ds-step*.txt`](https://github.com/minpeter/allwinner-h713-linux/tree/738a2ae9ad06bf482437c0b00f9cb556c054f5d9/analyse/cleanroom-bench-20261103/logs/display-switch) (Commit `738a2ae9`). Kernel der Normalstarts hier 7.3.1 (nicht
 6.18.38; `boot_emmc` lädt `h713-kernel-7.3.fit`), daher wurde `boot_emmc` des Geräts um `${h713_display_args}` ergänzt
 statt der Repo-Zeile (die `h713-kernel.fit` = 6.18.38 lädt). `bootcmd` = Repo-Zeile mit `h713_conlog ...` nach `fi;`.
 
