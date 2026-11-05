@@ -1,3 +1,22 @@
+misc: add a dma-buf exporter for the H713 scanout carveout
+
+The GPU video path needs a render target the display can actually scan
+out of. Nothing else in this kernel produces one: /dev/dma_heap and
+/dev/udmabuf are both absent, panfrost's own BOs are shmem-backed and
+scattered, and DECD's MAP_LINEAR_BUFFER hands back a dma_addr rather
+than an fd.
+
+uboot-scanout@6c100000 is a no-map reservation with no struct page, so
+the exporter builds its sg_table with dma_map_resource() rather than
+sg_set_page(). panfrost consumes sg_dma_address() and is content with a
+page-less table.
+
+Verified on hardware: the GPU renders a position-dependent gradient into
+0x6c100000 and the bytes read back correctly through /dev/mem -- an
+independent path from GL, so this is not GL agreeing with itself.
+
+Signed-off-by: Christopher Stenger <chris.h.stenger@gmail.com>
+---
 diff --git a/drivers/misc/Kconfig b/drivers/misc/Kconfig
 index 02cefac4a..61ad1de62 100644
 --- a/drivers/misc/Kconfig

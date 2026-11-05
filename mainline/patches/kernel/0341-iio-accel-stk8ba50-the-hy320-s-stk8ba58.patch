@@ -1,3 +1,28 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: iio: accel: stk8ba50: the HY320's STK8BA58
+
+The HY320's accelerometer at 0x18 on twi1 is a Sensortek STK8BA58 (stock
+tree: "stk,stk83xx", node stk8ba58@18). Read on the unit (01.11.2026,
+I2C reads only): register 0x00 is 0x87, the ID the vendor's stk83xx
+driver gives a data shift of 4 (12 bit); 0x0f is 0x03 (+-2 g), 0x10 is
+0x1f, 0x11 is 0x00; the pairs 0x02..0x07, read as 12 bits left justified,
+give -40/-390/935 at rest, |a| = 1020 LSB - one g at 1024 LSB/g. That is
+the STK8BA50's register map (data 0x02..0x07, RANGESEL 0x0f with codes
+3/5/8, BWSEL 0x10, POWMODE 0x11, SWRST 0x14) with 12-bit samples.
+
+So stk8ba50 learns a second chip: "sensortek,stk8ba58" / "stk8ba58", 12-bit
+channels (s12/16>>4) and its three ranges (+-2/4/8 g at 1024/512/256 LSB/g;
+the vendor driver switches a 16 g request to 8 g). The chip ID is checked
+for the STK8BA58 only and a mismatch is a warning. The driver gets an OF
+match table, so the module loads from the device tree.
+
+And the sampling frequency: STK8BA50_ACCEL_CHANNEL had a comma where an
+"|" belonged, which put IIO_CHAN_INFO_SAMP_FREQ into
+info_mask_shared_by_type_available and left the device without a
+sampling-frequency attribute, while sampling_frequency_available was
+there. It is shared by all channels now: "sampling_frequency", the name
+its _available attribute already has and the one h713-keystone writes.
+
 diff --git a/Documentation/devicetree/bindings/trivial-devices.yaml b/Documentation/devicetree/bindings/trivial-devices.yaml
 index 2de8eb09c..b0e7ba957 100644
 --- a/Documentation/devicetree/bindings/trivial-devices.yaml
