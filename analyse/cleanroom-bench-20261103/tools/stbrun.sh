@@ -1,6 +1,6 @@
 #!/bin/sh
 # stbrun.sh TAG MODE: arm the bench, boot it, run one standby, report where it ended.
-S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=10 -o ConnectTimeout=8 -J root@192.168.0.180 root@192.168.4.1"
+S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=10 -o ConnectTimeout=8 -J root@${H713_JUMP:?set H713_JUMP to the bench jump host} root@192.168.4.1"
 timeout 200 sh /tmp/specbench/boot.sh bench | grep BOOT
 timeout 300 $S "while [ \$(cut -d. -f1 /proc/uptime) -lt 30 ]; do sleep 1; done; PRE=$PRE PMTEST=$PMTEST VPBOFF=\"$VPBOFF\" sh /data/bench/stb.sh $1 20 $2 $3" >/dev/null 2>&1
 i=0; while [ $i -lt 60 ]; do $S true 2>/dev/null && break; sleep 5; i=$((i+1)); done

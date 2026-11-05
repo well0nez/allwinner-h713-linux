@@ -2,7 +2,7 @@
 # The owner's visual window on a fixed schedule (2026-11-04): 1 normal-boot HDMI 20 s -> bench reboot -> 2 P1 bars 20 s
 # -> 3 bars under a white overlay 20 s -> 4 boot logo 10 s -> 5 HDMI via the clean module 30 s -> restore.
 # Every state's start and end is logged with the host time (UTC) to /tmp/specbench/window.log.
-S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=10 -o ConnectTimeout=8 -J root@192.168.0.180 root@192.168.4.1"
+S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=10 -o ConnectTimeout=8 -J root@${H713_JUMP:?set H713_JUMP to the bench jump host} root@192.168.4.1"
 W=/tmp/specbench/window.log
 ts() { echo "$(date -u +%H:%M:%S) $*" | tee -a $W; }
 hold() { sleep "$1"; }

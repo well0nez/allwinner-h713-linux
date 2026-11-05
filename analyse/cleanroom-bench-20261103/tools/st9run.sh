@@ -1,6 +1,6 @@
 #!/bin/sh
 # st9run.sh TAG MODE : bench boot, one step-9 sleep (detached on the device, so a Wi-Fi restart cannot kill it), report
-S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=10 -o ConnectTimeout=8 -J root@192.168.0.180 root@192.168.4.1"
+S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=10 -o ConnectTimeout=8 -J root@${H713_JUMP:?set H713_JUMP to the bench jump host} root@192.168.4.1"
 timeout 200 sh /tmp/specbench/boot.sh bench >/dev/null 2>&1
 timeout 120 $S "while [ \$(cut -d. -f1 /proc/uptime) -lt 30 ]; do sleep 1; done; setsid nohup sh /data/bench/st9.sh $1 $2 </dev/null >/dev/null 2>&1 &" >/dev/null 2>&1
 sleep 100

@@ -11,7 +11,7 @@
 # Needs /data/bench/{envrestore.py,blog.py} and /root/{h713_drm.ko,kms-test,
 # vp-bench,vis.sh} on the device.
 set -eu
-S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=10 -o ConnectTimeout=8 -J root@192.168.0.180 root@192.168.4.1"
+S="ssh -o BatchMode=yes -o StrictHostKeyChecking=no -o UserKnownHostsFile=/dev/null -o LogLevel=ERROR -o ServerAliveInterval=10 -o ConnectTimeout=8 -J root@${H713_JUMP:?set H713_JUMP to the bench jump host} root@192.168.4.1"
 D=$(dirname "$0")
 waitup() {
 	sleep 22
