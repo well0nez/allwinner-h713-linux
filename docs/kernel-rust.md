@@ -185,7 +185,7 @@ boot_rust=setenv h713_boot emmc; saveenv; wdt dev watchdog@2051000; wdt start 16
 
 `bootcmd` runs `boot_${h713_boot}`, so `fw_setenv h713_boot rust` + `reboot` boots the `-rust` FIT once. `boot_rust`
 puts `h713_boot` back to `emmc` and saves it *before* it loads anything, so every later boot - a `reboot`, a watchdog
-reset, a hang - is the normal one again. The watchdog (16 s, as in the bench boot of `doku/228`) covers a hang between
+reset, a hang - is the normal one again. The watchdog (16 s, as in the bench boot of `doku/231`) covers a hang between
 U-Boot and the kernel's watchdog driver; systemd keeps it fed after that. Afterwards remove what `saveenv` wrote
 besides `h713_boot` (runtime variables): `fw_setenv fdtcontroladdr`, `fw_setenv mmc_bootdev`, `fw_setenv serial#`, and
 `fdtfile` back to its old value (`allwinner/allwinner/sun50i-h713-hy320.dtb` on the HY320). A bench boot that needs

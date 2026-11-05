@@ -28,7 +28,7 @@ nicht da, alles über Logs, Registerlesungen und Abzüge. Zweig `hy320`: Merge `
   `linux-7.3.1-78707904...`, `modroot.78707904`. Hashes: FIT `fd3c882f6cf4aba2`, `h713_drm.ko` `c10f5ded8e2c9d92`,
   `aic8800_bsp.ko` `d93bca9036fd56d6`, `aic8800_fdrv.ko` `f49037072c763948`, `aic8800_btlpm.ko` `4eeaa7f35d0cdcf9`.
   h713-tv `14c1744c`, h713-warp `ab85c264` aus `hy320` neu gebaut (`make -B cross` mit `sysroot-arm64`): bitgleich
-  mit den Binärdateien von §34a in `doku/228`.
+  mit den Binärdateien von §34a in `doku/231`.
 
 ## 2 Einbau
 
@@ -82,7 +82,7 @@ severed`, auch nach `h713-tv ctl replug` (die Quelle war aus). Alles, was ein Qu
 
 - Bild und Ton von einer HDMI-Quelle auf beiden Stapeln auf diesem Kern (vendor: Bild über den Kanal, 48 kHz; clean:
   `capturing`, `video_source hdmi`, Trapez auf dem HDMI-Bild). Auf 7.3.1-rustbench mit gleichem Modulquellstand
-  belegt (`doku/228` §34a).
+  belegt (`doku/231` §34a).
 - Der DT-Weg von `h713_drm` (Knoten `okay`, ohne `bench=1`) - am selben Tag gefahren, §7.
 
 ## 5 Ende
@@ -131,7 +131,7 @@ mit `fdtput ... /soc/display-engine@5600000 status okay`. Einmalpfade `boot_73dt
   Gate-Wörter von 58 §3 gesetzt (`0x02001050 = 0xb9002a00`, `db0/db4 0x80000000`, `db8 0xc4000005`, `dc0 0x80000005`,
   `dd8 0x00010001`, `d6c 0x80000305`, `d74 0x81000001`, `d88 0x00010001`, wie mit `clk_ignore_unused`); alle Ebenen-
   Prüfungen wie Start 2 (S1-T6: U = 45360 = 1080 x 42), Startseite offen. **Der ARISC-Treiber startet nicht**: `ARISC
-  startup notify malformed (-71)` (wie in `doku/228` §24 auf 7.3.1-rustbench), daher `EDID upload on port 1: -19`
+  startup notify malformed (-71)` (wie in `doku/231` §24 auf 7.3.1-rustbench), daher `EDID upload on port 1: -19`
   alle 5 s und kein Empfängerzugriff (0 `receiver sequence`). Die RTC-Wörter lesen sich aus Linux als `0x00010000`
   (`0x07090114`), der Neustart lief trotzdem durch (U-Boot fand `RUN1`): eine Lesung über einen abgeschalteten Takt.
 - **Start 4 (ohne `clk_ignore_unused`, `options h713_drm hdmi_edid_external=1` für diesen Start)**: TV top wie vom

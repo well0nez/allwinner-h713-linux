@@ -202,7 +202,7 @@ h713_display_args`, then the list of [kernel-rust](../kernel-rust.md) ("One-shot
 Host tests: `rootfs/tests/test_h713_display.py` (the tool against a made-up root and environment),
 `release/tests/test_check_display.py` (the gate, with the board environment, the HY320's `CONFIG_CONSOLE_RECORD` one, and
 the overlay's files), `installer/tests/test_env_from_device.py` (the carry-over). On the HY320 (04.11.2026, normal
-kernel 7.3.1, `doku/228` §34/§34a): every step above as expected, the clean stack end to end with the picture, the
+kernel 7.3.1, `doku/231` §34/§34a): every step above as expected, the clean stack end to end with the picture, the
 keystone on the HDMI picture and Kodi through `h713-warp`, after the receiver's QUERYCAP fix (`f5105949`).
 
 ### On the release kernel (05.11.2026)

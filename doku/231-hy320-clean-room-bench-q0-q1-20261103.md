@@ -1,4 +1,4 @@
-# 228 HY320: Clean-Room-Bench, Q0 und Q1 - Protokoll
+# 231 HY320: Clean-Room-Bench, Q0 und Q1 - Protokoll
 
 Datum: 03.11.2026 (Gerätezeit falsch, April 2026). Gerät: der HY320 des Besitzers. Augen: **keine** - der Besitzer war
 nicht da, alles über Registerlesungen und Logs. Rolle: Spezifikationsseite des Clean-Room-Prozesses
