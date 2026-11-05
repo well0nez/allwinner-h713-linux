@@ -1048,8 +1048,11 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `boards/hy300-2023/` (`KERNEL_DTB`, `UBOOT_BOARD=hy300_2023`), Kernel **0350** (HY300-Pro-Baum, `motor_ctr` aus; elog/Übergabe
       bleiben die des HY300 Pro - Firmware nie gelaufen, schwarze Wand nach dem Logo wäre das Zeichen), U-Boot-Fork-Zweig
       `versuch/hy300-2023` (`212454b3952`: Zeile "ADT-3 2023-06" in `h713_mips_fw_revs[]` mit vier Nullen, `hy300_2023_defconfig`
-      mit HY350-Block, dts); am 05.11. nach `h713-hy310` gepusht (Marco), Spiegel 112 verifiziert, Gitlink gesetzt. Status und Ergebnis der Bauten: Bericht. Nächste Schritte wie beim T08:
-      Fork-Push, Spiegel, Gitlink, Merge, TEST-Abbild, Antwort mit Schritt 0 (sein eigenes U-Boot) und dem Hinweis auf den Vollabzug.
+      mit HY350-Block, dts); am 05.11. nach `h713-hy310` gepusht (Marco), Spiegel 112 verifiziert, Gitlink gesetzt. Status und Ergebnis der Bauten: Bericht.
+      **05.11.2026 veröffentlicht (Marco: "Ja, alles vier"):** Merge `41bc325d` gepusht, Tag `hy300-2023-test1`, Pre-Release mit dem
+      TEST-Abbild `v0.97.2-hy300test1` (10 Dateien, `test_for=hy300_2023`), Antwort in #8 (Schritt 0 mit seinem eigenen U-Boot bei
+      792 MHz, Vollabzug `dump --full` als Rückweg, Linux-only, GPT per `sgdisk -p` und monitor/optee-Hashes erbeten). **Offen:** seine
+      Rückmeldung; nach GPT/Hashes das Profil von "angenommen" auf gelesen heben; AIC8801 wie beim T08 (4.17) beobachten.
 
 ## 5 Installer und Werkzeuge
 
