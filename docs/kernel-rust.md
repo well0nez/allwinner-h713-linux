@@ -223,7 +223,7 @@ podman exec h713-build sh -c 'cd /work/mainline/build/rb73-wt && BOARD=hy320 KER
 One-shot selector, like `boot_rust`:
 
 ```
-boot_rustbench73=setenv h713_boot emmc; saveenv; wdt dev watchdog@2051000; wdt start 16000; if ext4load mmc 1:5 0x60000000 h713-kernel-rustbench73.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw"; bootm 0x60000000; fi
+boot_rustbench73=setenv h713_boot emmc; saveenv; wdt dev watchdog@2051000; wdt start 16000; if ext4load mmc 1:5 0x60000000 h713-kernel-rustbench73.fit; then setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw ${h713_display_args}"; bootm 0x60000000; fi
 ```
 
 `fw_setenv h713_boot rustbench73` + `reboot` boots it once; every later boot is the default again. Afterwards put back
