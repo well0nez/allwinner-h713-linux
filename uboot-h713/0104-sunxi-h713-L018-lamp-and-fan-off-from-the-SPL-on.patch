@@ -1,7 +1,7 @@
 From d54ab262cc3d27d1665aec177d66ee09d656882a Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sun, 25 Oct 2026 03:59:48 +0100
-Subject: [PATCH 104/111] sunxi: h713: L018 - lamp and fan off from the SPL on
+Subject: [PATCH 104/113] sunxi: h713: L018 - lamp and fan off from the SPL on
 
 The L018's PB5 switches lamp and fan on at its reset level, and its PB4
 leaves the lamp at full light; h713_l018_lamp_fan_off() ran in U-Boot

@@ -1,0 +1,74 @@
+From ef6cf9a0d43f3c735f2b4eb38847f546fdee2fe9 Mon Sep 17 00:00:00 2001
+From: minpeter <62207008+minpeter@users.noreply.github.com>
+Date: Wed, 4 Nov 2026 18:20:01 +0900
+Subject: [PATCH 112/113] sunxi: h713: h713_display - the display stack per
+ boot, vendor or clean
+
+hy310.env: h713_display=vendor by default. bootcmd branches on it: "clean"
+runs h713_disp init ${h713_project} noboot logo (the MIPS stays in reset,
+the panel and the logo are set up) and sets h713_display_args to
+h713.display=clean module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,
+sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd; anything else runs today's
+h713_disp init ${h713_project} logo with module_blacklist=h713_drm. boot_emmc
+and boot_net append ${h713_display_args} to their bootargs, so the two stacks'
+command lines differ in those words only. Userspace reads h713.display=clean
+(ConditionKernelCommandLine=); the kernel ignores it.
+---
+ board/sunxi/hy310.env | 32 ++++++++++++++++++++++++++++----
+ 1 file changed, 28 insertions(+), 4 deletions(-)
+
+diff --git a/board/sunxi/hy310.env b/board/sunxi/hy310.env
+index 551112d013f..7e0136307f8 100644
+--- a/board/sunxi/hy310.env
++++ b/board/sunxi/hy310.env
+@@ -25,9 +25,24 @@
+  * See doku/108. The "logo" in bootcmd is optional: without bootlogo.bmp in
+  * that partition's root (/boot/bootlogo.bmp on our layout) init only warns and
+  * the panel stays black until Linux, because the init path fills the OSD
+- * buffer black. The installer puts the file there. */
++ * buffer black. The installer puts the file there.
++ *
++ * h713_display picks the display stack for the next boot (docs/subsystems/
++ * display-stacks.md in the h713 repository); the installer carries it over.
++ * "vendor", and anything that is not "clean", is the vendor stack: init starts
++ * display.bin, and the kernel refuses the clean-room driver h713_drm. "clean"
++ * keeps the MIPS in reset (noboot; the logo stays, the panel is set up), and
++ * the kernel refuses the five drivers that talk to the firmware - by
++ * module_blacklist=, which also refuses them as a dependency, where a
++ * modprobe.d blacklist would not. h713.display=clean is the word userspace
++ * reads from /proc/cmdline (systemd ConditionKernelCommandLine=): the kernel
++ * ignores it (a module parameter of no module). bootcmd puts the words into
++ * h713_display_args at every boot, and every boot path appends that variable
++ * to its bootargs; a boot path of a device's own (boot_rust) has to do the
++ * same, or it boots the clean stack's U-Boot half with the vendor's kernel half. */
+ h713_boot=emmc
+ h713_gate=1
++h713_display=vendor
+ h713_project=0x30
+ h713_mips_dev=1#hy310-boot
+ h713_mips_path=mips
+@@ -37,12 +52,21 @@ nfsroot=/srv/h713-rootfs
+ bootargs_base=console=ttyS0,115200 rootwait clk_ignore_unused pd_ignore_unused cma=128M net.ifnames=0 panic=10
+ boot_emmc=
+ 	if ext4load mmc 1:5 0x60000000 h713-kernel.fit; then
+-		setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw";
++		setenv bootargs "${bootargs_base} loglevel=4 root=PARTLABEL=hy310-rootfs rw ${h713_display_args}";
+ 		bootm 0x60000000;
+ 	fi
+ boot_net=
+ 	dhcp;
+-	setenv bootargs "${bootargs_base} earlycon root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp";
++	setenv bootargs "${bootargs_base} earlycon root=/dev/nfs rw nfsroot=${serverip}:${nfsroot},vers=3,tcp ip=dhcp ${h713_display_args}";
+ 	tftpboot 0x60000000 ${serverip}:${bootfile};
+ 	bootm 0x60000000
+-bootcmd=h713_disp init ${h713_project} logo; run boot_${h713_boot}; run boot_net
++bootcmd=
++	if test "${h713_display}" = clean; then
++		h713_disp init ${h713_project} noboot logo;
++		setenv h713_display_args "h713.display=clean module_blacklist=hy310_cpu_comm,sun50i_h713_hdmirx,sun50i_h713_mips,sun50i_h713_msp,sun50i_h713_afbd";
++	else
++		h713_disp init ${h713_project} logo;
++		setenv h713_display_args "module_blacklist=h713_drm";
++	fi;
++	run boot_${h713_boot};
++	run boot_net

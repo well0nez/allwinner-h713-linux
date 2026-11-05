@@ -1,7 +1,7 @@
 From c97e5c6bb78d0747fc02c213375eadda3734380e Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Sun, 25 Oct 2026 22:13:32 +0100
-Subject: [PATCH 105/111] sunxi: h713: L018 - the power key red in the gate,
+Subject: [PATCH 105/113] sunxi: h713: L018 - the power key red in the gate,
  blue when started
 
 Plugged in but off, the L018's power key lights red under stock, and blue
