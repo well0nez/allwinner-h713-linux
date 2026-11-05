@@ -198,9 +198,9 @@ CONFIG_DRM_PANEL_EDP=y
 CONFIG_DRM_PANEL_SIMPLE=y
 CONFIG_DRM_SIMPLE_BRIDGE=y
 
-# h713_drm (0355-0358), the clean display stack's driver (docs/subsystems/display-stacks.md): a module that only
+# h713_drm (0356-0359), the clean display stack's driver (docs/subsystems/display-stacks.md): a module that only
 # h713-display.service loads, on a boot with h713_display=clean; the vendor boot's command line refuses it
-# (module_blacklist=h713_drm). The bench mode is in: the HY320's node of it is disabled (0358), so the clean boot
+# (module_blacklist=h713_drm). The bench mode is in: the HY320's node of it is disabled (0359), so the clean boot
 # loads it with bench=1, the form that has run on the device.
 CONFIG_DRM_H713=m
 CONFIG_DRM_H713_BENCH=y

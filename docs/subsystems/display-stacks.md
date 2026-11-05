@@ -81,7 +81,7 @@ vendor"). That boot shows the logo and no picture; the next boot is the vendor s
 
 `h713-display.service` (sysinit, after `local-fs.target` and `/boot`) runs `h713-display load` on a clean boot:
 `modprobe sun50i-h713-arisc`, then `modprobe h713_drm`, with `bench=1` when the device tree has no enabled node
-`allwinner,sun50i-h713-display-engine` - the HY320's tree has the node disabled (kernel `0358`), the other trees have
+`allwinner,sun50i-h713-display-engine` - the HY320's tree has the node disabled (kernel `0359`), the other trees have
 none, and the driver then registers the same resources itself (no clocks, no reset; `CONFIG_DRM_H713_BENCH=y` in the
 release). Its options are `/etc/modprobe.d/h713-drm.conf`:
 
@@ -98,13 +98,13 @@ release). Its options are `/etc/modprobe.d/h713-drm.conf`:
 Since 05.11.2026 the release kernel (7.3.1, `mainline/patches/kernel/board/hy200_qz713df_a1_defconfig`) carries what the
 clean stack needs, and the HY320's normal boot runs it (`doku/229`):
 
-- **`CONFIG_RUST=y`** and **`h713_drm` in tree**: `0355`-`0357` are the clean repository's series
+- **`CONFIG_RUST=y`** and **`h713_drm` in tree**: `0356`-`0358` are the clean repository's series
   (`drivers/h713-drm/patches/`) on the 7.3.1 tree, `CONFIG_DRM_H713=m` (a C shell with a Rust hardware layer,
   `h713_compat.h` takes 6.18 and 7.3). The image grows by 0.2 MB, the module set by `h713_drm.ko` alone.
   `release/check-display.py` checks that its `vermagic` is the image's kernel's. A kernel that lost either symbol, or a
   module tree without `h713_drm.ko`, fails `build.sh kernel` and the gate (`--defconfig`, `--kernel-config`): kconfig
   drops `CONFIG_RUST` without a word when the build container has no Rust toolchain.
-- **The device tree node** (`0358`, from `drivers/h713-drm/dts/sun50i-h713-hy320-display.dtso`) in the HY320's tree,
+- **The device tree node** (`0359`, from `drivers/h713-drm/dts/sun50i-h713-hy320-display.dtso`) in the HY320's tree,
   **disabled**: the vendor stack keeps the blocks, clocks and the `ppu` domains 1/2, and a disabled node is no device
   and no consumer, so the vendor boot is unchanged. The clean boot loads `h713_drm` with `bench=1`
   (`CONFIG_DRM_H713_BENCH=y`), the form that has run on the HY320. `status = "okay"` is the driver's DT path - clocks,

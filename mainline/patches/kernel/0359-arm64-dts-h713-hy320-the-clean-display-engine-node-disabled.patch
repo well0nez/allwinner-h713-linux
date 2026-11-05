@@ -1,7 +1,7 @@
 From: minpeter <62207008+minpeter@users.noreply.github.com>
 Subject: arm64: dts: h713: hy320: the clean display engine node, disabled
 
-The node of the binding allwinner,sun50i-h713-display-engine (0355) for h713_drm (0356), as the clean
+The node of the binding allwinner,sun50i-h713-display-engine (0356) for h713_drm (0357), as the clean
 repository's HY320 overlay (drivers/h713-drm/dts/sun50i-h713-hy320-display.dtso) has it, with status
 "disabled". The vendor stack keeps the blocks, the clocks and the ppu domains 1/2 (&display, &mips, &hdmirx,
 tvcap); a disabled node creates no device and no consumer, so its boot is unchanged. A clean boot loads h713_drm

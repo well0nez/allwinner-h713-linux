@@ -2,19 +2,19 @@
 
 Datum: 05.11.2026 (Gerätezeit falsch, April 2026). Gerät: der HY320 des Besitzers. Augen: **keine** - der Besitzer war
 nicht da, alles über Logs, Registerlesungen und Abzüge. Zweig `hy320`: Merge `kernel-7.3` (`138d9ec5`), Kern-Reihe
-`0355`-`0358` und Defconfig (`871fc0c2`). Rohdaten auf dem Gerät `/data/release73/`, Kopie neben dem Repo
+`0356`-`0359` und Defconfig (`871fc0c2`). Rohdaten auf dem Gerät `/data/release73/`, Kopie neben dem Repo
 (`notes/release73/`). Gerätesperre `/tmp/h713-device.lock` für die ganze Phase.
 
 ## 1 Der Kern
 
 - `kernel-7.3` ohne Konflikt in `hy320` gemischt; `docs/kernel-rust.md`: `boot_rustbench73` endet jetzt wie `boot_rust`
   mit `${h713_display_args}`.
-- `0355`-`0357`: die Reihe aus `cleanroom-h713` (`drivers/h713-drm/patches/`, Quellstand `5fd6cd6`) auf den
+- `0356`-`0358`: die Reihe aus `cleanroom-h713` (`drivers/h713-drm/patches/`, Quellstand `5fd6cd6`) auf den
   7.3.1-Baum dieser Reihe gelegt und daraus neu erzeugt. Abweichung nur im Kconfig-Haken: 7.3 listet die `source`-Zeilen
   ohne Leerzeilen, die Zeile steht wie in der v6.18-Fassung hinter `sun4i`. `MAINTAINERS` mit Versatz 388 und Fuzz 1.
   `drivers/gpu/drm/h713/` des Baums = Ausgabe von `stage.sh` (`diff -r` leer). Kein Treibercode geändert, keine
   Compilerfehler.
-- `0358`: der Knoten des HY320-Overlays (`dts/sun50i-h713-hy320-display.dtso`) im HY320-Baum, `status = "disabled"`.
+- `0359`: der Knoten des HY320-Overlays (`dts/sun50i-h713-hy320-display.dtso`) im HY320-Baum, `status = "disabled"`.
   Grund: der DT-Weg des Treibers (Takte, Reset, Power-Domains gehalten, CCU-Wörter dem Taktreiber überlassen) ist auf
   keinem Gerät gelaufen (impl-drm Schritt 8, Q-DT-1/Q-DT-2 offen, darunter zwei Knoten mit `ppu` 1/2); ein
   eingeschalteter Knoten wäre auf dem Herstellerstapel ein Verbraucher von `ccu`/`ppu` ohne Treiber. Ein abgeschalteter

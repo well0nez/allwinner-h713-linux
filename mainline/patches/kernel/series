@@ -441,17 +441,17 @@
 0349-arm64-dts-h713-add-the-hy300-t08-board-dts.patch
 
 # Linux 7.3: the port of the series (doku/kernel-bump; mainline/build/kbump-port notes)
-0349-gpiolib-of-keep-of-get-named-gpio-for-the-h713-board-drivers.patch
-0350-drm-h713-afbd-linux-7.3-drm-atomic-commit-and-drm-print.patch
-0351-soc-sunxi-cpu-comm-linux-7.3-has-no-strncpy.patch
-0352-asoc-sun4i-codec-h713-linux-7.3-dapm-accessors.patch
-0353-misc-hy310-board-mgr-linux-7.3-cooling-id-and-iio-namespace.patch
-0354-media-h713-hdmirx-linux-7.3-system-percpu-wq.patch
+0350-gpiolib-of-keep-of-get-named-gpio-for-the-h713-board-drivers.patch
+0351-drm-h713-afbd-linux-7.3-drm-atomic-commit-and-drm-print.patch
+0352-soc-sunxi-cpu-comm-linux-7.3-has-no-strncpy.patch
+0353-asoc-sun4i-codec-h713-linux-7.3-dapm-accessors.patch
+0354-misc-hy310-board-mgr-linux-7.3-cooling-id-and-iio-namespace.patch
+0355-media-h713-hdmirx-linux-7.3-system-percpu-wq.patch
 
 # --- section 28 The clean display stack: h713_drm, the clean-room driver of cleanroom-h713 (05.11.2026).
-# 0355-0357 are that repository's series (drivers/h713-drm/patches/), applied to this tree and regenerated;
-# 0358 its HY320 node, disabled (display-stacks.md).
-0355-dt-bindings-display-add-the-allwinner-h713-display-engine.patch
-0356-drm-h713-add-the-clean-room-display-driver-h713-drm.patch
-0357-maintainers-add-the-allwinner-h713-display-driver.patch
-0358-arm64-dts-h713-hy320-the-clean-display-engine-node-disabled.patch
+# 0356-0358 are that repository's series (drivers/h713-drm/patches/), applied to this tree and regenerated;
+# 0359 its HY320 node, disabled (display-stacks.md).
+0356-dt-bindings-display-add-the-allwinner-h713-display-engine.patch
+0357-drm-h713-add-the-clean-room-display-driver-h713-drm.patch
+0358-maintainers-add-the-allwinner-h713-display-driver.patch
+0359-arm64-dts-h713-hy320-the-clean-display-engine-node-disabled.patch

@@ -20,7 +20,7 @@ rustavailable` in a kernel tree says `Rust is available!`.
 ## CONFIG_RUST in the release kernel
 
 Since 05.11.2026 (7.3.1) the image's defconfig, `mainline/patches/kernel/board/hy200_qz713df_a1_defconfig`, has
-`CONFIG_RUST=y` itself, for the clean display driver `h713_drm` (`CONFIG_DRM_H713=m`, kernel `0355`-`0358`,
+`CONFIG_RUST=y` itself, for the clean display driver `h713_drm` (`CONFIG_DRM_H713=m`, kernel `0356`-`0359`,
 [display stacks](subsystems/display-stacks.md)). The defconfig meets the other conditions of `config RUST` (no
 MODVERSIONS, RANDSTRUCT, DEBUG_INFO_BTF, CFI, KASAN; LTO none). Against the 7.3.1 release tree before it, the `.config`
 differs only in the Rust lines and the two `DRM_H713` ones:

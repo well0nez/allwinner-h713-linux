@@ -414,7 +414,7 @@ Vergleich mit dem Normalstart ohne Signal (`x1-normal.log`, `x2-normal.log`) in 
 ## 21 Runde 9 (7.3.1) und Stufe 3 mit Quelle
 
 **Runde 9:** `h713_drm.ko` `c990fc7a…` (7.3.1-rustbench), `kms-test` `5a1e62a3…`, `vp-bench` `22b68345…`, Bench B0 mit
-`/boot/h713-kernel-rustbench73.fit` (gebaut aus kernel-7.3 `727b88a6`, ohne den späteren 0354/tmpfs-ACL-Commit).
+`/boot/h713-kernel-rustbench73.fit` (gebaut aus kernel-7.3 `727b88a6`, ohne den späteren 0355/tmpfs-ACL-Commit).
 Schritte 0-7 wie geschrieben: auf jeder Zeile dasselbe Urteil wie Runde 8 (6.18). 3930 Flips 65,55/s, T1/T2 PASS, 5a
 Spalten-FAIL (jetzt 9 statt 45 Spalten), 5b PASS bei allen vier Alphas, `pqcheck` 39/39, alle 22 `commit:`-Zeilen und 115
 `pq:`/`gamma:`-Zeilen ohne Fehlschreibung, Logo nach `rmmod` zurück. Kern: kein Oops/BUG/WARNING/RCU-Stall, AP hielt.

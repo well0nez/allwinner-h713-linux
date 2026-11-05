@@ -95,7 +95,7 @@ never collide in the same directory.
 off in it. `board/debug.config` is a fragment for developers only: `KERNEL_CONFIG=debug build.sh kernel`
 merges it back on to reach `/sys/kernel/debug/cpu_comm/call` and similar, and writes its output to a
 suffixed `h713-kernel-debug.fit` so it can never be mistaken for the release image.
-The defconfig has `CONFIG_RUST=y` since 05.11.2026 (7.3.1), for `h713_drm` (`0355`-`0358`, `CONFIG_DRM_H713=m`), so
+The defconfig has `CONFIG_RUST=y` since 05.11.2026 (7.3.1), for `h713_drm` (`0356`-`0359`, `CONFIG_DRM_H713=m`), so
 every kernel build needs the container's Rust toolchain ([kernel-rust.md](kernel-rust.md)); the developer fragment
 `board/rust.config` that turned it on before is gone. `board/rustbench.config` and `board/rustbench73.config` add a
 `CONFIG_LOCALVERSION` (`-rust`, `-rustbench`) for a kernel that lives next to the release one on the device.
