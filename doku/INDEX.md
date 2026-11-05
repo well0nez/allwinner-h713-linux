@@ -27,7 +27,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/185`, `doku/188`, `doku/190`, `doku/213`, `doku/218`, `doku/70`, `doku/72`, `doku/94` |
-| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/200`, `doku/210`, `doku/212`, `doku/213`, `doku/220`, `doku/228`, `doku/80` |
+| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/200`, `doku/210`, `doku/212`, `doku/213`, `doku/220`, `doku/228`, `doku/229`, `doku/80` |
 | `docs/kernel-rust.md` | `doku/229`, `doku/231` |
 | `docs/known-issues.md` | `doku/147`, `doku/156`, `doku/180`, `doku/200`, `doku/201`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215`, `doku/218`, `doku/219`, `doku/225`, `doku/60` |
 | `docs/services.md` | `doku/107`, `doku/170`, `doku/213` |
@@ -302,7 +302,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`226-hy320-crust-von-linux-geladen-protokoll-20261101.md`](226-hy320-crust-von-linux-geladen-protokoll-20261101.md) | Protokoll | 2026-11-01 | 226 HY320: crust als ARISC-Firmware, von Linux geladen - Protokoll | - |
 | [`227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md`](227-hy320-bild-ohne-mips-und-erster-standby-protokoll-20261102.md) | Protokoll | 2026-11-02 | 227 HY320: Bild ohne display.bin, und der erste Standby über crust - Protokoll | 3 |
 | [`228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md`](228-schritt3-messung-0336-hy310-geu-protokoll-20261103.md) | Protokoll | 2026-11-03 | 228 - Messung Schritt 3: minpeters 0336 (DDC-Porttabelle), `h713-tv`-Tabelle und `h713-mode` an HY310 und HY300PRO-G-EU (03.11.2026) | 2 |
-| [`229-hy320-release-7.3.1-rust-h713-drm-20261105.md`](229-hy320-release-7.3.1-rust-h713-drm-20261105.md) | Analyse | 2026-11-05 | 229 HY320: 7.3.1-Release mit CONFIG_RUST und h713_drm als Normalstart, beide Anzeigestapel | 3 |
+| [`229-hy320-release-7.3.1-rust-h713-drm-20261105.md`](229-hy320-release-7.3.1-rust-h713-drm-20261105.md) | Analyse | 2026-11-05 | 229 HY320: 7.3.1-Release mit CONFIG_RUST und h713_drm als Normalstart, beide Anzeigestapel | 4 |
 | [`230-hy320-airplay-bildschirmspiegelung-protokoll-20261105.md`](230-hy320-airplay-bildschirmspiegelung-protokoll-20261105.md) | Protokoll | 2026-11-05 | 230 HY320: AirPlay-Bildschirmspiegelung (h713-airplay) - Protokoll | 1 |
 | [`231-hy320-clean-room-bench-q0-q1-20261103.md`](231-hy320-clean-room-bench-q0-q1-20261103.md) | Analyse | 2026-11-03 | 231 HY320: Clean-Room-Bench, Q0 und Q1 - Protokoll | 3 |
 | [`30-uboot-aenderungen.md`](30-uboot-aenderungen.md) | Analyse |  | Unsere U-Boot-Änderungen | 2 |
