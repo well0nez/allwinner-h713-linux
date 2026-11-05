@@ -1,6 +1,9 @@
 ## Capture path fact inventory (INCAP → DRAM ring → scanout channel 0)
 
-**Summary.** Every capture fact comes from runs with the display firmware running. The only firmware-free reads are passive bench-boot dumps from doku/228's logs: there the capture block is empty, and nobody has tried to program or start a capture without the firmware. Two corrections to the brief:
+> 05.11.2026: these notes cited the bench's journal entry as `doku/228`; it is `doku/231` since then (main's `doku/228` is the 0336 measurement), and the citations below follow.
+
+
+**Summary.** Every capture fact comes from runs with the display firmware running. The only firmware-free reads are passive bench-boot dumps from doku/231's logs: there the capture block is empty, and nobody has tried to program or start a capture without the firmware. Two corrections to the brief:
 - **Who rewrites the slots each frame.** Channel 0's slot words `0x05600070..0x090` and `VCH_ADDR_LATCH` are rewritten every frame by the project's own Linux display driver, 2.8–3.1 ms after each panel vsync (doku/198 §1, doku/200 §4). The firmware does not do it.
 - **The ring is not at `0x06940000`.** That address is the INCAP register block; the ring itself is in DRAM.
 
@@ -9,8 +12,8 @@ FW column: **with** = firmware running, **without** = firmware never started, **
 ### 1. Blocks and bases
 | # | fact | source | FW |
 |---|---|---|---|
-| B1 | The capture block CAP/INCAP sits at `0x06940000`; the whole window `0x000..0xffc` reads without a hang in the normal boot. The project tree maps it as a `0x1000` window. | measured: 2026-11-03 HY320 doku/228 (logs/r2-normal.log) | with |
-| B2 | Live word groups: `0x000..0x008` top; `0x100/0x104` status and frame/line; `0x400` path word; `0x540..0x560` input timing; `0x584..0x620` change with the signal (statistics); `0x800..0x8ac` format, convert, scaler, crop; `0x8f0`/`0x930` slot tables; `0x920..0x92c` luma output channel; `0x960..0x96c` chroma output channel; `0x970..0x978`; `0xa00..0xa30` status, including the write index `0xa0c`. | measured: 2026-11-03 HY320 doku/228 (diff-sig-nosig-client.txt) | with |
+| B1 | The capture block CAP/INCAP sits at `0x06940000`; the whole window `0x000..0xffc` reads without a hang in the normal boot. The project tree maps it as a `0x1000` window. | measured: 2026-11-03 HY320 doku/231 (logs/r2-normal.log) | with |
+| B2 | Live word groups: `0x000..0x008` top; `0x100/0x104` status and frame/line; `0x400` path word; `0x540..0x560` input timing; `0x584..0x620` change with the signal (statistics); `0x800..0x8ac` format, convert, scaler, crop; `0x8f0`/`0x930` slot tables; `0x920..0x92c` luma output channel; `0x960..0x96c` chroma output channel; `0x970..0x978`; `0xa00..0xa30` status, including the write index `0xa0c`. | measured: 2026-11-03 HY320 doku/231 (diff-sig-nosig-client.txt) | with |
 | B3 | The file's tables write `0x400`, `0x440..0x4e8`, `0x800..0x8a0` (the input colour converter at `0x824..0x848`, the 4:2:2/4:4:4 converter at `0x84c..0x854`), `0x8a4..0x8ec`, `0x8c0/0x8c8` [2:0], `0x8d0` [17:0] = `0x300`, and `0x970 = 0x0c000000`, `0x974 = 0x01000100`, `0x978 = 3`. | vendor-data (database.TSE, doku/84 §2.5) | static |
 | B4 | The firmware's code writes `0x858..0x880` (capture downscaler), `0x440..0x448`, `0x464/0x468`, `0x920..0x96c`, and only reads `0xa0c`. | binary-derived (held) | — |
 | B5 | `TVTOP` at `0x06e00000` holds 3 words (`+0`, `+4`, `+8`), the clock/reset words of the TV blocks. On the HY320 a 4th word `+0x1c` also changes across a standby. | measured: 2026-10-09 HY310 doku/172; 2026-11-03 HY320 doku/227 §9 | both |
@@ -28,12 +31,12 @@ FW column: **with** = firmware running, **without** = firmware never started, **
 ### 2. Ring and slots
 | # | fact | source | FW |
 |---|---|---|---|
-| R1 | Three NV16 slot pairs. Y: `0x4c3ef000`, `0x4c5ee000`, `0x4c7ed000`. C: `0x4c9ec000`, `0x4cbeb000`, `0x4cdea000`. | measured: 2026-09-06/07 HY310 doku/86, doku/88; 2026-11-03 HY320 doku/228 | with |
+| R1 | Three NV16 slot pairs. Y: `0x4c3ef000`, `0x4c5ee000`, `0x4c7ed000`. C: `0x4c9ec000`, `0x4cbeb000`, `0x4cdea000`. | measured: 2026-09-06/07 HY310 doku/86, doku/88; 2026-11-03 HY320 doku/231 | with |
 | R2 | Y slot spacing is `0x1ff000` (2 093 056 B); C slot i = Y slot i + `0x5fd000`. So the three Y slots are contiguous, then the three C slots. The ring spans `0x4c3ef000..0x4cfe8fff`. | measured (R1); arithmetic | static |
 | R3 | One slot (`0x1ff000`) holds 1920 × 1080 = 2 073 600 B plus 19 456 B, so at most 1090 lines at a 1920 pitch. [INFERENCE: arithmetic] | static | static |
 | R4 | Ring content is NV16: luma W×H, chroma W×H interleaved Cb/Cr; grey reads Cb ≈ Cr ≈ 128 (e.g. Y 219 / Cb 128 / Cr 128). | measured: 2026-09-08 HY310 doku/96 §7 (journal S11) | with |
 | R5 | The ring lies in the reserved region `0x4bf41000`, size `0x1a00000` (26 MiB, no-map, the firmware's frame buffer per `display_cfg.xml`), at offset `0x4ae000`. | vendor-data; measured address inside | static |
-| R6 | Luma table `0x8f0..0x904` = six entries, address >> 4: `04c3ef00 04c5ee00 04c7ed00 04c7ed00 04c7ed00 04c7ed00` ([A,B,C,C,C,C]). Chroma table `0x930..0x944` = `04c9ec00 04cbeb00 04cdea00` ×4 likewise. | measured: 2026-11-03 HY320 doku/228; 2026-09-05 HY310 doku/71 (`0x900 = 0x04c7ed00`) | with |
+| R6 | Luma table `0x8f0..0x904` = six entries, address >> 4: `04c3ef00 04c5ee00 04c7ed00 04c7ed00 04c7ed00 04c7ed00` ([A,B,C,C,C,C]). Chroma table `0x930..0x944` = `04c9ec00 04cbeb00 04cdea00` ×4 likewise. | measured: 2026-11-03 HY320 doku/231; 2026-09-05 HY310 doku/71 (`0x900 = 0x04c7ed00`) | with |
 | R7 | The hardware uses 3 entries only. Writing 4 into entry 4 (`0x8fc`/`0x93c`) and the counters `0x8c0`/`0x8c8` is accepted, but the pointer stays on A,B,C. `0x978` = 6 or 4 had no effect. `0x8d0` = `0x600` destroyed the picture (21/s). | measured: 2026-10-11 G-EU doku/198 §2 | with |
 | R8 | The slot addresses come from a memory plan in the owner's file (module key `DynamicMemory_1024M_1024M_PROJECTOR`, field = offset << 8). With 6 distinct buffers the firmware programmed all 6; the capture kept 3 and the noise-reduction stage read entries 4–6, giving a wrong picture. | measured: 2026-10-11 G-EU doku/198 §2 (vendor-data file) | with |
 | R9 | The noise-reduction block holds the ring addresses too: `0x05000400..0408` = `04c3ef00`, `04c5ee00`, `04c7ed00` (`0x40c..0x414` repeat the third); `0x05000500..` holds the chroma ones. Its own buffers are at `0x4d028000..` and `0x4d35a000..`. | measured: 2026-11-03 HY320 spec/20 §5.1, spec/12 | with |
@@ -47,11 +50,11 @@ FW column: **with** = firmware running, **without** = firmware never started, **
 | W2 | Timing at 1080p60 scaled to 720 lines: writing starts 1.6 ms after the index step, top first; line 400 at about 9 ms, line 700 at about 16 ms; done before the next boundary. | measured: 2026-10-11 G-EU doku/200 §1 | with |
 | W3 | After some standbys the bits above [2:0] are set (`0x4b0..0x4b2`, `0x4c0..0x4c2`; [11:4] mirror `0xa08`; `+0x004` bit 8 and `0xa24` bytes 1/3 differ). Seen after 9 of 25 standbys; [2:0] still steps; only a warm start clears them. At 7 of 25 resumes `0x80200d00` reads for 11–16 ms before the index is valid. | measured: 2026-10-15 HY310 patch 0314 | with |
 | W4 | The vendor reads `0xa0c` masked to 3 bits. | binary-derived (held) | — |
-| W5 | HDMI 1080p60: `0xa0c` = 2 at the sample time. No signal: `0xa0c` = 0, and `0xa00 = 0x110`, `0xa04 = 0x08000800`, `0xa20 = 0x00400780`, `0xa24 = 0x00440044`, `0xa28 = 0x00080200` (with signal `0x484`, `0x086407c0`, `0x00540780`, `0x0064005c`, `0x20080200`). | measured: 2026-11-03 HY320 doku/228 | with |
-| W6 | `0x104` = (frame << 16) \| line of the source. It keeps counting with the capture outputs disabled. Without a signal it stood: `0x7f6b01f4` at 564 s and again at 622 s. | measured: 2026-09-07 HY310 doku/84 §2.0; 2026-11-03 HY320 doku/228 | with |
+| W5 | HDMI 1080p60: `0xa0c` = 2 at the sample time. No signal: `0xa0c` = 0, and `0xa00 = 0x110`, `0xa04 = 0x08000800`, `0xa20 = 0x00400780`, `0xa24 = 0x00440044`, `0xa28 = 0x00080200` (with signal `0x484`, `0x086407c0`, `0x00540780`, `0x0064005c`, `0x20080200`). | measured: 2026-11-03 HY320 doku/231 | with |
+| W6 | `0x104` = (frame << 16) \| line of the source. It keeps counting with the capture outputs disabled. Without a signal it stood: `0x7f6b01f4` at 564 s and again at 622 s. | measured: 2026-09-07 HY310 doku/84 §2.0; 2026-11-03 HY320 doku/231 | with |
 | W7 | `0x100` stays constant (`0x407` HY320; `0x427`/`0x407` HY310); nothing seen that behaves like interrupt status. | measured: 2026-09-07 HY310 doku/84; 2026-11-03 HY320 | with |
 | W8 | `0x874` = active (W << 16 \| H): 1080p `0x07800438`, 720p `0x050002d0`. `0x548` = total (V << 16 \| H): `0x04650898` = 1125×2200, 720p `0x02ee0672` = 750×1650. | measured: 2026-09-08 HY310 doku/96; 2026-11-03 HY320 | with |
-| W9 | At 1080p60: `0x540 = 0x18000464`, `0x54c = 0x00290461`, `0x550 = 0x00c00840`, `0x554 = 0x052c0208`, `0x558 = 0x04650898`, `0x55c = 0x0023045b`, `0x560 = 0x00b50835`. | measured: 2026-11-03 HY320 doku/228 | with |
+| W9 | At 1080p60: `0x540 = 0x18000464`, `0x54c = 0x00290461`, `0x550 = 0x00c00840`, `0x554 = 0x052c0208`, `0x558 = 0x04650898`, `0x55c = 0x0023045b`, `0x560 = 0x00b50835`. | measured: 2026-11-03 HY320 doku/231 | with |
 | W10 | Reading of W9: `0x54c`/`0x55c` span 1080 lines and `0x550`/`0x560` span 1920 pixels; `0x550` starts at 192 = H sync 44 + back porch 148 of the 1080p60 timing. [INFERENCE] | public (CEA-861 1080p60 timing) | — |
 | W11 | Row bytes `0x924` (luma) / `0x964` (chroma) = width/16, the same in both halves: `0x00780078` at 1920, `0x50` at 1280. Widths that are not a multiple of 16 round up (852 → 864). | measured: 2026-09-08 HY310 doku/96; 2026-11-03 HY320; 2026-09 G-EU patch 0136g | with |
 | W12 | Output control `0x928`/`0x968` = `0x60020000` \| height, plus bit 31: `0xe0020438` (1080), `0xe00202d0` (720), `0x600200f0` (no signal, HY310). | measured: 2026-09-05/08 HY310 doku/71, doku/96 | with |
@@ -79,7 +82,7 @@ FW column: **with** = firmware running, **without** = firmware never started, **
 | E10 | Standby stop: clear bit 31 of both enables and wait 40 ms (two frames) in suspend, while the co-processor still runs. A sleep aborted before the park re-enables. | measured: 2026-10-09 HY310 doku/173 §2, patch 0240 | with |
 | E11 | **The C1 hang.** Hang on the way into sleep (crust resets after 15 s). Breadcrumbs: 5 of 5 stopped between TVCAP PRE_OFF and TVCAP OFF, with the TVCAP domain status `0x00010000` ("on and idle") while INCAP was still writing. | measured: 2026-10-09 HY310 doku/173 §2 | with |
 | E12 | C1 statistics: with E10, 0 of 50 (20 of 20 test module, 30 of 30 image); without it, 5 of 111 (p ≈ 0.15, a hint, not a proof). A TV-top off step before power-off made no difference. | measured: 2026-10-09 HY310 doku/173 | with |
-| E13 | Bench hazard: NRC write channels on with an address word set to 0 hung the SoC; channels on without addresses DMA'd into system RAM. INCAP output channels presumably carry the same risk. [INFERENCE] | measured: 2026-11-03 HY320 doku/228 §6, §8 | without |
+| E13 | Bench hazard: NRC write channels on with an address word set to 0 hung the SoC; channels on without addresses DMA'd into system RAM. INCAP output channels presumably carry the same risk. [INFERENCE] | measured: 2026-11-03 HY320 doku/231 §6, §8 | without |
 
 ### 5. How a captured frame reaches channel 0
 | # | fact | source | FW |
@@ -96,7 +99,7 @@ FW column: **with** = firmware running, **without** = firmware never started, **
 | P10 | `0x05600328` reads 0 throughout. | measured: 2026-09-07 HY310 doku/84 §3.4 | with |
 | P11 | No ARM-side capture-done interrupt is known; frames were picked on the scanout vsync SPI 110. | measured (P5); vendor-data (B13) | with |
 | P12 | HY320 HDMI state: `VCH_GATE 0x1` (HY310 `0x11`), `VCH_ARMED` `0x6a`/`0x4c` changing, `0x0c4 = 1`, chroma gain `0x05140508 = 0x04400000` (HY310 `0x144c0000`). | measured: 2026-11-03 HY320 spec/10 §6.1, spec/12 | with |
-| P13 | Hot-plug low (no signal): `VCH_CTRL 0x03000200`, slots 0. doku/228 attributes this to the firmware; the Linux driver's disable was not separated from it. [INFERENCE] | measured: 2026-11-03 HY320 doku/228 §5 | with |
+| P13 | Hot-plug low (no signal): `VCH_CTRL 0x03000200`, slots 0. doku/231 attributes this to the firmware; the Linux driver's disable was not separated from it. [INFERENCE] | measured: 2026-11-03 HY320 doku/231 §5 | with |
 | P14 | 1280×720 source on a 1080p panel: ring at source size (row bytes `0x50`). Channel 0: `VCH_SIZE 0x02cf04ff`, `VCH_BLOCKS 0x002c004f`, `0x500`/`0xa00` strides. Scaler `0x05180008 = 0x3200aaaa`, `0x0518003c = 0xaaaa`, `0x05180014` bit 27 = 0. Full panel. | measured: 2026-09-08 HY310 doku/96 §6 | with |
 | P15 | 1080p panels (HY310, HY320): the ring equals the source (no capture scaling). The 720p G-EU: INCAP downscales into the ring (W13). The plane itself cannot downscale: the picture smears and stays smeared. | measured: 2026-09-22 HY310 docs display.md; 2026-10-12 G-EU | with |
 | P16 | Pitfall: a source repeating frames (19–21 identical every 11.0 s) looked like a capture stall while the index never stood. Measure the ring content, not the pointer. | measured: 2026-10-11 G-EU doku/201 §5 | with |
@@ -104,12 +107,12 @@ FW column: **with** = firmware running, **without** = firmware never started, **
 ### 6. Timing and frame lock
 | # | fact | source | FW |
 |---|---|---|---|
-| T1 | Panel rates: G-EU 1360×760 at 61.71 MHz = 59.71 Hz; HY310 59.42 Hz; HY320 65.538 Hz (2200×1125, 162.21 MHz, the same with and without firmware); stock HY350 59.46 Hz. | measured: 2026-10-11 G-EU doku/197; 2026-10-12 HY310 doku/207; 2026-11-03 HY320 doku/228 R3–R4 | both |
+| T1 | Panel rates: G-EU 1360×760 at 61.71 MHz = 59.71 Hz; HY310 59.42 Hz; HY320 65.538 Hz (2200×1125, 162.21 MHz, the same with and without firmware); stock HY350 59.46 Hz. | measured: 2026-10-11 G-EU doku/197; 2026-10-12 HY310 doku/207; 2026-11-03 HY320 doku/231 R3–R4 | both |
 | T2 | Source vs panel: source 60.00 (HY310 measured 60.02). Skip rates: G-EU 0.30/s; HY310 0.57/s in bypass; HY350 stock 0.6/s. | measured: doku/200, 207, 197 | with |
 | T3 | At a 65.5 Hz panel a 60 Hz source must repeat about 5.5 frames/s. [INFERENCE; not measured on the HY320 with HDMI] | — | — |
 | T4 | `PROC_LOCK 0x0514fe00` and `PNL_LOCK 0x051cfe00` have the same layout. `fe08` = (V total − 1) << 16 \| (H total − 1): boot value `0x08c9112f`, programmed `0x04640897` → video vsync every 15.267 ms. `PNL_LOCK` with the boot totals ticks at 16.5/s. | measured: 2026-11-03 HY320 spec/10 §6.2–6.3 | both |
 | T5 | `fe64` = input vsync stamp: it moves only with an input signal and latches at source lines 4–32. `fe68` = panel vsync stamp (65.5/s on the HY320). | measured: 2026-10-11 G-EU doku/197; 2026-11-03 HY320 | with |
-| T6 | `fe74` [31:16] = live V total; it shows the boot value `0x08c9` when the raster stalled. `fe50`, `fe8c`, `fe90` and `PNL_LOCK fe64/fe68/fe78/fe7c` differ between signal and no signal. | measured: 2026-11-03 HY320 doku/228 | with |
+| T6 | `fe74` [31:16] = live V total; it shows the boot value `0x08c9` when the raster stalled. `fe50`, `fe8c`, `fe90` and `PNL_LOCK fe64/fe68/fe78/fe7c` differ between signal and no signal. | measured: 2026-11-03 HY320 doku/231 | with |
 | T7 | Firmware no-signal values: `fe0c 0x0240042b`, `fe10 0x00898005`, `fe14 0x00010000`, `fe24 0x03e80000`, `fe2c 0x04190a0a`, `fe30 0x10000104`, `fe34 0x00a008e1`, `fe38 0x006008b2`, `fe40 0x05a00000`, `fe48 0x04530465`; `PNL_LOCK fe00/04/08 = 0x00110449/0x00a40824/0x08c9112f`. | measured: 2026-11-03 HY320 spec/12 | with |
 | T8 | On the bench, writing `fe30 = 0x10000104` and `fe0c..fe50` had no effect. | measured: 2026-11-03 HY320 | without |
 | T9 | `fe30` [30:28] = coupling mode: 0 fixed totals (file work mode 2), 1 V-total tracking (work mode 0), 2 H-total tracking (work mode 1). It is off on the G-EU and the stock HY350. | measured: 2026-10-11 G-EU doku/197, doku/199 | with |
@@ -122,8 +125,8 @@ FW column: **with** = firmware running, **without** = firmware never started, **
 ### 7. Power, clock and standby
 | # | fact | source | FW |
 |---|---|---|---|
-| S1 | `TVTOP` after a boot that ran the firmware: `0x00111111`, `0x01111117`, `0x00000504`. Boot-loader / bench state: `+8 = 0x404`. | measured: 2026-09-05/10-09 HY310 doku/71, doku/172; 2026-11-03 HY320 doku/228 | both |
-| S2 | On the bench, `0x06e00008 = 0x504` written by hand reads back and changed nothing visible in the channel-0 registers. | measured: 2026-11-03 HY320 doku/228 | without |
+| S1 | `TVTOP` after a boot that ran the firmware: `0x00111111`, `0x01111117`, `0x00000504`. Boot-loader / bench state: `+8 = 0x404`. | measured: 2026-09-05/10-09 HY310 doku/71, doku/172; 2026-11-03 HY320 doku/231 | both |
+| S2 | On the bench, `0x06e00008 = 0x504` written by hand reads back and changed nothing visible in the channel-0 registers. | measured: 2026-11-03 HY320 doku/231 | without |
 | S3 | The file's capture init table also writes `0x06e00008`, `0x06940000`, `0x06940104 = 0`, `0x06940800` bit 0, `0x920..0x96c`, `0x06980028/2c/30`. The values were not in the sources read. | vendor-data (doku/84 §4.2) | static |
 | S4 | After a standby (TVFE/TVCAP powered off and on by the kernel) `TVTOP` reads `0x10, 0, 0`. On the HY320 `+0x1c` also goes 1 → 0. | measured: 2026-10-09 HY310 doku/172; 2026-11-03 HY320 doku/227 §9 | with |
 | S5 | The co-processor restarted without TVTOP restored stalled the whole SoC within 200 ms (3 of 3). | measured: 2026-10-09 HY310 doku/172 | with |
@@ -137,13 +140,13 @@ FW column: **with** = firmware running, **without** = firmware never started, **
 ### 8. No-firmware observations
 | # | fact | source | FW |
 |---|---|---|---|
-| N1 | Bench boot: the boot loader brings up the display with the co-processor held in reset. The IPC, receiver, loader, DSP and scanout drivers are blacklisted, and the command line has `clk_ignore_unused pd_ignore_unused`. `0x02001600 = 0` and `0x0200160c = 0`. | measured: 2026-11-03 HY320 doku/228 §1 (q1-run2.log cmdline) | without |
-| N2 | INCAP readable with no hang: `0x000 = 1` and `0x004..0x9fc` all 0 (including `0x104`, `0x548`, `0x874`, the slot tables, `0x924/0x928/0x964/0x968`). `0x400 = 0`, and `0x60` after the data-path reset table. | measured: 2026-11-03 HY320 doku/228 (r2-bench1..8.log) | without |
-| N3 | INCAP `0xa00..0xa30` is non-zero on the bench and differs between boots. Often `0x110`, `0x08000800`, …, `0xa10 = 0x006300ad`, `0xa14 = 0x000a0021`, `0xa1c = 0x04380000`, `0xa20 = 0x00400780`, `0xa24 = 0x00440044`, `0xa28 = 0x00080200`, `0xa2c = 0x898`, `0xa30 = 0x465`, equal to the firmware's no-signal values. Other boots: `0x330/0x07ec0808`, `0x484/0x086007c0`; one boot looks random. Meaning unknown. | measured: 2026-11-03 HY320 doku/228 logs | without |
-| N4 | `TVTOP` = `0x00111111/0x01111117/0x404` (the boot loader sets it even when the firmware never runs). | measured: 2026-11-03 HY320 doku/228 §2 | without |
+| N1 | Bench boot: the boot loader brings up the display with the co-processor held in reset. The IPC, receiver, loader, DSP and scanout drivers are blacklisted, and the command line has `clk_ignore_unused pd_ignore_unused`. `0x02001600 = 0` and `0x0200160c = 0`. | measured: 2026-11-03 HY320 doku/231 §1 (q1-run2.log cmdline) | without |
+| N2 | INCAP readable with no hang: `0x000 = 1` and `0x004..0x9fc` all 0 (including `0x104`, `0x548`, `0x874`, the slot tables, `0x924/0x928/0x964/0x968`). `0x400 = 0`, and `0x60` after the data-path reset table. | measured: 2026-11-03 HY320 doku/231 (r2-bench1..8.log) | without |
+| N3 | INCAP `0xa00..0xa30` is non-zero on the bench and differs between boots. Often `0x110`, `0x08000800`, …, `0xa10 = 0x006300ad`, `0xa14 = 0x000a0021`, `0xa1c = 0x04380000`, `0xa20 = 0x00400780`, `0xa24 = 0x00440044`, `0xa28 = 0x00080200`, `0xa2c = 0x898`, `0xa30 = 0x465`, equal to the firmware's no-signal values. Other boots: `0x330/0x07ec0808`, `0x484/0x086007c0`; one boot looks random. Meaning unknown. | measured: 2026-11-03 HY320 doku/231 logs | without |
+| N4 | `TVTOP` = `0x00111111/0x01111117/0x404` (the boot loader sets it even when the firmware never runs). | measured: 2026-11-03 HY320 doku/231 §2 | without |
 | N5 | `0x320/0x324` = 0 until channel 0 is latched; `0x300/0x304/0x310` stand still; `fe64` stands. After the NRC latch words, `0x320` read an address, so the pointer tracks channel 0, not only the capture. [INFERENCE] | measured: 2026-11-03 HY320 spec/10 §6.1–6.2 | without |
 | N6 | A DRAM frame does not need the capture side: with the firmware running, no-signal vs no-signal-plus-client states differ only in channel-0 words. Signal vs no signal changes only INCAP status and output-channel words. | measured: 2026-11-03 HY320 spec/10 §6.2 | with |
-| N7 | Without the firmware, the scanout vsync (SPI 110) comes only with the video raster running and channel 0 on. No capture-related interrupt was seen. | measured: 2026-11-03 HY320 doku/228 §7 | without |
+| N7 | Without the firmware, the scanout vsync (SPI 110) comes only with the video raster running and channel 0 on. No capture-related interrupt was seen. | measured: 2026-11-03 HY320 doku/231 §7 | without |
 | N8 | Never tried: programming INCAP, setting its enables, or capturing any frame without the firmware. | — | — |
 
 ### 9. Unknowns and conflicts (for doc 59)

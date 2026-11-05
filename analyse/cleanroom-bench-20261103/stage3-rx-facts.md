@@ -1,4 +1,6 @@
-I've collected the receiver-side facts below. One big gap first: none of the receiver windows (`0x0680xxxx`, `0x0684xxxx`, `0x0688xxxx`) and none of the HDMI aux block at `0x0709_1000` have ever been read with the display firmware never started. Doku/227, doku/228 and 90 Q0 only cover the TV-top words and the capture block.
+> 05.11.2026: these notes cited the bench's journal entry as `doku/228`; it is `doku/231` since then (main's `doku/228` is the 0336 measurement), and the citations below follow.
+
+I've collected the receiver-side facts below. One big gap first: none of the receiver windows (`0x0680xxxx`, `0x0684xxxx`, `0x0688xxxx`) and none of the HDMI aux block at `0x0709_1000` have ever been read with the display firmware never started. Doku/227, doku/231 and 90 Q0 only cover the TV-top words and the capture block.
 
 Nearly everything about what the receiver's registers mean comes from reverse-engineering vendor binaries. The firmware-free measurements are limited to:
 - power, clocks and the TV-top words;
@@ -88,8 +90,8 @@ Column "fw": **with** = the display firmware was running, **without** = it never
 | T3 | INCAP `0x06940874` = active width `[31:16]` / height `[15:0]`; `0x06940548` = v_total `[31:16]` / h_total `[15:0]`. 1080p reads `0x07800438` / `0x04650898`; 720p reads `0x050002d0` / `0x02ee0672`. Sync positions were found nowhere. | measured: 2026-09-07 HY310 doku/nachtlog/E4 | with |
 | T4 | `0x06940928` `[15:0]` = locked line count (`0x438` / `0x2d0` over four modes). Bit 31 clears when the firmware does not lock (1600x1200, 1920x1200); the low bits then keep the old value. | measured: 2026-09-07 HY310 doku/88 E3 | with |
 | T5 | No source: INCAP total reads 0 (HY310). HY300 Pro "no signal" while audio was locked: INCAP active 0, total `0x04650898`. | measured: 2026-09-19 HY310; 2026-09-18 HY300 Pro | with |
-| T6 | The input vsync stamp `0x0514fe64` moves only while HDMI is locked. It stands with HPD low and under the bench boot. | measured: 2026-11-03 HY320 doku/228 | both |
-| T7 | Clearing the EDID (HPD low) makes the firmware switch video channel 0 off (`0x05600010 = 0x03000200`). | measured: 2026-11-03 HY320 doku/228 | with |
+| T6 | The input vsync stamp `0x0514fe64` moves only while HDMI is locked. It stands with HPD low and under the bench boot. | measured: 2026-11-03 HY320 doku/231 | both |
+| T7 | Clearing the EDID (HPD low) makes the firmware switch video channel 0 off (`0x05600010 = 0x03000200`). | measured: 2026-11-03 HY320 doku/231 | with |
 | T8 | The 44-byte per-lock record (id, rate×100, scan, colour format/space, active size, HDR, full-range, DVI) is firmware memory, not hardware. | binary-derived (layout); content measured with firmware | with |
 | T9 | Mode table: a data module named THDMI_ModeList in `database.TSE` (loaded at `0x4be41000`, 1 MiB). 152 records × 54 B, 129 enabled, byte-identical on HY310 and HY300 Pro. Row 14 = 1920x1080 / 2200x1125 / 60 Hz, id `0x00020000`. Ids are `0x0002xxxx`. Ten enabled records carry no active size (frame packing). | vendor-data | n/a |
 | T10 | Record fields: `+8` htotal, `+10` vtotal, `+12/+14` active (LE16); `+25` rate as an LE IEEE double; `+49` skip-rate; `+50` progressive; `+52` compare-active; `+53` enabled. Match tolerance ±5 px / ±3 lines, rate ±1.0 Hz (≥ 30 Hz) or ±0.5 Hz; first matching record wins. | binary-derived (all 152 rates decode cleanly: vendor-data) | — |
@@ -148,7 +150,7 @@ Column "fw": **with** = the display firmware was running, **without** = it never
 
 **Main sources:**
 - `docs/subsystems/hdmi-in.md`, `docs/subsystems/arisc.md`
-- doku/72, doku/88, doku/124, doku/163, doku/172, doku/176, doku/215, doku/225, doku/227, doku/228
+- doku/72, doku/88, doku/124, doku/163, doku/172, doku/176, doku/215, doku/225, doku/227, doku/231
 - `doku/nachtlog/S16`, `S17`, `S18`, `S22`
 - kernel patches `0001`, `0096`, `0096a`, `0107`, `0136`, `0136b`, `0136h`, `0174`, `0179`, `0337`, `0338`
 - `crust-h713/0001`, `0050`; U-Boot `arch/arm/mach-sunxi/h713_mips.c`
