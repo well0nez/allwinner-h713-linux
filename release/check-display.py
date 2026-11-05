@@ -172,6 +172,7 @@ class Hush:
         self.disp = []
         self.conlog = []
         self.emmc = []
+        self.mmc_dev_ok = True                # False: the model's mmc dev fails, for the && after it
         self.bootargs = None
         self.depth = 0
 
@@ -211,8 +212,21 @@ class Hush:
                     rc = self.block(s, else_at, j)
                 i = j + 1
                 continue
-            rc = self.command(words(s[i], self.env))
+            rc = self.chain(words(s[i], self.env))
             i += 1
+        return rc
+
+    def chain(self, w):
+        """A && B && ...: each command only while the one before it succeeded."""
+        rc, cmd = True, []
+        for x in w + ["&&"]:
+            if x != "&&":
+                cmd.append(x)
+                continue
+            rc = self.command(cmd)
+            if not rc:
+                return False
+            cmd = []
         return rc
 
     def command(self, w):
@@ -246,6 +260,8 @@ class Hush:
         if w[0] == "h713_conlog":
             self.conlog.append(len(self.disp))
             return True
+        if w[:2] == ["mmc", "dev"]:
+            return self.mmc_dev_ok
         if w[:2] == ["mmc", "write"]:
             self.emmc.append(len(self.conlog))
             return True
@@ -255,7 +271,7 @@ class Hush:
         return True                          # ext4load, dhcp, tftpboot, mmc, saveenv: they succeed
 
 
-def run_boot(env, display, path):
+def run_boot(env, display, path, mmc_dev_ok=True):
     """The Hush that ran bootcmd with h713_display=DISPLAY (None: unset) and h713_boot=PATH, up to bootm."""
     e = dict(env)
     e.pop(KEY, None)
@@ -263,6 +279,7 @@ def run_boot(env, display, path):
         e[KEY] = display
     e["h713_boot"] = path
     h = Hush(e)
+    h.mmc_dev_ok = mmc_dev_ok
     try:
         h.run_script(e.get("bootcmd", ""))
     except Booted:
@@ -310,17 +327,20 @@ def check_env(env):
                       % (name, path, disp, " ".join(bl + [x for x in w if x == MARK]) or "no display words", project, MODULE))
                 rest = [x for x in w if x != "module_blacklist=" + MODULE]
             lines[display] = rest
+            check(not h.emmc, "%s, boot_%s: no eMMC write on a normal boot" % (name, path),
+                  "%s, boot_%s: mmc write on a normal boot - the console record goes to the eMMC only with "
+                  "h713_conlog_emmc=1" % (name, path))
             if h.conlog:
                 check(h.conlog == [1], "%s, boot_%s: h713_conlog after the display init" % (name, path),
                       "%s, boot_%s: h713_conlog ran %s - wanted once, after the display init" % (
                           name, path, ", ".join("after %d h713_disp" % n for n in h.conlog)))
-                check(not h.emmc, "%s, boot_%s: no eMMC write on a normal boot" % (name, path),
-                      "%s, boot_%s: mmc write on a normal boot - the console record goes to the eMMC only with "
-                      "h713_conlog_emmc=1" % (name, path))
                 kept = run_boot(dict(env, h713_conlog_emmc="1"), display, path)
                 check(kept.emmc == [1], "%s, boot_%s: h713_conlog_emmc=1 writes the record after the copy" % (name, path),
                       "%s, boot_%s: h713_conlog_emmc=1 gives mmc write %s - wanted once, after h713_conlog" % (
                           name, path, kept.emmc))
+                lost = run_boot(dict(env, h713_conlog_emmc="1"), display, path, mmc_dev_ok=False)
+                check(not lost.emmc, "%s, boot_%s: no write when mmc dev 1 fails" % (name, path),
+                      "%s, boot_%s: mmc write although mmc dev 1 failed - wanted mmc dev 1 && mmc write" % (name, path))
         if len({tuple(v) for v in lines.values()}) > 1:
             fail("boot_%s: the stacks' command lines differ beyond the display words: %s" % (
                 path, "; ".join("%s: %s" % (k, " ".join(v)) for k, v in lines.items())))

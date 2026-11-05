@@ -1,7 +1,7 @@
 From 49d7c225f8bbff52359c9ff4cfae8cc64bff92e1 Mon Sep 17 00:00:00 2001
 From: minpeter <62207008+minpeter@users.noreply.github.com>
 Date: Sat, 31 Oct 2026 14:23:28 +0900
-Subject: [PATCH 106/114] sunxi: h713: the HY320 - its DRAM block, its 0x30
+Subject: [PATCH 106/115] sunxi: h713: the HY320 - its DRAM block, its 0x30
  panel row and panel lines (CONFIG_H713_BOARD_HY320)
 
 The MagCubic HY320 (one unit, its owner's full eMMC dump of 31.10.2026):

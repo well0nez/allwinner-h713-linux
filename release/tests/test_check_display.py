@@ -119,7 +119,7 @@ class CheckDisplay(unittest.TestCase):
         m = load()
         plain, hy320 = m.env_load(ENV), m.env_load(ENV, ["CONFIG_CONSOLE_RECORD"])
         self.assertNotIn("h713_conlog", plain["bootcmd"])
-        self.assertIn('fi; h713_conlog 0x45000000; if test "${h713_conlog_emmc}" = 1; then mmc dev 1; '
+        self.assertIn('fi; h713_conlog 0x45000000; if test "${h713_conlog_emmc}" = 1; then mmc dev 1 && '
                       'mmc write 0x45000000 0x2800 0x400; fi; run boot_${h713_boot}', hy320["bootcmd"])
         self.assertIn("h713_display", hy320["bootcmd"])           # h713-display set clean takes it
         for display in ("vendor", "clean"):
@@ -127,6 +127,8 @@ class CheckDisplay(unittest.TestCase):
             self.assertEqual((h.conlog, h.emmc, h.bootargs), ([1], [], m.boot(plain, display, "emmc")[1]))
             kept = m.run_boot(dict(hy320, h713_conlog_emmc="1"), display, "emmc")
             self.assertEqual((kept.conlog, kept.emmc), ([1], [1]))
+            lost = m.run_boot(dict(hy320, h713_conlog_emmc="1"), display, "emmc", mmc_dev_ok=False)
+            self.assertEqual((lost.conlog, lost.emmc), ([1], []))
         rc, out = self.gate("--env", ENV, "--define", "CONFIG_CONSOLE_RECORD")
         self.assertEqual(rc, 0, out)
         self.assertIn("ok    h713_display=clean, boot_emmc: h713_conlog after the display init", out)
@@ -142,6 +144,23 @@ class CheckDisplay(unittest.TestCase):
         rc, out = self.gate("--env", self.env_file("".join("%s=%s\n" % kv for kv in env.items())))
         self.assertEqual(rc, 1)
         self.assertIn("mmc write on a normal boot - the console record goes to the eMMC only with h713_conlog_emmc=1", out)
+        # a board without h713_conlog (no CONFIG_CONSOLE_RECORD) that writes the eMMC on every boot fails as well
+        plain = m.env_load(ENV)
+        self.assertNotIn("h713_conlog", plain["bootcmd"])
+        plain["bootcmd"] = plain["bootcmd"].replace("run boot_${h713_boot}",
+                                                    "mmc dev 1 && mmc write 0x45000000 0x2800 0x400; run boot_${h713_boot}")
+        rc, out = self.gate("--env", self.env_file("".join("%s=%s\n" % kv for kv in plain.items())))
+        self.assertEqual(rc, 1)
+        self.assertIn("h713_display=vendor, boot_emmc: mmc write on a normal boot", out)
+
+    def test_an_opt_in_write_without_the_mmc_dev_guard_fails(self):
+        m = load()
+        env = m.env_load(ENV, ["CONFIG_CONSOLE_RECORD"])
+        self.assertIn("mmc dev 1 && mmc write", env["bootcmd"])
+        env["bootcmd"] = env["bootcmd"].replace("mmc dev 1 && mmc write", "mmc dev 1; mmc write")
+        rc, out = self.gate("--env", self.env_file("".join("%s=%s\n" % kv for kv in env.items())))
+        self.assertEqual(rc, 1)
+        self.assertIn("mmc write although mmc dev 1 failed - wanted mmc dev 1 && mmc write", out)
 
     def test_a_console_log_before_the_display_init_fails(self):
         m = load()

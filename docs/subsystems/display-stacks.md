@@ -145,7 +145,7 @@ and `h713-hdcp-key.service` -> `/etc/systemd/system/`, `userspace/h713-power/h71
 `board/sunxi/hy310.env`, or `u-boot-initial-env` of a build): `fw_setenv` `bootcmd`, `boot_emmc`, `boot_net` with the new
 values and `fw_setenv h713_display vendor`, one `fw_setenv NAME VALUE` each (this `fw_setenv` takes no `-s` file of
 "NAME VALUE" lines: that leaves keys with a space in the name). The HY320's `bootcmd` is the one with
-`h713_conlog 0x45000000; if test "${h713_conlog_emmc}" = 1; then mmc dev 1; mmc write 0x45000000 0x2800 0x400; fi;`
+`h713_conlog 0x45000000; if test "${h713_conlog_emmc}" = 1; then mmc dev 1 && mmc write 0x45000000 0x2800 0x400; fi;`
 after the `fi;` (`hy310.env` under
 `CONFIG_CONSOLE_RECORD`, which only `hy320_defconfig` sets; [HY320](../../boards/hy320/README.md), "U-Boot's console
 without a UART"): it records `noboot` on this board without a UART. The HY320's `boot_emmc` keeps its

@@ -158,7 +158,7 @@ boot. Its owner read the log that way on 31.10.2026 while bringing the board up 
 `bootcmd`, back to the plain `bootcmd` since 01.11.2026); it is not a recipe.
 
 Since 05.11.2026 the board environment (`board/sunxi/hy310.env`) carries `h713_conlog 0x45000000; if test
-"${h713_conlog_emmc}" = 1; then mmc dev 1; mmc write 0x45000000 0x2800 0x400; fi;` under `CONFIG_CONSOLE_RECORD`,
+"${h713_conlog_emmc}" = 1; then mmc dev 1 && mmc write 0x45000000 0x2800 0x400; fi;` under `CONFIG_CONSOLE_RECORD`,
 which only this base sets, after the `fi;` of its `h713_display` branch: an HY320 image's `bootcmd` copies every
 boot's record to RAM and reads the key, with no hand edit, and writes nothing to the eMMC. Only `fw_setenv
 h713_conlog_emmc 1`, by hand, puts the record into that tail for Linux to read - the eMMC write the paragraph above

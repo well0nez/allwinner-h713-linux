@@ -1,7 +1,7 @@
 From d54038fc92be05c6b4469e876b463396bd42d005 Mon Sep 17 00:00:00 2001
 From: minpeter <62207008+minpeter@users.noreply.github.com>
 Date: Tue, 3 Nov 2026 00:32:34 +0900
-Subject: [PATCH 109/114] sunxi: h713: the HY320 - the RGB channel over the
+Subject: [PATCH 109/115] sunxi: h713: the HY320 - the RGB channel over the
  video (0x051c0014, 0x051c0028)
 
 With 0x058c0000 bit 28 clear the RGB channel reaches the wall only through
