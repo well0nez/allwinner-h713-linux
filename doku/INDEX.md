@@ -96,6 +96,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `installer/h713/profiles/__init__.py` | `doku/121` |
 | `installer/h713/profiles/hy200_qz713_v2.py` | `doku/121` |
 | `installer/h713/profiles/hy200_qz713df_a1.py` | `doku/121`, `doku/136` |
+| `installer/h713/profiles/hy300_2023.py` | `doku/121` |
 | `installer/h713/profiles/hy300_pro.py` | `doku/120`, `doku/121` |
 | `installer/h713/profiles/hy300_t08.py` | `doku/121`, `doku/90` |
 | `installer/h713/profiles/hy310.py` | `doku/109`, `doku/120`, `doku/40` |
@@ -188,7 +189,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`118-handoff-20260913.md`](118-handoff-20260913.md) | Handoff | 2026-09-13 | Handoff 13.09.2026 - nach dem Release v0.5-beta | 1 |
 | [`119-plan-fremdgeraete-und-installer-fixes.md`](119-plan-fremdgeraete-und-installer-fixes.md) | Plan |  | Plan 119 - Fremde Geräte (HY300 Pro) und die Installer-Fehler aus Issue #1 | - |
 | [`120-plan-hy300pro.md`](120-plan-hy300pro.md) | Plan |  | Plan 120 - HY300 Pro: von „geht nicht" zu einem Test, den der Melder fahren kann | 4 |
-| [`121-plan-werkzeug-umbau.md`](121-plan-werkzeug-umbau.md) | Plan |  | Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards | 51 |
+| [`121-plan-werkzeug-umbau.md`](121-plan-werkzeug-umbau.md) | Plan |  | Plan 121 - Umbau der PC-Werkzeuge: eine Bibliothek, Profile als Daten, ein Repo für mehrere Boards | 52 |
 | [`122-handoff-werkzeug-umbau.md`](122-handoff-werkzeug-umbau.md) | Handoff |  | 122 - Handoff Werkzeug-Umbau (abgeschlossen 15.09.2026 mit Release v0.6-beta) | - |
 | [`123-handoff-20260915.md`](123-handoff-20260915.md) | Handoff | 2026-09-15 | 123 - Handoff 15.09.2026 (Werkzeug-Umbau abgeschlossen, Stufe 5 fremde Boards, Testabbild HY300 Pro) | - |
 | [`124-cstenger-abgleich-20260915.md`](124-cstenger-abgleich-20260915.md) | Abgleich | 2026-09-15 | 124 - Abgleich mit cstengers Zweig `h713-display-video-path` (sein Stand 12.09.2026) | - |

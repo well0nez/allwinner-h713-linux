@@ -1035,6 +1035,21 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       obwohl `h713-tv` "muted under an opaque page" meldet - eigener Punkt, s. 2.150). G-EU-Boot mit steckender Quelle zeigte 3x
       `no lock` im Fenster zwischen HPD-Puls und zweiter EDID-Sequenz, vorher nicht vergleichbar (Quelle kam später).
       Offen im Issue #5: Video-Ebene (durch 0339/0340 gelöst, Issue noch offen), STK8BA58 (0341 jetzt da), PWM5 ohne Pad (Kommentar).
+- [ ] 4.19 **HY300 mit 2023-Firmware (Issue #8, Melder GitHub `erfrizzera`, 02.-05.11.2026): Profil, Board, Gerätebaum, U-Boot-Basis**
+      (`arbeit/issue8-hy300-20261102/`: `BEWERTUNG.md`, `BEWERTUNG2.md`; `arbeit/hy300-2023-20261105/`). Was er geliefert hat:
+      `identify` (ADT-3 `6245789`, U-Boot `00005-g6d2f0a5-dirty` 25.06.2023, ARISC 25.06.2023, scp `50e8725e`, u-boot `a8f2bfe8`,
+      dtb `a84bfbd5`, `database.TSE` `921c4653`, DRAM = HY350-Block 792 MHz mit geflashtem Paar), `h713-extract` über seine Partitionen
+      (display.bin **neue Revision** 1 251 856 B `1e3e518f`, Wartestelle `0x4b13cf00` per Suche; 18 Display-Dateien; `libmspsound`
+      `c6e9cffc`), SDIO **AIC8801** `5449:0145`, roher eMMC-Kopf (Pakete bei 24576/32800 identisch, dtb-Item 69 632 B). Gehäuse: Fokusring
+      ohne Motor, Klinke, keine Kamera, eine Taste, Fernbedienung; Platine unbekannt (nicht zu öffnen). **Unser HY300-Pro-U-Boot bei
+      636 MHz hat seinen DRAM für UMS trainiert** (sein Befund). Sein Partitions-Backup ist kein Rückweg (Rohbereiche fehlen).
+      **05.11.2026 Vorbereitung (Marco: "Ja, anfangen"; Zweig `versuch/hy300-2023`):** Profil `hy300_2023` (`profile-only`; Partitions-
+      tabelle = T08-Familie, **angenommen**, seine GPT nicht zeilenweise gepostet; Panel-Timings None; monitor/optee-Hash None),
+      `boards/hy300-2023/` (`KERNEL_DTB`, `UBOOT_BOARD=hy300_2023`), Kernel **0350** (HY300-Pro-Baum, `motor_ctr` aus; elog/Übergabe
+      bleiben die des HY300 Pro - Firmware nie gelaufen, schwarze Wand nach dem Logo wäre das Zeichen), U-Boot-Fork-Zweig
+      `versuch/hy300-2023` (`212454b3952`: Zeile "ADT-3 2023-06" in `h713_mips_fw_revs[]` mit vier Nullen, `hy300_2023_defconfig`
+      mit HY350-Block, dts); am 05.11. nach `h713-hy310` gepusht (Marco), Spiegel 112 verifiziert, Gitlink gesetzt. Status und Ergebnis der Bauten: Bericht. Nächste Schritte wie beim T08:
+      Fork-Push, Spiegel, Gitlink, Merge, TEST-Abbild, Antwort mit Schritt 0 (sein eigenes U-Boot) und dem Hinweis auf den Vollabzug.
 
 ## 5 Installer und Werkzeuge
 
