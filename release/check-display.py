@@ -164,13 +164,14 @@ class Booted(Exception):
 
 
 class Hush:
-    """Runs a boot script; records every h713_disp, where h713_conlog ran (the number of h713_disp before it) and the
-    bootargs bootm boots with."""
+    """Runs a boot script; records every h713_disp, where h713_conlog ran (the number of h713_disp before it), where
+    an mmc write ran (the number of h713_conlog before it) and the bootargs bootm boots with."""
 
     def __init__(self, env):
         self.env = dict(env)
         self.disp = []
         self.conlog = []
+        self.emmc = []
         self.bootargs = None
         self.depth = 0
 
@@ -245,6 +246,9 @@ class Hush:
         if w[0] == "h713_conlog":
             self.conlog.append(len(self.disp))
             return True
+        if w[:2] == ["mmc", "write"]:
+            self.emmc.append(len(self.conlog))
+            return True
         if w[0] == "bootm":
             self.bootargs = self.env.get("bootargs", "")
             raise Booted()
@@ -310,6 +314,13 @@ def check_env(env):
                 check(h.conlog == [1], "%s, boot_%s: h713_conlog after the display init" % (name, path),
                       "%s, boot_%s: h713_conlog ran %s - wanted once, after the display init" % (
                           name, path, ", ".join("after %d h713_disp" % n for n in h.conlog)))
+                check(not h.emmc, "%s, boot_%s: no eMMC write on a normal boot" % (name, path),
+                      "%s, boot_%s: mmc write on a normal boot - the console record goes to the eMMC only with "
+                      "h713_conlog_emmc=1" % (name, path))
+                kept = run_boot(dict(env, h713_conlog_emmc="1"), display, path)
+                check(kept.emmc == [1], "%s, boot_%s: h713_conlog_emmc=1 writes the record after the copy" % (name, path),
+                      "%s, boot_%s: h713_conlog_emmc=1 gives mmc write %s - wanted once, after h713_conlog" % (
+                          name, path, kept.emmc))
         if len({tuple(v) for v in lines.values()}) > 1:
             fail("boot_%s: the stacks' command lines differ beyond the display words: %s" % (
                 path, "; ".join("%s: %s" % (k, " ".join(v)) for k, v in lines.items())))

@@ -1,7 +1,7 @@
 From 4f9fe56f46ec8879f00148410c83609fea85ae14 Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Tue, 3 Nov 2026 22:59:29 +0100
-Subject: [PATCH 111/113] sunxi: h713: the HY300 T08 - board base defconfig and
+Subject: [PATCH 111/114] sunxi: h713: the HY300 T08 - board base defconfig and
  device tree (issue #7)
 
 hy300_t08_defconfig is hy300_pro_defconfig with this board's DRAM block (640 MHz, tpr0..tpr2 and tpr11/tpr12 of the HY350 family, read off the owner's boot0 at LBA 16 and the stock OTA image), its device tree name and its identification string; sun50i-h713-hy300-t08.dts includes the bench board's tree and names the board. No shared file is touched. Nobody here has the board; a TEST image over FEL for its owner is the only build.

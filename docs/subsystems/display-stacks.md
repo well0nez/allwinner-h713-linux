@@ -145,7 +145,8 @@ and `h713-hdcp-key.service` -> `/etc/systemd/system/`, `userspace/h713-power/h71
 `board/sunxi/hy310.env`, or `u-boot-initial-env` of a build): `fw_setenv` `bootcmd`, `boot_emmc`, `boot_net` with the new
 values and `fw_setenv h713_display vendor`, one `fw_setenv NAME VALUE` each (this `fw_setenv` takes no `-s` file of
 "NAME VALUE" lines: that leaves keys with a space in the name). The HY320's `bootcmd` is the one with
-`h713_conlog 0x45000000; mmc dev 1; mmc write 0x45000000 0x2800 0x400;` after the `fi;` (`hy310.env` under
+`h713_conlog 0x45000000; if test "${h713_conlog_emmc}" = 1; then mmc dev 1; mmc write 0x45000000 0x2800 0x400; fi;`
+after the `fi;` (`hy310.env` under
 `CONFIG_CONSOLE_RECORD`, which only `hy320_defconfig` sets; [HY320](../../boards/hy320/README.md), "U-Boot's console
 without a UART"): it records `noboot` on this board without a UART. The HY320's `boot_emmc` keeps its
 `h713-kernel-7.3.fit` and gets ` ${h713_display_args}` at the end of its `bootargs` instead of the repository's line.
@@ -182,7 +183,7 @@ the boot after it the vendor one again, as `h713_boot`.
 |---|---|---|
 | kernel and words | `uname -r; cat /proc/cmdline` | `7.3.1-rustbench`; `... h713.display=clean module_blacklist=hy310_cpu_comm,...,sun50i_h713_afbd` |
 | no firmware path | `lsmod \| grep -E 'afbd\|hdmirx\|cpu_comm\|mips\|msp'`; `ls /sys/bus/platform/drivers/ \| grep -E 'mips\|cpu_comm'` | nothing |
-| U-Boot `noboot` (with `h713_conlog`) | `dd if=/dev/mmcblk0 bs=512 skip=10240 count=1024 \| strings \| grep 'H713 disp'` | `H713 disp: MIPS held in reset (noboot) ...` |
+| U-Boot `noboot` (with `h713_conlog` and `h713_conlog_emmc=1`) | `dd if=/dev/mmcblk0 bs=512 skip=10240 count=1024 \| strings \| grep 'H713 disp'` | `H713 disp: MIPS held in reset (noboot) ...` |
 | the load | `journalctl -b -u h713-display`; `lsmod \| grep -E 'h713_drm\|arisc'` | `h713_drm loaded after sun50i-h713-arisc (bench=1: no device tree node ...)`; both modules |
 | its options and files | `grep . /sys/module/h713_drm/parameters/{fw,edid_fw,hdmi_port}`; `dmesg \| grep -E 'TSE\|EDID\|provider'` | the values of `h713-drm.conf`; `h713-mips/database.TSE loaded`, `provider: EDID (hy310-edid.bin) served on port 1` |
 | skipped units | `systemctl show -p ConditionResult h713-hdcp-key h713-tv-rescue`; `ls /run/hy310/firmware` | `no` for both; no such directory (the key never left the storage) |

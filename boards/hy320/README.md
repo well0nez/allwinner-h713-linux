@@ -157,14 +157,17 @@ U-Boot of the partition's full 10240 sectors (LBA 2048..12287) and it would be a
 boot. Its owner read the log that way on 31.10.2026 while bringing the board up (an `mmc write` in his
 `bootcmd`, back to the plain `bootcmd` since 01.11.2026); it is not a recipe.
 
-Since 04.11.2026 the board environment (`board/sunxi/hy310.env`) carries `h713_conlog 0x45000000; mmc dev 1;
-mmc write 0x45000000 0x2800 0x400` under `CONFIG_CONSOLE_RECORD`, which only this base sets, after the `fi;` of its
-`h713_display` branch: an HY320 image's `bootcmd` logs every boot to that tail and reads the key, with no hand edit.
-That is the per-boot eMMC write the paragraph above rules out; whether it stays or goes back to RAM only is open.
+Since 05.11.2026 the board environment (`board/sunxi/hy310.env`) carries `h713_conlog 0x45000000; if test
+"${h713_conlog_emmc}" = 1; then mmc dev 1; mmc write 0x45000000 0x2800 0x400; fi;` under `CONFIG_CONSOLE_RECORD`,
+which only this base sets, after the `fi;` of its `h713_display` branch: an HY320 image's `bootcmd` copies every
+boot's record to RAM and reads the key, with no hand edit, and writes nothing to the eMMC. Only `fw_setenv
+h713_conlog_emmc 1`, by hand, puts the record into that tail for Linux to read - the eMMC write the paragraph above
+rules out for a normal boot. *Superseded 05.11.2026:* from 04.11.2026 the image's `bootcmd` wrote the record there on
+every boot.
 The other boards' `bootcmd` has no `h713_conlog`. `h713-display set clean` refuses a hand-set `bootcmd` that ignores
 the key ([display stacks](../../docs/subsystems/display-stacks.md)); `fw_setenv bootcmd` with the image's line (its
-`u-boot-initial-env`) replaces it. The unit's saved environment carries the image's
-line since 05.11.2026 (`doku/229` §2).
+`u-boot-initial-env`) replaces it. The unit's saved environment carries the image's 04.11.2026
+line, with the write on every boot, since 05.11.2026 (`doku/229` §2).
 
 ## What we do not know
 

@@ -1,7 +1,7 @@
 From ef6cf9a0d43f3c735f2b4eb38847f546fdee2fe9 Mon Sep 17 00:00:00 2001
 From: minpeter <62207008+minpeter@users.noreply.github.com>
 Date: Wed, 4 Nov 2026 18:20:01 +0900
-Subject: [PATCH 112/113] sunxi: h713: h713_display - the display stack per
+Subject: [PATCH 112/114] sunxi: h713: h713_display - the display stack per
  boot, vendor or clean
 
 hy310.env: h713_display=vendor by default. bootcmd branches on it: "clean"
