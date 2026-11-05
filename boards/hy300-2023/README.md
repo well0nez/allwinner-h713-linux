@@ -12,7 +12,7 @@ after its firmware.
 | Profile | `installer/h713/profiles/hy300_2023.py` |
 | Image | TEST only: `release/build-all.sh --board hy300-2023 --test-image --version vX.Y`; nothing is published |
 | Kernel DTB | `sun50i-h713-hy300-2023` (kernel 0350): the HY300 Pro's tree with the focus motor off; built with dtc, never booted |
-| U-Boot base | `hy300_2023_defconfig` (fork, 05.11.2026): `hy300_pro_defconfig` with the HY350 family's DRAM block at 792 MHz, this tree and its identification string |
+| U-Boot base | `hy300_2023_defconfig` (fork `h713-hy310`, mirror `uboot-h713/0112`, 05.11.2026): `hy300_pro_defconfig` with the HY350 family's DRAM block at 792 MHz, this tree and its identification string |
 | DRAM | DDR3 (type 3), 792 MHz; the HY350 profile's block word for word (`tpr0..tpr2` 0x4a2195 / 0x2423190 / 0x8b061, `tpr11/12` 0x44440000 / 0x5555) |
 | Panel | 1280×720, declared project id `0x34`; timings not posted |
 | Display firmware | a revision of its own: 1 251 856 B, `1e3e518f...`, HDCP wait site `0x4b13cf00` (row "ADT-3 2023-06" in `h713_mips_fw_revs[]`, the four firmware addresses at zero) |

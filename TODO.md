@@ -1048,7 +1048,7 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       `boards/hy300-2023/` (`KERNEL_DTB`, `UBOOT_BOARD=hy300_2023`), Kernel **0350** (HY300-Pro-Baum, `motor_ctr` aus; elog/Übergabe
       bleiben die des HY300 Pro - Firmware nie gelaufen, schwarze Wand nach dem Logo wäre das Zeichen), U-Boot-Fork-Zweig
       `versuch/hy300-2023` (`212454b3952`: Zeile "ADT-3 2023-06" in `h713_mips_fw_revs[]` mit vier Nullen, `hy300_2023_defconfig`
-      mit HY350-Block, dts); nicht gepusht, Gitlink unverändert. Status und Ergebnis der Bauten: Bericht. Nächste Schritte wie beim T08:
+      mit HY350-Block, dts); am 05.11. nach `h713-hy310` gepusht (Marco), Spiegel 112 verifiziert, Gitlink gesetzt. Status und Ergebnis der Bauten: Bericht. Nächste Schritte wie beim T08:
       Fork-Push, Spiegel, Gitlink, Merge, TEST-Abbild, Antwort mit Schritt 0 (sein eigenes U-Boot) und dem Hinweis auf den Vollabzug.
 
 ## 5 Installer und Werkzeuge
