@@ -1059,6 +1059,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       Abbilder unverändert), Release-Text zeigt darauf, Antwort #8 (issuecomment-6777935044). Lehre im Board-README: ein in ein
       Issue getippter Hash wird gegen eine Lesung geprüft. Nebenbei `test_mkimage_selftest` (Marker 45 -> `len(layout.FILES)`).
 
+- [ ] 4.20 **HY300 T08, dritte Firmware (Issue #10, Melder GitHub `tgiorgio`, 05.11.2026): Variante `fw20250221`, eMMC 14 942 208 Sektoren**
+      (`arbeit/issue10-hy300-20250221-20261110/`: `BEWERTUNG.md`; `arbeit/t08-fw20250221-20261110/`: `BERICHT.md`). Sein identify über unser
+      T08-Installer-U-Boot (DRAM trainiert): T08-Block, display.bin `22a7df11`, database `6d43b85a`, Panel-Block Wert für Wert; Bootpaket
+      Aug 2023 (U-Boot `00008-gc26a358`, ARISC 12.08.2023, scp `631e06bd`, u-boot `f2ee7681`, dtb `e0ee997e`), vendor 115 920 896, Android-11-
+      Userland 2025-02 (32-bit); **eMMC 14 942 208** (T22708, UDISK 7095296+7846879) - sein "No drive" war `find_drive`s Größenprüfung.
+      **10.11.2026 (Marco: "Ja, anlegen"; Zweig `versuch/t08-fw20250221`, `e9a64d86`):** Variante mit eigenem Stock-Block und Layout, `SECTORS_KNOWN`
+      + 14942208, Tests (528), READMEs; Item-Größen des Pakets **angenommen** (nur Hashes gepostet). TEST-Abbild `v0.97.2-t08fw2025test1`
+      gebaut (rc 0, `test_for=hy300_t08/fw20250221`, 14942208). Offen auf Marcos Wort: Merge, Push, Tag `hy300-t08-fw20250221-test1`,
+      Pre-Release, Antwort (sein dd = Rückweg; `h713-extract`-Bitte für Größen und monitor/optee). Er hat Fernbedienung, ADB, A-A-Kabel.
+
 ## 5 Installer und Werkzeuge
 
 - [ ] 5.14 (seit 22.10.2026 nur crust-Experiment: das Release läuft ohne Standby) **Reste der Durchsicht des Standby-Codes** (`arbeit/review-r2-20261009/FUNDE.md`, alle minor/info): CC-1 (Neustart mit
