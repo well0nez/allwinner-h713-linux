@@ -16,6 +16,7 @@ import support                 # imported first: it puts the work dir on sys.pat
 import fakedisk
 
 sys.path.insert(0, support.TOOLS)
+from h713 import layout                                              # noqa: E402
 from h713.mkimage import TABLE_FORMAT                            # noqa: E402
 
 # re-frozen 2026-09-16 for layout v4 (plan/briefs/P-layout-v4.md): the self-test does
@@ -28,7 +29,8 @@ VENDOR_DIRS = (support.VENDOR_OUT + "-20260912", support.VENDOR_OUT)
 
 SELFTEST = os.path.join(support.TOOLS, "mkimage-selftest.py")
 MARKERS = ("ALL GREEN", "Secure Storage unchanged", "eGON.BT0 sits at LBA 16",
-           "equal to layout.FILES", "none of the 45 files of h713.layout is in the image")
+           "equal to layout.FILES",
+           "none of the %d files of h713.layout is in the image" % len(layout.FILES))   # 55 since the AIC8801 rows
 
 
 def _pick():

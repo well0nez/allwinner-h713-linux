@@ -28,12 +28,14 @@ after its firmware.
   `panel_config.ini` present (2513 B), `HDMI_EDID_14.bin` block 1 with a wrong checksum (our chain serves its own EDID).
 - **The raw eMMC head**, LBA 0..73727, read by the owner (05.11.2026): boot0 at LBA 16 and 256, the two `sunxi-package`
   copies at 24576 and 32800 identical, checksum ok, items u-boot 638 976 / monitor 65 996 / scp 176 132 / optee 267 136 /
-  dtb 69 632 B, ARISC `50e8725e...`. Not attached (secure storage); the `monitor` and `optee` hashes are not read yet.
+  dtb 69 632 B, ARISC `50e8725e...`. Not attached (secure storage). `monitor` `2dc43c30...` and `optee` `c391dde3...` (owner, 06.11.2026, h713-extract over the head): the T08 unit's.
 - **The case** (owner): power button, HDMI, 3.5 mm headphone jack, USB; manual focus ring, no motor; no camera; a remote.
 - **DRAM in practice**: our HY300 Pro U-Boot from `hy300-pro-test12` (SPL at 636 MHz with the HY300 Pro's block) trained
   his DRAM and exposed the eMMC over UMS for a full partition dump with consistent hashes (04.11.2026). His measurement.
-- **Assumed, not read**: the partition table in the profile is the HY300 T08's (the same family: 25 entries, `super`
-  6 291 456 sectors, a single `Reserve0`); the owner's GPT has not been posted row by row.
+- **The partition table** (owner, 06.11.2026, his GPT row by row, both CRCs ok): the HY300 T08's to the sector (25 entries,
+  `super` 6 291 456 sectors, a single `Reserve0`, `UDISK` 7095296+8174559). Until then it stood in the profile as an assumption.
+- **Lesson** (10.11.2026): the `u-boot` and `dtb` hashes of the owner's first comment were mistyped, the profile carried them,
+  and the installer refused his unit ("no board we know"). A hash typed into an issue is checked against a read.
 
 ## What we do not know
 

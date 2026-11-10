@@ -9,7 +9,9 @@ Shape: installer/h713/profiles/SCHEMA.md. Source tags used in the comments below
   I  = the owner's `h713-install identify` on the device (issue #8, 02.11.2026): the strong features, DRAM, panel id
   R  = his `h713-extract 0.4` report over his partition files (04.11.2026): display.bin, database, vendor, libmspsound
   H  = his read of the raw eMMC head, LBA 0..73727 (05.11.2026): boot0 at 16 and 256, the two packages, item sizes
-  T  = installer/h713/profiles/hy300_t08.py: the ADT-3 family's partition table, used here as the assumption
+  G  = his GPT and the two remaining item hashes, read with h713-extract over the same head (06.11.2026): the table
+       row by row (= the T08's), monitor and optee (= the T08 unit's). The u-boot and dtb hashes of his first comment
+       were mistyped and stood here until 10.11.2026; the installer refused his unit over them. Now: identify of 06.11.
 """
 
 _FINGERPRINT = "ADT-3/adt3/adt3:10/QTT1.200116.002.B6/6245789:user/release-keys"   # I, R: the ADT-3 family's string
@@ -31,12 +33,12 @@ PROFILE = {
         # I: cut before " Allwinner Technology" resp. " Time:"
         "uboot_version": "U-Boot 2018.05-00005-g6d2f0a5-dirty (Jun 25 2023 - 15:41:51 +0800)",
         "arisc_version": "TV-303  ARISC  00.00.00.09 Date:Jun 25 2023",
-        "package_items": {                   # H: the item sizes of the package at LBA 24576 (= 32800); I: the three hashes
-            "u-boot":  ( 638976, "a8f2bfe87a1c4c46b628b008b978098c8c0c3f3c879a0f77ec3b02e8e04690e1"),
-            "monitor": (  65996, None),      # hash not read off the device yet
+        "package_items": {                   # H: the item sizes of the package at LBA 24576 (= 32800); G: the five hashes
+            "u-boot":  ( 638976, "a8f2bfe87a1c4c46b628b908b978998c8c8c303c879a0f77ec3b02e8e94690e1"),
+            "monitor": (  65996, "2dc43c309aeadf010353ac4fda0b91367eb25e9694cadbf6277874fb92be5e43"),
             "scp":     ( 176132, "50e8725e2309397c33e2f2a9beb363184e225cc7f693ab08ec8b0b7627280b81"),
-            "optee":   ( 267136, None),      # hash not read off the device yet
-            "dtb":     (  69632, "a84bfbd574236aa0065e2fd4441ed5f3a35cffa986055aa00325d0e3bb102c7e"),
+            "optee":   ( 267136, "c391dde39995529ab70b883ec4499a7f44954d439d1d6d0f9ccfa3ae01ea762a"),
+            "dtb":     (  69632, "a84bfbd574210aa0065e2fd4441ed5f3a35cffa966855aab0325d9e3bb102c7e"),
         },
         "vendor_size": 110755840,            # I, R: vendor_a
         # The fingerprint is the ADT-3 family's (T08, HY350, HY320, HY300 Pro); the three package hashes and the two
@@ -57,9 +59,9 @@ PROFILE = {
         "disk_sectors": 15269888,            # I: 15269888 sectors, 25 partitions - the ADT-3 family's eMMC and count
         "first_usable": 73728,
         "entries": 25,
-        # ASSUMED, not read: the owner's GPT has 25 entries, super 6 291 456 sectors (R: 3 221 225 472 B) and a single
-        # Reserve0 as the HY300 T08's (T); the LBAs below are the T08's table. His own GPT has not been posted row by
-        # row; the installer finds private and Reserve0 by name in the device's own GPT in any case.
+        # G: his GPT row by row (header and table CRC ok, usable 73728..15269854): 25 entries, super 6 291 456 sectors,
+        # a single Reserve0, UDISK 7095296+8174559 - the HY300 T08's table to the sector. Until 06.11.2026 this was
+        # the T08's table as an assumption; the installer finds private and Reserve0 by name in the device's own GPT.
         "partitions": [
             ("bootloader_a",       73728,    65536, None), ("bootloader_b",      139264,    65536, None),
             ("env_a",             204800,      512, None), ("env_b",             205312,      512, None),
@@ -108,10 +110,12 @@ PROFILE = {
     "reference": None,                       # extracted by its owner, not here
     "expected": {
         "package_items": {"u-boot": 638976, "monitor": 65996, "scp": 176132, "optee": 267136, "dtb": 69632},   # H
-        "package_item_sha256": {             # I; monitor and optee not read
-            "u-boot": "a8f2bfe87a1c4c46b628b008b978098c8c0c3f3c879a0f77ec3b02e8e04690e1",
+        "package_item_sha256": {             # G (u-boot, scp, dtb also I of 06.11.)
+            "u-boot": "a8f2bfe87a1c4c46b628b908b978998c8c8c303c879a0f77ec3b02e8e94690e1",
             "scp": "50e8725e2309397c33e2f2a9beb363184e225cc7f693ab08ec8b0b7627280b81",
-            "dtb": "a84bfbd574236aa0065e2fd4441ed5f3a35cffa986055aa00325d0e3bb102c7e",
+            "dtb": "a84bfbd574210aa0065e2fd4441ed5f3a35cffa966855aab0325d9e3bb102c7e",
+            "monitor": "2dc43c309aeadf010353ac4fda0b91367eb25e9694cadbf6277874fb92be5e43",
+            "optee": "c391dde39995529ab70b883ec4499a7f44954d439d1d6d0f9ccfa3ae01ea762a",
         },
         "uboot_version": "U-Boot 2018.05-00005-g6d2f0a5-dirty (Jun 25 2023 - 15:41:51 +0800)",
         "dtb_compatible": "allwinner,tv303",
