@@ -1052,7 +1052,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       **05.11.2026 veröffentlicht (Marco: "Ja, alles vier"):** Merge `41bc325d` gepusht, Tag `hy300-2023-test1`, Pre-Release mit dem
       TEST-Abbild `v0.97.2-hy300test1` (10 Dateien, `test_for=hy300_2023`), Antwort in #8 (Schritt 0 mit seinem eigenen U-Boot bei
       792 MHz, Vollabzug `dump --full` als Rückweg, Linux-only, GPT per `sgdisk -p` und monitor/optee-Hashes erbeten). **Offen:** seine
-      Rückmeldung; nach GPT/Hashes das Profil von "angenommen" auf gelesen heben; AIC8801 wie beim T08 (4.17) beobachten.
+      Rückmeldung; AIC8801 wie beim T08 (4.17) beobachten.
+      **10.11.2026 Korrektur (Marco: "fixe das und antworte ihm"):** sein Install am 06.11. verweigert ("no board we know"), weil das
+      Profil die vertippten u-boot/dtb-Hashes seines ersten Kommentars trug; `f31c372a` = Hashes aus seiner identify-Zeile, monitor/
+      optee nachgetragen, GPT zeilenweise (= T08 bis auf den Sektor, keine Annahme mehr); Tag `hy300-2023-test1b` (nur Installer,
+      Abbilder unverändert), Release-Text zeigt darauf, Antwort #8 (issuecomment-6777935044). Lehre im Board-README: ein in ein
+      Issue getippter Hash wird gegen eine Lesung geprüft. Nebenbei `test_mkimage_selftest` (Marker 45 -> `len(layout.FILES)`).
 
 ## 5 Installer und Werkzeuge
 
