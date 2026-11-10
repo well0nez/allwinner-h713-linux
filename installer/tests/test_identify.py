@@ -116,6 +116,23 @@ class Images(unittest.TestCase):
         for name in ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version", "sunxi_version"):
             self.assertFalse(ident["matches"][T08_OTA][name], name)
 
+    def test_the_issue_10_unit_is_the_t08_s_third_firmware(self):
+        # The identify row the owner posted (issue #10, 05.11.2026): the T08's DRAM block, display firmware and
+        # database under a boot package of 2023-08 nobody else has, on an eMMC of 14942208 sectors. His first run
+        # found no drive, because find_drive knew no such size (test_drive_sizes); match_profiles names the variant.
+        row = {"build_fingerprint": get(T08_OTA)["expected"]["build_fingerprint"],
+               "uboot_version": "U-Boot 2018.05-00008-gc26a358 (Aug 08 2023 - 02:18:08 +0000) Allwinner Technology",
+               "arisc_version": "TV-303  ARISC  00.00.00.09 Date:Aug 12 2023 Time: 20:23:17",
+               "scp_sha256": "631e06bd4f1b009e28b8396076847089d5ad0d3fb31a0586566aa103c2d18a66",
+               "uboot_sha256": "f2ee7681c5e082a4f4cdb131699ecad7424eb4b9d01bcd7eca9d7b013cc3390f",
+               "dtb_sha256": "e0ee997e54bde61be5078563a0172bde55502dea3c9f307923715d878bdfeb46",
+               "dtb_compatible": "allwinner,tv303 arm,sun50iw12p1",
+               "mips_database_sha256": get(T08_OTA)["expected"]["mips_database_sha256"],
+               "vendor_size": 115920896, "sunxi_version": None}
+        best, candidates, _matches = match_profiles(row)
+        self.assertEqual((best, candidates), ("hy300_t08/fw20250221", ["hy300_t08/fw20250221"]))
+        self.assertEqual(get("hy300_t08/fw20250221")["layout"]["disk_sectors"], 14942208)
+
     def test_hy300_pro_plus_ddr3_is_the_qz713df_a1_profile(self):
         # The DDR3 image (0922) is one of the two stock firmwares of the HY200 QZ713DF A1, the
         # board of cstenger's bench and of the HY300PRO-G-EU (package F1, ST3-BOARDMERGE).

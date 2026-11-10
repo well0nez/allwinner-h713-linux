@@ -7,14 +7,14 @@ An H713 projector known from its stock firmware image and, since 31.10.2026, fro
 |---|---|
 | Status | **profile-only** - a complete description, no device run; a TEST image can be built since 03.11.2026 |
 | Verified by | nobody |
-| Profile | `installer/h713/profiles/hy300_t08.py`, two variants: `ota20240419` (the stock OTA image), `unit202311` (the owner's unit) |
-| Image | TEST only: `release/build-all.sh --board hy300-t08 --variant unit202311 --test-image --version vX.Y` (its owner's firmware); nothing is published |
+| Profile | `installer/h713/profiles/hy300_t08.py`, three variants: `ota20240419` (the stock OTA image), `unit202311` (the issue #7 unit), `fw20250221` (the issue #10 unit, eMMC 14 942 208 sectors) |
+| Image | TEST only, per variant: `release/build-all.sh --board hy300-t08 --variant unit202311` (or `fw20250221`) `--test-image --version vX.Y`; published as pre-releases for their owners (`hy300-t08-test1`, 04.11.2026) |
 | Kernel DTB | `sun50i-h713-hy300-t08` (kernel 0349, 03.11.2026): the HY300 Pro's tree with the "ADT-3 2024" firmware's elog and AFBD handoff words from the HY320; built with dtc, never booted |
 | U-Boot base | `hy300_t08_defconfig` (fork `h713-hy310`, mirror `uboot-h713/0111`, 03.11.2026): `hy300_pro_defconfig` with this board's DRAM block at 640 MHz, its tree and its identification string; builds (release, installer), never run |
 | DRAM | DDR3 (type 3), 640 MHz, 1 GiB; the HY350 family's block (`tpr0..tpr2` 0x4a2195 / 0x2423190 / 0x8b061) |
 | Panel | 1280×720, single port, 62 MHz, declared project id `0x34`; display firmware "ADT-3 2024" (`22a7df11...`), the HY350's and HY320's |
 | Wi-Fi | **AIC8801** (SDIO `5449:0145`), not the AIC8800D80 of the other boards; its firmware set lies at the root of `vendor:/etc/firmware/` and `h713-extract` takes it since 03.11.2026 |
-| Stock | ADT-3 build 6245789: the OTA of 2024-04-19 (Android 10, U-Boot 2024-04-15, ARISC 2024-04-19), or the owner's 2023-11 boot package under a 2024-07 Android 11 userland |
+| Stock | ADT-3 build 6245789: the OTA of 2024-04-19 (Android 10, U-Boot 2024-04-15, ARISC 2024-04-19), the issue #7 unit's 2023-11 boot package under a 2024-07 Android 11 userland, or the issue #10 unit's 2023-08 package under a 2025-02 Android 11 userland |
 
 ## Where the facts come from
 
@@ -28,6 +28,14 @@ An H713 projector known from its stock firmware image and, since 31.10.2026, fro
   fingerprint and all 19 display files are the OTA's byte for byte, his boot0 at LBA 16 is the OTA's block (unpatched
   pair), his LBA 256 copy the HY350's 792 MHz block (the BROM takes LBA 16 while it is valid). A second boot package at
   LBA 32800 holds a U-Boot of 2024-07-15, probably left by an update; which package his unit starts is not measured.
+- **fw20250221** - the second owner's `h713-install identify` over FEL with our T08 installer U-Boot (issue #10,
+  05.11.2026; the drive came up with `--device` only, since its size was unknown to `find_drive` until 10.11.2026), his
+  boot0 block read from Android, his GPT and `panel_config.ini`. A boot package of 2023-08 (U-Boot `2018.05-00008-gc26a358`
+  of 2023-08-08, ARISC of 2023-08-12, its own `dtb` `e0ee997e...`; `monitor` and `optee` not read) under a 2025-02-21
+  Android 11 userland (32-bit, kernel 5.4.99), a vendor partition of its own (115 920 896 B), the display firmware and
+  `database.TSE` the OTA's, the OTA's DRAM block, the panel block value for value, and an eMMC of 14 942 208 sectors
+  (T22708; `UDISK` 7095296+7846879): the first H713 board below 15 269 888. Package item sizes are assumed from the
+  family until his `h713-extract` package line is in. He has the stock IR remote, ADB and a `dd` of the whole eMMC.
 - **DRAM** - the 24 words at `boot0_sdcard.fex+0x38`, the same on his LBA 16. `uboot.config` and `hy300_t08_defconfig`
   carry them with the `para2`/`tpr13` pair every defconfig of the fork uses (what the HY310 runs; his LBA 16 has the
   unpatched image form, his LBA 256 the patched pair). Whether our SPL trains this board's DRAM: not measured.

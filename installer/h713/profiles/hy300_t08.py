@@ -1,10 +1,13 @@
 """HY300 T08 -- board profile. Data only, no vendor bytes: numbers, hashes and strings.
 
-One board, two stock firmwares (SCHEMA.md, "variants"):
+One board, three stock firmwares (SCHEMA.md, "variants"):
   ota20240419  the stock OTA image HY300_T08_OTA_2024-04-19-2028.img - U-Boot 2024-04-15, ARISC 2024-04-19
   unit202311   the first owner's unit (issue #7, 31.10./01.11.2026): an older boot package (U-Boot 2023-11-18,
                ARISC 2023-11-23, its own device tree) under a newer Android 11 userland (eng.projector.20240722);
                the vendor partition, its fingerprint and the display data are the OTA's byte for byte.
+  fw20250221   the second owner's unit (issue #10, 05.11.2026): a boot package of 2023-08 (U-Boot 2023-08-08,
+               ARISC 2023-08-12, its own device tree) under an Android 11 userland of 2025-02-21 (32-bit), the
+               display data the OTA's, and an eMMC of 14 942 208 sectors (T22708) instead of 15 269 888.
 
 Shape: installer/h713/profiles/SCHEMA.md. Source tags used in the comments below:
   J  = installer/tests/fixtures/images/hy300-t08.json (board facts of the stock image, package A1)
@@ -13,6 +16,9 @@ Shape: installer/h713/profiles/SCHEMA.md. Source tags used in the comments below
   X  = analyse/release/arbeit/r2-extract/h713-extract (line numbers are lines 52-275)
   A0 = docs/subsystems/mips.md ("vendor boot path") (what the vendor U-Boot loads, and from where)
   F  = installer/tests/fixtures/firmware-revisions.json (display.bin revisions + HDCP wait site, package A5)
+  G  = the second owner's report (issue #10, 05.11.2026): `h713-install identify` over FEL with our T08 installer
+       U-Boot (the drive came up with --device only: its size was unknown to find_drive), the boot0 block read from
+       Android, his GPT, panel_config.ini, the modules; nothing of ours has run on it
 """
 
 # J sys_partition[] -- the stock table of the OTA image; R: the owner's GPT has the same 25 entries with the single
@@ -52,6 +58,10 @@ _LAYOUT = {
     "raw": None,                         # the A1 facts record no raw targets for this image
     "sunxi_gpt_disagrees": None,         # J layout_consistency is empty: both tables agree
 }
+# G: the same 25 entries at the same LBAs on an eMMC of 14 942 208 sectors (7 650 410 496 B, eMMC T22708, the first
+# H713 board seen below 15 269 888): UDISK 7095296+7846879 ends at the last usable sector. The size is in
+# blockdev.SECTORS_KNOWN since 10.11.2026; an image for this variant is cut for it (mkimage.disk_sectors_for).
+_LAYOUT_T22708 = dict(_LAYOUT, disk_sectors=14942208)
 # A0 section 4: the U-Boot of the ADT-3 images has no MIPS loader, and J boot_resource_fat.has_mips_dir is
 # false -- display.bin lives in the vendor partition only. R: the same on the owner's unit (bootlogo.bmp at the
 # root of bootloader_a/_b, no mips/), and all 19 files byte for byte the OTA's.
@@ -98,6 +108,24 @@ _OTA_STOCK = {
     "strong_features": ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version",
                         "arisc_version", "sunxi_version"),
 }
+# G: identify row. The three package hashes and the two strings are his; monitor and optee were not read (no
+# h713-extract over the head yet). Item SIZES are ASSUMED from the family (u-boot 638976 and scp 176132 on every
+# ADT-3 package seen; dtb 71168 as the 2023-11 and 2024-04 trees, the 2023-06 tree has 69632) until his
+# h713-extract package line says otherwise; identify does not judge by sizes.
+_FW2025_STOCK = {
+    "android": "11 (userland eng.projector.20250221, 32-bit, kernel 5.4.99, on the ADT-3 vendor build 6245789)",   # G
+    "sunxi_version": None,               # a device does not carry it
+    "build_fingerprint": _FINGERPRINT,   # G: ro.product.build.fingerprint, the OTA's string (ro.build.fingerprint is the 2025 userland's)
+    "uboot_version": "U-Boot 2018.05-00008-gc26a358 (Aug 08 2023 - 02:18:08 +0000)",
+    "arisc_version": "TV-303  ARISC  00.00.00.09 Date:Aug 12 2023",
+    "package_items": {
+        "u-boot":  ( 638976, "f2ee7681c5e082a4f4cdb131699ecad7424eb4b9d01bcd7eca9d7b013cc3390f"),
+        "scp":     ( 176132, "631e06bd4f1b009e28b8396076847089d5ad0d3fb31a0586566aa103c2d18a66"),
+        "dtb":     (  71168, "e0ee997e54bde61be5078563a0172bde55502dea3c9f307923715d878bdfeb46"),
+    },
+    "vendor_size": 115920896,            # G: identify vendor_size (not the OTA's 114851840: a vendor build of its own)
+    "strong_features": ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version", "arisc_version"),
+}
 _UNIT_STOCK = {
     "android": "11 (userland eng.projector.20240722 on the ADT-3 vendor build 6245789)",   # R: his first report
     "sunxi_version": None,               # a device does not carry it
@@ -134,8 +162,8 @@ def _expected(stock, libmspsound):
 PROFILE = {
     "id": "hy300_t08",
     "name": "HY300 T08",
-    "description": "HY300 T08 -- Allwinner H713, ADT-3 Android stock (two firmwares: the 2024-04-19 OTA image, "
-                   "and the 2023-11 boot package of the issue #7 unit)",
+    "description": "HY300 T08 -- Allwinner H713, ADT-3 Android stock (three firmwares: the 2024-04-19 OTA image, "
+                   "the 2023-11 boot package of the issue #7 unit, the 2023-08 package of the issue #10 unit)",
     "soc": "H713 (sun50iw12)",               # J boot_package.dtb_model / dtb_compatible; R the same
     # I:95 EINMALIG only for secure-storage, whose position is fixed for every H713; private and
     # Reserve0 have to be found by name in the device's own GPT (A0 section 5, issue #1 defect 2).
@@ -190,6 +218,22 @@ PROFILE = {
             "reference": None,               # extracted by its owner, not here
             # R: libmspsound.so c6e9cffc... (not the HY310's); database.TSE the OTA's.
             "expected": _expected(_UNIT_STOCK, "c6e9cffcb6af8df7cd0aa544dd69f4ff12f0473ad423d8008e1c11ae45423db6"),
+        },
+        "fw20250221": {
+            "name": "HY300 T08 (the issue #10 unit, boot package 2023-08, eMMC 14 942 208 sectors)",
+            "description": "HY300 T08 -- the second owner's unit (issue #10): boot package of 2023-08 (U-Boot "
+                           "2023-08-08, ARISC 2023-08-12, its own device tree) under a 2025-02 Android 11 userland, "
+                           "on an eMMC of 14 942 208 sectors",
+            # G: identify over FEL with our T08 installer U-Boot (05.11.2026), which trained his DRAM with this
+            # block; nothing of ours has booted on it. He has the stock IR remote, ADB and a dd of the whole eMMC.
+            "status": "profile-only",
+            "verified_by": None,
+            "stock": _FW2025_STOCK,
+            "dram": dict(_DRAM, source="the owner's boot0 at LBA 16 (issue #10, 05.11.2026): the OTA's block, para2 0, tpr13 0x34010100"),
+            "layout": _LAYOUT_T22708,
+            "mips": _MIPS,                   # G: display.bin 22a7df11..., database 6d43b85a..., the OTA's
+            "reference": None,               # read by its owner, not here
+            "expected": _expected(_FW2025_STOCK, None),   # libmspsound not reported
         },
     },
 }

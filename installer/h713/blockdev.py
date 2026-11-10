@@ -31,7 +31,8 @@ SECTORS_EXPECTED = 15269888          # 7.28 GiB -- the eMMC of the HY310
 # (h713-install _sizes_allowed/_install, h713.layout.partitions_for). restore-stock builds its
 # table for the device's own size and takes every known one (h713-install _sizes_allowed).
 SECTORS_KNOWN = (SECTORS_EXPECTED,
-                 15273600)           # 7.28 GiB + 3712 sectors -- HY200 QZ713DF A1, HY300PRO-G-EU unit
+                 15273600,           # 7.28 GiB + 3712 sectors -- HY200 QZ713DF A1, HY300PRO-G-EU unit
+                 14942208)           # 7.12 GiB, eMMC T22708 -- the HY300 T08 of issue #10 (variant fw20250221)
 
 # The secure-storage block is NEVER written, not even with --force. It belongs
 # to this one device and cannot be restored (doku/109 §2.3).

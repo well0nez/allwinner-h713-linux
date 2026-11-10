@@ -198,7 +198,7 @@ class WhatRestoreStockDoes(unittest.TestCase):
     def test_a_size_nobody_knows_is_refused_with_the_known_sizes_and_the_full_dump(self):
         code, out = self._run(15000000)
         self.assertEqual(code, 4, out)
-        self.assertIn("has 15000000 sectors, expected %d or %d" % SECTORS_KNOWN, out)
+        self.assertIn("has 15000000 sectors, expected %s" % " or ".join(str(n) for n in SECTORS_KNOWN), out)
         self.assertIn("full dump: h713-install restore", out)
         self.assertNotIn("HY310's eMMC size only", out)
 

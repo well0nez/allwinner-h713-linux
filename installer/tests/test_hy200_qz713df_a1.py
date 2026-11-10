@@ -46,6 +46,8 @@ from h713.profiles import PROFILES, get, units                      # noqa: E402
 SECT = 512
 GEU = 15273600                         # HY300PRO-G-EU, the stock GPT of its dump: backup header LBA 15273599
 GEU_ID = "hy200_qz713df_a1/projector05061226"     # its firmware, a variant of the HY200 QZ713DF A1
+T08_SMALL_ID = "hy300_t08/fw20250221"         # the HY300 T08 of issue #10: an eMMC of 14942208 sectors
+T08_SMALL = 14942208
 PLUS_ID = "hy200_qz713df_a1/projector09220931"    # the board's other firmware (HY300 Pro+, 2025-09-22)
 HY310 = 15269888
 TOOL = os.path.join(support.TOOLS, "h713-install")
@@ -329,8 +331,9 @@ class MkimageCutsForTheProfileSize(unittest.TestCase):
     def test_the_size_comes_from_the_profile(self):
         self.assertEqual(mkimage.disk_sectors_for(None), HY310)
         self.assertEqual(mkimage.disk_sectors_for(GEU_ID), GEU)
+        self.assertEqual(mkimage.disk_sectors_for(T08_SMALL_ID), T08_SMALL)   # the issue #10 unit's eMMC (10.11.2026)
         for board in units():
-            if board != GEU_ID:
+            if board not in (GEU_ID, T08_SMALL_ID):
                 self.assertEqual(mkimage.disk_sectors_for(board), HY310, board)
         for wrong in ("hy300-pro",                                # the board dir id, not the profile
                       "hy200_qz713df_a1",                         # a board with variants needs one

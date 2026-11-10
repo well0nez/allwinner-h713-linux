@@ -39,7 +39,7 @@ class DriveSizes(unittest.TestCase):
             mock.patch.object(os, "listdir", lambda p: ["sdz"] if p == "/sys/block" else [])
 
     def test_find_drive_takes_the_larger_emmc(self):
-        for sectors in (15269888, 15273600):
+        for sectors in (15269888, 15273600, 14942208):   # the third: the issue #10 unit's smaller eMMC (10.11.2026)
             a, b = self._sys_block(sectors)
             with a, b, mock.patch("platform.system", return_value="Linux"):
                 self.assertEqual(blockdev.find_drive(), [("/dev/sdz", sectors, True)])
