@@ -1067,7 +1067,8 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       **10.11.2026 (Marco: "Ja, anlegen"; Zweig `versuch/t08-fw20250221`, `e9a64d86`):** Variante mit eigenem Stock-Block und Layout, `SECTORS_KNOWN`
       + 14942208, Tests (528), READMEs; Item-Größen des Pakets **angenommen** (nur Hashes gepostet). TEST-Abbild `v0.97.2-t08fw2025test1`
       gebaut (rc 0, `test_for=hy300_t08/fw20250221`, 14942208). Offen auf Marcos Wort: Merge, Push, Tag `hy300-t08-fw20250221-test1`,
-      Pre-Release, Antwort (sein dd = Rückweg; `h713-extract`-Bitte für Größen und monitor/optee). Er hat Fernbedienung, ADB, A-A-Kabel.
+      Pre-Release, Antwort. **10.11. abends (Marco: "Ja, alles fünf"):** gemergt `2d76d0e8`, Tag `hy300-t08-fw20250221-test1`, Pre-Release,
+      Antwort #10 issuecomment-6780901489 (sein dd = Rückweg; `h713-extract`-Bitte für Größen und monitor/optee). **Offen:** seine Rückmeldung.
 
 ## 5 Installer und Werkzeuge
 
