@@ -31,11 +31,13 @@ An H713 projector known from its stock firmware image and, since 31.10.2026, fro
 - **fw20250221** - the second owner's `h713-install identify` over FEL with our T08 installer U-Boot (issue #10,
   05.11.2026; the drive came up with `--device` only, since its size was unknown to `find_drive` until 10.11.2026), his
   boot0 block read from Android, his GPT and `panel_config.ini`. A boot package of 2023-08 (U-Boot `2018.05-00008-gc26a358`
-  of 2023-08-08, ARISC of 2023-08-12, its own `dtb` `e0ee997e...`; `monitor` and `optee` not read) under a 2025-02-21
+  of 2023-08-08, ARISC of 2023-08-12, its own `dtb` `e0ee997e...` of 70 656 B; `monitor` and `optee` the HY300 2023's,
+  read 10.11.2026) under a 2025-02-21
   Android 11 userland (32-bit, kernel 5.4.99), a vendor partition of its own (115 920 896 B), the display firmware and
   `database.TSE` the OTA's, the OTA's DRAM block, the panel block value for value, and an eMMC of 14 942 208 sectors
-  (T22708; `UDISK` 7095296+7846879): the first H713 board below 15 269 888. Package item sizes are assumed from the
-  family until his `h713-extract` package line is in. He has the stock IR remote, ADB and a `dd` of the whole eMMC.
+  (T22708; `UDISK` 7095296+7846879): the first H713 board below 15 269 888. His `h713-extract` package line of 10.11.2026
+  gave `monitor`, `optee` and the `dtb` size; it prints no size for `u-boot` and `scp`, those stay the family's. He has the
+  stock IR remote, ADB and a `dd` of the whole eMMC.
 - **DRAM** - the 24 words at `boot0_sdcard.fex+0x38`, the same on his LBA 16. `uboot.config` and `hy300_t08_defconfig`
   carry them with the `para2`/`tpr13` pair every defconfig of the fork uses (what the HY310 runs; his LBA 16 has the
   unpatched image form, his LBA 256 the patched pair). Whether our SPL trains this board's DRAM: not measured.

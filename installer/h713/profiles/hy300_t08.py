@@ -118,11 +118,13 @@ _FW2025_STOCK = {
     "build_fingerprint": _FINGERPRINT,   # G: ro.product.build.fingerprint, the OTA's string (ro.build.fingerprint is the 2025 userland's)
     "uboot_version": "U-Boot 2018.05-00008-gc26a358 (Aug 08 2023 - 02:18:08 +0000)",
     "arisc_version": "TV-303  ARISC  00.00.00.09 Date:Aug 12 2023",
-    "package_items": {
-        "u-boot":  ( 638976, "f2ee7681c5e082a4f4cdb131699ecad7424eb4b9d01bcd7eca9d7b013cc3390f"),
-        "scp":     ( 176132, "631e06bd4f1b009e28b8396076847089d5ad0d3fb31a0586566aa103c2d18a66"),
-        "dtb":     (  71168, "e0ee997e54bde61be5078563a0172bde55502dea3c9f307923715d878bdfeb46"),
-    },
+    "package_items": {                   # G: his h713-extract package line of 10.11.2026 (monitor, optee, dtb with
+        "u-boot":  ( 638976, "f2ee7681c5e082a4f4cdb131699ecad7424eb4b9d01bcd7eca9d7b013cc3390f"),   # size: family's
+        "monitor": (  65996, "2dc43c309aeadf010353ac4fda0b91367eb25e9694cadbf6277874fb92be5e43"),
+        "scp":     ( 176132, "631e06bd4f1b009e28b8396076847089d5ad0d3fb31a0586566aa103c2d18a66"),   # size: family's
+        "optee":   ( 267136, "c391dde39995529ab70b883ec4499a7f44954d439d1d6d0f9ccfa3ae01ea762a"),
+        "dtb":     (  70656, "e0ee997e54bde61be5078563a0172bde55502dea3c9f307923715d878bdfeb46"),
+    },                                   # sizes; the line prints no size for u-boot and scp, those stay the family's)
     "vendor_size": 115920896,            # G: identify vendor_size (not the OTA's 114851840: a vendor build of its own)
     "strong_features": ("scp_sha256", "uboot_sha256", "dtb_sha256", "uboot_version", "arisc_version"),
 }
@@ -233,7 +235,7 @@ PROFILE = {
             "layout": _LAYOUT_T22708,
             "mips": _MIPS,                   # G: display.bin 22a7df11..., database 6d43b85a..., the OTA's
             "reference": None,               # read by its owner, not here
-            "expected": _expected(_FW2025_STOCK, None),   # libmspsound not reported
+            "expected": _expected(_FW2025_STOCK, None),   # G: libmspsound reported as a 16-digit prefix only (= unit202311's)
         },
     },
 }
