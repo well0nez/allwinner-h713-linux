@@ -32,9 +32,9 @@ from h713.blockdev import Disk                                 # noqa: E402
 from h713.env import ENV_BYTES, env_write                      # noqa: E402
 from h713.install import (BOARD_FILE, board_entry, board_partition,         # noqa: E402
                           copy_entries, device_sources, gpt_partitions,
-                          partition_node, partition_window, read_public_key,
-                          readback_plan, say_optional, table_layout, user_entries,
-                          vendor_sources)
+                          partition_node, partition_window, project_files_optional,
+                          read_public_key, readback_plan, run_projects, say_optional,
+                          table_layout, user_entries, vendor_sources)
 from h713.profiles import PROFILES                                          # noqa: E402
 
 SECT = 512
@@ -230,6 +230,48 @@ class ThePlan(unittest.TestCase):
                             "in the dump", "not there", self.log)
         self.assertEqual(left, ["lib/firmware/hy310-edid.bin"])
         self.assertEqual(self.log.lines, [])
+
+    # Issue #8: the HY300 (2023 firmware) ships 12 ProjectID files, no 0x0035, and declares 0x34.
+    def test_without_a_project_id_every_projectid_file_is_still_mandatory(self):
+        self.assertIs(project_files_optional(self.files, set()), self.files)
+        with self.assertRaises(RuntimeError) as caught:
+            self.sources(leave_out=("boot/mips/ProjectID_0x0035.TSE",))
+        self.assertIn("boot/mips/ProjectID_0x0035.TSE", str(caught.exception))
+
+    def test_a_projectid_file_the_board_does_not_load_may_be_missing(self):
+        self.files = project_files_optional(self.files, {0x34})
+        sources = self.sources(leave_out=("boot/mips/ProjectID_0x0035.TSE",))
+        self.assertEqual(len(sources), 44)
+        self.assertNotIn("boot/mips/ProjectID_0x0035.TSE", sources)
+        self.assertEqual(len(self.log.lines), 1, self.log.text)
+        self.assertIn("ProjectID_0x0035.TSE", self.log.text)
+        self.assertIn("the board's own project id", self.log.text)
+
+    def test_the_boards_own_projectid_file_and_the_last_resort_stay_mandatory(self):
+        self.files = project_files_optional(self.files, {0x34})
+        for name in ("boot/mips/ProjectID_0x0034.TSE", "boot/mips/ProjectID_0x0012.TSE",
+                     "boot/mips/database.TSE"):
+            self.out = os.path.join(self.tmp, name.replace("/", "-"))   # a fresh extraction each
+            with self.assertRaises(RuntimeError) as caught:
+                self.sources(leave_out=(name,))
+            self.assertIn(name, str(caught.exception))
+        optional = [f["name"] for f in self.files if f["optional"] and "ProjectID" in f["name"]]
+        self.assertEqual(len(optional), 11)
+
+    def test_a_complete_set_is_installed_as_before(self):
+        files = project_files_optional(self.files, {0x30})
+        self.assertEqual(copy_entries(files, self.sources()), copy_entries(self.files, self.sources()))
+        self.assertEqual(self.log.lines, [])
+
+    def test_the_project_ids_come_from_the_environment_and_the_board(self):
+        import argparse
+        self.assertEqual(run_projects(argparse.Namespace()), set())
+        self.assertEqual(run_projects(argparse.Namespace(_env_keys={"h713_project": "0x34"})), {0x34})
+        self.assertEqual(run_projects(argparse.Namespace(_profile=PROFILES["hy310"])), {0x30})
+        self.assertEqual(run_projects(argparse.Namespace(_env_keys={"h713_project": "0x34"},
+                                                         _profile=PROFILES["hy300_2023"])), {0x34})
+        self.assertEqual(run_projects(argparse.Namespace(_env_keys={}, _board_project=0x33,
+                                                         _profile=PROFILES["hy310"])), {0x33})
 
 
 class TheBoardFile(unittest.TestCase):

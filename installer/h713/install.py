@@ -542,7 +542,48 @@ CONSEQUENCE = {
     "pq": "h713-pq has no presets, the picture itself is unaffected",
     "audio": "h713-tv keeps its built-in volume curve (the HY310's)",
     "logo": "U-Boot boots without a logo",
+    "mips": "U-Boot loads the ProjectID file of the board's own project id only",
 }
+
+# The ProjectID files (issue #8, 10.11.2026). The table lists 13 and marks every one
+# mandatory, but U-Boot loads exactly one of them: the file of the declared project id
+# (h713_project), and only where that is not there ProjectID_0x0012.TSE, as stock does
+# (uboot-h713 0047). The HY300 (2023 firmware) ships 12 -- no 0x0035 -- and declares 0x34.
+# So where this run knows the board's project id, those two stay mandatory and the others
+# may be missing; without an id (no identification) all 13 are asked for, as before. A
+# firmware with all 13 sees no difference.
+PROJECT_FILE = re.compile(r"^boot/mips/ProjectID_0x([0-9a-fA-F]{4})\.TSE$")
+PROJECT_LAST_RESORT = 0x0012
+
+
+def run_projects(args):
+    """The project ids this run knows the board by: the h713_project it stores in the
+    environment (Reserve0's panel_config.ini, or the installed system's board file) and the
+    board's own (its board file, else the profile's declared_project_id). Empty when none."""
+    ids = set()
+    env = (getattr(args, "_env_keys", None) or {}).get("h713_project")
+    if env:
+        ids.add(int(env, 16))
+    board = getattr(args, "_board_project", None) or \
+        ((getattr(args, "_profile", None) or {}).get("panel") or {}).get("declared_project_id")
+    if board:
+        ids.add(board)
+    return ids
+
+
+def project_files_optional(files, projects):
+    """`files` with the ProjectID files U-Boot will not load marked optional: every one but
+    those of `projects` and the last resort. Unchanged when `projects` is empty."""
+    if not projects:
+        return files
+    keep = set(projects) | {PROJECT_LAST_RESORT}
+    out = []
+    for f in files:
+        m = PROJECT_FILE.match(f["name"])
+        if m and not f.get("optional") and int(m.group(1), 16) not in keep:
+            f = dict(f, optional=True)
+        out.append(f)
+    return out
 
 
 def partition_window(tab, name):
@@ -1283,6 +1324,7 @@ def write_package(args, disk, path, directory, tab, here=None):
             console.error(why)
             return 2
 
+    files = project_files_optional(files, run_projects(args))
     sources = {}
     if files:
         console.step(5, "Put the device's own files in (%d files)" % len(files))
