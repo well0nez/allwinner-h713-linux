@@ -1,7 +1,7 @@
 From 212454b3952fda8054ba6cbfcc315434429b0e9e Mon Sep 17 00:00:00 2001
 From: well0nez <8986239+well0nez@users.noreply.github.com>
 Date: Thu, 5 Nov 2026 14:11:49 +0100
-Subject: [PATCH 112/112] sunxi: h713: the HY300 with the 2023-06 firmware
+Subject: [PATCH 112/113] sunxi: h713: the HY300 with the 2023-06 firmware
  (issue #8) - its display.bin row, board base defconfig and device tree
 
 A sixth display.bin revision, read off the owner's partition files by h713-extract: size 0x131a10, digest 1e3e518f..., the HDCP wait site at 0x4b13cf00 found by the search; the four firmware addresses stay zero, as the documented meaning of zero allows. hy300_2023_defconfig is hy300_pro_defconfig with the HY350 family's DRAM block at 792 MHz (the owner's boot0, read on his device), its device tree name and its identification string; the tree includes the bench board's. No shared file changes its meaning for another board: the row is one more entry in the table, the rest are new files. Nobody here has the board; a TEST image over FEL for its owner is the only build.

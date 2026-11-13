@@ -1,7 +1,7 @@
 From b5186e6bea748e54015e046be46b4dc178a5800f Mon Sep 17 00:00:00 2001
 From: minpeter <62207008+minpeter@users.noreply.github.com>
 Date: Tue, 3 Nov 2026 00:32:34 +0900
-Subject: [PATCH 108/112] sunxi: h713: the HY320 - clear 0x058c0000, the video
+Subject: [PATCH 108/113] sunxi: h713: the HY320 - clear 0x058c0000, the video
  plane shows
 
 The HY320's LogoRegData.bin leaves 0x058c0000 (mirrored at 0x058c1000) at
