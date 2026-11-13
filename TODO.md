@@ -1077,8 +1077,9 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       seit 25.10., im Fork fehlte die Zeile). **13.11.2026 (Marco: "Ja, anlegen"; Zweig `versuch/hy300-2023-fw202312`):** Profil in die
       `variants`-Form (`fw202306` = Issue #8, `fw202312` = Issue #11), Board `VARIANTS`, Fork-Zeile "ADT-3 2024-09" (`65d41a80b8b`, bedient
       X9 und ihn), READMEs, identify-Test. Das Abbild `hy300-2023-test1` (05.11., `test_for=hy300_2023`) passt weiter zu Issue #8 mit dem
-      Installer seines Tags; ein neuer Installer nennt die Einheit `hy300_2023/fw202306`. **Offen:** Spiegel, Gitlink, TEST-Abbild
-      `--variant fw202312`, Merge, Push, Tag, Pre-Release, Antwort; danach seine Rückmeldung (erster Lauf, AIC8801).
+      Installer seines Tags; ein neuer Installer nennt die Einheit `hy300_2023/fw202306`. Spiegel 113 + Gitlink (`149f51d0`), TEST-Abbild
+      `v0.97.2-hy300fw2312test1` (rc 0, `test_for=hy300_2023/fw202312`). **13.11. abends (Marco: "Ja, alles fünf"):** Fork gepusht, `main` ff,
+      Tag `hy300-2023-fw202312-test1`, Pre-Release, Antwort #11 issuecomment-6859993572. **Offen:** seine Rückmeldung (Schritt 0, erster Lauf, AIC8801).
 
 ## 5 Installer und Werkzeuge
 
