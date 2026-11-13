@@ -133,6 +133,30 @@ class Images(unittest.TestCase):
         self.assertEqual((best, candidates), ("hy300_t08/fw20250221", ["hy300_t08/fw20250221"]))
         self.assertEqual(get("hy300_t08/fw20250221")["layout"]["disk_sectors"], 14942208)
 
+    def test_the_two_hy300_2023_units_are_the_board_s_two_variants(self):
+        # The HY300 with a 2023 firmware has two owners and two boot packages (issues #8 and #11), the same DRAM
+        # block, panel and table: one board, variants fw202306 and fw202312. Until 13.11.2026 the first unit was
+        # the whole profile "hy300_2023"; the rows are the owners' identify rows (06.11. and 11.11.2026).
+        base = {"build_fingerprint": get("hy300_2023/fw202306")["expected"]["build_fingerprint"],
+                "dtb_compatible": "allwinner,tv303 arm,sun50iw12p1", "sunxi_version": None}
+        unit8 = dict(base, uboot_version="U-Boot 2018.05-00005-g6d2f0a5-dirty (Jun 25 2023 - 15:41:51 +0800) Allwinner Technology",
+                     arisc_version="TV-303  ARISC  00.00.00.09 Date:Jun 25 2023 Time: 15:41:51",
+                     scp_sha256="50e8725e2309397c33e2f2a9beb363184e225cc7f693ab08ec8b0b7627280b81",
+                     uboot_sha256="a8f2bfe87a1c4c46b628b908b978998c8c8c303c879a0f77ec3b02e8e94690e1",
+                     dtb_sha256="a84bfbd574210aa0065e2fd4441ed5f3a35cffa966855aab0325d9e3bb102c7e",
+                     mips_database_sha256="921c46537805b569c21d74523f7501e5c4ad96924d53b0b80495f50db58fb73b", vendor_size=110755840)
+        unit11 = dict(base, uboot_version="U-Boot 2018.05-00017-g1e43c6c (Dec 08 2023 - 11:58:22 +0000) Allwinner Technology",
+                      arisc_version="TV-303  ARISC  00.00.00.09 Date:Dec 27 2023 Time: 11:27:06",
+                      scp_sha256="d818f98a3d3a4077ba5690b6175a0e449e1d1a4de4460684957233ebd797e355",
+                      uboot_sha256="96a07318f6b011531ca53ac1cba5227d78b072743be3a748851292443612fe79",
+                      dtb_sha256="68011339ae4f381fa302536aa1dc0981178513e8649ef2383117a1827c90fb8a",
+                      mips_database_sha256="6d43b85a5880d34df0428f234c0c713ac1ca7ec28e551554137d967f60c380e4", vendor_size=110202880)
+        for row, unit in ((unit8, "hy300_2023/fw202306"), (unit11, "hy300_2023/fw202312")):
+            best, candidates, _matches = match_profiles(row)
+            self.assertEqual((best, candidates), (unit, [unit]))
+        self.assertEqual(get("hy300_2023/fw202312")["mips"]["revisions"][0]["name"], "ADT-3 2024-09")
+        self.assertEqual(get("hy300_2023/fw202306")["mips"]["revisions"][0]["name"], "ADT-3 2023-06")
+
     def test_hy300_pro_plus_ddr3_is_the_qz713df_a1_profile(self):
         # The DDR3 image (0922) is one of the two stock firmwares of the HY200 QZ713DF A1, the
         # board of cstenger's bench and of the HY300PRO-G-EU (package F1, ST3-BOARDMERGE).

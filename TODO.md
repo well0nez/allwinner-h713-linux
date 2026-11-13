@@ -1069,6 +1069,16 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       gebaut (rc 0, `test_for=hy300_t08/fw20250221`, 14942208). Offen auf Marcos Wort: Merge, Push, Tag `hy300-t08-fw20250221-test1`,
       Pre-Release, Antwort. **10.11. abends (Marco: "Ja, alles fünf"):** gemergt `2d76d0e8`, Tag `hy300-t08-fw20250221-test1`, Pre-Release,
       Antwort #10 issuecomment-6780901489 (sein dd = Rückweg; `h713-extract`-Bitte für Größen und monitor/optee). **Offen:** seine Rückmeldung.
+- [ ] 4.21 **HY300 mit 2023-Firmware, zweite Einheit (Issue #11, Melder GitHub `Souks`, 11.11.2026): Profil `hy300_2023` auf Varianten, `fw202312`**
+      (`arbeit/issue11-hy300-dec2023-20261111/`: `BEWERTUNG.md`, sein REPORT.txt; `arbeit/hy300-2023-fw202312-20261113/`: `BERICHT.md`).
+      Sein identify über FEL mit dem G-EU-Installer-U-Boot: DRAM-Block = Issue #8 Wort für Wort, Panel 0x34, Tabelle gleich; Bootpaket
+      Dez 2023 (U-Boot `00017-g1e43c6c`, ARISC 27.12.2023, scp `d818f98a`, u-boot `96a07318`, dtb `68011339` 71 168 B), vendor 110 202 880,
+      database `6d43b85a` (T08), display.bin `49f698af` = **"ADT-3 2024-09" des LOSEI X9** (Issue #3; Wartestelle `0x4b13d140` im Installer
+      seit 25.10., im Fork fehlte die Zeile). **13.11.2026 (Marco: "Ja, anlegen"; Zweig `versuch/hy300-2023-fw202312`):** Profil in die
+      `variants`-Form (`fw202306` = Issue #8, `fw202312` = Issue #11), Board `VARIANTS`, Fork-Zeile "ADT-3 2024-09" (`65d41a80b8b`, bedient
+      X9 und ihn), READMEs, identify-Test. Das Abbild `hy300-2023-test1` (05.11., `test_for=hy300_2023`) passt weiter zu Issue #8 mit dem
+      Installer seines Tags; ein neuer Installer nennt die Einheit `hy300_2023/fw202306`. **Offen:** Spiegel, Gitlink, TEST-Abbild
+      `--variant fw202312`, Merge, Push, Tag, Pre-Release, Antwort; danach seine Rückmeldung (erster Lauf, AIC8801).
 
 ## 5 Installer und Werkzeuge
 
