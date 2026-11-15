@@ -12,7 +12,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 |---|---|
 | `BUILDING.md` | `doku/116`, `doku/121`, `doku/212`, `doku/219`, `doku/50` |
 | `FLASHING.md` | `doku/109`, `doku/110` |
-| `PROVENANCE.md` | `doku/116`, `doku/210`, `doku/213` |
+| `PROVENANCE.md` | `doku/116`, `doku/210`, `doku/213`, `doku/220` |
 | `README.md` | `doku/222` |
 | `RELEASES.md` | `doku/107`, `doku/193`, `doku/210`, `doku/211`, `doku/212`, `doku/216`, `doku/218`, `doku/219`, `doku/220`, `doku/222` |
 | `ROADMAP.md` | `doku/134`, `doku/211`, `doku/213`, `doku/215`, `doku/218` |
@@ -26,7 +26,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/dead-ends.md` | `doku/164`, `doku/165`, `doku/167`, `doku/170`, `doku/171`, `doku/172`, `doku/173`, `doku/70`, `doku/80`, `doku/90` |
 | `docs/guides/keystone.md` | `doku/134`, `doku/201` |
 | `docs/hardware.md` | `doku/00`, `doku/10`, `doku/103`, `doku/164`, `doku/168`, `doku/170`, `doku/172`, `doku/173`, `doku/174`, `doku/181`, `doku/185`, `doku/188`, `doku/190`, `doku/213`, `doku/218`, `doku/70`, `doku/72`, `doku/94` |
-| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/200`, `doku/210`, `doku/212`, `doku/213`, `doku/220`, `doku/228`, `doku/80` |
+| `docs/kernel-patches.md` | `doku/116`, `doku/134`, `doku/171`, `doku/172`, `doku/173`, `doku/179`, `doku/182`, `doku/184`, `doku/185`, `doku/188`, `doku/192`, `doku/200`, `doku/210`, `doku/212`, `doku/213`, `doku/220`, `doku/228`, `doku/66`, `doku/80` |
 | `docs/known-issues.md` | `doku/147`, `doku/156`, `doku/180`, `doku/200`, `doku/201`, `doku/211`, `doku/212`, `doku/213`, `doku/214`, `doku/215`, `doku/218`, `doku/219`, `doku/225`, `doku/60` |
 | `docs/services.md` | `doku/107`, `doku/170`, `doku/213` |
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/181`, `doku/184`, `doku/219`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
@@ -290,7 +290,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md`](217-geu-augentests-ein-aus-fernbedienung-protokoll-20261020.md) | Protokoll | 2026-10-20 | 217 HY300PRO-G-EU: Ein und Aus mit der Fernbedienung, Augentests des Abends - Protokoll | 2 |
 | [`218-summen-crust-arisc-entscheidung-protokoll-20261022.md`](218-summen-crust-arisc-entscheidung-protokoll-20261022.md) | Protokoll | 2026-10-22 | 218 Das Summen des Netzteils mit crust, die Messreihe mit Mikrofon und die Entscheidung für die Hersteller-ARISC - Protokoll | 5 |
 | [`219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md`](219-ir-hersteller-arisc-gate-fernbedienung-v097-protokoll-20261023.md) | Protokoll | 2026-10-23 | 219 Die Fernbedienung unter der Hersteller-ARISC, Einschalten aus dem Gate, Release-Bau v0.97-beta und der Merge nach main - Protokoll | 12 |
-| [`220-l018-board-bis-main-validierung-protokoll-20261026.md`](220-l018-board-bis-main-validierung-protokoll-20261026.md) | Protokoll | 2026-10-26 | 220 Der L018 als eigenes Board bis nach main, der Autofokus über offenen Seiten und die Validierung auf drei Geräten - Protokoll | 10 |
+| [`220-l018-board-bis-main-validierung-protokoll-20261026.md`](220-l018-board-bis-main-validierung-protokoll-20261026.md) | Protokoll | 2026-10-26 | 220 Der L018 als eigenes Board bis nach main, der Autofokus über offenen Seiten und die Validierung auf drei Geräten - Protokoll | 11 |
 | [`221-nachtpakete-integration-geu-messung-protokoll-20261026.md`](221-nachtpakete-integration-geu-messung-protokoll-20261026.md) | Protokoll | 2026-10-26 | 221 Die Nachtpakete vom 25./26.10.: zusammengeführt, am HY300PRO-G-EU gemessen und nach main - Protokoll | - |
 | [`222-l018-test3-installation-abnahme-verified-protokoll-20261026.md`](222-l018-test3-installation-abnahme-verified-protokoll-20261026.md) | Protokoll | 2026-10-26 | 222 Der L018 aus einem Abbild: test3 gebaut, über unser Layout installiert, abgenommen - verified - Protokoll | 6 |
 | [`223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md`](223-l018-release-v0971-beta-bau-installation-protokoll-20261026.md) | Protokoll | 2026-10-26 | 223 v0.97.1-beta: das Release-Abbild des L018 - Bau von vorn, Installation, Start - Protokoll | 1 |
@@ -310,7 +310,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | [`63-mips-elog.md`](63-mips-elog.md) | Analyse |  | Das Log des Coprozessors mitlesen | 1 |
 | [`64-afbd-quelle0.md`](64-afbd-quelle0.md) | Analyse |  | AFBD: die Kanäle, das Latch-Orakel, und der Beweis bis zum Panel | 1 |
 | [`65-cpu-comm-abgleich.md`](65-cpu-comm-abgleich.md) | Abgleich |  | cpu_comm: drei Generationen, abgeglichen | 1 |
-| [`66-cpu-comm-arm64-bringup.md`](66-cpu-comm-arm64-bringup.md) | Analyse |  | CPU_COMM auf arm64: erster Round-Trip, und wo es jetzt steht | 1 |
+| [`66-cpu-comm-arm64-bringup.md`](66-cpu-comm-arm64-bringup.md) | Analyse |  | CPU_COMM auf arm64: erster Round-Trip, und wo es jetzt steht | 2 |
 | [`67-cpu-comm-linux.md`](67-cpu-comm-linux.md) | Analyse |  | CPU_COMM aus Linux: der Round-Trip steht | 2 |
 | [`68-stock-extraktion-arisc-hdcp.md`](68-stock-extraktion-arisc-hdcp.md) | Analyse |  | Aus den Stock-Daten geholt: HDCP-Keys und ARISC-Firmware | 3 |
 | [`69-handoff-20260905.md`](69-handoff-20260905.md) | Handoff | 2026-09-05 | Übergabe, 05.09.2026 - HDMI-Eingang: wo es steht und was als Nächstes kommt | - |

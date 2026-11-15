@@ -8,7 +8,7 @@ Who made what, where it comes from, and what is deliberately absent.
 [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline) at commit `8860991`. What of his tree
 is still in the working tree, and what is not, is told in "Left out on purpose" below; his kernel patches are the part
 that stayed. His commits up to `8860991` are still in this repository's git history. On top of them,
-`mainline/patches/kernel/series` carries 351 patches:
+`mainline/patches/kernel/series` carries 374 patches:
 
 | Origin | Patches | Note |
 |---|---|---|
@@ -28,6 +28,12 @@ that stayed. His commits up to `8860991` are still in this repository's git hist
 | well0nez | `0326` | the hdmirx driver checks the break of the display firmware's allocator before it writes a block into the shared memory (the HDCP 2.2 key, the window structures, the backlight PWM words) and leaves the step out when the allocator has reached the block's page; two comments of `0094`/`0101` corrected (SetWhiteBalance's argument, white balance versus CTM). Own work, no foreign material; the layout of the allocator is read from our own `cpu_comm` port |
 | well0nez | `0327` | the arisc driver loads the device tree's crust image when the module option asked for the vendor image and the file is missing - the image runs the vendor ARISC firmware by default since 22.10.2026, and its boot chain starts no crust that could be kept |
 | well0nez | `0328`, `0329` | `0328` applies the IR pin PL9 again after the vendor ARISC firmware has started (its start switches PL8/PL9 off); the code is the IR package of 03.10.2026, which `0252` left out while crust was the default. `0329` adds the HY300's stock IR remote (NEC address 0x00) to `rc-h713-fd02`, from the vendor's key table and a measurement of 22.10.2026, and names the map for every board. Own work |
+| well0nez | `0183` - `0267` (85) | the work of 05.10. - 22.10.2026: small follow-ups, crust and the standby chain, the display MIPS restarted from Linux, the HY300PRO-G-EU's tree, the power off, the overlay plane, the choice between the vendor ARISC firmware and crust. What each one does is in `docs/kernel-patches.md`, sections 17 - 20b. None of the 85 files names a foreign author or origin (checked 15.11.2026: no `From:`, `Origin:` or upstream commit other than ours) |
+| Pengpeng Hou, mainline Linux | `0330` | "media: v4l2-ctrls: validate HEVC active reference counts", upstream commit `afbe4bc252d90a6f8fad869b06d5430f615f22f9`, backported to 6.18.38 on 23.10.2026 (CVE-2026-68206). His `From:`, date and text are kept; the backport note is ours |
+| well0nez | `0331` - `0334` | the L018: its board tree, the board manager's lamp as `bl0` with the stock modes, the thermal power-off per board, the LSM6DSV accelerometer. Own work; what was measured on the board is in `doku/220` |
+| minpeter, pull request #6 | `0335` | the MagCubic HY320's board tree, written by its owner against his own stock device trees and booted on his unit since 31.10.2026. His `From:` is kept |
+| well0nez | `0336` - `0350` | `0336` - `0348` the HY320's follow-ups, written here; what was measured on minpeter's unit, and by whom, is in `docs/kernel-patches.md`, sections 27 and 27b (the ARISC firmware's DDC port table in the byte order its loads see, the HDMI socket's receiver port from the device tree, the AFBD output's mix word, the STK8BA58 accelerometer, the codec's stock analog words, the board manager's GPADC channel, the lamp's PWM words, crust's name, the display MIPS with the panel's supply and reset, PB5); `0349` the HY300 T08's tree (issue #7), `0350` the tree of the HY300 with the 2023-06 firmware (issue #8), both from what their owners posted; neither board is here |
+| well0nez | `0351` | the two S/PDIF nodes carry the stock trees' interrupt numbers (SPI 23 and 24 instead of 21 and 38), and the cpu_comm comment no longer calls SPI 21 "S/PDIF". The first number was noticed by cstenger in his review of 14.11.2026; comments in `0024a` and `0024d` still say it, as history |
 
 cstenger says the same in his own `PROVENANCE.md` (in his repository at `8860991`): "the bulk of the H713 driver support … originates
 from well0nez". The direction of the debt runs both ways - his arm64 work is what made the 6.18 line

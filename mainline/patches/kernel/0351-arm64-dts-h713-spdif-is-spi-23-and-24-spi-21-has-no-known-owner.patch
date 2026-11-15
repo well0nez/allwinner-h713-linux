@@ -1,0 +1,63 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: [PATCH] arm64: dts: h713: S/PDIF is SPI 23 and 24; SPI 21 has no known owner
+
+The spdif@2036000 node came with 0024 and carries GIC_SPI 21, the same
+number 0024 gave cpu-comm@3003000. 0024a moved cpu_comm to 46 and called
+21 "the S/PDIF interrupt", on the strength of this node alone; 0024d
+repeated that in its comment. It is not: the stock device trees of the
+HY310, the HY200 and the HY300 T08 all give the node at 0x02036000
+<0 0x17 4>, SPI 23, and none of their nodes owns SPI 21.
+
+What was measured on the HY310 stands (doku/66 section 4): requested as
+SPI 21, the line fired 100000 times and the kernel disabled it; on SPI 46
+the counter stayed at 0 and there was no storm. So 21 is asserted all the
+time on this SoC, by a source nobody has named yet. Only the attribution
+to S/PDIF was wrong.
+
+The second node, spdif@2037000, carries SPI 38 from the same origin. The
+same three stock trees give 0x02037000 <0 0x18 4>, SPI 24; their SPI 38
+belongs to nand0@04011000. This node has a compatible the mainline driver
+binds (sun50i-h6-spdif) and is "okay" in the dtsi; the HY310 tree and
+every board that includes it switch it off, the HY200 QZ713_V2 tree does
+not. No sound card refers to it on any board.
+
+The first number was noticed by cstenger (his review of 14.11.2026, which
+checked the stock trees); the second fell out of reading the same nodes.
+The comment in cpu-comm@3003000 says what is known. Built with dtc: the
+two interrupt properties change in all eight H713 DTBs and nothing else
+does. Not booted; neither S/PDIF port has been run under this kernel.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+--- a/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713.dtsi
+@@ -995,7 +995,7 @@
+ 		spdif: spdif@2036000 {
+ 			compatible = "allwinner,sunxi-owa";
+ 			reg = <0x02036000 0x58>;
+-			interrupts = <GIC_SPI 21 IRQ_TYPE_LEVEL_HIGH>;
++			interrupts = <GIC_SPI 23 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_PLL_AUDIO>,
+ 				 <&ccu CLK_BUS_OWA0>,
+ 				 <&ccu CLK_OWA0_TX>,
+@@ -1013,7 +1013,7 @@
+ 		spdif1: spdif@2037000 {
+ 			compatible = "allwinner,sun50i-h6-spdif";
+ 			reg = <0x02037000 0x58>;
+-			interrupts = <GIC_SPI 38 IRQ_TYPE_LEVEL_HIGH>;
++			interrupts = <GIC_SPI 24 IRQ_TYPE_LEVEL_HIGH>;
+ 			clocks = <&ccu CLK_BUS_OWA1>, <&ccu CLK_OWA1_TX>;
+ 			clock-names = "apb", "spdif";
+ 			resets = <&ccu RST_BUS_OWA1>;
+@@ -2271,8 +2271,10 @@
+ 			 * device tree lists them: bank 0 @0x03003000 (this
+ 			 * core's inbox) = 46, bank 1 @0x03003400 (CPUS/ARISC)
+ 			 * = 109, bank 2 @0x03003800 (display MIPS) = 108.
+-			 * 21 is S/PDIF and was the wrong number here until
+-			 * 0024a. The driver takes them by index.
++			 * 21 was the wrong number here until 0024a: a line
++			 * that is asserted all the time and that no node of
++			 * the stock device tree owns (S/PDIF is 23 and 24).
++			 * The driver takes them by index.
+ 			 */
+ 			interrupts = <GIC_SPI 46 IRQ_TYPE_LEVEL_HIGH>,
+ 				     <GIC_SPI 109 IRQ_TYPE_LEVEL_HIGH>,

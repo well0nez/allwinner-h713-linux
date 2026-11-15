@@ -365,7 +365,8 @@ Seine HDMI-IN-Sackgasse, die sein ganzes Projekt umlenkt (Bericht C §8):
    SetEDIDAudioMode` -> `0x0411 SET5VFlag 1` -> `0x0211 PullHotPlug 2` -> 10 s -> `PullHotPlug 1`. `PullHotPlug` ist
    zweistufig und selbstprüfend (Zähler 84 -> 1 -> 0).
 10. **`GIC_SPI 21` ist die S/PDIF-Leitung**; die Msgbox-RX liegt auf `GIC_SPI 46` (GICv2 78). Sein hrtimer-Poll ist ein
-    Umweg um dieses DTS-Problem.
+    Umweg um dieses DTS-Problem. *(Korrektur 15.11.2026: 46 stimmt, "S/PDIF" nicht - im Stock-Baum ist S/PDIF `SPI 23`/`24`,
+    21 gehört keinem Knoten; doku/66 §4, Kernel `0351`.)*
 11. **Zwei Defekte stecken noch in seinem `0014`** und treffen ihn, sobald Rückrufe fließen: der zweite Leser auf dem
     NewCall-Ring des MIPS (unser `0105`) und die fehlende Slot-Rückgabe nach Callbacks (unser `0124`; nach 19
     Rückrufen hängt die Firmware). Dazu der SMM-Heap: sobald er `SetSource(3/4)` (HDMI) probiert, trifft ihn unser

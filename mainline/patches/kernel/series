@@ -442,3 +442,4 @@
 0348-arm64-dts-h713-hy320-pb5-to-the-board-manager.patch
 0349-arm64-dts-h713-add-the-hy300-t08-board-dts.patch
 0350-arm64-dts-h713-add-the-hy300-2023-board-dts.patch
+0351-arm64-dts-h713-spdif-is-spi-23-and-24-spi-21-has-no-known-owner.patch

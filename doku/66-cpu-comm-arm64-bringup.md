@@ -105,6 +105,11 @@ dmesg-Zeile statt eines toten Geräts.
 
 ### 4. `GIC_SPI 21` ist die S/PDIF-Leitung
 
+> **Korrektur 15.11.2026:** Die Überschrift stimmt nicht. Die Messung unten steht (21 stürmt, 46 nicht), aber "S/PDIF"
+> war aus dem Knoten `spdif@2036000` geschlossen, der dieselbe falsche Nummer trug. Die Stock-Gerätebäume von HY310,
+> HY200 und HY300 T08 geben S/PDIF `SPI 23` (0x02036000) und `SPI 24` (0x02037000); `SPI 21` gehört dort keinem Knoten.
+> Wer die Leitung treibt, ist nicht bekannt. Aufgefallen durch cstengers Review vom 14.11.2026; Kernel `0351`.
+
 Im Devicetree trug `cpu-comm@3003000` dieselbe Nummer wie `spdif@2036000`
 direkt darüber - mit hoher Wahrscheinlichkeit kopiert. Sie liegt dauernd an,
 niemand quittiert sie.
@@ -313,7 +318,8 @@ landing where expected") - zu Unrecht: `fwmd` liest korrekt, geprüft gegen
 
 Vier Befunde, unabhängig von unserem Board:
 
-1. `cpu-comm@3003000` trägt `GIC_SPI 21` - das ist S/PDIF.
+1. `cpu-comm@3003000` trägt `GIC_SPI 21` - das ist S/PDIF. *(Korrektur 15.11.2026: die Nummer war falsch, die
+   Zuordnung zu S/PDIF aber auch, siehe §4.)*
 2. `cpu_comm_msgbox_request_irq` meldet Erfolg, ohne einen Handler anzumelden.
 3. Patch 0014 stammt aus `Archived/`; es fehlen Callback-Loop, Linux-Semaphoren,
    `Comm_AddNewChannel` im INSTALL_RT, DMB-Cache-Sync (siehe
