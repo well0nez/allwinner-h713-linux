@@ -161,9 +161,10 @@ year trust the same keys.
 
 ## Submodules
 
-Four: U-Boot, TF-A, sunxi-tools and crust, pinned to our forks. Relative URLs, so they resolve next to whatever
-account this repo lives under. crust is read only for a board that names a `CRUST_DEFCONFIG` (the HY310 and the HY200
-QZ713DF A1), and its branch `h713` is the one `crust-h713/` mirrors.
+Four: U-Boot, TF-A, sunxi-tools and crust, pinned to our forks. Absolute URLs, so a fork of this repository alone
+still finds them; to build from a fork of one of them, point its entry in `.gitmodules` at yours. crust is read
+only for a board that names a `CRUST_DEFCONFIG` (the HY310 and the HY200 QZ713DF A1), and its branch `h713` is the
+one `crust-h713/` mirrors.
 
 If `git submodule update --init` fails on U-Boot, you have a copy of this repository from before the
 first release: the fork went public with the release, and there is no way to build the boot chain

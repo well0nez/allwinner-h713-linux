@@ -1,16 +1,16 @@
 [submodule "mainline/external/arm-trusted-firmware"]
 	path = mainline/external/arm-trusted-firmware
-	url = ../arm-trusted-firmware.git
+	url = https://github.com/well0nez/arm-trusted-firmware.git
 	branch = sun50i-h713
 [submodule "mainline/external/sunxi-tools"]
 	path = mainline/external/sunxi-tools
-	url = ../sunxi-tools.git
+	url = https://github.com/well0nez/sunxi-tools.git
 	branch = h713
 [submodule "mainline/external/u-boot"]
 	path = mainline/external/u-boot
-	url = ../u-boot.git
+	url = https://github.com/well0nez/u-boot.git
 	branch = h713-hy310
 [submodule "mainline/external/crust"]
 	path = mainline/external/crust
-	url = ../crust.git
+	url = https://github.com/well0nez/crust.git
 	branch = h713
