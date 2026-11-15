@@ -192,7 +192,7 @@ RX `0x03003164/0x03003174`, Mapping `0x400 -> 0x1000`, blanker Nachrichtentyp, `
 haben wir beim Drei-Wege-Merge übernommen, zwei Defekte haben beide Seiten unabhängig gefunden (doku/67 nennt
 `ec53910`). Was wir haben und er nicht: die In-Kernel-API (`0092`), die Slot-Rückgabe nach Callbacks (`0124`; ohne
 sie hängt die Firmware nach 19 Rückrufen), keinen zweiten Leser auf dem NewCall-Ring (`0105`; er verliert ~30 %
-dichter Calls), `0125`, null lebende `BUG()` gegen seine ~90, und die CRC-32-Ableitung der comp_ids (doku/83; seine
+dichter Calls; *Korrektur 16.11.2026: der zweite Leser stand nie in seinem `0014`, siehe Punkt 11*), `0125`, null lebende `BUG()` gegen seine ~90, und die CRC-32-Ableitung der comp_ids (doku/83; seine
 Call-Table sagt "not derivable from the name" - widerlegt gegen alle namentlichen Einträge). Sein `GIC_SPI 21` ist
 die S/PDIF-Leitung (richtig 46, doku/66); sein hrtimer-Poll ist ein Umweg um dieses DTS-Problem. Unsere
 `0014`-Fassung weicht 3194 Zeilen von seiner ab - eine PR lohnt nicht, eine Notiz mit den zwei Defekten schon.
@@ -369,7 +369,10 @@ Seine HDMI-IN-Sackgasse, die sein ganzes Projekt umlenkt (Bericht C §8):
     21 gehört keinem Knoten; doku/66 §4, Kernel `0351`.)*
 11. **Zwei Defekte stecken noch in seinem `0014`** und treffen ihn, sobald Rückrufe fließen: der zweite Leser auf dem
     NewCall-Ring des MIPS (unser `0105`) und die fehlende Slot-Rückgabe nach Callbacks (unser `0124`; nach 19
-    Rückrufen hängt die Firmware). Dazu der SMM-Heap: sobald er `SetSource(3/4)` (HDMI) probiert, trifft ihn unser
+    Rückrufen hängt die Firmware). *(Korrektur 16.11.2026: der erste stimmt nicht. Keine seiner drei Fassungen von `0014`
+    (18.07., 27.07., 09.11.2026) enthält `fifo_ItemRdNext((u32 *)(share_seq_w + 32))`; die Zeile stand in unserem
+    Treiber und ging mit `0105`.
+    Der zweite, `0124`, trifft ihn weiterhin.)* Dazu der SMM-Heap: sobald er `SetSource(3/4)` (HDMI) probiert, trifft ihn unser
     Absturz (`sgp_hal_signal_info` NULL, doku/74); der Fix ist ARM-seitig, Heap vor der MIPS-Freigabe anlegen.
 12. Sein offener Punkt "whether the second reg range at 0x02031000 is required": ja, es ist der I2S-Empfänger am DAC
     und der ganze HDMI-Audio-Weg (`0135`/`0135b`).

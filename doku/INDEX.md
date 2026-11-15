@@ -32,7 +32,7 @@ Umgedreht aus den Zitaten in `docs/` und den Wurzeltexten: wer wissen will, wohe
 | `docs/subsystems/arisc.md` | `doku/00`, `doku/126`, `doku/128`, `doku/163`, `doku/167`, `doku/181`, `doku/184`, `doku/219`, `doku/68`, `doku/75`, `doku/82`, `doku/nachtlog/A2-hpd-dauer-edid` |
 | `docs/subsystems/audio.md` | `doku/00`, `doku/100`, `doku/101`, `doku/102`, `doku/134`, `doku/172`, `doku/173`, `doku/174`, `doku/177`, `doku/206`, `doku/220`, `doku/nachtlog/S21-re-audif-zugang` |
 | `docs/subsystems/board-mgr.md` | `doku/00`, `doku/171`, `doku/220`, `doku/60` |
-| `docs/subsystems/cpu-comm.md` | `doku/165`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/182`, `doku/203`, `doku/206`, `doku/210`, `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/85`, `doku/96` |
+| `docs/subsystems/cpu-comm.md` | `doku/165`, `doku/171`, `doku/172`, `doku/173`, `doku/174`, `doku/176`, `doku/182`, `doku/203`, `doku/206`, `doku/210`, `doku/65`, `doku/66`, `doku/67`, `doku/83`, `doku/85`, `doku/96`, `doku/nachtlog/C3`, `doku/nachtlog/C5` |
 | `docs/subsystems/crypto-engine.md` | `doku/112`, `doku/114` |
 | `docs/subsystems/display.md` | `doku/171`, `doku/172`, `doku/174`, `doku/192`, `doku/40`, `doku/72`, `doku/73`, `doku/74`, `doku/86`, `doku/87`, `doku/89`, `doku/96` |
 | `docs/subsystems/emmc-layout.md` | `doku/108`, `doku/109`, `doku/110` |

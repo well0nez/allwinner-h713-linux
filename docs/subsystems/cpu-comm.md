@@ -14,10 +14,10 @@ rather than level-triggered like the H6 model this transport was adapted from (`
 vendor kernel does not do that: there `TX_IRQ_EN` is a level meaning "I have bytes to push", set
 before the transfer and cleared by the interrupt handler when the buffer is drained, and the
 receiver's doorbell is the FIFO write itself. Which of the two this chip needs is open; it takes
-one device run, named in patch `0014f`. A call runs `CALL → CALL_ACK → RETURN → RETURN_ACK`; it
-takes roughly 120 ms end to end on this board today. A comparable port elsewhere that polls
-instead of using the interrupt measures 17-30 ms, and the gap is not yet explained (`doku/67`,
-open item).
+one device run, named in patch `0014f`. A call runs `CALL → CALL_ACK → RETURN → RETURN_ACK`. With
+the console quiet, 100 back-to-back calls lost none and had a median round trip of 0.46 ms (HY310,
+07.09.2026, `doku/nachtlog/C5`, patch `0106`). The roughly 120 ms of the first runs (`doku/67`)
+were this driver's own per-call console lines (`doku/nachtlog/C3`).
 
 ### The five registers the link is made of
 
