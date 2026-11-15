@@ -6,7 +6,7 @@ Assembling the image, the installer and everything that runs on the device live 
 
 | Path | What is there |
 |---|---|
-| `external/` | Three git submodules, each a fork under the same account: `u-boot`, `arm-trusted-firmware`, `sunxi-tools`. Their commits are also mirrored as patch files in `../uboot-h713/` and `../tfa-h713/` |
+| `external/` | Four git submodules, each a fork under the same account: `u-boot`, `arm-trusted-firmware`, `sunxi-tools`, `crust`. Their commits are also mirrored as patch files in `../uboot-h713/`, `../tfa-h713/` and `../crust-h713/` (sunxi-tools has no mirror) |
 | `patches/kernel/` | The kernel series: the numbered patches (a letter suffix is a follow-up placed behind the patch it corrects), the list `series` that fixes their order, and `board/` with the defconfig and the config fragments |
 | `patches/aic8800/` | The series applied to Radxa's AIC8800 tree, the Wi-Fi and Bluetooth driver |
 | `patches/zurueckgenommen/` | Patches that were withdrawn from the series, with the reason |

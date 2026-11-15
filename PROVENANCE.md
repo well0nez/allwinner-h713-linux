@@ -42,13 +42,14 @@ rest is ours. That directory's README names each patch and its origin.
 
 ## Firmware components
 
-Three git submodules under `mainline/external/`, pinned to forks under the same account:
+Four git submodules under `mainline/external/`, pinned to forks under the same account:
 
 | Component | Branch | Why a fork |
 |---|---|---|
-| `u-boot` | `h713-hy310` | 102 commits on top of cstenger's `h713` (base `8fe568c`): CCU tables, USB PHY, the MIPS display bring-up with the boot logo, the power gate and its infrared decoder (`0102`, 22.10.2026), the boot paths, the eMMC at HS200 with DMA in U-Boot and in the SPL, the LogoRegData container read by its own group boundaries, the staging of crust for BL31 and the HDCP 1.4 key path |
+| `u-boot` | `h713-hy310` | 113 commits on top of cstenger's `h713` (base `8fe568c`): CCU tables, USB PHY, the MIPS display bring-up with the boot logo, the power gate and its infrared decoder (`0102`, 22.10.2026), the boot paths, the eMMC at HS200 with DMA in U-Boot and in the SPL, the LogoRegData container read by its own group boundaries, the staging of crust for BL31 and the HDCP 1.4 key path |
 | `arm-trusted-firmware` | `sun50i-h713` | 32 commits: BL31 for this SoC, entering the boot gate on `SYSTEM_OFF`, the EL3 service for the HDCP 1.4 key, starting a staged crust and PSCI `SYSTEM_SUSPEND` through it (built only with `--standby`) |
 | `sunxi-tools` | `h713` | `sunxi-fel` with the EL3 trap door the H713 needs to return to FEL |
+| `crust` | `h713` | 89 commits on upstream `499a362`: the H713 port of the ARISC firmware (below) |
 
 `uboot-h713/` and `tfa-h713/` mirror the U-Boot and TF-A commits as patch files (`git format-patch`
 from the fork, `SERIES.txt` names base, head and count), for reading without cloning. Both are
