@@ -757,6 +757,43 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       berührt den Mute-Pfad nicht (0 Treffer). Zu klären: wirkt `HDMI Input Mute Switch` auf den HDMI-Durchgang überhaupt, oder nur
       auf die Mischung der eigenen Töne; Gegenprobe unter v0.97 (G-EU) steht aus. Marco 03.11.: "mute ist uninteressant" - also
       klein, kein Blocker.
+- [ ] 2.151 **cpu_comm: Rückgabeliste über `cc_deref()` (Kernel `0352`) am Gerät messen, dann nach `main`** (16.11.2026). Der Schritt zum
+      nächsten Knoten in `GetReturnbySessionId()` nahm seit `0014a` das rohe 32-Bit-Ref; gefunden beim Abgleich mit cstengers Treiber
+      (K1). Aus dem Code gelesen, nicht gemessen: liegt ein fremder Eintrag vorn (etwa ein RETURN nach den 500 ms Wartezeit), folgt
+      eine falsche Zeile "corrupt list MIPS-VA" oder, mit der eigenen Rückgabe dahinter, ein Lesen über die physische Adresse mit
+      gehaltenem Semaphor. Behoben im Zweig `versuch/cpu-comm-k1` `0dd4bec4`: gebaut, Tor grün, **nicht gebootet, nicht in `main`**
+      (`arbeit/cpu-comm-k1-20261116/BERICHT.md`). Offen: Gerätelauf am HY310 (einen Aufruf in den Timeout laufen lassen, 20 normale
+      hinterher; braucht wohl einen Testhaken nur für den Lauf). Marco 16.11.: "Nicht jetzt". Nebenbefunde im selben Bericht §6:
+      zwei Rückwege ohne `cpu_comm_sem_up()` ("count underflow", "slot index out of range").
+- [ ] 2.152 **cstengers Einwände gegen unseren Code** (sein Audit vom 14.11.2026; in unserer Antwort #4 vom 16.11. zugesagt: "All three
+      are on our list"; Befunde in `arbeit/cstenger-antworten-20261115/UEBERNAHME.md` §3 und §9, **nichts davon gebaut**):
+      a) der Reset-Wächter pulst nach seinen 3 s trotzdem (`0298`, `0305` bis `0308`); heute hält nur die Konfiguration das von einem
+      arbeitenden Kern fern (AV1-Knoten aus, Hantro nicht gebaut). Vorschlag: den cedrus-Job nach 3 s mit Fehler beenden;
+      b) der Helfer aus `0312` verwirft die Fehler von `reset_control_reset` und `sunxi_mmc_init_host`;
+      c) die Bedingung aus `0313` trifft jeden Nicht-v5p3x-Host mit `supports_hs400`, heute nur die zwei H713-Einträge. Vorschlag:
+      eigenes Konfigurationsfeld;
+      d) das `-EBUSY` aus `0014f` kommt beim Aufrufer nicht an (`SendComm2CPUEx()` und `SendAckLow()` werfen den Rückgabewert weg);
+      der Kopf von `0014f` sagt mehr, als der Code tut;
+      e) Reset-API unter Spinlock: bei uns schläft dort nichts, die API garantiert das aber nicht.
+      Ebenfalls in #4 zugesagt: ein Patch gegen seinen Baum für die Interrupt-Korrektur (SPI 21 -> 46, Watchdog 46 -> 53), **falls er
+      ihn will**.
+- [ ] 2.153 **Was wir aus cstengers Stand `1c35fc88` noch mitnehmen können** (Bewertung 16.11.2026, `UEBERNAHME.md` §2 und §9; kein Patch
+      ist so, wie er ist, zu übernehmen; jeder Punkt erst nach einer Messung bei uns und auf Marcos Wort):
+      C1 HDMI-Ton-Aufnahme über die DSP-Route 0x8f als dritte PCM im `msp` (steht schon unter 1.10 "nach dem Release, wenn gewollt");
+      C2 Sensorachsen am G-EU (drei Posen messen, dann eine `KEYSTONE`-Zeile); C3 Panel-Anfangszustand nach Warmstart (erst die
+      Warmstarts am G-EU mit Auge zählen, 1.10 c); C4 VP9 durch den Polyphasen-Skalierer (9.3d); C5 AV1-Bilder auf die
+      Puffer-Schrittweite (mit 9.3b).
+      Aus seinem CPU_COMM-Treiber, alle klein: K2 negative Parameterzahl abweisen; K3 Sequenz-Semaphore mit Fehler statt
+      "bypassing" (erst zählen, ob die Zeile je erscheint); K4 Anzeige der ganzen Routinentabelle; K5 IRQ und langsamer Gegenpoll
+      mit getrennten Zählern (nur als Messhilfe; der Beleg, den er in #4 verlangt).
+      Messungen, die sein Stand nahelegt: M1 Umschaltfenster der Route bei Video an/aus (2.93), M2 Spiegeln über den Firmware-RPC,
+      M3 = die Zählung aus C3.
+- [ ] 2.154 Klein: **eigene Fehler, die der Abgleich mit cstenger zeigte** (`UEBERNAHME.md` §4 und §9, alle offen, keiner gemessen):
+      `comm_SpinLockForgetArm()` läuft über Lock 0..11 und liest `hwlocks[id + 2]` in einem Feld mit 9 Einträgen; Rückruf-Logzeilen
+      ohne Ratelimit (`cpu_comm_user.c`, `cpu_comm_rpc.c`); veraltete Kommentare "high-16 = Sender" in `cpu_comm_proto.c`;
+      `0320`: `osc32k` meldet 32768 Hz, sobald die RTC am Quarz läuft (abgeleitet, erst an einem Verbraucher messen); U-Boot-Fork:
+      die Kconfig-Hilfe von `H713_POWERON_LIGHT_FAN` sagt "Bench board only", gesetzt ist die Option in neun defconfigs; Kopf von
+      `0078a` deutsch und mit zwei `re/`-Pfaden (veröffentlichter Text, nur auf Marcos Wort).
 
 ## 3 Geparkt — mit Wiedereinstiegsbedingung
 
