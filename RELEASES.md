@@ -135,7 +135,7 @@ storage exist exactly once. A failed install does not brick the device (FEL is a
 dump those device-bound parts may be lost for good. **After the install** check
 `fw_printenv h713_gate` and set it to 1 if the installer carried a 0 over from your dump (`TODO.md` 2.137).
 
-**New since v0.96-beta** - 351 kernel patches, 145 more ([docs/kernel-patches.md](docs/kernel-patches.md)):
+**New in this release** - 351 kernel patches ([docs/kernel-patches.md](docs/kernel-patches.md)):
 
 - **The remote acts.** Over Bluetooth and over infrared: volume, mute and focus with overlays over the picture; Home opens
   the **launcher**, an opaque page with HDMI input, Kodi, Browser, Desktop and Settings; the projector starts into it
@@ -183,8 +183,7 @@ the display firmware, the power draw in the gate with the infrared decoder, the 
 
 | Release | Why |
 |---|---|
-| `v0.96-beta` (04.10.2026) | Bluetooth and the stock remote, EDID block 1, the device sounds mixed into HDMI, the projection modes, optional hardware per board; no standby, no infrared, no desktop. Everything in it is in `v0.97-beta`; layout and installer unchanged, so the upgrade is an ordinary reinstall |
-| `v0.95-beta` (23.09.2026) | the keystone, the settings web page, the autofocus; superseded by `v0.96-beta` |
+| `v0.95-beta` (23.09.2026) | the keystone, the settings web page, the autofocus; superseded by `v0.97-beta` |
 | `v0.9-beta` (22.09.2026) | the display firmware's mode table as the mode list, the colour space from the firmware's record; superseded by `v0.95-beta` |
 | `v0.7-beta` and earlier | layout v3; the installer on `main` refuses them. Their release pages were removed on 16.11.2026, the tags remain. Take the current release |
 
