@@ -20,8 +20,9 @@ board's release folder, plus the files every board shares:
 | `u-boot-h713-probe.bin` | the read-only probe for an H713 board nobody has measured ([docs/tools/h713-probe.md](docs/tools/h713-probe.md)) |
 | `allwinner-h713-linux-vX.Y-with-submodules.tar` | the repository at the tag with its submodules checked out - GitHub's own "Source code" archive has no submodules, and the image's licence file points at this one for the corresponding source |
 
-**The first public release was `v0.5-beta`.** Every release since is on this repository's releases page;
-[BUILDING.md](BUILDING.md) is the other way to an image.
+**The first public release was `v0.5-beta`.** The releases page of this repository carries `v0.8-beta`, `v0.9-beta`,
+`v0.95-beta` and the releases from `v0.97-beta` on; `v0.5-beta` to `v0.7-beta` were taken off it on 16.11.2026, their tags
+remain. [BUILDING.md](BUILDING.md) is the other way to an image.
 
 Why 0.5 and not 0.1: the device boots on its own, shows the HDMI input with sound and picture controls, runs Wi-Fi, the
 focus motor and the camera, and can be installed and rolled back with one tool. Calling that 0.1 would undersell it.
@@ -185,7 +186,7 @@ the display firmware, the power draw in the gate with the infrared decoder, the 
 | `v0.96-beta` (04.10.2026) | Bluetooth and the stock remote, EDID block 1, the device sounds mixed into HDMI, the projection modes, optional hardware per board; no standby, no infrared, no desktop. Everything in it is in `v0.97-beta`; layout and installer unchanged, so the upgrade is an ordinary reinstall |
 | `v0.95-beta` (23.09.2026) | the keystone, the settings web page, the autofocus; superseded by `v0.96-beta` |
 | `v0.9-beta` (22.09.2026) | the display firmware's mode table as the mode list, the colour space from the firmware's record; superseded by `v0.95-beta` |
-| `v0.7-beta` and earlier | layout v3; the installer on `main` refuses them. Take the current release |
+| `v0.7-beta` and earlier | layout v3; the installer on `main` refuses them. Their release pages were removed on 16.11.2026, the tags remain. Take the current release |
 
 ## Where to look
 
