@@ -4,8 +4,10 @@ The MagCubic HY300 in the classic cylinder case on a rotating stand, a 720p pane
 two boot packages, one board. Variant `fw202306` is the unit of [issue #8](https://github.com/well0nez/allwinner-h713-linux/issues/8)
 (the oldest ADT-3 firmware reported so far), variant `fw202312` the unit of
 [issue #11](https://github.com/well0nez/allwinner-h713-linux/issues/11) (a boot package of 2023-12 and the LOSEI X9's
-display firmware). Nobody working on this repository has one in hand; nothing of ours has run on either. Neither owner can
-open the unit, so the silkscreen is unknown and the board is named after its firmware.
+display firmware). Nobody working on this repository has one in hand. The board is named after its firmware, because
+neither owner could open the unit at first; the issue #11 unit has been opened since and is silkscreened
+`HY300_T08_QZ713_V3`, the [HY300 T08](../hy300-t08/)'s. Its TEST image booted to the login with a black wall
+(18.11.2026); nothing of ours has run on the issue #8 unit.
 
 | | |
 |---|---|
@@ -13,7 +15,7 @@ open the unit, so the silkscreen is unknown and the board is named after its fir
 | Verified by | nobody |
 | Profile | `installer/h713/profiles/hy300_2023.py`, two variants: `fw202306` (the issue #8 unit), `fw202312` (the issue #11 unit) |
 | Image | TEST only, per variant: `release/build-all.sh --board hy300-2023 --variant fw202306` (or `fw202312`) `--test-image --version vX.Y`; published as pre-releases for their owners (`hy300-2023-test1`, 05.11.2026, built before the variants under the name `hy300_2023`, for the issue #8 unit with the installer of its tag) |
-| Kernel DTB | `sun50i-h713-hy300-2023` (kernel 0350): the HY300 Pro's tree with the focus motor off; built with dtc, never booted |
+| Kernel DTB | `sun50i-h713-hy300-2023` (kernel 0350): the HY300 Pro's tree with the focus motor off; booted on the issue #11 unit, where the AFBD driver refused it. Variant `fw202312`: `sun50i-h713-hy300-2023-fw202312` (kernel 0358), the same tree with that unit's AFBD handoff words; built with dtc, never booted |
 | U-Boot base | `hy300_2023_defconfig` (fork `h713-hy310`, mirror `uboot-h713/0112`, 05.11.2026): `hy300_pro_defconfig` with the HY350 family's DRAM block at 792 MHz, this tree and its identification string |
 | DRAM | DDR3 (type 3), 792 MHz; the HY350 profile's block word for word (`tpr0..tpr2` 0x4a2195 / 0x2423190 / 0x8b061, `tpr11/12` 0x44440000 / 0x5555) |
 | Panel | 1280×720, declared project id `0x34`; `panel_config.ini` has the same hash on both units (`7bffff88...`), its timings not posted |
@@ -56,14 +58,21 @@ The issue #11 unit (`fw202312`):
   `panel_config.ini` `7bffff88...` (= the issue #8 unit's), the ten AIC8801 files, GPT with both CRCs ok. Two warnings as
   on the issue #8 unit (`pq_picturemode.ini`, `pqcontrol_custom_setting.xml` missing) and one check error in
   `audio_config.ini` (volume curve value 21 out of range; the image keeps the HY310's curve).
+- **First run of `hy300-2023-fw202312-test1`, on his serial console** (18.11.2026, two boots; the console is the group
+  of three pads at the USB port, 115200 8N1, unreadable before U-Boot's power-key gate): U-Boot accepts the
+  `display.bin`, the firmware answers, the kernel boots, Debian reaches the login. The wall is lit and black in both
+  boots, with no vendor logo although U-Boot reports it up; that part is not explained. In Linux the AFBD driver
+  refuses the tree: it finds CTRL `0x03001901`, VIDEO_CTRL `0x03000200`, selector `0`, the words the HY320 measured.
+  Kernel 0358 gives the variant a tree with them. Wi-Fi fails as on the HY300 T08 (`aicbsp`: the SDIO bus threads
+  stop); the module is marked AW869A.
 - **The case** (owner): the classic cylinder on a rotating stand, manual focus ring, HDMI, USB, power button, a remote.
 - **The way back**: he holds a full dump (`dump --full`, "the dump agrees with the device").
 
 ## What we do not know
 
-- the board itself: silkscreen, the stock device tree (`a84bfbd5...`, 69 632 B, not posted), whether its pins are the
+- the board itself: the issue #8 unit's silkscreen, the stock device tree (`a84bfbd5...`, 69 632 B, not posted), whether its pins are the
   HY300 Pro's - the tree assumes so, as the HY300 Pro's own tree once assumed the HY310's
-- the display firmware's elog addresses and AFBD handoff words: a revision nobody has run; the tree keeps the HY300 Pro's
+- the display firmware's elog addresses, and for `fw202306` its AFBD handoff words (`fw202312`'s are read, kernel 0358): the tree keeps the HY300 Pro's
   (a wrong elog pair only empties the elog dump; wrong handoff words make the AFBD driver refuse and the wall black after
   the logo - that is the known failure signature)
 - the panel timings, the lamp's PWM words (the HY300 Pro's are inherited), the HDMI socket's port

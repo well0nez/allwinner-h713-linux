@@ -1,0 +1,81 @@
+From: well0nez <8986239+well0nez@users.noreply.github.com>
+Subject: arm64: dts: h713: hy300-2023: the fw202312 unit's AFBD handoff words
+
+The second unit of the board hy300-2023 (issue #11, variant fw202312)
+runs the "ADT-3 2024-09" display.bin (49f698af...), not the 2023-06
+unit's. 0350 said that the handoff words of a display firmware nobody
+has run would show up as a refusal of the AFBD driver, and that is what
+its owner's serial console showed on 18.11.2026, in two boots of the
+TEST image hy300-2023-fw202312-test1:
+
+  sun50i-h713-afbd 5600000.display: error -ENODEV: video handoff state
+  is not this board's: CTRL 03001901 (expected 03001901), VIDEO_CTRL
+  03000200 (expected 03000010), selector 00000000 (expected 29000000)
+  -- the node has no allwinner,handoff-state
+
+The three words found are the ones the HY320 measured for "ADT-3 2024"
+(0335) and the HY300 T08's tree carries (0349). The handoff words belong
+to the firmware, not to the board, and the two units of this board run
+two firmwares, so the fw202312 unit gets a tree of its own: the
+hy300-2023 tree with these three words. The 2023-06 unit's tree stays
+as it is; its firmware's words are still not known.
+
+The owner has opened the unit since: the silkscreen is
+HY300_T08_QZ713_V3, the HY300 T08's. Nothing else is taken from the T08
+tree here: the T08's elog addresses are those of another display.bin,
+and this tree keeps the focus motor off as the hy300-2023 tree does.
+
+Not known: whether a picture follows. The same two logs show U-Boot
+reporting its boot logo up while the wall stayed black, which the AFBD
+refusal does not explain. The elog addresses stay the HY300 Pro's.
+
+Built (dtc, against the series applied to 6.18.38); not booted.
+
+diff -ruN a/arch/arm64/boot/dts/allwinner/Makefile b/arch/arm64/boot/dts/allwinner/Makefile
+--- a/arch/arm64/boot/dts/allwinner/Makefile
++++ b/arch/arm64/boot/dts/allwinner/Makefile
+@@ -64,6 +64,7 @@ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-l018.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy320.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300-t08.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300-2023.dtb
++dtb-$(CONFIG_ARCH_SUNXI) += sun50i-h713-hy300-2023-fw202312.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-a527-cubie-a5e.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-h728-x96qpro+.dtb
+ dtb-$(CONFIG_ARCH_SUNXI) += sun55i-t527-avaota-a1.dtb
+diff -ruN a/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-2023-fw202312.dts b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-2023-fw202312.dts
+--- /dev/null
++++ b/arch/arm64/boot/dts/allwinner/sun50i-h713-hy300-2023-fw202312.dts
+@@ -0,0 +1,33 @@
++// SPDX-License-Identifier: (GPL-2.0-only OR BSD-2-Clause)
++/*
++ * MagCubic HY300 with the 2023-12 ADT-3 firmware (issue #11): the second
++ * unit of the board hy300-2023, variant fw202312. Silkscreen
++ * HY300_T08_QZ713_V3 (its owner, 18.11.2026). Its display firmware is the
++ * "ADT-3 2024-09" display.bin, not the 2023-06 unit's.
++ *
++ * The hy300-2023 tree, plus the one thing that belongs to that firmware and
++ * was read off this unit: the AFBD handoff words. With the HY300 Pro's
++ * defaults the driver refused in both boots of the first TEST image (the
++ * owner's serial log, 18.11.2026), and the words it found are the ones
++ * below - the same three the HY320 measured for "ADT-3 2024" (0335).
++ *
++ * Not this unit's: the elog addresses, which stay the HY300 Pro's. Not
++ * known: whether a picture follows; U-Boot's boot logo was not visible on
++ * this unit either. The image built from this is a TEST image for its owner.
++ */
++
++#include "sun50i-h713-hy300-2023.dts"
++
++/ {
++	model = "MagCubic HY300 (2023 firmware, fw202312)";
++	compatible = "magcubic,hy300-2023-fw202312", "magcubic,hy300-2023",
++		     "allwinner,sun50i-h713";
++};
++
++/*
++ * What the "ADT-3 2024-09" firmware leaves in the AFBD: CTRL, VIDEO_CTRL,
++ * selector (read off this unit, 18.11.2026).
++ */
++&display {
++	allwinner,handoff-state = <0x03001901 0x03000200 0x00000000>;
++};

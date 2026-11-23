@@ -1116,7 +1116,12 @@ was nicht geht und wohin es geht — sie führen keine Arbeit. Gestartet 05.10.2
       X9 und ihn), READMEs, identify-Test. Das Abbild `hy300-2023-test1` (05.11., `test_for=hy300_2023`) passt weiter zu Issue #8 mit dem
       Installer seines Tags; ein neuer Installer nennt die Einheit `hy300_2023/fw202306`. Spiegel 113 + Gitlink (`149f51d0`), TEST-Abbild
       `v0.97.2-hy300fw2312test1` (rc 0, `test_for=hy300_2023/fw202312`). **13.11. abends (Marco: "Ja, alles fünf"):** Fork gepusht, `main` ff,
-      Tag `hy300-2023-fw202312-test1`, Pre-Release, Antwort #11 issuecomment-6859993572. **Offen:** seine Rückmeldung (Schritt 0, erster Lauf, AIC8801).
+      Tag `hy300-2023-fw202312-test1`, Pre-Release, Antwort #11 issuecomment-6859993572. **18.11.2026, sein erster Lauf mit UART**
+      (drei Pads am USB-Port; Aufdruck `HY300_T08_QZ713_V3`): Debian bis zum Login, Wand schwarz, kein Hersteller-Logo (nicht
+      erklärt), AFBD lehnt ab (gefunden `03001901`/`03000200`/`0` = die Worte des HY320), WLAN wie beim T08 (Modul AW869A).
+      **23.11.2026 (Marco: "Ja, vorbereiten"; Zweig `versuch/hy300-fw202312-dtb`, `arbeit/hy300-fw202312-dtb-20261123/BERICHT.md`):**
+      Kernel `0358`, eigener Baum der Variante mit diesen Worten, `KERNEL_DTB` in ihrer `variant.env`. Gebaut, nicht gebootet.
+      **Offen:** test2 und Antwort; sein `dmesg` zum WLAN; das fehlende Logo.
 
 ## 5 Installer und Werkzeuge
 

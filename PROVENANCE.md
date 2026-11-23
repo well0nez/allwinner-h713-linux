@@ -8,7 +8,7 @@ Who made what, where it comes from, and what is deliberately absent.
 [cstenger/allwinner-h713-mainline](https://github.com/cstenger/allwinner-h713-mainline) at commit `8860991`. What of his tree
 is still in the working tree, and what is not, is told in "Left out on purpose" below; his kernel patches are the part
 that stayed. His commits up to `8860991` are still in this repository's git history. On top of them,
-`mainline/patches/kernel/series` carries 374 patches:
+`mainline/patches/kernel/series` carries 375 patches:
 
 | Origin | Patches | Note |
 |---|---|---|
@@ -34,6 +34,7 @@ that stayed. His commits up to `8860991` are still in this repository's git hist
 | minpeter, pull request #6 | `0335` | the MagCubic HY320's board tree, written by its owner against his own stock device trees and booted on his unit since 31.10.2026. His `From:` is kept |
 | well0nez | `0336` - `0350` | `0336` - `0348` the HY320's follow-ups, written here; what was measured on minpeter's unit, and by whom, is in `docs/kernel-patches.md`, sections 27 and 27b (the ARISC firmware's DDC port table in the byte order its loads see, the HDMI socket's receiver port from the device tree, the AFBD output's mix word, the STK8BA58 accelerometer, the codec's stock analog words, the board manager's GPADC channel, the lamp's PWM words, crust's name, the display MIPS with the panel's supply and reset, PB5); `0349` the HY300 T08's tree (issue #7), `0350` the tree of the HY300 with the 2023-06 firmware (issue #8), both from what their owners posted; neither board is here |
 | well0nez | `0351` | the two S/PDIF nodes carry the stock trees' interrupt numbers (SPI 23 and 24 instead of 21 and 38), and the cpu_comm comment no longer calls SPI 21 "S/PDIF". The first number was noticed by cstenger in his review of 14.11.2026; comments in `0024a` and `0024d` still say it, as history |
+| well0nez | `0358` | the device tree of the HY300 2023's second unit (issue #11, variant `fw202312`): `0350`'s tree with the AFBD handoff words its owner's serial log showed (18.11.2026). Own work; the values are his measurement. (`0352` - `0357` are on trial branches and not in the series yet) |
 
 cstenger says the same in his own `PROVENANCE.md` (in his repository at `8860991`): "the bulk of the H713 driver support … originates
 from well0nez". The direction of the debt runs both ways - his arm64 work is what made the 6.18 line
