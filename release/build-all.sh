@@ -550,11 +550,12 @@ fi
 # --- 3. kernel + modules ----------------------------------------------------
 say "3/11 kernel (board defconfig alone = delivery; BOARD=$BOARD, DTB $KERNEL_DTB)"
 in_common; tree_in kernel "$ROOT" mainline/patches/kernel mainline/build/build.sh "boards/$BOARD"; ver_in KERNEL_
-inp "kernel BOARD=$BOARD"
+inp "kernel BOARD=$BOARD DTB=$KERNEL_DTB"
 KTAKEN=0; stamp_fits kernel && KTAKEN=1
 if ((!KTAKEN)); then
-	# build.sh makes the tree, the DTB, the FIT and the module tree build/modroot.<hash>
-	in_container "cd $WORK/mainline && BOARD=$BOARD build/build.sh kernel" > "$OUT/kernel-build.log" 2>&1 || { tail -20 "$OUT/kernel-build.log"; die "kernel build failed (log: $OUT/kernel-build.log)"; }
+	# build.sh makes the tree, the DTB, the FIT and the module tree build/modroot.<hash>. It gets the variant, because a
+	# variant may name a tree of its own (KERNEL_DTB in its variant.env); the stamp carries the tree's name for the same reason.
+	in_container "cd $WORK/mainline && BOARD=$BOARD ${VARIANT:+VARIANT=$VARIANT }build/build.sh kernel" > "$OUT/kernel-build.log" 2>&1 || { tail -20 "$OUT/kernel-build.log"; die "kernel build failed (log: $OUT/kernel-build.log)"; }
 	grep -o 'applied [0-9]* series patches' "$OUT/kernel-build.log" | sed 's/^/    /' || true
 	TREE_NAME=$(basename "$(ls -dt "$MAINLINE"/build/linux-6.18.38-*/ | head -1)")
 fi
